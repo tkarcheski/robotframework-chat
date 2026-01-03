@@ -1,5 +1,24 @@
 # robotfrmework-chat
 
+## Dev Setup (Initial)
+
+Install the following tools:
+
+* ollama
+* astral-uv
+* python 3.12
+
+Install the default model
+```bash
+ollama pull llama3
+```
+
+## Running Robot (Example)
+
+```bash
+uv run robot -d results tests/
+```
+
 ## Overview
 `robotframework-chat` is a Robot Framework–based test harness for **systematically testing Large Language Models (LLMs)** using **LLMs as both the system under test and as automated graders**.
 
@@ -66,14 +85,14 @@ LLM Can Do Basic Math
     Should Be Equal As Integers    ${score}    1
 ```
 
-# Repository Structure (Initial)
+# Repository Structure
 
 ```css
 robotframework-chat/
 ├── README.md
 ├── ROADMAP.md
 ├── src/
-│   └── robotframework_chat/
+│   └── rfc/
 │       └── LLMTestLib.py
 ├── tests/
 │   └── basic/
