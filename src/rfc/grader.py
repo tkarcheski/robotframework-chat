@@ -47,4 +47,3 @@ Format:
             score=int(parsed["score"]),
             reason=str(parsed["reason"]),
         )
-t

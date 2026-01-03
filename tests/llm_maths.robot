@@ -1,6 +1,6 @@
 *** Settings ***
 Documentation     Initial Robot Framework test for robotframework-chat MP.
-Library           ../../src/rfc/keywords.py    WITH NAME    LLM
+Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 
 *** Variables ***
 ${QUESTION}      What is 2 + 2?

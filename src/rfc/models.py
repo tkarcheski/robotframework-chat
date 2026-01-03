@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 
 @dataclass
-class radeResult:
+class GradeResult:
     score: int
     reason: str
-G

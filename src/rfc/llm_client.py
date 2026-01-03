@@ -30,4 +30,3 @@ class LLMClient:
         response.raise_for_status()
 
         return response.json()["response"].strip()
-o
