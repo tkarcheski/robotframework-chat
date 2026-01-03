@@ -66,14 +66,14 @@ LLM Can Do Basic Math
     Should Be Equal As Integers    ${score}    1
 ```
 
-# Repository Structure (Initial)
+# Repository Structure
 
 ```css
 robotframework-chat/
 ├── README.md
 ├── ROADMAP.md
 ├── src/
-│   └── robotframework_chat/
+│   └── rfc/
 │       └── LLMTestLib.py
 ├── tests/
 │   └── basic/
