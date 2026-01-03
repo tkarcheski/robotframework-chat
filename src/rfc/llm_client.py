@@ -1,5 +1,5 @@
 # src/robtframework_chat/llm_client.py
-
+from robot.api import logger
 import requests
 
 class LLMClient:
@@ -28,5 +28,7 @@ class LLMClient:
 
         response = requests.post(self.endpoint, json=payload, timeout=60)
         response.raise_for_status()
+
+        logger.info(f'{self.model} >> {response.json()["response"].strip()}')
 
         return response.json()["response"].strip()
