@@ -1,5 +1,3 @@
-# src/robotframework_chat/grader.py
-
 import json
 from .models import GradeResult
 
