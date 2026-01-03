@@ -1,5 +1,6 @@
 # src/robotframework_chat/keywords.py
 
+from robot.api import logger
 from robot.api.deco import keyword
 from .llm_client import LLMClient
 from .grader import Grader
@@ -15,10 +16,12 @@ class LLMKeywords:
 
     @keyword("Set LLM Endpoint")
     def set_llm_endpoint(self, endpoint: str):
+        logger.info(endpoint)
         self.client.endpoint = endpoint
 
     @keyword("Set LLM Model")
     def set_llm_model(self, model: str):
+        logger.info(model)
         self.client.model = model
 
     @keyword("Set LLM Parameters")
@@ -28,7 +31,10 @@ class LLMKeywords:
 
     @keyword("Ask LLM")
     def ask_llm(self, prompt: str) -> str:
-        return self.client.generate(prompt)
+        logger.info(prompt)
+        response = self.client.generate(prompt)
+        logger.info(response)
+        return response
 
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):

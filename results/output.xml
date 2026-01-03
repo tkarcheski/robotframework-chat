@@ -1,92 +1,134 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<robot generator="Robot 7.4.1 (Python 3.12.2 on linux)" generated="2026-01-02T23:43:01.131545" rpa="false" schemaversion="5">
+<robot generator="Robot 7.4.1 (Python 3.12.2 on linux)" generated="2026-01-03T01:25:01.657016" rpa="false" schemaversion="5">
 <suite id="s1" name="Llm Maths" source="/home/tyler/AI/robotframework-chat/tests/llm_maths.robot">
 <test id="s1-t1" name="LLM Can Do Basic Math" line="10">
 <kw name="Ask LLM" owner="LLM">
-<msg time="2026-01-02T23:43:04.000495" level="INFO">${answer} = The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-03T01:25:01.695593" level="TRACE">Arguments: [ 'What is 2 + 2?' ]</msg>
+<msg time="2026-01-03T01:25:01.695649" level="INFO">What is 2 + 2?</msg>
+<msg time="2026-01-03T01:25:01.696311" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
+<msg time="2026-01-03T01:25:04.510683" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 430</msg>
+<msg time="2026-01-03T01:25:04.510957" level="INFO">llama3 &gt;&gt; The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-03T01:25:04.511046" level="INFO">The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-03T01:25:04.511081" level="TRACE">Return: 'The answer to 2 + 2 is 4.'</msg>
+<msg time="2026-01-03T01:25:04.511180" level="INFO">${answer} = The answer to 2 + 2 is 4.</msg>
 <var>${answer}</var>
 <arg>${QUESTION}</arg>
-<status status="PASS" start="2026-01-02T23:43:01.170394" elapsed="2.830144"/>
+<status status="PASS" start="2026-01-03T01:25:01.695519" elapsed="2.815680"/>
 </kw>
 <kw name="Grade Answer" owner="LLM">
-<msg time="2026-01-02T23:43:07.297563" level="INFO">${score} = 1</msg>
-<msg time="2026-01-02T23:43:07.297608" level="INFO">${reason} = Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:04.511558" level="TRACE">Arguments: [ 'What is 2 + 2?' | '4' | 'The answer to 2 + 2 is 4.' ]</msg>
+<msg time="2026-01-03T01:25:04.512002" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
+<msg time="2026-01-03T01:25:07.896842" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 922</msg>
+<msg time="2026-01-03T01:25:07.897103" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correct answer: The model's answer matches the expected answer."
+}</msg>
+<msg time="2026-01-03T01:25:07.897237" level="TRACE">Return: (1, "Correct answer: The model's answer matches the expected answer.")</msg>
+<msg time="2026-01-03T01:25:07.897363" level="INFO">${score} = 1</msg>
+<msg time="2026-01-03T01:25:07.897382" level="INFO">${reason} = Correct answer: The model's answer matches the expected answer.</msg>
 <var>${score}</var>
 <var>${reason}</var>
 <arg>${QUESTION}</arg>
 <arg>${EXPECTED}</arg>
 <arg>${answer}</arg>
-<status status="PASS" start="2026-01-02T23:43:04.000720" elapsed="3.296902"/>
+<status status="PASS" start="2026-01-03T01:25:04.511411" elapsed="3.385983"/>
 </kw>
 <kw name="Should Be Equal As Integers" owner="BuiltIn">
-<msg time="2026-01-02T23:43:07.298133" level="INFO">Argument types are:
+<msg time="2026-01-03T01:25:07.897931" level="TRACE">Arguments: [ 1 | '1' ]</msg>
+<msg time="2026-01-03T01:25:07.897980" level="INFO">Argument types are:
 &lt;class 'int'&gt;
 &lt;class 'str'&gt;</msg>
+<msg time="2026-01-03T01:25:07.898008" level="TRACE">Return: None</msg>
 <arg>${score}</arg>
 <arg>1</arg>
 <doc>Fails if objects are unequal after converting them to integers.</doc>
-<status status="PASS" start="2026-01-02T23:43:07.297883" elapsed="0.000295"/>
+<status status="PASS" start="2026-01-03T01:25:07.897713" elapsed="0.000309"/>
 </kw>
 <kw name="Log" owner="BuiltIn">
-<msg time="2026-01-02T23:43:07.298380" level="INFO">LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:07.898237" level="TRACE">Arguments: [ "LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer." ]</msg>
+<msg time="2026-01-03T01:25:07.898266" level="INFO">LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:07.898279" level="TRACE">Return: None</msg>
 <arg>LLM answer: ${answer} | Reason: ${reason}</arg>
 <doc>Logs the given message with the given level.</doc>
-<status status="PASS" start="2026-01-02T23:43:07.298254" elapsed="0.000144"/>
+<status status="PASS" start="2026-01-03T01:25:07.898106" elapsed="0.000185"/>
 </kw>
 <doc>Test that the LLM correctly answers a simple math question.</doc>
-<status status="PASS" start="2026-01-02T23:43:01.170055" elapsed="6.128410"/>
+<status status="PASS" start="2026-01-03T01:25:01.695201" elapsed="6.203176"/>
 </test>
 <test id="s1-t2" name="LLM Can Do Another Simple Math" line="17">
 <kw name="Set Variable" owner="BuiltIn">
-<msg time="2026-01-02T23:43:07.298834" level="INFO">${question2} = What is 5 + 7?</msg>
+<msg time="2026-01-03T01:25:07.898760" level="TRACE">Arguments: [ 'What is 5 + 7?' ]</msg>
+<msg time="2026-01-03T01:25:07.898790" level="TRACE">Return: 'What is 5 + 7?'</msg>
+<msg time="2026-01-03T01:25:07.898821" level="INFO">${question2} = What is 5 + 7?</msg>
 <var>${question2}</var>
 <arg>What is 5 + 7?</arg>
 <doc>Returns the given values which can then be assigned to a variables.</doc>
-<status status="PASS" start="2026-01-02T23:43:07.298731" elapsed="0.000113"/>
+<status status="PASS" start="2026-01-03T01:25:07.898679" elapsed="0.000151"/>
 </kw>
 <kw name="Set Variable" owner="BuiltIn">
-<msg time="2026-01-02T23:43:07.298971" level="INFO">${expected2} = 12</msg>
+<msg time="2026-01-03T01:25:07.898954" level="TRACE">Arguments: [ '12' ]</msg>
+<msg time="2026-01-03T01:25:07.898976" level="TRACE">Return: '12'</msg>
+<msg time="2026-01-03T01:25:07.898998" level="INFO">${expected2} = 12</msg>
 <var>${expected2}</var>
 <arg>12</arg>
 <doc>Returns the given values which can then be assigned to a variables.</doc>
-<status status="PASS" start="2026-01-02T23:43:07.298889" elapsed="0.000090"/>
+<status status="PASS" start="2026-01-03T01:25:07.898886" elapsed="0.000120"/>
 </kw>
 <kw name="Ask LLM" owner="LLM">
-<msg time="2026-01-02T23:43:08.689204" level="INFO">${answer2} = The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-03T01:25:07.899102" level="TRACE">Arguments: [ 'What is 5 + 7?' ]</msg>
+<msg time="2026-01-03T01:25:07.899273" level="INFO">What is 5 + 7?</msg>
+<msg time="2026-01-03T01:25:07.899650" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
+<msg time="2026-01-03T01:25:09.341737" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 430</msg>
+<msg time="2026-01-03T01:25:09.341960" level="INFO">llama3 &gt;&gt; The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-03T01:25:09.342040" level="INFO">The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-03T01:25:09.342069" level="TRACE">Return: 'The answer to 5 + 7 is 12.'</msg>
+<msg time="2026-01-03T01:25:09.342155" level="INFO">${answer2} = The answer to 5 + 7 is 12.</msg>
 <var>${answer2}</var>
 <arg>${question2}</arg>
-<status status="PASS" start="2026-01-02T23:43:07.299023" elapsed="1.390215"/>
+<status status="PASS" start="2026-01-03T01:25:07.899061" elapsed="1.443103"/>
 </kw>
 <kw name="Grade Answer" owner="LLM">
-<msg time="2026-01-02T23:43:11.979184" level="INFO">${score2} = 1</msg>
-<msg time="2026-01-02T23:43:11.979227" level="INFO">${reason2} = Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:09.342460" level="TRACE">Arguments: [ 'What is 5 + 7?' | '12' | 'The answer to 5 + 7 is 12.' ]</msg>
+<msg time="2026-01-03T01:25:09.342855" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
+<msg time="2026-01-03T01:25:12.625805" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 924</msg>
+<msg time="2026-01-03T01:25:12.626040" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correct answer: The model's answer matches the expected answer."
+}</msg>
+<msg time="2026-01-03T01:25:12.626159" level="TRACE">Return: (1, "Correct answer: The model's answer matches the expected answer.")</msg>
+<msg time="2026-01-03T01:25:12.626258" level="INFO">${score2} = 1</msg>
+<msg time="2026-01-03T01:25:12.626277" level="INFO">${reason2} = Correct answer: The model's answer matches the expected answer.</msg>
 <var>${score2}</var>
 <var>${reason2}</var>
 <arg>${question2}</arg>
 <arg>${expected2}</arg>
 <arg>${answer2}</arg>
-<status status="PASS" start="2026-01-02T23:43:08.689388" elapsed="3.289851"/>
+<status status="PASS" start="2026-01-03T01:25:09.342329" elapsed="3.283958"/>
 </kw>
 <kw name="Should Be Equal As Integers" owner="BuiltIn">
-<msg time="2026-01-02T23:43:11.979608" level="INFO">Argument types are:
+<msg time="2026-01-03T01:25:12.626631" level="TRACE">Arguments: [ 1 | '1' ]</msg>
+<msg time="2026-01-03T01:25:12.626670" level="INFO">Argument types are:
 &lt;class 'int'&gt;
 &lt;class 'str'&gt;</msg>
+<msg time="2026-01-03T01:25:12.626694" level="TRACE">Return: None</msg>
 <arg>${score2}</arg>
 <arg>1</arg>
 <doc>Fails if objects are unequal after converting them to integers.</doc>
-<status status="PASS" start="2026-01-02T23:43:11.979393" elapsed="0.000247"/>
+<status status="PASS" start="2026-01-03T01:25:12.626442" elapsed="0.000266"/>
 </kw>
 <kw name="Log" owner="BuiltIn">
-<msg time="2026-01-02T23:43:11.979808" level="INFO">LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:12.626867" level="TRACE">Arguments: [ "LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer." ]</msg>
+<msg time="2026-01-03T01:25:12.626889" level="INFO">LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-03T01:25:12.626902" level="TRACE">Return: None</msg>
 <arg>LLM answer: ${answer2} | Reason: ${reason2}</arg>
 <doc>Logs the given message with the given level.</doc>
-<status status="PASS" start="2026-01-02T23:43:11.979699" elapsed="0.000126"/>
+<status status="PASS" start="2026-01-03T01:25:12.626766" elapsed="0.000147"/>
 </kw>
 <doc>Test a second math question for regression.</doc>
-<status status="PASS" start="2026-01-02T23:43:07.298571" elapsed="4.681318"/>
+<status status="PASS" start="2026-01-03T01:25:07.898500" elapsed="4.728480"/>
 </test>
 <doc>Initial Robot Framework test for robotframework-chat MP.</doc>
-<status status="PASS" start="2026-01-02T23:43:01.132037" elapsed="10.848084"/>
+<status status="PASS" start="2026-01-03T01:25:01.657534" elapsed="10.969682"/>
 </suite>
 <statistics>
 <total>
