@@ -1,5 +1,3 @@
-# src/robotframework_chat/keywords.py
-
 from robot.api import logger
 from robot.api.deco import keyword
 from .llm_client import LLMClient

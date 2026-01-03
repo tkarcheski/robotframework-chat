@@ -1,0 +1,67 @@
+# ========================
+# VS Code
+# =========================
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# =========================
+# AI / LLM / Data
+# =========================
+models/
+checkpoints/
+weights/
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.ckpt
+
+# Caches / runtime artifacts
+cache/
+logs/
+# results/ example results allowed
+output.xml
+log.html
+report.html
+
+# =========================
+# OS / Misc
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# =========================
+# UV / Packaging
+# =========================
+.uv/
+uv-cache/
+=

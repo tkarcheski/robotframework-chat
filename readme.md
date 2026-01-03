@@ -19,6 +19,14 @@ ollama pull llama3
 uv run robot -d results tests/
 ```
 
+## Installing Precommit/Ruff
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+
 ## Overview
 `robotframework-chat` is a Robot Framework–based test harness for **systematically testing Large Language Models (LLMs)** using **LLMs as both the system under test and as automated graders**.
 
