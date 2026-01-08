@@ -16,7 +16,7 @@ ollama pull llama3
 ## Running Robot (Example)
 
 ```bash
-uv run robot -d results tests/
+uv run robot -d results robot/math
 ```
 
 ## Installing Precommit/Ruff
@@ -102,8 +102,8 @@ robotframework-chat/
 ├── src/
 │   └── rfc/
 │       └── LLMTestLib.py
-├── tests/
-│   └── basic/
+├── robot/
+│   └── tests/
 │       └── llm_math.robot
 ├── requirements.txt
 └── docs/
