@@ -1,143 +1,1125 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<robot generator="Robot 7.4.1 (Python 3.12.2 on linux)" generated="2026-01-03T01:25:01.657016" rpa="false" schemaversion="5">
-<suite id="s1" name="Llm Maths" source="/home/tyler/AI/robotframework-chat/tests/llm_maths.robot">
-<test id="s1-t1" name="LLM Can Do Basic Math" line="10">
+<robot generator="Robot 7.4.1 (Python 3.12.2 on linux)" generated="2026-01-07T20:41:28.648060" rpa="false" schemaversion="5">
+<suite id="s1" name="Math" source="/home/tyler/AI/robotframework-chat/robot/math">
+<suite id="s1-s1" name="Tests" source="/home/tyler/AI/robotframework-chat/robot/math/tests">
+<kw name="Log" owner="BuiltIn" type="SETUP">
+<msg time="2026-01-07T20:41:28.659327" level="INFO">Starting Math Test Suite</msg>
+<arg>Starting Math Test Suite</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:41:28.659218" elapsed="0.000135"/>
+</kw>
+<suite id="s1-s1-s1" name="Iq" source="/home/tyler/AI/robotframework-chat/robot/math/tests/iq.robot">
+<test id="s1-s1-s1-t1" name="IQ 100 Basic Addition" line="27">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:28.689450" level="INFO">${rand} = -8725</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:28.689191" elapsed="0.000275"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:41:28.689498" elapsed="0.000020"/>
+</return>
+<msg time="2026-01-07T20:41:28.689571" level="INFO">${a} = -8725</msg>
+<var>${a}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:41:28.688982" elapsed="0.000598"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:28.689923" level="INFO">${rand} = -250</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:28.689763" elapsed="0.000171"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:41:28.689954" elapsed="0.000014"/>
+</return>
+<msg time="2026-01-07T20:41:28.690012" level="INFO">${b} = -250</msg>
+<var>${b}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:41:28.689661" elapsed="0.000359"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:41:28.690189" level="INFO">${question} = What is -8725 plus -250? Explain your steps.</msg>
+<var>${question}</var>
+<arg>What is ${a} plus ${b}? Explain your steps.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:41:28.690069" elapsed="0.000129"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:28.690359" level="INFO">${expected} = -8975</msg>
+<var>${expected}</var>
+<arg>${a}+${b}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:28.690244" elapsed="0.000124"/>
+</kw>
+<kw name="Ask And Validate">
 <kw name="Ask LLM" owner="LLM">
-<msg time="2026-01-03T01:25:01.695593" level="TRACE">Arguments: [ 'What is 2 + 2?' ]</msg>
-<msg time="2026-01-03T01:25:01.695649" level="INFO">What is 2 + 2?</msg>
-<msg time="2026-01-03T01:25:01.696311" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
-<msg time="2026-01-03T01:25:04.510683" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 430</msg>
-<msg time="2026-01-03T01:25:04.510957" level="INFO">llama3 &gt;&gt; The answer to 2 + 2 is 4.</msg>
-<msg time="2026-01-03T01:25:04.511046" level="INFO">The answer to 2 + 2 is 4.</msg>
-<msg time="2026-01-03T01:25:04.511081" level="TRACE">Return: 'The answer to 2 + 2 is 4.'</msg>
-<msg time="2026-01-03T01:25:04.511180" level="INFO">${answer} = The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-07T20:41:28.690580" level="INFO">What is -8725 plus -250? Explain your steps.</msg>
+<msg time="2026-01-07T20:41:43.290763" level="INFO">llama3 &gt;&gt; To calculate the result of adding -8725 and -250, I'll follow these steps:
+
+1. Start with the first number: -8725
+2. Add the second number to it: -250
+
+Here's the calculation:
+
+-8725 + (-250) = ?
+
+To add a negative number, you can think of it as subtracting its absolute value (the number without the minus sign). So, I'll subtract 250 from 8725:
+
+8725 - 250 = 8475
+
+Since both numbers are negative, the result will also be negative. Therefore:
+
+-8725 + (-250) = -8475</msg>
+<msg time="2026-01-07T20:41:43.290920" level="INFO">To calculate the result of adding -8725 and -250, I'll follow these steps:
+
+1. Start with the first number: -8725
+2. Add the second number to it: -250
+
+Here's the calculation:
+
+-8725 + (-250) = ?
+
+To add a negative number, you can think of it as subtracting its absolute value (the number without the minus sign). So, I'll subtract 250 from 8725:
+
+8725 - 250 = 8475
+
+Since both numbers are negative, the result will also be negative. Therefore:
+
+-8725 + (-250) = -8475</msg>
+<msg time="2026-01-07T20:41:43.291012" level="INFO">${answer} = To calculate the result of adding -8725 and -250, I'll follow these steps:
+
+1. Start with the first number: -8725
+2. Add the second number to it: -250
+
+Here's the calculation:
+
+-8725 + (-250) = ?
+
+To ...</msg>
 <var>${answer}</var>
-<arg>${QUESTION}</arg>
-<status status="PASS" start="2026-01-03T01:25:01.695519" elapsed="2.815680"/>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:41:28.690535" elapsed="14.600490"/>
 </kw>
 <kw name="Grade Answer" owner="LLM">
-<msg time="2026-01-03T01:25:04.511558" level="TRACE">Arguments: [ 'What is 2 + 2?' | '4' | 'The answer to 2 + 2 is 4.' ]</msg>
-<msg time="2026-01-03T01:25:04.512002" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
-<msg time="2026-01-03T01:25:07.896842" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 922</msg>
-<msg time="2026-01-03T01:25:07.897103" level="INFO">llama3 &gt;&gt; {
+<msg time="2026-01-07T20:41:47.799969" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correctly calculated the result as -8975, but incorrectly explained the steps."
+}</msg>
+<msg time="2026-01-07T20:41:47.800202" level="INFO">${score} = 1</msg>
+<msg time="2026-01-07T20:41:47.800222" level="INFO">${reason} = Correctly calculated the result as -8975, but incorrectly explained the steps.</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:41:43.291189" elapsed="4.509044"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.800566" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.800352" elapsed="0.000246"/>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.800762" level="INFO">Question: What is -8725 plus -250? Explain your steps. | Answer: To calculate the result of adding -8725 and -250, I'll follow these steps:
+
+1. Start with the first number: -8725
+2. Add the second number to it: -250
+
+Here's the calculation:
+
+-8725 + (-250) = ?
+
+To add a negative number, you can think of it as subtracting its absolute value (the number without the minus sign). So, I'll subtract 250 from 8725:
+
+8725 - 250 = 8475
+
+Since both numbers are negative, the result will also be negative. Therefore:
+
+-8725 + (-250) = -8475 | Reason: Correctly calculated the result as -8975, but incorrectly explained the steps.</msg>
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.800649" elapsed="0.000131"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="PASS" start="2026-01-07T20:41:28.690431" elapsed="19.110377"/>
+</kw>
+<tag>IQ:100</tag>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:41:28.688784" elapsed="19.112125"/>
+</test>
+<test id="s1-s1-s1-t2" name="IQ 110 Simple Subtraction and Reasoning" line="35">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.801595" level="INFO">${rand} = 156</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.801368" elapsed="0.000237"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:41:47.801631" elapsed="0.000026"/>
+</return>
+<msg time="2026-01-07T20:41:47.801706" level="INFO">${x} = 156</msg>
+<var>${x}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:41:47.801248" elapsed="0.000465"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.802033" level="INFO">${rand} = -8473</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.801876" elapsed="0.000166"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:41:47.802060" elapsed="0.000012"/>
+</return>
+<msg time="2026-01-07T20:41:47.802112" level="INFO">${y} = -8473</msg>
+<var>${y}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:41:47.801782" elapsed="0.000338"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.802342" level="INFO">${question} = Subtract -8473 from 156 and explain why the result is correct.</msg>
+<var>${question}</var>
+<arg>Subtract ${y} from ${x} and explain why the result is correct.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.802213" elapsed="0.000138"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:41:47.802648" level="INFO">${expected} = 8629</msg>
+<var>${expected}</var>
+<arg>${x}-${y}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:41:47.802398" elapsed="0.000259"/>
+</kw>
+<kw name="Ask And Validate">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:41:47.802883" level="INFO">Subtract -8473 from 156 and explain why the result is correct.</msg>
+<msg time="2026-01-07T20:42:09.420169" level="INFO">llama3 &gt;&gt; A simple subtraction problem!
+
+To subtract -8473 from 156, I'll follow the standard rules of arithmetic:
+
+1. Start with the number being subtracted: -8473
+2. Add the absolute value of that number (i.e., make it positive): +8473
+3. Subtract this positive value from the original number: 156 - 8473
+
+Now, let's do the calculation:
+
+156 - 8473 = -8317
+
+So, the result is -8317.
+
+Why is this correct? Well, when you subtract a negative number (like -8473), it's equivalent to adding its positive counterpart (in this case, +8473). Think of it like moving 8473 units in the opposite direction. In this case, we're moving 156 units away from zero and then moving an additional 8473 units in the same direction (away from zero).
+
+By doing so, we effectively "cancel out" the initial 156 and end up with a result that's -8317 units away from zero.</msg>
+<msg time="2026-01-07T20:42:09.420291" level="INFO">A simple subtraction problem!
+
+To subtract -8473 from 156, I'll follow the standard rules of arithmetic:
+
+1. Start with the number being subtracted: -8473
+2. Add the absolute value of that number (i.e., make it positive): +8473
+3. Subtract this positive value from the original number: 156 - 8473
+
+Now, let's do the calculation:
+
+156 - 8473 = -8317
+
+So, the result is -8317.
+
+Why is this correct? Well, when you subtract a negative number (like -8473), it's equivalent to adding its positive counterpart (in this case, +8473). Think of it like moving 8473 units in the opposite direction. In this case, we're moving 156 units away from zero and then moving an additional 8473 units in the same direction (away from zero).
+
+By doing so, we effectively "cancel out" the initial 156 and end up with a result that's -8317 units away from zero.</msg>
+<msg time="2026-01-07T20:42:09.420375" level="INFO">${answer} = A simple subtraction problem!
+
+To subtract -8473 from 156, I'll follow the standard rules of arithmetic:
+
+1. Start with the number being subtracted: -8473
+2. Add the absolute value of that number (i.e...</msg>
+<var>${answer}</var>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:41:47.802834" elapsed="21.617552"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:42:14.217911" level="INFO">llama3 &gt;&gt; {
+  "score": 0,
+  "reason": "The model answer is incorrect. The correct calculation is not shown."
+}</msg>
+<msg time="2026-01-07T20:42:14.218139" level="INFO">${score} = 0</msg>
+<msg time="2026-01-07T20:42:14.218160" level="INFO">${reason} = The model answer is incorrect. The correct calculation is not shown.</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:42:09.420499" elapsed="4.797671"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:42:14.218503" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<msg time="2026-01-07T20:42:14.218591" level="FAIL">0 != 1</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="FAIL" start="2026-01-07T20:42:14.218291" elapsed="0.000411">0 != 1</status>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="NOT RUN" start="2026-01-07T20:42:14.218762" elapsed="0.000008"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="FAIL" start="2026-01-07T20:41:47.802726" elapsed="26.416106">0 != 1</status>
+</kw>
+<tag>IQ:110</tag>
+<tag>math</tag>
+<status status="FAIL" start="2026-01-07T20:41:47.801025" elapsed="26.417925">0 != 1</status>
+</test>
+<test id="s1-s1-s1-t3" name="IQ 120 Multiplication Pattern Recognition" line="43">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:14.219631" level="INFO">${rand} = -1779</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:14.219391" elapsed="0.000251"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:42:14.219666" elapsed="0.000022"/>
+</return>
+<msg time="2026-01-07T20:42:14.219738" level="INFO">${m} = -1779</msg>
+<var>${m}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:42:14.219274" elapsed="0.000472"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:14.220067" level="INFO">${rand} = 2056</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:14.219907" elapsed="0.000169"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:42:14.220094" elapsed="0.000012"/>
+</return>
+<msg time="2026-01-07T20:42:14.220152" level="INFO">${n} = 2056</msg>
+<var>${n}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:42:14.219814" elapsed="0.000346"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:42:14.220320" level="INFO">${question} = Multiply -1779 by 2056 and describe a pattern you notice in the result.</msg>
+<var>${question}</var>
+<arg>Multiply ${m} by ${n} and describe a pattern you notice in the result.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:42:14.220210" elapsed="0.000119"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:14.220495" level="INFO">${expected} = -3657624</msg>
+<var>${expected}</var>
+<arg>${m}*${n}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:14.220373" elapsed="0.000130"/>
+</kw>
+<kw name="Ask And Validate">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:42:14.220718" level="INFO">Multiply -1779 by 2056 and describe a pattern you notice in the result.</msg>
+<msg time="2026-01-07T20:42:28.770322" level="INFO">llama3 &gt;&gt; A fun math problem!
+
+Multiplying -1779 by 2056, I get:
+
+-3658,624
+
+Now, let me take a closer look at this result...
+
+Hmm... what do I see? Ah-ha! I notice that the result is also an even number! In fact, it's a negative even number.
+
+This makes sense because when you multiply two integers with different signs (one positive and one negative), the result will always be negative. And since both -1779 and 2056 are odd numbers, their product would naturally be an even number.
+
+So, the pattern I notice is that the result is a negative even number, which is consistent with the rules of integer multiplication!</msg>
+<msg time="2026-01-07T20:42:28.770446" level="INFO">A fun math problem!
+
+Multiplying -1779 by 2056, I get:
+
+-3658,624
+
+Now, let me take a closer look at this result...
+
+Hmm... what do I see? Ah-ha! I notice that the result is also an even number! In fact, it's a negative even number.
+
+This makes sense because when you multiply two integers with different signs (one positive and one negative), the result will always be negative. And since both -1779 and 2056 are odd numbers, their product would naturally be an even number.
+
+So, the pattern I notice is that the result is a negative even number, which is consistent with the rules of integer multiplication!</msg>
+<msg time="2026-01-07T20:42:28.770582" level="INFO">${answer} = A fun math problem!
+
+Multiplying -1779 by 2056, I get:
+
+-3658,624
+
+Now, let me take a closer look at this result...
+
+Hmm... what do I see? Ah-ha! I notice that the result is also an even number! In fa...</msg>
+<var>${answer}</var>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:42:14.220669" elapsed="14.549929"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:42:34.212710" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correctly identified the pattern of the result being a negative even number, which is consistent with the rules of integer multiplication."
+}</msg>
+<msg time="2026-01-07T20:42:34.212927" level="INFO">${score} = 1</msg>
+<msg time="2026-01-07T20:42:34.212947" level="INFO">${reason} = Correctly identified the pattern of the result being a negative even number, which is consistent with the rules of integer multiplication.</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:42:28.770735" elapsed="5.442223"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.213309" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.213079" elapsed="0.000262"/>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.213515" level="INFO">Question: Multiply -1779 by 2056 and describe a pattern you notice in the result. | Answer: A fun math problem!
+
+Multiplying -1779 by 2056, I get:
+
+-3658,624
+
+Now, let me take a closer look at this result...
+
+Hmm... what do I see? Ah-ha! I notice that the result is also an even number! In fact, it's a negative even number.
+
+This makes sense because when you multiply two integers with different signs (one positive and one negative), the result will always be negative. And since both -1779 and 2056 are odd numbers, their product would naturally be an even number.
+
+So, the pattern I notice is that the result is a negative even number, which is consistent with the rules of integer multiplication! | Reason: Correctly identified the pattern of the result being a negative even number, which is consistent with the rules of integer multiplication.</msg>
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.213394" elapsed="0.000139"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="PASS" start="2026-01-07T20:42:14.220565" elapsed="19.992998"/>
+</kw>
+<tag>IQ:120</tag>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:42:14.219060" elapsed="19.994592"/>
+</test>
+<test id="s1-s1-s1-t4" name="IQ 130 Division with Remainders" line="51">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.214313" level="INFO">${rand} = 5824</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.214075" elapsed="0.000249"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:42:34.214350" elapsed="0.000029"/>
+</return>
+<msg time="2026-01-07T20:42:34.214428" level="INFO">${num} = 5824</msg>
+<var>${num}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:42:34.213959" elapsed="0.000477"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.214902" level="INFO">${rand} = 2819</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.214734" elapsed="0.000178"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:42:34.214931" elapsed="0.000012"/>
+</return>
+<msg time="2026-01-07T20:42:34.214984" level="INFO">${div} = 2819</msg>
+<var>${div}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:42:34.214508" elapsed="0.000484"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.215159" level="INFO">${question} = Divide 5824 by 2819. Give both quotient and remainder, explaining your reasoning.</msg>
+<var>${question}</var>
+<arg>Divide ${num} by ${div}. Give both quotient and remainder, explaining your reasoning.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.215043" elapsed="0.000126"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:42:34.215338" level="INFO">${expected} = 2</msg>
+<var>${expected}</var>
+<arg>${num}//${div}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:42:34.215215" elapsed="0.000132"/>
+</kw>
+<kw name="Ask And Validate">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:42:34.215569" level="INFO">Divide 5824 by 2819. Give both quotient and remainder, explaining your reasoning.</msg>
+<msg time="2026-01-07T20:42:59.000657" level="INFO">llama3 &gt;&gt; To divide 5824 by 2819, I'll perform the division step by step:
+
+1. Start with the dividend (the number being divided): 5824
+2. Divide the first digit of the dividend (5) by the divisor (2819). Since 5 is less than 2819, there's no whole number result.
+3. Bring down the next digit of the dividend (8) and add it to the previous result: 58
+4. Divide 58 by 2819. This time, I can find a whole number result: 2 (since 2 × 2819 = 5638)
+5. Subtract 5638 from 5824: 5824 - 5638 = 186
+6. Since the remainder (186) is less than the divisor (2819), there's no need to bring down another digit.
+
+Now, let me summarize the result:
+
+**Quotient:** 2 (since 2 × 2819 = 5638)
+**Remainder:** 186
+
+In other words, when you divide 5824 by 2819, you get a quotient of 2 and a remainder of 186.</msg>
+<msg time="2026-01-07T20:42:59.000789" level="INFO">To divide 5824 by 2819, I'll perform the division step by step:
+
+1. Start with the dividend (the number being divided): 5824
+2. Divide the first digit of the dividend (5) by the divisor (2819). Since 5 is less than 2819, there's no whole number result.
+3. Bring down the next digit of the dividend (8) and add it to the previous result: 58
+4. Divide 58 by 2819. This time, I can find a whole number result: 2 (since 2 × 2819 = 5638)
+5. Subtract 5638 from 5824: 5824 - 5638 = 186
+6. Since the remainder (186) is less than the divisor (2819), there's no need to bring down another digit.
+
+Now, let me summarize the result:
+
+**Quotient:** 2 (since 2 × 2819 = 5638)
+**Remainder:** 186
+
+In other words, when you divide 5824 by 2819, you get a quotient of 2 and a remainder of 186.</msg>
+<msg time="2026-01-07T20:42:59.000887" level="INFO">${answer} = To divide 5824 by 2819, I'll perform the division step by step:
+
+1. Start with the dividend (the number being divided): 5824
+2. Divide the first digit of the dividend (5) by the divisor (2819). Since ...</msg>
+<var>${answer}</var>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:42:34.215520" elapsed="24.785379"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:43:04.372726" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correctly performed division and provided both quotient (2) and remainder (186)"
+}</msg>
+<msg time="2026-01-07T20:43:04.373020" level="INFO">${score} = 1</msg>
+<msg time="2026-01-07T20:43:04.373044" level="INFO">${reason} = Correctly performed division and provided both quotient (2) and remainder (186)</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:42:59.001013" elapsed="5.372042"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.373466" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.373225" elapsed="0.000278"/>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.373680" level="INFO">Question: Divide 5824 by 2819. Give both quotient and remainder, explaining your reasoning. | Answer: To divide 5824 by 2819, I'll perform the division step by step:
+
+1. Start with the dividend (the number being divided): 5824
+2. Divide the first digit of the dividend (5) by the divisor (2819). Since 5 is less than 2819, there's no whole number result.
+3. Bring down the next digit of the dividend (8) and add it to the previous result: 58
+4. Divide 58 by 2819. This time, I can find a whole number result: 2 (since 2 × 2819 = 5638)
+5. Subtract 5638 from 5824: 5824 - 5638 = 186
+6. Since the remainder (186) is less than the divisor (2819), there's no need to bring down another digit.
+
+Now, let me summarize the result:
+
+**Quotient:** 2 (since 2 × 2819 = 5638)
+**Remainder:** 186
+
+In other words, when you divide 5824 by 2819, you get a quotient of 2 and a remainder of 186. | Reason: Correctly performed division and provided both quotient (2) and remainder (186)</msg>
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.373559" elapsed="0.000142"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="PASS" start="2026-01-07T20:42:34.215413" elapsed="30.158318"/>
+</kw>
+<tag>IQ:130</tag>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:42:34.213748" elapsed="30.160081"/>
+</test>
+<test id="s1-s1-s1-t5" name="IQ 140 Simple Algebra: Solve for X" line="59">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.374500" level="INFO">${rand} = -8266</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.374270" elapsed="0.000241"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:04.374536" elapsed="0.000025"/>
+</return>
+<msg time="2026-01-07T20:43:04.374609" level="INFO">${a} = -8266</msg>
+<var>${a}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:04.374157" elapsed="0.000460"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.374950" level="INFO">${rand} = 2277</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.374787" elapsed="0.000173"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:04.374978" elapsed="0.000011"/>
+</return>
+<msg time="2026-01-07T20:43:04.375031" level="INFO">${b} = 2277</msg>
+<var>${b}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:04.374694" elapsed="0.000345"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.375356" level="INFO">${rand} = -9737</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.375205" elapsed="0.000160"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:04.375382" elapsed="0.000011"/>
+</return>
+<msg time="2026-01-07T20:43:04.375432" level="INFO">${c} = -9737</msg>
+<var>${c}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:04.375108" elapsed="0.000332"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.375645" level="INFO">${question} = Solve for x in the equation -8266*x + 2277 = -9737 and explain each step.</msg>
+<var>${question}</var>
+<arg>Solve for x in the equation ${a}*x + ${b} = ${c} and explain each step.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.375493" elapsed="0.000161"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:04.375846" level="INFO">${expected} = 1.453423663198645</msg>
+<var>${expected}</var>
+<arg>(${c}-${b})/${a}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:04.375704" elapsed="0.000150"/>
+</kw>
+<kw name="Ask And Validate">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:43:04.376082" level="INFO">Solve for x in the equation -8266*x + 2277 = -9737 and explain each step.</msg>
+<msg time="2026-01-07T20:43:30.020751" level="INFO">llama3 &gt;&gt; To solve for x, we can start by isolating the variable x on one side of the equation. Here's how:
+
+Step 1: Add 8266x to both sides of the equation to get rid of the negative term.
+
+-8266*x + 2277 = -9737
+Add 8266x to both sides:
+-8266*x + 8266*x + 2277 = -9737 + 8266*x
+
+This simplifies to:
+
+2277 = -9737 + 8266*x
+
+Step 2: Add 9737 to both sides of the equation to get rid of the negative term.
+
+2277 = -9737 + 8266*x
+Add 9737 to both sides:
+2277 + 9737 = 8266*x + 9737
+
+This simplifies to:
+
+12014 = 8266*x
+
+Step 3: Divide both sides of the equation by 8266 to solve for x.
+
+12014 = 8266*x
+Divide both sides by 8266:
+x = 12014 / 8266
+
+This simplifies to:
+
+x = 1.45
+
+Therefore, the value of x is approximately 1.45.</msg>
+<msg time="2026-01-07T20:43:30.020881" level="INFO">To solve for x, we can start by isolating the variable x on one side of the equation. Here's how:
+
+Step 1: Add 8266x to both sides of the equation to get rid of the negative term.
+
+-8266*x + 2277 = -9737
+Add 8266x to both sides:
+-8266*x + 8266*x + 2277 = -9737 + 8266*x
+
+This simplifies to:
+
+2277 = -9737 + 8266*x
+
+Step 2: Add 9737 to both sides of the equation to get rid of the negative term.
+
+2277 = -9737 + 8266*x
+Add 9737 to both sides:
+2277 + 9737 = 8266*x + 9737
+
+This simplifies to:
+
+12014 = 8266*x
+
+Step 3: Divide both sides of the equation by 8266 to solve for x.
+
+12014 = 8266*x
+Divide both sides by 8266:
+x = 12014 / 8266
+
+This simplifies to:
+
+x = 1.45
+
+Therefore, the value of x is approximately 1.45.</msg>
+<msg time="2026-01-07T20:43:30.020967" level="INFO">${answer} = To solve for x, we can start by isolating the variable x on one side of the equation. Here's how:
+
+Step 1: Add 8266x to both sides of the equation to get rid of the negative term.
+
+-8266*x + 2277 = -9...</msg>
+<var>${answer}</var>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:43:04.376032" elapsed="25.644947"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:43:37.025832" level="INFO">llama3 &gt;&gt; {
+  "score": 1,
+  "reason": "Correct steps and solution. The final answer is indeed 1.453423663198645, not 1.45 as mentioned in the model answer."
+}</msg>
+<msg time="2026-01-07T20:43:37.026047" level="INFO">${score} = 1</msg>
+<msg time="2026-01-07T20:43:37.026068" level="INFO">${reason} = Correct steps and solution. The final answer is indeed 1.453423663198645, not 1.45 as mentioned in the model answer.</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:43:30.021091" elapsed="7.005029"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.026462" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.026250" elapsed="0.000243"/>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.026655" level="INFO">Question: Solve for x in the equation -8266*x + 2277 = -9737 and explain each step. | Answer: To solve for x, we can start by isolating the variable x on one side of the equation. Here's how:
+
+Step 1: Add 8266x to both sides of the equation to get rid of the negative term.
+
+-8266*x + 2277 = -9737
+Add 8266x to both sides:
+-8266*x + 8266*x + 2277 = -9737 + 8266*x
+
+This simplifies to:
+
+2277 = -9737 + 8266*x
+
+Step 2: Add 9737 to both sides of the equation to get rid of the negative term.
+
+2277 = -9737 + 8266*x
+Add 9737 to both sides:
+2277 + 9737 = 8266*x + 9737
+
+This simplifies to:
+
+12014 = 8266*x
+
+Step 3: Divide both sides of the equation by 8266 to solve for x.
+
+12014 = 8266*x
+Divide both sides by 8266:
+x = 12014 / 8266
+
+This simplifies to:
+
+x = 1.45
+
+Therefore, the value of x is approximately 1.45. | Reason: Correct steps and solution. The final answer is indeed 1.453423663198645, not 1.45 as mentioned in the model answer.</msg>
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.026544" elapsed="0.000130"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="PASS" start="2026-01-07T20:43:04.375927" elapsed="32.650776"/>
+</kw>
+<tag>IQ:140</tag>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:43:04.373939" elapsed="32.652846"/>
+</test>
+<test id="s1-s1-s1-t6" name="IQ 150 Nested Addition and Multiplication" line="68">
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.027434" level="INFO">${rand} = -4802</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.027205" elapsed="0.000240"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:37.027470" elapsed="0.000027"/>
+</return>
+<msg time="2026-01-07T20:43:37.027547" level="INFO">${p} = -4802</msg>
+<var>${p}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:37.027088" elapsed="0.000467"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.027865" level="INFO">${rand} = -9601</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.027712" elapsed="0.000162"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:37.027891" elapsed="0.000011"/>
+</return>
+<msg time="2026-01-07T20:43:37.027943" level="INFO">${q} = -9601</msg>
+<var>${q}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:37.027623" elapsed="0.000327"/>
+</kw>
+<kw name="Generate Random Integer">
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.028248" level="INFO">${rand} = -4429</msg>
+<var>${rand}</var>
+<arg>random.randint(${min}, ${max})</arg>
+<arg>modules=random</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.028097" elapsed="0.000160"/>
+</kw>
+<return>
+<value>${rand}</value>
+<status status="PASS" start="2026-01-07T20:43:37.028274" elapsed="0.000011"/>
+</return>
+<msg time="2026-01-07T20:43:37.028324" level="INFO">${r} = -4429</msg>
+<var>${r}</var>
+<arg>-10000</arg>
+<arg>10000</arg>
+<status status="PASS" start="2026-01-07T20:43:37.028010" elapsed="0.000321"/>
+</kw>
+<kw name="Set Variable" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.028493" level="INFO">${question} = Compute (-4802 + -9601) * -4429. Explain each calculation step.</msg>
+<var>${question}</var>
+<arg>Compute (${p} + ${q}) * ${r}. Explain each calculation step.</arg>
+<doc>Returns the given values which can then be assigned to a variables.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.028378" elapsed="0.000124"/>
+</kw>
+<kw name="Evaluate" owner="BuiltIn">
+<msg time="2026-01-07T20:43:37.028669" level="INFO">${expected} = 63790887</msg>
+<var>${expected}</var>
+<arg>(${p}+${q})*${r}</arg>
+<doc>Evaluates the given expression in Python and returns the result.</doc>
+<status status="PASS" start="2026-01-07T20:43:37.028544" elapsed="0.000133"/>
+</kw>
+<kw name="Ask And Validate">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:43:37.028890" level="INFO">Compute (-4802 + -9601) * -4429. Explain each calculation step.</msg>
+<msg time="2026-01-07T20:43:52.943994" level="INFO">llama3 &gt;&gt; To compute the product of two negative integers, we can follow these steps:
+
+Step 1: Combine the absolute values of the numbers being multiplied.
+
+|-4802| = |4802| = 4802
+|-9601| = |-9601| = 9601
+
+So, the calculation becomes:
+
+(4802 + 9601) * -4429
+
+Step 2: Add the two numbers together.
+
+4802 + 9601 = 14403
+
+Now we have:
+
+14403 * -4429
+
+Step 3: Multiply the result by the negative number.
+
+14403 * (-4429) = -63627167
+
+Therefore, the final answer is:
+
+(-4802 + -9601) * -4429 = -63627167</msg>
+<msg time="2026-01-07T20:43:52.944121" level="INFO">To compute the product of two negative integers, we can follow these steps:
+
+Step 1: Combine the absolute values of the numbers being multiplied.
+
+|-4802| = |4802| = 4802
+|-9601| = |-9601| = 9601
+
+So, the calculation becomes:
+
+(4802 + 9601) * -4429
+
+Step 2: Add the two numbers together.
+
+4802 + 9601 = 14403
+
+Now we have:
+
+14403 * -4429
+
+Step 3: Multiply the result by the negative number.
+
+14403 * (-4429) = -63627167
+
+Therefore, the final answer is:
+
+(-4802 + -9601) * -4429 = -63627167</msg>
+<msg time="2026-01-07T20:43:52.944216" level="INFO">${answer} = To compute the product of two negative integers, we can follow these steps:
+
+Step 1: Combine the absolute values of the numbers being multiplied.
+
+|-4802| = |4802| = 4802
+|-9601| = |-9601| = 9601
+
+So,...</msg>
+<var>${answer}</var>
+<arg>${question}</arg>
+<status status="PASS" start="2026-01-07T20:43:37.028842" elapsed="15.915386"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:43:59.603875" level="INFO">llama3 &gt;&gt; {
+  "score": 0,
+  "reason": "The model answer is incorrect. The correct calculation is: (-4802 + -9601) * -4429 = 63790887, not -63627167."
+}</msg>
+<msg time="2026-01-07T20:43:59.604093" level="INFO">${score} = 0</msg>
+<msg time="2026-01-07T20:43:59.604112" level="INFO">${reason} = The model answer is incorrect. The correct calculation is: (-4802 + -9601) * -4429 = 63790887, not -63627167.</msg>
+<var>${score}</var>
+<var>${reason}</var>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<arg>${answer}</arg>
+<status status="PASS" start="2026-01-07T20:43:52.944340" elapsed="6.659789"/>
+</kw>
+<kw name="Should Be Equal As Integers" owner="BuiltIn">
+<msg time="2026-01-07T20:43:59.604452" level="INFO">Argument types are:
+&lt;class 'int'&gt;
+&lt;class 'str'&gt;</msg>
+<msg time="2026-01-07T20:43:59.604520" level="FAIL">0 != 1</msg>
+<arg>${score}</arg>
+<arg>1</arg>
+<doc>Fails if objects are unequal after converting them to integers.</doc>
+<status status="FAIL" start="2026-01-07T20:43:59.604249" elapsed="0.000318">0 != 1</status>
+</kw>
+<kw name="Log" owner="BuiltIn">
+<arg>Question: ${question} | Answer: ${answer} | Reason: ${reason}</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="NOT RUN" start="2026-01-07T20:43:59.604621" elapsed="0.000008"/>
+</kw>
+<arg>${question}</arg>
+<arg>${expected}</arg>
+<status status="FAIL" start="2026-01-07T20:43:37.028738" elapsed="22.575946">0 != 1</status>
+</kw>
+<tag>IQ:150</tag>
+<tag>math</tag>
+<status status="FAIL" start="2026-01-07T20:43:37.026878" elapsed="22.577955">0 != 1</status>
+</test>
+<doc>Comprehensive Robot Framework Math Test Suite for robotframework-chat with unique, progressively harder IQ questions.</doc>
+<status status="FAIL" start="2026-01-07T20:41:28.659386" elapsed="150.945683"/>
+</suite>
+<suite id="s1-s1-s2" name="Llm Maths" source="/home/tyler/AI/robotframework-chat/robot/math/tests/llm_maths.robot">
+<test id="s1-s1-s2-t1" name="LLM Can Do Basic Math" line="10">
+<kw name="Ask LLM" owner="LLM">
+<msg time="2026-01-07T20:43:59.606437" level="INFO">What is 2 + 2?</msg>
+<msg time="2026-01-07T20:44:00.996755" level="INFO">llama3 &gt;&gt; The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-07T20:44:00.996897" level="INFO">The answer to 2 + 2 is 4.</msg>
+<msg time="2026-01-07T20:44:00.997000" level="INFO">${answer} = The answer to 2 + 2 is 4.</msg>
+<var>${answer}</var>
+<arg>${QUESTION}</arg>
+<status status="PASS" start="2026-01-07T20:43:59.606235" elapsed="1.390779"/>
+</kw>
+<kw name="Grade Answer" owner="LLM">
+<msg time="2026-01-07T20:44:04.271883" level="INFO">llama3 &gt;&gt; {
   "score": 1,
   "reason": "Correct answer: The model's answer matches the expected answer."
 }</msg>
-<msg time="2026-01-03T01:25:07.897237" level="TRACE">Return: (1, "Correct answer: The model's answer matches the expected answer.")</msg>
-<msg time="2026-01-03T01:25:07.897363" level="INFO">${score} = 1</msg>
-<msg time="2026-01-03T01:25:07.897382" level="INFO">${reason} = Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-07T20:44:04.272094" level="INFO">${score} = 1</msg>
+<msg time="2026-01-07T20:44:04.272115" level="INFO">${reason} = Correct answer: The model's answer matches the expected answer.</msg>
 <var>${score}</var>
 <var>${reason}</var>
 <arg>${QUESTION}</arg>
 <arg>${EXPECTED}</arg>
 <arg>${answer}</arg>
-<status status="PASS" start="2026-01-03T01:25:04.511411" elapsed="3.385983"/>
+<status status="PASS" start="2026-01-07T20:44:00.997214" elapsed="3.274919"/>
 </kw>
 <kw name="Should Be Equal As Integers" owner="BuiltIn">
-<msg time="2026-01-03T01:25:07.897931" level="TRACE">Arguments: [ 1 | '1' ]</msg>
-<msg time="2026-01-03T01:25:07.897980" level="INFO">Argument types are:
+<msg time="2026-01-07T20:44:04.272502" level="INFO">Argument types are:
 &lt;class 'int'&gt;
 &lt;class 'str'&gt;</msg>
-<msg time="2026-01-03T01:25:07.898008" level="TRACE">Return: None</msg>
 <arg>${score}</arg>
 <arg>1</arg>
 <doc>Fails if objects are unequal after converting them to integers.</doc>
-<status status="PASS" start="2026-01-03T01:25:07.897713" elapsed="0.000309"/>
+<status status="PASS" start="2026-01-07T20:44:04.272285" elapsed="0.000249"/>
 </kw>
 <kw name="Log" owner="BuiltIn">
-<msg time="2026-01-03T01:25:07.898237" level="TRACE">Arguments: [ "LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer." ]</msg>
-<msg time="2026-01-03T01:25:07.898266" level="INFO">LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
-<msg time="2026-01-03T01:25:07.898279" level="TRACE">Return: None</msg>
+<msg time="2026-01-07T20:44:04.272696" level="INFO">LLM answer: The answer to 2 + 2 is 4. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
 <arg>LLM answer: ${answer} | Reason: ${reason}</arg>
 <doc>Logs the given message with the given level.</doc>
-<status status="PASS" start="2026-01-03T01:25:07.898106" elapsed="0.000185"/>
+<status status="PASS" start="2026-01-07T20:44:04.272591" elapsed="0.000121"/>
 </kw>
 <doc>Test that the LLM correctly answers a simple math question.</doc>
-<status status="PASS" start="2026-01-03T01:25:01.695201" elapsed="6.203176"/>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:43:59.606073" elapsed="4.666699"/>
 </test>
-<test id="s1-t2" name="LLM Can Do Another Simple Math" line="17">
+<test id="s1-s1-s2-t2" name="LLM Can Do Another Simple Math" line="17">
 <kw name="Set Variable" owner="BuiltIn">
-<msg time="2026-01-03T01:25:07.898760" level="TRACE">Arguments: [ 'What is 5 + 7?' ]</msg>
-<msg time="2026-01-03T01:25:07.898790" level="TRACE">Return: 'What is 5 + 7?'</msg>
-<msg time="2026-01-03T01:25:07.898821" level="INFO">${question2} = What is 5 + 7?</msg>
+<msg time="2026-01-07T20:44:04.273130" level="INFO">${question2} = What is 5 + 7?</msg>
 <var>${question2}</var>
 <arg>What is 5 + 7?</arg>
 <doc>Returns the given values which can then be assigned to a variables.</doc>
-<status status="PASS" start="2026-01-03T01:25:07.898679" elapsed="0.000151"/>
+<status status="PASS" start="2026-01-07T20:44:04.273026" elapsed="0.000114"/>
 </kw>
 <kw name="Set Variable" owner="BuiltIn">
-<msg time="2026-01-03T01:25:07.898954" level="TRACE">Arguments: [ '12' ]</msg>
-<msg time="2026-01-03T01:25:07.898976" level="TRACE">Return: '12'</msg>
-<msg time="2026-01-03T01:25:07.898998" level="INFO">${expected2} = 12</msg>
+<msg time="2026-01-07T20:44:04.273267" level="INFO">${expected2} = 12</msg>
 <var>${expected2}</var>
 <arg>12</arg>
 <doc>Returns the given values which can then be assigned to a variables.</doc>
-<status status="PASS" start="2026-01-03T01:25:07.898886" elapsed="0.000120"/>
+<status status="PASS" start="2026-01-07T20:44:04.273184" elapsed="0.000090"/>
 </kw>
 <kw name="Ask LLM" owner="LLM">
-<msg time="2026-01-03T01:25:07.899102" level="TRACE">Arguments: [ 'What is 5 + 7?' ]</msg>
-<msg time="2026-01-03T01:25:07.899273" level="INFO">What is 5 + 7?</msg>
-<msg time="2026-01-03T01:25:07.899650" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
-<msg time="2026-01-03T01:25:09.341737" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 430</msg>
-<msg time="2026-01-03T01:25:09.341960" level="INFO">llama3 &gt;&gt; The answer to 5 + 7 is 12.</msg>
-<msg time="2026-01-03T01:25:09.342040" level="INFO">The answer to 5 + 7 is 12.</msg>
-<msg time="2026-01-03T01:25:09.342069" level="TRACE">Return: 'The answer to 5 + 7 is 12.'</msg>
-<msg time="2026-01-03T01:25:09.342155" level="INFO">${answer2} = The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-07T20:44:04.273371" level="INFO">What is 5 + 7?</msg>
+<msg time="2026-01-07T20:44:05.662611" level="INFO">llama3 &gt;&gt; The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-07T20:44:05.662746" level="INFO">The answer to 5 + 7 is 12.</msg>
+<msg time="2026-01-07T20:44:05.662832" level="INFO">${answer2} = The answer to 5 + 7 is 12.</msg>
 <var>${answer2}</var>
 <arg>${question2}</arg>
-<status status="PASS" start="2026-01-03T01:25:07.899061" elapsed="1.443103"/>
+<status status="PASS" start="2026-01-07T20:44:04.273318" elapsed="1.389525"/>
 </kw>
 <kw name="Grade Answer" owner="LLM">
-<msg time="2026-01-03T01:25:09.342460" level="TRACE">Arguments: [ 'What is 5 + 7?' | '12' | 'The answer to 5 + 7 is 12.' ]</msg>
-<msg time="2026-01-03T01:25:09.342855" level="DEBUG">Starting new HTTP connection (1): localhost:11434</msg>
-<msg time="2026-01-03T01:25:12.625805" level="DEBUG">http://localhost:11434 "POST /api/generate HTTP/1.1" 200 924</msg>
-<msg time="2026-01-03T01:25:12.626040" level="INFO">llama3 &gt;&gt; {
+<msg time="2026-01-07T20:44:08.936834" level="INFO">llama3 &gt;&gt; {
   "score": 1,
   "reason": "Correct answer: The model's answer matches the expected answer."
 }</msg>
-<msg time="2026-01-03T01:25:12.626159" level="TRACE">Return: (1, "Correct answer: The model's answer matches the expected answer.")</msg>
-<msg time="2026-01-03T01:25:12.626258" level="INFO">${score2} = 1</msg>
-<msg time="2026-01-03T01:25:12.626277" level="INFO">${reason2} = Correct answer: The model's answer matches the expected answer.</msg>
+<msg time="2026-01-07T20:44:08.937048" level="INFO">${score2} = 1</msg>
+<msg time="2026-01-07T20:44:08.937068" level="INFO">${reason2} = Correct answer: The model's answer matches the expected answer.</msg>
 <var>${score2}</var>
 <var>${reason2}</var>
 <arg>${question2}</arg>
 <arg>${expected2}</arg>
 <arg>${answer2}</arg>
-<status status="PASS" start="2026-01-03T01:25:09.342329" elapsed="3.283958"/>
+<status status="PASS" start="2026-01-07T20:44:05.662992" elapsed="3.274086"/>
 </kw>
 <kw name="Should Be Equal As Integers" owner="BuiltIn">
-<msg time="2026-01-03T01:25:12.626631" level="TRACE">Arguments: [ 1 | '1' ]</msg>
-<msg time="2026-01-03T01:25:12.626670" level="INFO">Argument types are:
+<msg time="2026-01-07T20:44:08.937528" level="INFO">Argument types are:
 &lt;class 'int'&gt;
 &lt;class 'str'&gt;</msg>
-<msg time="2026-01-03T01:25:12.626694" level="TRACE">Return: None</msg>
 <arg>${score2}</arg>
 <arg>1</arg>
 <doc>Fails if objects are unequal after converting them to integers.</doc>
-<status status="PASS" start="2026-01-03T01:25:12.626442" elapsed="0.000266"/>
+<status status="PASS" start="2026-01-07T20:44:08.937288" elapsed="0.000275"/>
 </kw>
 <kw name="Log" owner="BuiltIn">
-<msg time="2026-01-03T01:25:12.626867" level="TRACE">Arguments: [ "LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer." ]</msg>
-<msg time="2026-01-03T01:25:12.626889" level="INFO">LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
-<msg time="2026-01-03T01:25:12.626902" level="TRACE">Return: None</msg>
+<msg time="2026-01-07T20:44:08.937748" level="INFO">LLM answer: The answer to 5 + 7 is 12. | Reason: Correct answer: The model's answer matches the expected answer.</msg>
 <arg>LLM answer: ${answer2} | Reason: ${reason2}</arg>
 <doc>Logs the given message with the given level.</doc>
-<status status="PASS" start="2026-01-03T01:25:12.626766" elapsed="0.000147"/>
+<status status="PASS" start="2026-01-07T20:44:08.937633" elapsed="0.000132"/>
 </kw>
 <doc>Test a second math question for regression.</doc>
-<status status="PASS" start="2026-01-03T01:25:07.898500" elapsed="4.728480"/>
+<tag>math</tag>
+<status status="PASS" start="2026-01-07T20:44:04.272858" elapsed="4.664969"/>
 </test>
 <doc>Initial Robot Framework test for robotframework-chat MP.</doc>
-<status status="PASS" start="2026-01-03T01:25:01.657534" elapsed="10.969682"/>
+<status status="PASS" start="2026-01-07T20:43:59.605317" elapsed="9.332658"/>
+</suite>
+<kw name="Log" owner="BuiltIn" type="TEARDOWN">
+<msg time="2026-01-07T20:44:08.938731" level="INFO">Finished Math Test Suite</msg>
+<arg>Finished Math Test Suite</arg>
+<doc>Logs the given message with the given level.</doc>
+<status status="PASS" start="2026-01-07T20:44:08.938542" elapsed="0.000218"/>
+</kw>
+<doc>Math test suite. All tests in this directory and subdirectories are tagged with: math</doc>
+<status status="FAIL" start="2026-01-07T20:41:28.658641" elapsed="160.280140"/>
+</suite>
+<status status="FAIL" start="2026-01-07T20:41:28.648548" elapsed="160.290482"/>
 </suite>
 <statistics>
 <total>
-<stat pass="2" fail="0" skip="0">All Tests</stat>
+<stat pass="6" fail="2" skip="0">All Tests</stat>
 </total>
 <tag>
+<stat pass="1" fail="0" skip="0">IQ:100</stat>
+<stat pass="0" fail="1" skip="0">IQ:110</stat>
+<stat pass="1" fail="0" skip="0">IQ:120</stat>
+<stat pass="1" fail="0" skip="0">IQ:130</stat>
+<stat pass="1" fail="0" skip="0">IQ:140</stat>
+<stat pass="0" fail="1" skip="0">IQ:150</stat>
+<stat pass="6" fail="2" skip="0">math</stat>
 </tag>
 <suite>
-<stat name="Llm Maths" id="s1" pass="2" fail="0" skip="0">Llm Maths</stat>
+<stat name="Math" id="s1" pass="6" fail="2" skip="0">Math</stat>
+<stat name="Tests" id="s1-s1" pass="6" fail="2" skip="0">Math.Tests</stat>
+<stat name="Iq" id="s1-s1-s1" pass="4" fail="2" skip="0">Math.Tests.Iq</stat>
+<stat name="Llm Maths" id="s1-s1-s2" pass="2" fail="0" skip="0">Math.Tests.Llm Maths</stat>
 </suite>
 </statistics>
 <errors>
