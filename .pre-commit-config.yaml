@@ -21,3 +21,13 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-requests
+
+  - repo: local
+    hooks:
+      - id: robot-modified-tests
+        name: Robot Framework (modified tests via uv)
+        entry: uv run robot -d results/.pre-commit
+        language: system
+        stages: [post-commit]
+        files: \.robot$
+        pass_filenames: true
