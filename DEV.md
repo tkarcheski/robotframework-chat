@@ -103,7 +103,7 @@ git diff
 ## Robot Framework Best Practices
 
 ### Syntax Compatibility
-- Use `[Return]` (not `RETURN`) for keyword return values
+- Use `RETURN` (not `[Return]`) for keyword return values
 - Keywords must be defined in `*** Keywords ***` section BEFORE test cases
 - Use `Run Keyword And Ignore Error` for cleanup operations
 - Global variables for cross-suite state: `Set Global Variable`
@@ -117,7 +117,7 @@ git diff
 ### Debugging Tips
 ```bash
 # Run with debug output
-uv run robot -d results -L DEBUG robot/path/
+uv run robot -d results -L DEBUG robot/
 
 # Run single test with verbose output
 uv run robot -d results -t "Test Name" -L TRACE robot/path/tests/file.robot

@@ -288,11 +288,6 @@ uv run robot -d results --dryrun robot/docker/python
 
 ---
 
-## License
-
-[Add license information]
-
----
 
 ## Support
 

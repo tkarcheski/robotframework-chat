@@ -47,12 +47,12 @@ The goal is to evolve from **LLMs as single functions** to **LLMs as full system
 - Confidence scoring
 - Tolerance rules (numeric ranges, equivalence)
 - Canonical answer normalization
-- ✅ **Docker-based Code Execution** - Completed
+- **Docker-based Code Execution** - In Development
   - Configurable CPU, memory, and network isolation
   - Python, Node.js, and shell command execution
   - Read-only filesystems for security
   - Resource limits enforcement
-- ✅ **LLM-in-Docker Testing** - Completed
+- **LLM-in-Docker Testing** - In Development
   - Run Ollama in containers with custom resources
   - Multi-model comparison framework
   - Container lifecycle management via Robot

@@ -105,11 +105,11 @@ Test Case Name
 Custom Keyword
     [Arguments]    ${arg}
     [Documentation]    What this keyword does
-    [Return]    ${result}    # Use [Return], not RETURN
+    RETURN    ${result}    # Use RETURN, not [Return]
 ```
 
 **Important Robot Framework Syntax:**
-- Use `[Return]` (not `RETURN`) for keyword return values
+- Use `RETURN` (not `[Return]`) for keyword return values
 - Define keywords in `*** Keywords ***` section before test cases
 - Use `Suite Setup`/`Suite Teardown` for container lifecycle management
 - Variables: `${scalar}`, `@{list}`, `&{dict}`
