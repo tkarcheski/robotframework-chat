@@ -47,7 +47,7 @@ Setup Node Environment
 Setup Shell Environment
     [Documentation]    Setup shell container for terminal/command testing
     [Arguments]    ${profile}=ALPINE_SHELL    ${suite_name}=shell-suite
-    
+
     # Create container with a command that keeps it running
     # Use read_only=False and user=root since shell tests need to create files
     ${profile_dict}=    Get Variable Value    ${${profile}}
