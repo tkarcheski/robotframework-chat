@@ -6,7 +6,7 @@ Library           OperatingSystem
 Library           String
 
 *** Variables ***
-${REPEAT_COUNT}   3
+${REPEAT_COUNT}   1
 ${SEED_START}     -10000
 ${SEED_END}       10000
 

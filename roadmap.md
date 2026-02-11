@@ -47,6 +47,15 @@ The goal is to evolve from **LLMs as single functions** to **LLMs as full system
 - Confidence scoring
 - Tolerance rules (numeric ranges, equivalence)
 - Canonical answer normalization
+- **Docker-based Code Execution** - In Development
+  - Configurable CPU, memory, and network isolation
+  - Python, Node.js, and shell command execution
+  - Read-only filesystems for security
+  - Resource limits enforcement
+- **LLM-in-Docker Testing** - In Development
+  - Run Ollama in containers with custom resources
+  - Multi-model comparison framework
+  - Container lifecycle management via Robot
 
 ### Example Rubric Output
 ```json
@@ -62,6 +71,7 @@ The goal is to evolve from **LLMs as single functions** to **LLMs as full system
 * More expressive evaluation
 * Better signal for regressions
 * Foundation for later A/B testing
+* Secure, isolated code execution environment
 
 ---
 
@@ -160,6 +170,70 @@ The goal is to evolve from **LLMs as single functions** to **LLMs as full system
 * Quantifiable improvement measurement
 * Safe iteration on model changes
 * CI-enforced quality gates for AI systems
+
+---
+
+## Feature Wish List — LLM Manager
+
+**Status:** Planned for Phase 1.5
+**Goal:** Unified management and testing of multiple LLMs simultaneously
+
+### Multi-Model Configuration
+* Define multiple LLM endpoints in single configuration file
+* Support model variants (temperature, max_tokens, system prompts)
+* Named model aliases (e.g., "fast" → gpt-3.5-turbo, "accurate" → gpt-4)
+* Docker-based LLM deployment with resource isolation
+
+### Parallel Execution
+* Send same prompt to multiple models concurrently
+* Compare responses side-by-side in test output
+* Aggregate grading across multiple models
+* Statistical analysis of model agreement
+
+### Model Routing & Selection
+* Tag-based model selection (e.g., `model=coding` selects codellama)
+* Fallback chains when models are unavailable
+* A/B testing support between model versions
+* Load balancing across model replicas
+
+### Container-Native LLM Testing
+* Run LLMs in Docker containers with configurable resources
+* CPU, memory, scratch disk, and network isolation
+* Per-test LLM container lifecycle management
+* Suite-level LLM container sharing
+
+### New Keywords
+```robot
+*** Keywords ***
+Ask Multiple LLMs
+    [Arguments]    ${prompt}    ${models}=gpt-4,claude-3,llama3
+    ${responses}=    LLM.Ask Multiple LLMs    ${prompt}    ${models}
+    RETURN    ${responses}
+
+Compare LLM Responses
+    [Arguments]    ${responses}
+    ${comparison}=    LLM.Compare LLM Responses    ${responses}
+    Log    Best model: ${comparison}[best_model]
+    RETURN    ${comparison}
+
+Select Model By Capability
+    [Arguments]    ${capability}=coding
+    ${model}=    LLM.Select Model    ${capability}
+    LLM.Set LLM Model    ${model}
+```
+
+### Example Usage
+```robot
+*** Test Cases ***
+Compare Code Generation Models (IQ:130)
+    ${responses}=    Ask Multiple LLMs    Write a Python quicksort
+    ...    models=codellama,gpt-4,claude-3-opus
+
+    ${comparison}=    Compare LLM Responses    ${responses}
+    Should Not Be Equal    ${comparison}[best_model]    ${None}
+
+    Log    Winner: ${comparison}[best_model] with score ${comparison}[best_score]
+```
 
 ---
 
