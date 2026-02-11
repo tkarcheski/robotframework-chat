@@ -61,7 +61,7 @@ Start LLM Container
     LLM.Set LLM Model    ${first_model}
 
     Log    LLM container started: ${container_id} on port ${available_port} with models: ${pull_models}
-    [Return]    ${container_id}
+    RETURN    ${container_id}
 
 Stop LLM Container
     [Documentation]    Stop and remove LLM container

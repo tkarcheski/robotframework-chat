@@ -18,24 +18,35 @@ ${DEBUG_PROMPT}         Find and fix the bug in this code: def add(a, b): return
 
 *** Keywords ***
 Extract Code From Response
-    [Documentation]    Extract code block from LLM response
+    [Documentation]    Extract first markdown code block from LLM response (python or generic)
     [Arguments]    ${text}
 
-    # Look for markdown code blocks
-    ${pattern}=    Set Variable    \`\`\`python\\n(.*?)\\n\`\`\`
+    # Use DOTALL so '.' matches newlines
+    ${pattern}=    Set Variable    (?s)```python\s*(.*?)\s*```
     ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
 
-    ${has_matches}=    Get Length    ${matches}
-    Run Keyword If    ${has_matches} > 0    [Return]    ${matches}[0]
+    ${count}=    Get Length    ${matches}
+    IF    ${count} > 0
+        ${code}=    Set Variable    ${matches}[0]
+        RETURN    ${code}
+    END
 
-    # Try generic code block
-    ${pattern}=    Set Variable    \`\`\`\\n(.*?)\\n\`\`\`
+    # Fallback to any fenced code block
+    ${pattern}=    Set Variable    (?s)```\s*(.*?)\s*```
     ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${has_matches}=    Get Length    ${matches}
-    Run Keyword If    ${has_matches} > 0    [Return]    ${matches}[0]
+    ${count}=    Get Length    ${matches}
+    IF    ${count} > 0
+        ${code}=    Set Variable    ${matches}[0]
+        RETURN    ${code}
+    END
 
     # Return full text if no code block found
-    [Return]    ${text}
+    RETURN    ${text}
+
+Check Ollama Health On Endpoint
+    [Arguments]    ${endpoint}
+    ${response}=    GET    ${endpoint}/api/tags    timeout=5
+    Should Be Equal As Integers    ${response.status_code}    200
 
 *** Test Cases ***
 Compare Models On Code Generation (IQ:130)
@@ -130,8 +141,3 @@ Custom LLM Configuration (IQ:140)
 
     # Cleanup
     Docker.Stop Container    ${container}
-
-Check Ollama Health On Endpoint
-    [Arguments]    ${endpoint}
-    ${response}=    GET    ${endpoint}/api/tags    timeout=5
-    Should Be Equal As Integers    ${response.status_code}    200
