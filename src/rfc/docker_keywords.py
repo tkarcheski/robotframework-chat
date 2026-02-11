@@ -1,6 +1,8 @@
 """Configurable Docker keywords for Robot Framework."""
 
+import socket
 from typing import Dict, Any, Optional
+from robot.api import logger
 from robot.api.deco import keyword
 
 from .docker_config import ContainerConfig, ContainerResources, ContainerNetwork
@@ -35,6 +37,35 @@ class ConfigurableDockerKeywords:
             return True
         except RuntimeError:
             return False
+
+    @keyword("Find Available Port")
+    def find_available_port(
+        self, start_port: int = 11434, end_port: int = 11500
+    ) -> int:
+        """Find an available TCP port in the given range.
+
+        Iterates through ports from start_port to end_port (inclusive)
+        and returns the first one that is not in use.
+
+        Args:
+            start_port: Starting port number (default: 11434)
+            end_port: Ending port number (default: 11500)
+
+        Returns:
+            An available port number
+
+        Raises:
+            RuntimeError: If no available port is found in the range
+        """
+        for port in range(start_port, end_port + 1):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind(("localhost", port))
+                    return port
+                except OSError:
+                    continue
+
+        raise RuntimeError(f"No available port found in range {start_port}-{end_port}")
 
     @keyword("Create Configurable Container")
     def create_configurable_container(
@@ -128,8 +159,29 @@ class ConfigurableDockerKeywords:
             timeout: Seconds to wait for graceful shutdown
         """
         self.manager.stop_container(container_id, timeout)
-        if container_id in self._container_configs:
-            del self._container_configs[container_id]
+
+    @keyword("Stop Container By Name")
+    def stop_container_by_name(self, name: str, timeout: int = 10) -> None:
+        """Stop and remove a container by its name.
+
+        Args:
+            name: Name of container to stop
+            timeout: Seconds to wait for graceful shutdown
+        """
+        import docker
+        from docker.errors import NotFound
+
+        try:
+            client = docker.from_env()
+            container = client.containers.get(name)
+            logger.info(f"Stopping container by name: {name}")
+            container.stop(timeout=timeout)
+            container.remove(force=True)
+            logger.info(f"Container {name} stopped and removed")
+        except NotFound:
+            logger.warn(f"Container {name} not found, may already be stopped")
+        except Exception as e:
+            logger.error(f"Error stopping container {name}: {e}")
 
     @keyword("Execute In Container")
     def execute_in_container(

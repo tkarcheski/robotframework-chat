@@ -7,8 +7,6 @@ Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
 Library           String
 
-Suite Setup       Start LLM Suite
-Suite Teardown    Stop LLM Suite
 Test Timeout      5 minutes
 
 Test Tags         llm    multi-model    docker
@@ -19,15 +17,25 @@ ${ALGO_PROMPT}          Explain the time and space complexity of merge sort with
 ${DEBUG_PROMPT}         Find and fix the bug in this code: def add(a, b): return a + b + 1
 
 *** Keywords ***
-Start LLM Suite
-    [Documentation]    Start LLM container for test suite
-    Verify Docker Available
-    ${container}=    Start LLM Container    OLLAMA_CPU    rfc-ollama-test    llama3
-    Log    LLM suite started with container: ${container}
+Extract Code From Response
+    [Documentation]    Extract code block from LLM response
+    [Arguments]    ${text}
 
-Stop LLM Suite
-    [Documentation]    Stop LLM container
-    Run Keyword And Ignore Error    Stop LLM Container
+    # Look for markdown code blocks
+    ${pattern}=    Set Variable    \`\`\`python\\n(.*?)\\n\`\`\`
+    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
+
+    ${has_matches}=    Get Length    ${matches}
+    Run Keyword If    ${has_matches} > 0    [Return]    ${matches}[0]
+
+    # Try generic code block
+    ${pattern}=    Set Variable    \`\`\`\\n(.*?)\\n\`\`\`
+    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
+    ${has_matches}=    Get Length    ${matches}
+    Run Keyword If    ${has_matches} > 0    [Return]    ${matches}[0]
+
+    # Return full text if no code block found
+    [Return]    ${text}
 
 *** Test Cases ***
 Compare Models On Code Generation (IQ:130)
@@ -90,6 +98,10 @@ Custom LLM Configuration (IQ:140)
     [Documentation]    Test with custom resource allocation for LLM
     [Tags]    IQ:140    custom-config
 
+    # Find available port for custom container
+    ${custom_port}=    Docker.Find Available Port    11434    11500
+    ${custom_port_mapping}=    Create Dictionary    11434/tcp=${custom_port}
+    
     # Create custom Ollama container with more resources
     ${custom_config}=    Create Dictionary
     ...    image=ollama/ollama:latest
@@ -97,20 +109,20 @@ Custom LLM Configuration (IQ:140)
     ...    memory_mb=2048
     ...    scratch_mb=512
     ...    network_mode=bridge
-    ...    ports=&{OLLAMA_PORTS}
+    ...    ports=${custom_port_mapping}
     ...    read_only=False
 
     ${container}=    Docker.Create Configurable Container    ${custom_config}    rfc-ollama-custom
 
-    # Wait for it to be ready
-    Docker.Wait For Container Port    ${container}    ${OLLAMA_PORT}    timeout=60
+    # Wait for API to be ready
+    ${custom_endpoint}=    Set Variable    http://localhost:${custom_port}
+    Wait Until Keyword Succeeds    60s    2s    Check Ollama Health On Endpoint    ${custom_endpoint}
 
     # Pull model
     Docker.Execute In Container    ${container}    ollama pull llama3    timeout=300
 
     # Test inference
-    ${endpoint}=    Set Variable    http://localhost:${OLLAMA_PORT}/api/generate
-    LLM.Set LLM Endpoint    ${endpoint}
+    LLM.Set LLM Endpoint    ${custom_endpoint}
     LLM.Set LLM Model    llama3
 
     ${response}=    LLM.Ask LLM    What is 2 + 2?
@@ -119,22 +131,7 @@ Custom LLM Configuration (IQ:140)
     # Cleanup
     Docker.Stop Container    ${container}
 
-Extract Code From Response
-    [Documentation]    Extract code block from LLM response
-    [Arguments]    ${text}
-
-    # Look for markdown code blocks
-    ${pattern}=    Set Variable    \`\`\`python\\n(.*?)\\n\`\`\`
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-
-    ${has_matches}=    Get Length    ${matches}
-    Run Keyword If    ${has_matches} > 0    RETURN    @{matches}[0]
-
-    # Try generic code block
-    ${pattern}=    Set Variable    \`\`\`\\n(.*?)\\n\`\`\`
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${has_matches}=    Get Length    ${matches}
-    Run Keyword If    ${has_matches} > 0    RETURN    @{matches}[0]
-
-    # Return full text if no code block found
-    RETURN    ${text}
+Check Ollama Health On Endpoint
+    [Arguments]    ${endpoint}
+    ${response}=    GET    ${endpoint}/api/tags    timeout=5
+    Should Be Equal As Integers    ${response.status_code}    200
