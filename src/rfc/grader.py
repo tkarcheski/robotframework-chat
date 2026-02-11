@@ -1,6 +1,7 @@
 import json
 from .models import GradeResult
 
+
 class Grader:
     def __init__(self, llm_client):
         self.llm = llm_client

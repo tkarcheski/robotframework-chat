@@ -1,12 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "robotframework-chat"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Robot Framework-based test harness for systematically testing LLMs"
+readme = "readme.md"
 requires-python = ">=3.11"
 dependencies = [
     "certifi==2025.11.12",
     "charset-normalizer==3.4.4",
+    "docker==7.1.0",
     "idna==3.11",
     "iniconfig==2.3.0",
     "packaging==25.0",
@@ -16,5 +21,9 @@ dependencies = [
     "requests==2.32.5",
     "robotframework==7.4.1",
     "robotframework-lint==1.1",
+    "robotframework-requests>=0.9.7",
     "urllib3==2.6.2",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rfc"]

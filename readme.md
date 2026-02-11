@@ -1,42 +1,63 @@
-# robotfrmework-chat
+# robotframework-chat
 
-## Dev Setup (Initial)
-
-Install the following tools:
-
-* ollama
-* astral-uv
-* python 3.12
-
-Install the default model
-```bash
-ollama pull llama3
-```
-
-## Running Robot (Example)
-
-```bash
-uv run robot -d results robot/math
-```
-
-## Installing Precommit/Ruff
-
-```bash
-pre-commit install
-pre-commit run --all-files
-```
-
-
-## Overview
-`robotframework-chat` is a Robot Framework–based test harness for **systematically testing Large Language Models (LLMs)** using **LLMs as both the system under test and as automated graders**.
-
-The project starts from first principles: deterministic tasks, strict grading, and machine-verifiable results. It is designed to scale from trivial correctness checks (e.g., math) to complex behavioral, multimodal, and multi-agent system evaluations.
-
-This repository is intentionally **infrastructure-first**: it focuses on repeatability, auditability, and CI integration rather than ad-hoc prompt experiments.
+A Robot Framework-based test harness for systematically testing Large Language Models (LLMs) using LLMs as both the system under test and as automated graders.
 
 ---
 
-## Core Philosophy
+## Quick Start
+
+### Prerequisites
+
+- **Docker** - Required for containerized code execution and LLM testing
+- **Python 3.11+** - For running the test framework
+- **astral-uv** - For dependency management
+- **Ollama** (optional) - For local LLM testing
+
+### Installation
+
+```bash
+# Clone and setup
+uv sync
+
+# Install pre-commit hooks
+pre-commit install
+
+# Pull default LLM model (optional)
+ollama pull llama3
+```
+
+### Running Tests
+
+```bash
+# Run all math tests
+uv run robot -d results robot/math
+
+# Run Docker-based Python tests
+uv run robot -d results robot/docker/python
+
+# Run LLM-in-Docker multi-model tests
+uv run robot -d results robot/docker/llm
+
+# Run specific test by name
+uv run robot -d results -t "LLM Can Do Basic Math" robot/math/tests/llm_maths.robot
+
+# Run tests by IQ tag
+uv run robot -d results -i IQ:120 robot/docker/python
+```
+
+---
+
+## Overview
+
+`robotframework-chat` is an **infrastructure-first** testing platform designed for:
+
+- **Deterministic LLM evaluation** - Machine-verifiable test results
+- **Containerized code execution** - Safe, isolated testing environments
+- **Multi-model comparison** - Test multiple LLMs simultaneously
+- **CI/CD integration** - Automated regression detection
+- **Scalable test organization** - IQ-tagged difficulty levels
+
+### Core Philosophy
 
 - **LLMs are software** → they should be tested like software
 - **Judging must be constrained** → graders return structured data only
@@ -48,42 +69,60 @@ This repository is intentionally **infrastructure-first**: it focuses on repeata
 
 ## Key Capabilities
 
-### Current / MVP
+### Current Features
+
+✅ **LLM Testing**
 - Prompt LLMs from Robot Framework
-- Grade LLM responses using LLM-based judges
-- Strict JSON grading contracts
-- Binary and rubric-based scoring
-- Model-agnostic execution (local or remote)
-- CI-friendly execution and reporting
+- Grade responses using LLM-based judges
+- Binary (0/1) and rubric-based scoring
+- JSON-only grading contracts
+- Local (Ollama) and remote model support
 
-### Planned
-- Multimodal testing (image, audio, text)
-- MCP-based multi-agent orchestration
-- Task execution beyond LLMs
-- A/B testing of modified models
+✅ **Docker-Based Code Execution**
+- Run Python, Node.js, and shell code in isolated containers
+- Configurable CPU, memory, and network constraints
+- Read-only filesystems for security
+- No subprocess calls - pure Docker SDK
+
+✅ **LLM-in-Docker**
+- Run Ollama in containers with resource limits
+- Multi-model comparison testing
+- Suite-level container lifecycle management
+
+✅ **Test Organization**
+- IQ levels (100-160) for difficulty progression
+- Tag-based filtering and execution
+- Reusable resource files for environments
+
+### Planned Features
+
+See [ROADMAP.md](ROADMAP.md) for detailed planning.
 
 ---
 
-## Architecture (MVP)
+## Architecture
 
+```
 Robot Framework Test
-|
-v
-Python Keyword Library (robotframework-chat)
-|
-+--> LLM Under Test
-|
-+--> LLM Grader (JSON-only)
-
-
-### Why this works
-- Robot Framework provides **orchestration, assertions, and reporting**
-- Python provides **API control, validation, and extensibility**
-- LLM graders provide **semantic evaluation at scale**
+│
+├─> Python Keyword Library (rfc/)
+│   ├─ LLM Client (llm_client.py)
+│   ├─ Grader (grader.py)
+│   ├─ Docker Manager (container_manager.py)
+│   └─ Keywords (keywords.py, docker_keywords.py)
+│
+├─> Docker Containers
+│   ├─ Code Execution (Python, Node, Shell)
+│   └─ LLM Services (Ollama)
+│
+└─> Test Results & Reports
+```
 
 ---
 
-## Example Test (MVP)
+## Example Tests
+
+### Basic LLM Test
 
 ```robot
 *** Test Cases ***
@@ -93,26 +132,163 @@ LLM Can Do Basic Math
     Should Be Equal As Integers    ${score}    1
 ```
 
-# Repository Structure
+### Docker Code Execution
 
-```css
-robotframework-chat/
-├── README.md
-├── ROADMAP.md
-├── src/
-│   └── rfc/
-│       └── LLMTestLib.py
-├── robot/
-│   └── tests/
-│       └── llm_math.robot
-├── requirements.txt
-└── docs/
+```robot
+*** Settings ***
+Resource          resources/container_profiles.resource
+
+Suite Setup       Create Container From Profile    PYTHON_STANDARD
+Suite Teardown    Docker.Stop Container    ${CONTAINER_ID}
+
+*** Test Cases ***
+LLM Generates Working Code (IQ:120)
+    ${code}=    LLM.Ask LLM    Write a Python factorial function
+    ${result}=    Docker.Execute Python In Container    ${code}
+    Should Be Equal As Integers    ${result}[exit_code]    0
+    Should Contain    ${result}[stdout]    120
 ```
 
-# Why Robot Framework?
+### Multi-Model Comparison
 
-* Proven in hardware, embedded, and systems testing
-* Clear separation of intent and implementation
-* Excellent logs and reports
-* CI-native
-* Familiar to QA and systems engineers
+```robot
+*** Settings ***
+Resource          resources/llm_containers.resource
+
+Suite Setup       Start LLM Container    OLLAMA_CPU    pull_models=llama3,codellama
+Suite Teardown    Stop LLM Container
+
+*** Test Cases ***
+Compare Models (IQ:130)
+    ${responses}=    Ask Multiple LLMs    Write a sort function    llama3,codellama
+    ${comparison}=    Run Multi-Model Comparison    Write a sort function
+    Log    Best model: ${comparison}[best_model]
+```
+
+---
+
+## Docker Configuration
+
+### Container Profiles
+
+Pre-defined resource profiles in `robot/resources/container_profiles.resource`:
+
+| Profile | CPU | Memory | Network | Use Case |
+|---------|-----|--------|---------|----------|
+| `MINIMAL` | 0.25 cores | 128 MB | None | Simple scripts |
+| `STANDARD` | 0.5 cores | 512 MB | None | General testing |
+| `PERFORMANCE` | 1.0 cores | 1 GB | None | Heavy computation |
+| `NETWORKED` | 0.5 cores | 512 MB | Bridge | Network access needed |
+| `OLLAMA_CPU` | 2.0 cores | 4 GB | Bridge | LLM inference |
+
+### Custom Container Configuration
+
+```robot
+*** Variables ***
+${custom_config}=    Create Dictionary
+...    image=python:3.11-slim
+...    cpu_cores=0.25
+...    memory_mb=256
+...    network_mode=none
+...    read_only=True
+
+*** Test Cases ***
+Custom Resources (IQ:120)
+    ${container}=    Docker.Create Configurable Container    ${custom_config}
+    ${result}=    Docker.Execute In Container    ${container}    python3 -c "print('Hello')"
+    Docker.Stop Container    ${container}
+```
+
+---
+
+## Repository Structure
+
+```
+robotframework-chat/
+├── README.md                   # This file
+├── ROADMAP.md                  # Project roadmap
+├── AGENTS.md                   # Agent instructions
+├── pyproject.toml              # Python dependencies
+├── src/rfc/                    # Python keyword library
+│   ├── keywords.py             # Core LLM keywords
+│   ├── docker_keywords.py      # Docker container keywords
+│   ├── container_manager.py    # Container lifecycle
+│   ├── docker_config.py        # Configuration models
+│   ├── llm_client.py           # LLM API client
+│   └── grader.py               # LLM grading logic
+├── robot/                      # Robot Framework tests
+│   ├── math/tests/             # Math tests (original)
+│   ├── docker/                 # Docker-based tests
+│   │   ├── python/tests/       # Python code execution
+│   │   ├── llm/tests/          # LLM-in-Docker tests
+│   │   └── shell/tests/        # Shell/terminal tests
+│   └── resources/              # Reusable resource files
+│       ├── container_profiles.resource
+│       ├── environments.resource
+│       └── llm_containers.resource
+├── results/                    # Test output (gitignored)
+└── .pre-commit-config.yaml     # Git hooks
+```
+
+---
+
+## Development
+
+### Code Quality
+
+```bash
+# Run linting
+uv run ruff check .
+
+# Run formatting
+uv run ruff format .
+
+# Run type checking
+uv run mypy src/
+
+# Run pre-commit hooks
+pre-commit run --all-files
+```
+
+### Running Tests
+
+```bash
+# Run specific test file
+uv run robot -d results robot/docker/python/tests/code_generation.robot
+
+# Run with specific tag
+uv run robot -d results -i IQ:130 robot/docker/python
+
+# Run with timeout
+uv run robot -d results --variable DEFAULT_TIMEOUT:60 robot/docker/llm
+
+# Dry run
+uv run robot -d results --dryrun robot/docker/python
+```
+
+---
+
+## Why Robot Framework?
+
+- **Proven** in hardware, embedded, and systems testing
+- **Clear separation** of intent (test cases) and implementation (keywords)
+- **Excellent logs** and reports with built-in screenshots/logs
+- **CI-native** with JUnit XML and other output formats
+- **Familiar** to QA and systems engineers
+- **Extensible** via Python libraries
+
+---
+
+## Contributing
+
+1. Follow the code style guidelines in `AGENTS.md`
+2. Add tests for new features
+3. Update documentation
+4. Run pre-commit hooks before committing
+
+---
+
+
+## Support
+
+For issues and feature requests, please use the GitHub issue tracker.
