@@ -1,12 +1,13 @@
 [project]
 name = "robotframework-chat"
 version = "0.1.0"
-description = "Add your description here"
+description = "Robot Framework-based test harness for systematically testing LLMs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "certifi==2025.11.12",
     "charset-normalizer==3.4.4",
+    "docker==7.1.0",
     "idna==3.11",
     "iniconfig==2.3.0",
     "packaging==25.0",
