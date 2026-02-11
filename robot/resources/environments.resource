@@ -21,8 +21,8 @@ Setup Python Environment
     ...    container_name=rfc-${suite_name}
     ...    custom_volumes=${volumes}
 
-    Set Suite Variable    ${PYTHON_CONTAINER}    ${container_id}
-    Set Suite Variable    ${PYTHON_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${PYTHON_CONTAINER}    ${container_id}
+    Set Global Variable    ${PYTHON_WORKSPACE}    ${volume_path}
 
     Log    Python environment ready: ${container_id}
     RETURN    ${container_id}
@@ -38,8 +38,8 @@ Setup Node Environment
     ...    container_name=rfc-${suite_name}
     ...    custom_volumes=${volumes}
 
-    Set Suite Variable    ${NODE_CONTAINER}    ${container_id}
-    Set Suite Variable    ${NODE_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${NODE_CONTAINER}    ${container_id}
+    Set Global Variable    ${NODE_WORKSPACE}    ${volume_path}
 
     Log    Node environment ready: ${container_id}
     RETURN    ${container_id}
@@ -47,13 +47,17 @@ Setup Node Environment
 Setup Shell Environment
     [Documentation]    Setup shell container for terminal/command testing
     [Arguments]    ${profile}=ALPINE_SHELL    ${suite_name}=shell-suite
-    ${container_id}=    Create Container From Profile    ${profile}
-    ...    container_name=rfc-${suite_name}
+    
+    # Create container with a command that keeps it running
+    # Use read_only=False and user=root since shell tests need to create files
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep 3600    auto_remove=False    read_only=False    user=root
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${suite_name}
 
     # Install common tools
     Docker.Execute In Container    ${container_id}    apk add --no-cache bash coreutils
 
-    Set Suite Variable    ${SHELL_CONTAINER}    ${container_id}
+    Set Global Variable    ${SHELL_CONTAINER}    ${container_id}
 
     Log    Shell environment ready: ${container_id}
     RETURN    ${container_id}

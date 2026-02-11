@@ -70,7 +70,7 @@ class ConfigurableDockerKeywords:
         # Parse nested resource config
         resources = ContainerResources()
         if "cpu_cores" in config:
-            resources.cpu_quota = int(config["cpu_cores"] * 100000)
+            resources.cpu_quota = int(float(config["cpu_cores"]) * 100000)
         if "cpu_shares" in config:
             resources.cpu_shares = config["cpu_shares"]
         if "memory_mb" in config:
@@ -90,6 +90,14 @@ class ConfigurableDockerKeywords:
             network.dns = config["dns"]
 
         # Build container config
+        # Helper to convert string booleans to actual booleans
+        def to_bool(value, default=True):
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ("true", "1", "yes", "on")
+            return default
+
         container_config = ContainerConfig(
             image=config["image"],
             name=name,
@@ -99,11 +107,11 @@ class ConfigurableDockerKeywords:
             volumes=config.get("volumes", {}),
             env=config.get("env", {}),
             labels=config.get("labels", {}),
-            read_only=config.get("read_only", True),
+            read_only=to_bool(config.get("read_only"), True),
             user=config.get("user", "nobody"),
             working_dir=config.get("working_dir", "/workspace"),
-            auto_remove=config.get("auto_remove", True),
-            detach=config.get("detach", True),
+            auto_remove=to_bool(config.get("auto_remove"), True),
+            detach=to_bool(config.get("detach"), True),
         )
 
         container_id = self.manager.create_container(container_config, name)
