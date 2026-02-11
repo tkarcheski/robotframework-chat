@@ -100,7 +100,19 @@ Test Case Name
     [Tags]    IQ:100    math
     ${answer}=    LLM.Ask LLM    ${QUESTION}
     Should Be Equal    ${answer}    ${EXPECTED}
+
+*** Keywords ***
+Custom Keyword
+    [Arguments]    ${arg}
+    [Documentation]    What this keyword does
+    [Return]    ${result}    # Use [Return], not RETURN
 ```
+
+**Important Robot Framework Syntax:**
+- Use `[Return]` (not `RETURN`) for keyword return values
+- Define keywords in `*** Keywords ***` section before test cases
+- Use `Suite Setup`/`Suite Teardown` for container lifecycle management
+- Variables: `${scalar}`, `@{list}`, `&{dict}`
 
 ---
 
@@ -162,6 +174,24 @@ Test Code Generation
 - `Docker.Execute Python In Container` - Run Python code
 - `Docker.Stop Container` - Cleanup
 - `Docker.Get Container Metrics` - Monitor usage
+- `Docker.Find Available Port` - Find unused port (11434-11500)
+- `Docker.Stop Container By Name` - Cleanup by container name
+
+**Dynamic Port Allocation:**
+LLM containers use dynamic port allocation to avoid conflicts:
+```robot
+${available_port}=    Docker.Find Available Port    11434    11500
+${port_mapping}=    Create Dictionary    11434/tcp=${available_port}
+${config}=    Create Dictionary    &{OLLAMA_CPU}    ports=${port_mapping}
+${container}=    Docker.Create Configurable Container    ${config}
+```
+
+**Container Naming:**
+Use unique names to prevent conflicts:
+```robot
+${timestamp}=    Evaluate    int(__import__('time').time())
+${container_name}=    Set Variable    rfc-ollama-${timestamp}
+```
 
 ---
 
