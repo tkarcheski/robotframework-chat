@@ -12,12 +12,12 @@ ${OLLAMA_CONTAINER_NAME}    rfc-ollama-${SUITE_NAME}
 Start LLM Suite
     [Documentation]    Start LLM container with dynamic port allocation
     Verify Docker Available
-    
+
     # Generate unique container name using timestamp
     ${timestamp}=    Evaluate    int(__import__('time').time())
     ${unique_name}=    Set Variable    rfc-ollama-${timestamp}
     Set Suite Variable    ${OLLAMA_CONTAINER_NAME}    ${unique_name}
-    
+
     # Start fresh container with unique name
     ${container}=    Start LLM Container    OLLAMA_CPU    ${OLLAMA_CONTAINER_NAME}    llama3
     Log    LLM suite started with container: ${container} (${OLLAMA_CONTAINER_NAME}) on port ${OLLAMA_PORT}

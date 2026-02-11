@@ -14,52 +14,66 @@ ${OLLAMA_BASE_URL}      http://${OLLAMA_HOST}:${OLLAMA_PORT}
 ${DEFAULT_LLM_TIMEOUT}  120
 
 # Model configurations
-&{LLAMA3_CONFIG}        model=llama3    endpoint=${OLLAMA_BASE_URL}/api/generate    timeout=60
-&{MISTRAL_CONFIG}       model=mistral   endpoint=${OLLAMA_BASE_URL}/api/generate    timeout=60
-&{CODELLAMA_CONFIG}     model=codellama endpoint=${OLLAMA_BASE_URL}/api/generate    timeout=90
-&{LLAMA3.1_CONFIG}      model=llama3.1  endpoint=${OLLAMA_BASE_URL}/api/generate    timeout=60
+&{LLAMA3_CONFIG}        model=llama3    endpoint=${OLLAMA_BASE_URL}    timeout=60
+&{MISTRAL_CONFIG}       model=mistral   endpoint=${OLLAMA_BASE_URL}    timeout=60
+&{CODELLAMA_CONFIG}     model=codellama endpoint=${OLLAMA_BASE_URL}    timeout=90
+&{LLAMA3.1_CONFIG}      model=llama3.1  endpoint=${OLLAMA_BASE_URL}    timeout=60
 
 *** Keywords ***
 Start LLM Container
-    [Documentation]    Start Ollama container with specified resources
+    [Documentation]    Start Ollama container with specified resources on an available port
     [Arguments]    ${profile}=OLLAMA_CPU    ${container_name}=rfc-ollama    ${pull_models}=llama3
 
-    # Create container with Ollama profile
-    ${container_id}=    Create Container From Profile    ${profile}    ${container_name}
-    Set Suite Variable    ${LLM_CONTAINER_ID}    ${container_id}
-    Set Suite Variable    ${LLM_ENDPOINT}    ${OLLAMA_BASE_URL}
+    # Find an available port to avoid conflicts with local Ollama
+    ${available_port}=    Docker.Find Available Port    11434    11500
+    Log    Using port ${available_port} for Ollama container
+
+    # Update global variables with actual port
+    Set Global Variable    ${OLLAMA_PORT}    ${available_port}
+    Set Global Variable    ${OLLAMA_BASE_URL}    http://${OLLAMA_HOST}:${available_port}
+
+    # Create port mapping for container (Ollama always listens on 11434 inside container)
+    # Docker SDK format: {'11434/tcp': host_port}
+    ${container_port_key}=    Set Variable    11434/tcp
+    ${port_mapping}=    Create Dictionary    ${container_port_key}=${available_port}
+
+    # Get base profile and add dynamic port configuration
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    ports=${port_mapping}    auto_remove=False
+
+    # Create container with dynamic port
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    ${container_name}
+    Set Global Variable    ${LLM_CONTAINER_ID}    ${container_id}
+    Set Global Variable    ${LLM_ENDPOINT}    ${OLLAMA_BASE_URL}
 
     # Wait for Ollama API to be ready
     Wait For Ollama Ready    ${container_id}    timeout=60
 
     # Pull requested models
     ${model_list}=    Split String    ${pull_models}    ,
+    ${first_model}=    Get From List    ${model_list}    0
     FOR    ${model}    IN    @{model_list}
         Pull LLM Model    ${container_id}    ${model}
     END
 
     # Configure LLM keywords to use container endpoint
-    LLM.Set LLM Endpoint    ${OLLAMA_BASE_URL}/api/generate
-    LLM.Set LLM Model    @{model_list}[0]
+    LLM.Set LLM Endpoint    ${OLLAMA_BASE_URL}
+    LLM.Set LLM Model    ${first_model}
 
-    Log    LLM container started: ${container_id} with models: ${pull_models}
-    RETURN    ${container_id}
+    Log    LLM container started: ${container_id} on port ${available_port} with models: ${pull_models}
+    [Return]    ${container_id}
 
 Stop LLM Container
     [Documentation]    Stop and remove LLM container
     Docker.Stop Container    ${LLM_CONTAINER_ID}
-    Set Suite Variable    ${LLM_CONTAINER_ID}    ${None}
+    Set Global Variable    ${LLM_CONTAINER_ID}    ${None}
     Log    LLM container stopped
 
 Wait For Ollama Ready
     [Documentation]    Wait for Ollama API to be ready
     [Arguments]    ${container_id}    ${timeout}=60
 
-    # Wait for port first
-    ${port_ready}=    Docker.Wait For Container Port    ${container_id}    ${OLLAMA_PORT}    timeout=${timeout}
-    Should Be True    ${port_ready}    Ollama port ${OLLAMA_PORT} not ready within ${timeout}s
-
-    # Wait for API to respond
+    # Wait for API to respond (Ollama takes time to start)
     Wait Until Keyword Succeeds    ${timeout}s    2s
     ...    Check Ollama Health
 

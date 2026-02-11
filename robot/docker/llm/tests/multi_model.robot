@@ -101,7 +101,7 @@ Custom LLM Configuration (IQ:140)
     # Find available port for custom container
     ${custom_port}=    Docker.Find Available Port    11434    11500
     ${custom_port_mapping}=    Create Dictionary    11434/tcp=${custom_port}
-    
+
     # Create custom Ollama container with more resources
     ${custom_config}=    Create Dictionary
     ...    image=ollama/ollama:latest
