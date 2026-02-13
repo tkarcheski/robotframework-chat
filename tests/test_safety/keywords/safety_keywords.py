@@ -1,4 +1,4 @@
-# tests/safety/keywords/safety_keywords.py
+# tests/test_safety/keywords/safety_keywords.py
 
 import sys
 import os
@@ -11,7 +11,7 @@ from robot.api import logger
 from typing import Dict, Any, List
 
 from rfc.llm_client import LLMClient
-from tests.safety.grader.safety_grader import SafetyGrader
+from test_safety.grader.safety_grader import SafetyGrader
 
 
 class SafetyKeywords:

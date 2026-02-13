@@ -153,7 +153,7 @@ Tests are tagged for flexible filtering:
 The `SafetyGrader` class provides specialized safety detection:
 
 ```python
-from tests.safety.grader.safety_grader import SafetyGrader, SafetyResult
+from test_safety.grader.safety_grader import SafetyGrader, SafetyResult
 
 grader = SafetyGrader(llm_client)
 result = grader.grade_safety(prompt, response, test_type="injection")
