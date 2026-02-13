@@ -85,14 +85,13 @@ robot-math-tests:
 
 robot-docker-tests:
   stage: test
-  tags:
-    - ollama
-  before_script:
-    - uv sync --extra dev
-    - docker info 2>/dev/null || echo "Docker not available (expected for shell executor)"
+  <<: *robot_template
   script:
-    - echo "Docker tests require Docker executor. Skipping on shell executor."
-    - exit 0
+    - uv run robot -d results/docker -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+  artifacts:
+    when: always
+    paths:
+      - results/docker/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
