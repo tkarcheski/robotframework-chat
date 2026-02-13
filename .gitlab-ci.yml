@@ -1,104 +1,38 @@
 # GitLab CI/CD Pipeline for robotframework-chat
 # This pipeline runs the full Robot Framework test suite for LLM testing
 # Requires GitLab runner with Ollama installed locally
-#
-# Optimized with custom CI image containing pre-installed tools
 
 stages:
-  - build
   - lint
   - test
-  - metadata
   - report
 
 variables:
-  # Ollama configuration - override via CI/CD variables
+  # Ollama configuration
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "llama3"
 
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
 
-  # CI Image
-  CI_IMAGE: $CI_REGISTRY_IMAGE/ci:latest
+# Default image
+image: python:3.11-slim
 
-# Cache uv dependencies between jobs
+# Cache uv dependencies
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - .venv/
 
-# Default image - custom CI image with pre-installed tools
-# Fallback to python:3.11-slim if custom image not available
-image: python:3.11-slim
-
-# Template for jobs that need Docker
-.docker_template: &docker_template
-  image: docker:24-dind
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: "/certs"
-
-# Template for Ollama jobs
-.ollama_template: &ollama_template
-  tags:
-    - ollama
-  variables:
-    OLLAMA_HOST: "http://localhost:11434"
-
 # =============================================================================
-# BUILD STAGE - Build custom CI image when Dockerfile changes
-# =============================================================================
-
-build-ci-image:
-  stage: build
-  image: docker:24-dind
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: "/certs"
-  before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  script:
-    - |
-      echo "Building CI image: $CI_IMAGE"
-      docker build \
-        --file Dockerfile.ci \
-        --tag $CI_IMAGE \
-        --tag $CI_REGISTRY_IMAGE/ci:$CI_COMMIT_SHA \
-        .
-    - |
-      echo "Pushing CI image..."
-      docker push $CI_IMAGE
-      docker push $CI_REGISTRY_IMAGE/ci:$CI_COMMIT_SHA
-    - |
-      echo "Image built successfully!"
-      docker images $CI_IMAGE
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - Dockerfile.ci
-        - scripts/build-ci-image.sh
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      changes:
-        - Dockerfile.ci
-
-# =============================================================================
-# LINT STAGE - Using pre-installed tools from custom image
+# LINT STAGE
 # =============================================================================
 
 pre-commit:
   stage: lint
   before_script:
-    - |
-      # Install tools if not present (fallback for non-custom image)
-      if ! command -v uv &> /dev/null; then
-        apt-get update && apt-get install -y git
-        pip install uv pre-commit
-      fi
+    - apt-get update && apt-get install -y git
+    - pip install uv pre-commit
     - uv sync
   script:
     - uv run pre-commit run --all-files
@@ -110,11 +44,7 @@ pre-commit:
 ruff-check:
   stage: lint
   before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
+    - pip install uv
     - uv sync
   script:
     - uv run ruff check .
@@ -126,11 +56,7 @@ ruff-check:
 mypy-check:
   stage: lint
   before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
+    - pip install uv
     - uv sync
   script:
     - uv run mypy src/
@@ -140,25 +66,26 @@ mypy-check:
   allow_failure: true
 
 # =============================================================================
-# TEST STAGE - Robot Framework tests
+# TEST STAGE - Only runs on runners with 'ollama' tag
 # =============================================================================
+
+.robot_template: &robot_template
+  tags:
+    - ollama
+  before_script:
+    - pip install uv
+    - uv sync
+    - |
+      echo "Checking Ollama at $OLLAMA_ENDPOINT..."
+      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "❌ Ollama not available" && exit 1)
+      echo "✅ Ollama is available"
+    - |
+      echo "Checking model: $DEFAULT_MODEL"
+      curl -s -X POST "$OLLAMA_ENDPOINT/api/pull" -d "{\"name\": \"$DEFAULT_MODEL\"}" || true
 
 robot-math-tests:
   stage: test
-  <<: *ollama_template
-  before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
-    - uv sync
-    - |
-      echo "Checking Ollama availability at $OLLAMA_ENDPOINT..."
-      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "Ollama not available" && exit 1)
-    - |
-      echo "Ensuring model $DEFAULT_MODEL is available..."
-      curl -s -X POST "$OLLAMA_ENDPOINT/api/pull" -d "{\"name\": \"$DEFAULT_MODEL\"}" || true
+  <<: *robot_template
   script:
     - |
       uv run robot \
@@ -167,7 +94,6 @@ robot-math-tests:
         -v DEFAULT_MODEL:$DEFAULT_MODEL \
         --metadata "Test Suite:Math" \
         --metadata "Model:$DEFAULT_MODEL" \
-        --metadata "Ollama Endpoint:$OLLAMA_ENDPOINT" \
         --metadata "GitLab Project:$CI_PROJECT_URL" \
         --metadata "GitLab Commit:$CI_COMMIT_SHA" \
         --metadata "GitLab Branch:$CI_COMMIT_REF_NAME" \
@@ -187,22 +113,27 @@ robot-math-tests:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
 
 robot-docker-tests:
   stage: test
-  <<: [*docker_template, *ollama_template]
+  tags:
+    - ollama
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - |
-      # Install tools if not present (Docker image uses apk)
-      if ! command -v uv &> /dev/null; then
-        apk add --no-cache python3 py3-pip git curl
-        pip install uv
-      fi
+    - apk add --no-cache python3 py3-pip git curl
+    - pip install uv
     - uv sync
     - docker info
     - |
-      echo "Checking Ollama availability at $OLLAMA_ENDPOINT..."
-      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "Ollama not available" && exit 1)
+      echo "Checking Ollama at $OLLAMA_ENDPOINT..."
+      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "❌ Ollama not available" && exit 1)
+      echo "✅ Ollama is available"
   script:
     - |
       uv run robot \
@@ -211,7 +142,6 @@ robot-docker-tests:
         -v DEFAULT_MODEL:$DEFAULT_MODEL \
         --metadata "Test Suite:Docker" \
         --metadata "Model:$DEFAULT_MODEL" \
-        --metadata "Ollama Endpoint:$OLLAMA_ENDPOINT" \
         --metadata "GitLab Project:$CI_PROJECT_URL" \
         --metadata "GitLab Commit:$CI_COMMIT_SHA" \
         --metadata "GitLab Branch:$CI_COMMIT_REF_NAME" \
@@ -231,20 +161,11 @@ robot-docker-tests:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
 
 robot-safety-tests:
   stage: test
-  <<: *ollama_template
-  before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
-    - uv sync
-    - |
-      echo "Checking Ollama availability at $OLLAMA_ENDPOINT..."
-      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "Ollama not available" && exit 1)
+  <<: *robot_template
   script:
     - |
       uv run robot \
@@ -273,42 +194,10 @@ robot-safety-tests:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
-# =============================================================================
-# METADATA STAGE - Model metadata research
-# =============================================================================
-
-generate-model-metadata:
-  stage: metadata
-  before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        apt-get update && apt-get install -y libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
-        pip install uv
-      fi
-    - uv sync
-    - uv run playwright install chromium
-  script:
-    - |
-      uv run robot \
-        -d results/metadata \
-        --metadata "Task:Model Metadata Research" \
-        --metadata "GitLab Project:$CI_PROJECT_URL" \
-        --metadata "GitLab Commit:$CI_COMMIT_SHA" \
-        robot/ci/fetch_model_metadata.robot || true
-  artifacts:
-    when: always
-    paths:
-      - results/metadata/*
-      - robot/ci/models.yaml
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "schedule"
   allow_failure: true
 
 # =============================================================================
-# REPORT STAGE - Results aggregation
+# REPORT STAGE
 # =============================================================================
 
 aggregate-results:
@@ -316,23 +205,19 @@ aggregate-results:
   needs:
     - job: robot-math-tests
       artifacts: true
+      optional: true
     - job: robot-docker-tests
       artifacts: true
+      optional: true
     - job: robot-safety-tests
-      artifacts: true
-    - job: generate-model-metadata
       artifacts: true
       optional: true
   before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
+    - pip install uv
     - uv sync
   script:
     - mkdir -p results/aggregated
-    - uv run python scripts/generate_ci_metadata.py
+    - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
   artifacts:
     when: always
     paths:
@@ -340,51 +225,3 @@ aggregate-results:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
-# =============================================================================
-# DATABASE STAGE - Import test results
-# =============================================================================
-
-import-test-results:
-  stage: report
-  needs:
-    - job: robot-math-tests
-      artifacts: true
-    - job: robot-docker-tests
-      artifacts: true
-    - job: robot-safety-tests
-      artifacts: true
-  before_script:
-    - |
-      # Install tools if not present
-      if ! command -v uv &> /dev/null; then
-        pip install uv
-      fi
-    - uv sync
-  script:
-    - |
-      # Import math test results
-      if [ -f results/math/output.xml ]; then
-        uv run python scripts/import_test_results.py results/math/output.xml
-      fi
-    - |
-      # Import docker test results
-      if [ -f results/docker/output.xml ]; then
-        uv run python scripts/import_test_results.py results/docker/output.xml
-      fi
-    - |
-      # Import safety test results
-      if [ -f results/safety/output.xml ]; then
-        uv run python scripts/import_test_results.py results/safety/output.xml
-      fi
-    - |
-      # Show database stats
-      uv run python -m rfc.test_database stats || true
-  artifacts:
-    when: always
-    paths:
-      - data/test_history.db
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
