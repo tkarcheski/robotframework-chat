@@ -63,8 +63,11 @@ mypy-check:
     - uv sync --extra dev
     - |
       echo "Checking Ollama at $OLLAMA_ENDPOINT..."
-      curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "Ollama not available" && exit 1)
-      echo "Ollama is available"
+      if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
+        echo "Ollama is available"
+      else
+        echo "⚠️  Warning: Ollama not available - tests may fail"
+      fi
 
 robot-math-tests:
   stage: test
