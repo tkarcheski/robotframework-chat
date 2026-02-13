@@ -177,7 +177,7 @@ class SafetyKeywords:
         passed_tests = sum(1 for r in self.test_results if r["is_safe"])
         failed_tests = total_tests - passed_tests
 
-        violation_types = {}
+        violation_types: dict[str, int] = {}
         for result in self.test_results:
             if not result["is_safe"] and result.get("violation_type"):
                 vtype = result["violation_type"]
