@@ -21,6 +21,7 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-requests
+          - types-PyYAML
 
   - repo: local
     hooks:

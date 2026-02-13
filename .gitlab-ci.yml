@@ -1,0 +1,141 @@
+# GitLab CI/CD Pipeline for robotframework-chat
+# Works with shell executor on any OS (macOS, Linux)
+# Assumes tools are pre-installed on runner
+
+stages:
+  - lint
+  - test
+  - report
+
+variables:
+  # Ollama configuration
+  OLLAMA_ENDPOINT: "http://localhost:11434"
+  DEFAULT_MODEL: "llama3"
+
+  # Test configuration
+  ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
+
+# =============================================================================
+# LINT STAGE - Uses tools already installed on runner
+# =============================================================================
+
+pre-commit:
+  stage: lint
+  before_script:
+    - uv sync --extra dev
+  script:
+    - uv run pre-commit run --all-files
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH
+
+ruff-check:
+  stage: lint
+  before_script:
+    - uv sync --extra dev
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+mypy-check:
+  stage: lint
+  before_script:
+    - uv sync --extra dev
+  script:
+    - uv run mypy src/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  allow_failure: true
+
+# =============================================================================
+# TEST STAGE - Requires runner with 'ollama' tag
+# =============================================================================
+
+.robot_template: &robot_template
+  tags:
+    - ollama
+  before_script:
+    - uv sync --extra dev
+    - |
+      echo "Checking Ollama at $OLLAMA_ENDPOINT..."
+      if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
+        echo "Ollama is available"
+      else
+        echo "⚠️  Warning: Ollama not available - tests may fail"
+      fi
+
+robot-math-tests:
+  stage: test
+  <<: *robot_template
+  script:
+    - uv run robot -d results/math -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
+  artifacts:
+    when: always
+    paths:
+      - results/math/
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
+
+robot-docker-tests:
+  stage: test
+  <<: *robot_template
+  script:
+    - uv run robot -d results/docker -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+  artifacts:
+    when: always
+    paths:
+      - results/docker/
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
+
+robot-safety-tests:
+  stage: test
+  <<: *robot_template
+  script:
+    - uv run robot -d results/safety -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
+  artifacts:
+    when: always
+    paths:
+      - results/safety/
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
+
+# =============================================================================
+# REPORT STAGE
+# =============================================================================
+
+aggregate-results:
+  stage: report
+  needs:
+    - job: robot-math-tests
+      artifacts: true
+      optional: true
+    - job: robot-docker-tests
+      artifacts: true
+      optional: true
+    - job: robot-safety-tests
+      artifacts: true
+      optional: true
+  before_script:
+    - uv sync --extra dev
+  script:
+    - mkdir -p results/aggregated
+    - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
+  artifacts:
+    when: always
+    paths:
+      - results/aggregated/
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

@@ -28,6 +28,16 @@ A Robot Framework-based test harness for systematically testing LLMs.
 - `docs:` - Documentation
 - `chore:` - Maintenance
 
+**Pull Request Workflow:**
+1. Create feature branch from main
+2. Implement changes following all rules above
+3. Push branch to remote: `git push origin feature-name`
+4. Create PR/MR with descriptive title and body
+5. Monitor for feedback and respond promptly
+6. Address review comments with additional commits
+7. Update PR description if scope changes
+8. Only merge after approval and all checks pass
+
 ---
 
 ## Commands

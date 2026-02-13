@@ -18,11 +18,21 @@ dependencies = [
     "pluggy==1.6.0",
     "pygments==2.19.2",
     "pytest==9.0.2",
+    "pyyaml>=6.0.3",
     "requests==2.32.5",
     "robotframework==7.4.1",
     "robotframework-lint==1.1",
     "robotframework-requests>=0.9.7",
     "urllib3==2.6.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "mypy",
+    "types-requests",
+    "types-PyYAML",
 ]
 
 [tool.hatch.build.targets.wheel]

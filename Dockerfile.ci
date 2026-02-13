@@ -1,0 +1,58 @@
+# CI/CD Docker Image for robotframework-chat
+# This image contains pre-installed tools for faster pipeline execution
+
+FROM python:3.11-slim
+
+# Prevent interactive prompts during apt-get
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies in a single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install uv - modern Python package manager
+RUN pip install --no-cache-dir uv
+
+# Install pre-commit
+RUN pip install --no-cache-dir pre-commit
+
+# Install mypy with type stubs
+RUN pip install --no-cache-dir \
+    mypy \
+    types-requests \
+    types-PyYAML
+
+# Install additional tools for Robot Framework
+RUN pip install --no-cache-dir \
+    robotframework \
+    pyyaml \
+    requests
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash ci && \
+    chown -R ci:ci /app
+
+# Switch to non-root user
+USER ci
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_CACHE_DIR=/home/ci/.cache/uv
+
+# Create cache directory
+RUN mkdir -p /home/ci/.cache/uv
+
+# Labels for image metadata
+LABEL maintainer="robotframework-chat" \
+      description="CI/CD image for robotframework-chat with pre-installed tools"
+
+# Default command
+CMD ["python", "--version"]
