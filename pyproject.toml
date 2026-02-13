@@ -26,5 +26,14 @@ dependencies = [
     "urllib3==2.6.2",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "mypy",
+    "types-requests",
+    "types-PyYAML",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc"]

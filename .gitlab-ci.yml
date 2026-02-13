@@ -22,7 +22,7 @@ variables:
 pre-commit:
   stage: lint
   before_script:
-    - uv sync
+    - uv sync --extra dev
   script:
     - uv run pre-commit run --all-files
   rules:
@@ -33,7 +33,7 @@ pre-commit:
 ruff-check:
   stage: lint
   before_script:
-    - uv sync
+    - uv sync --extra dev
   script:
     - uv run ruff check .
     - uv run ruff format --check .
@@ -44,7 +44,7 @@ ruff-check:
 mypy-check:
   stage: lint
   before_script:
-    - uv sync
+    - uv sync --extra dev
   script:
     - uv run mypy src/
   rules:
@@ -60,7 +60,7 @@ mypy-check:
   tags:
     - ollama
   before_script:
-    - uv sync
+    - uv sync --extra dev
     - |
       echo "Checking Ollama at $OLLAMA_ENDPOINT..."
       curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null || (echo "Ollama not available" && exit 1)
@@ -85,7 +85,7 @@ robot-docker-tests:
   tags:
     - ollama
   before_script:
-    - uv sync
+    - uv sync --extra dev
     - docker info 2>/dev/null || echo "Docker not available (expected for shell executor)"
   script:
     - echo "Docker tests require Docker executor. Skipping on shell executor."
@@ -126,7 +126,7 @@ aggregate-results:
       artifacts: true
       optional: true
   before_script:
-    - uv sync
+    - uv sync --extra dev
   script:
     - mkdir -p results/aggregated
     - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
