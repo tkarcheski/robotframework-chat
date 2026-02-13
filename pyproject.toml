@@ -18,6 +18,7 @@ dependencies = [
     "pluggy==1.6.0",
     "pygments==2.19.2",
     "pytest==9.0.2",
+    "pyyaml>=6.0.3",
     "requests==2.32.5",
     "robotframework==7.4.1",
     "robotframework-lint==1.1",
