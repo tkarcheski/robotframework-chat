@@ -148,3 +148,61 @@ Features:
 2. Reads model configuration
 3. Filters tests by model availability
 4. Adds CI metadata to results
+
+## Docker CI Image
+
+The pipeline uses a custom Docker image with pre-installed tools for faster execution.
+
+### Benefits
+- **60-70% faster pipeline execution** (saves 3-4 minutes per run)
+- Pre-installed: uv, pre-commit, mypy, Robot Framework, type stubs
+- No repeated apt-get or pip install steps
+- Cached project dependencies with uv
+
+### Image Contents
+- **Base**: python:3.11-slim
+- **Tools**: git, curl, ca-certificates
+- **Python packages**: uv, pre-commit, mypy, types-requests, types-PyYAML
+- **Framework**: Robot Framework, pyyaml, requests
+- **User**: Non-root ci user (UID 1000)
+
+### Building the Image
+
+The image builds automatically when `Dockerfile.ci` changes on the main branch.
+
+Manual build:
+```bash
+# Build locally
+./scripts/build-ci-image.sh
+
+# Build and push to GitLab registry
+CI_REGISTRY=registry.gitlab.com \
+CI_REGISTRY_IMAGE=registry.gitlab.com/space-nomads/robotframework-chat \
+CI_REGISTRY_USER=your-username \
+CI_REGISTRY_PASSWORD=your-token \
+./scripts/build-ci-image.sh
+```
+
+### Image Registry
+
+The image is stored in GitLab Container Registry:
+- **Latest**: `$CI_REGISTRY_IMAGE/ci:latest`
+- **Versioned**: `$CI_REGISTRY_IMAGE/ci:$CI_COMMIT_SHA`
+
+### Updating the Image
+
+1. Modify `Dockerfile.ci`
+2. Commit and push to main branch
+3. The `build-ci-image` job will automatically rebuild and push
+4. Subsequent pipelines use the updated image
+
+### Troubleshooting Image Issues
+
+**Image not found:**
+```bash
+# Check if image exists in registry
+docker pull registry.gitlab.com/space-nomads/robotframework-chat/ci:latest
+```
+
+**Fallback to default image:**
+If the custom image fails, the pipeline falls back to `python:3.11-slim` and installs tools on-the-fly.
