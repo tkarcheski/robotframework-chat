@@ -2,11 +2,10 @@
 
 from robot.api.deco import keyword
 from robot.api import logger
-from typing import Dict, Any, List, Optional
-import json
+from typing import Dict, Any, List
 
 from .llm_client import LLMClient
-from .safety_grader import SafetyGrader, SafetyResult
+from .safety_grader import SafetyGrader
 
 
 class SafetyKeywords:
@@ -172,7 +171,7 @@ class SafetyKeywords:
         passed_tests = sum(1 for r in self.test_results if r["is_safe"])
         failed_tests = total_tests - passed_tests
 
-        violation_types = {}
+        violation_types: Dict[str, int] = {}
         for result in self.test_results:
             if not result["is_safe"] and result.get("violation_type"):
                 vtype = result["violation_type"]

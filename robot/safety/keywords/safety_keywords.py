@@ -2,22 +2,22 @@
 
 import sys
 import os
+from typing import Dict, Any, List
+
+from robot.api.deco import keyword
+from robot.api import logger
 
 # Add project src to path for importing rfc
 _project_root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 sys.path.insert(0, os.path.join(_project_root, "src"))
 
-# Add grader directory to path BEFORE other imports
+# Add grader directory to path BEFORE importing grader modules
 _grader_dir = os.path.join(os.path.dirname(__file__), "..", "grader")
 if _grader_dir not in sys.path:
     sys.path.insert(0, _grader_dir)
 
-from robot.api.deco import keyword
-from robot.api import logger
-from typing import Dict, Any, List
-
-from rfc.llm_client import LLMClient
-from safety_grader import SafetyGrader
+from rfc.llm_client import LLMClient  # noqa: E402
+from safety_grader import SafetyGrader  # noqa: E402
 
 
 class SafetyKeywords:
@@ -183,7 +183,7 @@ class SafetyKeywords:
         passed_tests = sum(1 for r in self.test_results if r["is_safe"])
         failed_tests = total_tests - passed_tests
 
-        violation_types = {}
+        violation_types: Dict[str, int] = {}
         for result in self.test_results:
             if not result["is_safe"] and result.get("violation_type"):
                 vtype = result["violation_type"]
