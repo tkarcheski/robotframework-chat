@@ -1,0 +1,136 @@
+# LLM Model Configuration for robotframework-chat
+# This file contains metadata about available models for testing
+# Generated automatically via CI pipeline using Playwright research
+
+version: "1.0"
+generated_at: "2024-01-01T00:00:00Z"
+
+# Model definitions
+models:
+  llama3:
+    name: "llama3"
+    full_name: "Meta Llama 3"
+    organization: "Meta AI"
+    description: "Meta's open source LLM model"
+    release_date: "2024-04-18"
+    parameters: "8B"
+    ollama_library_url: "https://ollama.com/library/llama3"
+    hugging_face_url: "https://huggingface.co/meta-llama/Meta-Llama-3-8B"
+    capabilities:
+      - text_generation
+      - code_generation
+      - reasoning
+    hardware_requirements:
+      min_ram_mb: 8192
+      recommended_ram_mb: 16384
+    tags:
+      - general
+      - popular
+      - default
+
+  mistral:
+    name: "mistral"
+    full_name: "Mistral 7B"
+    organization: "Mistral AI"
+    description: "High-performance open source LLM"
+    release_date: "2023-09-27"
+    parameters: "7B"
+    ollama_library_url: "https://ollama.com/library/mistral"
+    hugging_face_url: "https://huggingface.co/mistralai/Mistral-7B-v0.1"
+    capabilities:
+      - text_generation
+      - code_generation
+      - reasoning
+    hardware_requirements:
+      min_ram_mb: 8192
+      recommended_ram_mb: 16384
+    tags:
+      - general
+      - popular
+
+  codellama:
+    name: "codellama"
+    full_name: "Code Llama"
+    organization: "Meta AI"
+    description: "Code-focused variant of Llama 2"
+    release_date: "2023-08-24"
+    parameters: "7B"
+    ollama_library_url: "https://ollama.com/library/codellama"
+    hugging_face_url: "https://huggingface.co/codellama/CodeLlama-7b-hf"
+    capabilities:
+      - code_generation
+      - text_generation
+    hardware_requirements:
+      min_ram_mb: 8192
+      recommended_ram_mb: 16384
+    tags:
+      - code
+      - programming
+
+  llama3.1:
+    name: "llama3.1"
+    full_name: "Meta Llama 3.1"
+    organization: "Meta AI"
+    description: "Updated version of Llama 3"
+    release_date: "2024-07-23"
+    parameters: "8B"
+    ollama_library_url: "https://ollama.com/library/llama3.1"
+    hugging_face_url: "https://huggingface.co/meta-llama/Meta-Llama-3.1-8B"
+    capabilities:
+      - text_generation
+      - code_generation
+      - reasoning
+      - tool_use
+    hardware_requirements:
+      min_ram_mb: 8192
+      recommended_ram_mb: 16384
+    tags:
+      - general
+      - latest
+
+# Model size categories for runner tagging
+categories:
+  small:
+    max_parameters: "7B"
+    max_ram_mb: 8192
+    runners:
+      - "ollama-small"
+
+  medium:
+    max_parameters: "13B"
+    max_ram_mb: 16384
+    runners:
+      - "ollama-medium"
+
+  large:
+    max_parameters: "70B"
+    max_ram_mb: 65536
+    runners:
+      - "ollama-large"
+
+# Test configuration
+test_configuration:
+  default_model: "llama3"
+  timeout_seconds: 120
+  max_retries: 2
+
+  # Map test suites to preferred models
+  suite_models:
+    math: ["llama3", "llama3.1", "mistral"]
+    code: ["codellama", "llama3.1", "llama3"]
+    safety: ["llama3", "mistral", "llama3.1"]
+    docker: ["llama3", "codellama"]
+
+# CI Integration
+ci:
+  artifact_retention_days: 30
+  metadata_includes:
+    - model_name
+    - release_date
+    - parameters
+    - gitlab_commit
+    - gitlab_branch
+    - gitlab_pipeline
+    - runner_id
+    - runner_description
+    - timestamp

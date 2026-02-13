@@ -172,7 +172,7 @@ class ConfigurableDockerKeywords:
         from docker.errors import NotFound
 
         try:
-            client = docker.from_env()
+            client = docker.from_env()  # type: ignore[attr-defined]
             container = client.containers.get(name)
             logger.info(f"Stopping container by name: {name}")
             container.stop(timeout=timeout)

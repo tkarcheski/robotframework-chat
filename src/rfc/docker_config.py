@@ -19,7 +19,7 @@ class ContainerResources:
 
     def to_docker_resources(self) -> Dict[str, Any]:
         """Convert to Docker SDK resources format."""
-        resources = {}
+        resources: Dict[str, Any] = {}
 
         if self.memory_mb:
             resources["mem_limit"] = f"{self.memory_mb}m"
@@ -49,7 +49,7 @@ class ContainerNetwork:
 
     def to_docker_network(self) -> Dict[str, Any]:
         """Convert to Docker SDK network format."""
-        config = {}
+        config: Dict[str, Any] = {}
 
         if self.mode == "none":
             config["network_mode"] = "none"
