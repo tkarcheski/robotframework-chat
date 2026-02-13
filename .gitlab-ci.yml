@@ -16,9 +16,6 @@ variables:
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
 
-  # Artifact retention
-  ARTIFACT_RETENTION_DAYS: "30"
-
 # Cache uv dependencies
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -120,7 +117,6 @@ robot-math-tests:
         robot/math/tests/
   artifacts:
     when: always
-    expire_in: ${ARTIFACT_RETENTION_DAYS} days
     paths:
       - results/math/log.html
       - results/math/output.xml
@@ -161,7 +157,6 @@ robot-docker-tests:
         robot/docker/
   artifacts:
     when: always
-    expire_in: ${ARTIFACT_RETENTION_DAYS} days
     paths:
       - results/docker/log.html
       - results/docker/output.xml
@@ -200,7 +195,6 @@ robot-safety-tests:
         robot/safety/
   artifacts:
     when: always
-    expire_in: ${ARTIFACT_RETENTION_DAYS} days
     paths:
       - results/safety/log.html
       - results/safety/output.xml
@@ -232,7 +226,6 @@ generate-model-metadata:
         robot/ci/fetch_model_metadata.robot || true
   artifacts:
     when: always
-    expire_in: ${ARTIFACT_RETENTION_DAYS} days
     paths:
       - results/metadata/*
       - robot/ci/models.yaml
@@ -265,9 +258,52 @@ aggregate-results:
     - uv run python scripts/generate_ci_metadata.py
   artifacts:
     when: always
-    expire_in: ${ARTIFACT_RETENTION_DAYS} days
     paths:
       - results/aggregated/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# =============================================================================
+# DATABASE STAGE
+# =============================================================================
+
+import-test-results:
+  stage: report
+  needs:
+    - job: robot-math-tests
+      artifacts: true
+    - job: robot-docker-tests
+      artifacts: true
+    - job: robot-safety-tests
+      artifacts: true
+  before_script:
+    - pip install uv
+    - uv sync
+  script:
+    - |
+      # Import math test results
+      if [ -f results/math/output.xml ]; then
+        uv run python scripts/import_test_results.py results/math/output.xml
+      fi
+    - |
+      # Import docker test results
+      if [ -f results/docker/output.xml ]; then
+        uv run python scripts/import_test_results.py results/docker/output.xml
+      fi
+    - |
+      # Import safety test results
+      if [ -f results/safety/output.xml ]; then
+        uv run python scripts/import_test_results.py results/safety/output.xml
+      fi
+    - |
+      # Show database stats
+      uv run python -m rfc.test_database stats || true
+  artifacts:
+    when: always
+    paths:
+      - data/test_history.db
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true

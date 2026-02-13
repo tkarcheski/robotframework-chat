@@ -1,0 +1,5 @@
+
+# Git LFS for test database
+data/*.db filter=lfs diff=lfs merge=lfs -text
+data/*.sqlite filter=lfs diff=lfs merge=lfs -text
+data/*.sqlite3 filter=lfs diff=lfs merge=lfs -text
