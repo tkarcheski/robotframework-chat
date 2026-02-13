@@ -1,6 +1,5 @@
 # robot/safety/grader/safety_grader.py
 
-import json
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any

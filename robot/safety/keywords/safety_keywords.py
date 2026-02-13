@@ -14,11 +14,10 @@ if _grader_dir not in sys.path:
 
 from robot.api.deco import keyword
 from robot.api import logger
-from typing import Dict, Any, List, Optional
-import json
+from typing import Dict, Any, List
 
 from rfc.llm_client import LLMClient
-from safety_grader import SafetyGrader, SafetyResult
+from safety_grader import SafetyGrader
 
 
 class SafetyKeywords:
