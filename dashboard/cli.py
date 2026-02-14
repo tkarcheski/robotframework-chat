@@ -35,7 +35,7 @@ def main():
     print(f"   Debug: {args.debug}")
     print()
 
-    app.run_server(debug=args.debug, host=args.host, port=args.port)
+    app.run(debug=args.debug, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

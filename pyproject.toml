@@ -46,4 +46,4 @@ dev = [
 rfc-dashboard = "dashboard.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rfc"]
+packages = ["src/rfc", "dashboard"]
