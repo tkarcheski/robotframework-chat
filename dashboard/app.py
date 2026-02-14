@@ -289,16 +289,7 @@ def update_live_output(n_intervals):
 
 # Run button callback
 @app.callback(
-    Output("toast-container", "children", allow_duplicate=True),
-    Output("run-btn", "disabled"),
-    Output("stop-btn", "disabled"),
-    Output("replay-btn", "disabled"),
-    Output("suite-dropdown", "disabled"),
-    Output("iq-dropdown", "disabled"),
-    Output("model-dropdown", "disabled"),
-    Output("profile-dropdown", "disabled"),
-    Output("auto-recover-check", "disabled"),
-    Output("dry-run-check", "disabled"),
+    Output("toast-container", "children"),
     Input("run-btn", "n_clicks"),
     State("suite-dropdown", "value"),
     State("iq-dropdown", "value"),
@@ -323,43 +314,21 @@ def handle_run(
 
     session = session_manager.get_session(SESSION_ID)
     if not session:
-        return (
-            dbc.Toast(
-                "Session not found",
-                id="run-error",
-                header="Error",
-                is_open=True,
-                color="danger",
-            ),
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
+        return dbc.Toast(
+            "Session not found",
+            id="run-error",
+            header="Error",
+            is_open=True,
+            color="danger",
         )
 
     if session.status == SessionStatus.RUNNING:
-        return (
-            dbc.Toast(
-                "Session is already running",
-                id="run-warning",
-                header="Warning",
-                is_open=True,
-                color="warning",
-            ),
-            False,
-            True,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
+        return dbc.Toast(
+            "Session is already running",
+            id="run-warning",
+            header="Warning",
+            is_open=True,
+            color="warning",
         )
 
     # Update config from UI values
@@ -377,7 +346,7 @@ def handle_run(
     runner = RobotRunnerFactory.create_runner(session)
     runner.start()
 
-    toast = dbc.Toast(
+    return dbc.Toast(
         "Started test run",
         id="run-success",
         header="Started",
@@ -385,33 +354,10 @@ def handle_run(
         color="success",
     )
 
-    # Disable controls during execution
-    return (
-        toast,
-        True,  # run disabled
-        False,  # stop enabled
-        True,  # replay disabled
-        True,  # suite disabled
-        True,  # iq disabled
-        True,  # model disabled
-        True,  # profile disabled
-        True,  # auto-recover disabled
-        True,  # dry-run disabled
-    )
-
 
 # Stop button callback
 @app.callback(
-    Output("toast-container", "children", allow_duplicate=True),
-    Output("run-btn", "disabled"),
-    Output("stop-btn", "disabled"),
-    Output("replay-btn", "disabled"),
-    Output("suite-dropdown", "disabled"),
-    Output("iq-dropdown", "disabled"),
-    Output("model-dropdown", "disabled"),
-    Output("profile-dropdown", "disabled"),
-    Output("auto-recover-check", "disabled"),
-    Output("dry-run-check", "disabled"),
+    Output("toast-container", "children"),
     Input("stop-btn", "n_clicks"),
     prevent_initial_call=True,
 )
@@ -422,7 +368,7 @@ def handle_stop(n_clicks):
 
     success = RobotRunnerFactory.stop_runner(SESSION_ID)
 
-    toast = dbc.Toast(
+    return dbc.Toast(
         "Stopped test run" if success else "Failed to stop",
         id="stop-success" if success else "stop-error",
         header="Stopped" if success else "Error",
@@ -430,33 +376,10 @@ def handle_stop(n_clicks):
         color="info" if success else "danger",
     )
 
-    # Re-enable controls
-    return (
-        toast,
-        False,  # run enabled
-        True,  # stop disabled
-        False,  # replay enabled
-        False,  # suite enabled
-        False,  # iq enabled
-        False,  # model enabled
-        False,  # profile enabled
-        False,  # auto-recover enabled
-        False,  # dry-run enabled
-    )
-
 
 # Replay button callback
 @app.callback(
-    Output("toast-container", "children", allow_duplicate=True),
-    Output("run-btn", "disabled"),
-    Output("stop-btn", "disabled"),
-    Output("replay-btn", "disabled"),
-    Output("suite-dropdown", "disabled"),
-    Output("iq-dropdown", "disabled"),
-    Output("model-dropdown", "disabled"),
-    Output("profile-dropdown", "disabled"),
-    Output("auto-recover-check", "disabled"),
-    Output("dry-run-check", "disabled"),
+    Output("toast-container", "children"),
     Input("replay-btn", "n_clicks"),
     State("suite-dropdown", "value"),
     State("iq-dropdown", "value"),
@@ -481,23 +404,12 @@ def handle_replay(
 
     session = session_manager.get_session(SESSION_ID)
     if not session:
-        return (
-            dbc.Toast(
-                "Session not found",
-                id="replay-error",
-                header="Error",
-                is_open=True,
-                color="danger",
-            ),
-            False,
-            True,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
+        return dbc.Toast(
+            "Session not found",
+            id="replay-error",
+            header="Error",
+            is_open=True,
+            color="danger",
         )
 
     # Update config from UI values
@@ -515,26 +427,12 @@ def handle_replay(
     runner = RobotRunnerFactory.create_runner(session)
     runner.start()
 
-    toast = dbc.Toast(
+    return dbc.Toast(
         "Replaying test run",
         id="replay-success",
         header="Replaying",
         is_open=True,
         color="warning",
-    )
-
-    # Disable controls during execution
-    return (
-        toast,
-        True,  # run disabled
-        False,  # stop enabled
-        True,  # replay disabled
-        True,  # suite disabled
-        True,  # iq disabled
-        True,  # model disabled
-        True,  # profile disabled
-        True,  # auto-recover disabled
-        True,  # dry-run disabled
     )
 
 
