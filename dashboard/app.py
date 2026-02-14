@@ -27,6 +27,7 @@ app.title = "Robot Framework Chat Control Panel"
 
 # Available test suites
 TEST_SUITES = [
+    {"label": "Run All Test Suites", "value": "robot"},
     {"label": "Math Tests", "value": "robot/math/tests"},
     {"label": "Docker Python", "value": "robot/docker/python/tests"},
     {"label": "Docker LLM", "value": "robot/docker/llm/tests"},
