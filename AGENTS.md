@@ -57,6 +57,10 @@ uv run robot -d results -t "Test Name" robot/path/tests/file.robot
 # Run by tag
 uv run robot -d results -i IQ:120 robot/docker/python
 
+# Run dashboard
+uv sync --extra dashboard
+rfc-dashboard  # or: uv run python -m dashboard.cli
+
 # Lint & format
 uv run ruff check .
 uv run ruff check --fix .

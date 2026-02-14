@@ -1,0 +1,90 @@
+/* Custom CSS styles for the Robot Framework Dashboard */
+
+/* Session tab styling */
+.nav-tabs .nav-link {
+    border-radius: 4px 4px 0 0;
+    margin-right: 4px;
+    transition: all 0.2s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    opacity: 0.9;
+}
+
+/* Console output styling */
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Progress bar animation */
+.progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+/* Toast notifications */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+
+.status-running {
+    background-color: #6c757d;
+    color: white;
+}
+
+.status-failed {
+    background-color: #dc3545;
+    color: white;
+}
+
+.status-completed {
+    background-color: #28a745;
+    color: white;
+}
+
+/* Button group spacing */
+.btn-group .btn {
+    margin-right: 4px;
+}
+
+/* Card styling */
+.card {
+    border: 1px solid #444;
+    background-color: #2d2d2d;
+}
+
+.card-header {
+    background-color: #333;
+    border-bottom: 1px solid #444;
+}
