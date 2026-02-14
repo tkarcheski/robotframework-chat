@@ -51,7 +51,6 @@ CONTAINER_PROFILES = [
     {"label": "Minimal (0.25 CPU, 128MB)", "value": "MINIMAL"},
     {"label": "Standard (0.5 CPU, 512MB)", "value": "STANDARD"},
     {"label": "Performance (1.0 CPU, 1GB)", "value": "PERFORMANCE"},
-    {"label": "Ollama CPU (2.0 CPU, 4GB)", "value": "OLLAMA_CPU"},
 ]
 
 
@@ -77,6 +76,7 @@ def create_session_tab(session: RobotSession) -> dbc.Tab:
 def create_settings_panel(session_id: str | None = None) -> html.Div:
     """Create the settings panel for a session."""
     session = session_manager.get_session(session_id) if session_id else None
+    # Use session.config if it exists and has been modified, otherwise use defaults
     config = session.config if session else SessionConfig()
 
     return html.Div(
@@ -197,6 +197,15 @@ def create_settings_panel(session_id: str | None = None) -> html.Div:
                                         "💾 Save",
                                         id={"type": "save-btn", "session": session_id},
                                         color="info",
+                                        className="me-2",
+                                    ),
+                                    dbc.Button(
+                                        "🗑️ Delete",
+                                        id={
+                                            "type": "delete-btn",
+                                            "session": session_id,
+                                        },
+                                        color="dark",
                                     ),
                                 ]
                             ),
