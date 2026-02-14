@@ -3,7 +3,7 @@
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, MATCH
 from dash.exceptions import PreventUpdate
 
 from dashboard.core.llm_registry import llm_registry
@@ -23,7 +23,7 @@ app = dash.Dash(
     external_stylesheets=[dbc.themes.DARKLY],
     suppress_callback_exceptions=True,
 )
-app.title = "Robot Framework Dashboard"
+app.title = "Robot Framework Chat Control Panel"
 
 # Available test suites
 TEST_SUITES = [
@@ -305,7 +305,7 @@ app.layout = html.Div(
             dbc.Container(
                 [
                     html.H1(
-                        "Robot Framework Dashboard",
+                        "Robot Framework Chat Control Panel",
                         className="text-white mb-0",
                     ),
                     dbc.Button(
@@ -442,6 +442,132 @@ def create_new_session(n_clicks):
             duration=5000,
             color="danger",
         )
+
+
+@app.callback(
+    Output({"type": "suite-dropdown", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "suite-dropdown", "session": MATCH}, "id"),
+)
+def restore_suite_value(session_id, dropdown_id):
+    """Restore suite value from session config when tab is selected."""
+    if not session_id or not dropdown_id:
+        raise PreventUpdate
+
+    dropdown_session = dropdown_id.get("session")
+    if dropdown_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return session.config.suite
+
+
+@app.callback(
+    Output({"type": "iq-dropdown", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "iq-dropdown", "session": MATCH}, "id"),
+)
+def restore_iq_value(session_id, dropdown_id):
+    """Restore IQ levels from session config when tab is selected."""
+    if not session_id or not dropdown_id:
+        raise PreventUpdate
+
+    dropdown_session = dropdown_id.get("session")
+    if dropdown_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return session.config.iq_levels
+
+
+@app.callback(
+    Output({"type": "model-dropdown", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "model-dropdown", "session": MATCH}, "id"),
+)
+def restore_model_value(session_id, dropdown_id):
+    """Restore model value from session config when tab is selected."""
+    if not session_id or not dropdown_id:
+        raise PreventUpdate
+
+    dropdown_session = dropdown_id.get("session")
+    if dropdown_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return session.config.model
+
+
+@app.callback(
+    Output({"type": "profile-dropdown", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "profile-dropdown", "session": MATCH}, "id"),
+)
+def restore_profile_value(session_id, dropdown_id):
+    """Restore profile value from session config when tab is selected."""
+    if not session_id or not dropdown_id:
+        raise PreventUpdate
+
+    dropdown_session = dropdown_id.get("session")
+    if dropdown_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return session.config.profile
+
+
+@app.callback(
+    Output({"type": "auto-recover-check", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "auto-recover-check", "session": MATCH}, "id"),
+)
+def restore_auto_recover_value(session_id, check_id):
+    """Restore auto-recover value from session config when tab is selected."""
+    if not session_id or not check_id:
+        raise PreventUpdate
+
+    check_session = check_id.get("session")
+    if check_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return [True] if session.config.auto_recover else []
+
+
+@app.callback(
+    Output({"type": "dry-run-check", "session": MATCH}, "value"),
+    Input("active-session", "data"),
+    State({"type": "dry-run-check", "session": MATCH}, "id"),
+)
+def restore_dry_run_value(session_id, check_id):
+    """Restore dry-run value from session config when tab is selected."""
+    if not session_id or not check_id:
+        raise PreventUpdate
+
+    check_session = check_id.get("session")
+    if check_session != session_id:
+        raise PreventUpdate
+
+    session = session_manager.get_session(session_id)
+    if not session:
+        raise PreventUpdate
+
+    return [True] if session.config.dry_run else []
 
 
 if __name__ == "__main__":
