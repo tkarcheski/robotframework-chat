@@ -1,4 +1,4 @@
-"""Main Dash application for Robot Framework Dashboard."""
+"""Main Dash application for Robot Framework Chat Control Panel."""
 
 import dash
 import dash_bootstrap_components as dbc
@@ -76,7 +76,6 @@ def create_session_tab(session: RobotSession) -> dbc.Tab:
 def create_settings_panel(session_id: str | None = None) -> html.Div:
     """Create the settings panel for a session."""
     session = session_manager.get_session(session_id) if session_id else None
-    # Use session.config if it exists and has been modified, otherwise use defaults
     config = session.config if session else SessionConfig()
 
     return html.Div(
@@ -197,15 +196,6 @@ def create_settings_panel(session_id: str | None = None) -> html.Div:
                                         "💾 Save",
                                         id={"type": "save-btn", "session": session_id},
                                         color="info",
-                                        className="me-2",
-                                    ),
-                                    dbc.Button(
-                                        "🗑️ Delete",
-                                        id={
-                                            "type": "delete-btn",
-                                            "session": session_id,
-                                        },
-                                        color="dark",
                                     ),
                                 ]
                             ),

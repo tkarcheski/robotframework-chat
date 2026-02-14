@@ -23,7 +23,7 @@ class SessionStatus(Enum):
 class SessionConfig:
     """Configuration for a test session."""
 
-    suite: str = "robot"
+    suite: str = "robot/math/tests"
     iq_levels: list = field(default_factory=lambda: ["100", "110", "120"])
     model: str = "llama3"
     profile: str = "STANDARD"
