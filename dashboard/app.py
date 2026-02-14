@@ -1,475 +1,302 @@
-"""Simplified Robot Framework Dashboard - Single Session."""
+"""Robot Framework Chat Control Panel - Dash application."""
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html
-from dash.dependencies import Input, Output, State
+from dash import ALL, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 
-from dashboard.core.llm_registry import llm_registry
 from dashboard.core.robot_runner import RobotRunnerFactory
-from dashboard.core.session_manager import SessionConfig, SessionStatus, session_manager
+from dashboard.core.session_manager import (
+    SessionConfig,
+    SessionStatus,
+    session_manager,
+)
+from dashboard.layout import create_app_layout, create_session_panel
 
-# Initialize Dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+# -- App init ----------------------------------------------------------------
+
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.DARKLY],
+    suppress_callback_exceptions=True,
+)
 app.title = "Robot Framework Chat Control Panel"
 
-# Test configuration options
-TEST_SUITES = [
-    {"label": "Run All Test Suites", "value": "robot"},
-    {"label": "Math Tests", "value": "robot/math/tests"},
-    {"label": "Docker Python", "value": "robot/docker/python/tests"},
-    {"label": "Docker LLM", "value": "robot/docker/llm/tests"},
-    {"label": "Docker Shell", "value": "robot/docker/shell/tests"},
-    {"label": "Safety Tests", "value": "robot/safety/test_cases"},
-]
+# Create the first session at startup
+session_manager.create_session(SessionConfig())
 
-IQ_LEVELS = [
-    {"label": "100", "value": "100"},
-    {"label": "110", "value": "110"},
-    {"label": "120", "value": "120"},
-    {"label": "130", "value": "130"},
-    {"label": "140", "value": "140"},
-    {"label": "150", "value": "150"},
-    {"label": "160", "value": "160"},
-]
+# Assign layout (built once; all panels live in the DOM)
+app.layout = create_app_layout()
 
-CONTAINER_PROFILES = [
-    {"label": "Minimal (0.25 CPU, 128MB)", "value": "MINIMAL"},
-    {"label": "Standard (0.5 CPU, 512MB)", "value": "STANDARD"},
-    {"label": "Performance (1.0 CPU, 1GB)", "value": "PERFORMANCE"},
-]
 
-# Create a single default session on startup
-_default_session = session_manager.create_session(SessionConfig())
-SESSION_ID = _default_session.session_id
+# -- Callback 1: handle ALL button clicks ------------------------------------
+# ONE callback for Run / Stop / Replay / Delete.
+# This is the ONLY callback that writes to "toast-container.children".
 
-# Main layout
-app.layout = html.Div(
-    [
-        # Header
-        dbc.Navbar(
-            dbc.Container(
-                [
-                    html.H1(
-                        "Robot Framework Chat Control Panel",
-                        className="text-white mb-0",
-                    ),
-                ]
-            ),
-            color="dark",
-            dark=True,
-            className="mb-4",
-        ),
-        # Main content
-        dbc.Container(
-            [
-                # Settings Panel
-                html.Div(
-                    [
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dbc.Label("Test Suite"),
-                                        dcc.Dropdown(
-                                            id="suite-dropdown",
-                                            options=TEST_SUITES,
-                                            value="robot",
-                                            placeholder="Select test suite...",
-                                        ),
-                                    ],
-                                    width=4,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.Label("IQ Levels"),
-                                        dcc.Dropdown(
-                                            id="iq-dropdown",
-                                            options=IQ_LEVELS,
-                                            value=["100", "110", "120"],
-                                            multi=True,
-                                            placeholder="Select IQ levels...",
-                                        ),
-                                    ],
-                                    width=4,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.Label("LLM Model"),
-                                        dcc.Dropdown(
-                                            id="model-dropdown",
-                                            options=[
-                                                {"label": m, "value": m}
-                                                for m in llm_registry.get_models()
-                                            ]
-                                            or [{"label": "llama3", "value": "llama3"}],
-                                            value="llama3",
-                                            placeholder="Select LLM model...",
-                                        ),
-                                    ],
-                                    width=4,
-                                ),
-                            ],
-                            className="mb-3",
-                        ),
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dbc.Label("Container Profile"),
-                                        dcc.Dropdown(
-                                            id="profile-dropdown",
-                                            options=CONTAINER_PROFILES,
-                                            value="STANDARD",
-                                        ),
-                                    ],
-                                    width=4,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.Checklist(
-                                            options=[
-                                                {
-                                                    "label": " Auto-recover on failure",
-                                                    "value": True,
-                                                },
-                                            ],
-                                            value=[],
-                                            id="auto-recover-check",
-                                            switch=True,
-                                        ),
-                                        dbc.Checklist(
-                                            options=[
-                                                {"label": " Dry run", "value": True}
-                                            ],
-                                            value=[],
-                                            id="dry-run-check",
-                                            switch=True,
-                                        ),
-                                    ],
-                                    width=4,
-                                ),
-                                dbc.Col(
-                                    [
-                                        dbc.ButtonGroup(
-                                            [
-                                                dbc.Button(
-                                                    "▶️ Run",
-                                                    id="run-btn",
-                                                    color="success",
-                                                    className="me-2",
-                                                ),
-                                                dbc.Button(
-                                                    "⏹️ Stop",
-                                                    id="stop-btn",
-                                                    color="danger",
-                                                    className="me-2",
-                                                ),
-                                                dbc.Button(
-                                                    "🔄 Replay",
-                                                    id="replay-btn",
-                                                    color="warning",
-                                                    className="me-2",
-                                                ),
-                                            ]
-                                        ),
-                                    ],
-                                    width=4,
-                                    className="d-flex align-items-end",
-                                ),
-                            ],
-                            className="mb-3",
-                        ),
-                    ],
-                    className="p-3 border rounded",
-                ),
-                # Progress Bar
-                html.Div(
-                    [
-                        dbc.Progress(
-                            id="progress-bar",
-                            value=0,
-                            label="0% (0/0)",
-                            className="mb-2",
-                        ),
-                        html.Div(
-                            id="current-test",
-                            children="Current: Idle",
-                            className="text-muted",
-                        ),
-                    ],
-                    className="p-3 border rounded mb-3",
-                ),
-                # Console Output and Results
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                html.H5("Console Output"),
-                                html.Pre(
-                                    id="console-output",
-                                    children="",
-                                    style={
-                                        "height": "300px",
-                                        "overflow": "auto",
-                                        "backgroundColor": "#1e1e1e",
-                                        "color": "#d4d4d4",
-                                        "padding": "10px",
-                                        "fontFamily": "monospace",
-                                        "fontSize": "12px",
-                                        "border": "1px solid #444",
-                                        "borderRadius": "4px",
-                                    },
-                                ),
-                                dbc.Checklist(
-                                    options=[{"label": " Auto-scroll", "value": True}],
-                                    value=[True],
-                                    id="auto-scroll-check",
-                                    switch=True,
-                                    inline=True,
-                                ),
-                            ],
-                            width=6,
-                        ),
-                        dbc.Col(
-                            [
-                                html.H5("Test Results"),
-                                html.Div(
-                                    id="results-table",
-                                    children="No results yet...",
-                                ),
-                            ],
-                            width=6,
-                        ),
-                    ]
-                ),
-            ],
-            fluid=True,
-            className="px-4",
-        ),
-        # Interval for live updates
-        dcc.Interval(id="interval-component", interval=500),
-        # Toast notifications
-        html.Div(id="toast-container"),
+
+@app.callback(
+    Output("toast-container", "children"),
+    Input({"type": "run-btn", "index": ALL}, "n_clicks"),
+    Input({"type": "stop-btn", "index": ALL}, "n_clicks"),
+    Input({"type": "replay-btn", "index": ALL}, "n_clicks"),
+    Input({"type": "delete-btn", "index": ALL}, "n_clicks"),
+    State({"type": "suite-dropdown", "index": ALL}, "value"),
+    State({"type": "iq-dropdown", "index": ALL}, "value"),
+    State({"type": "model-dropdown", "index": ALL}, "value"),
+    State({"type": "profile-dropdown", "index": ALL}, "value"),
+    State({"type": "auto-recover-check", "index": ALL}, "value"),
+    State({"type": "dry-run-check", "index": ALL}, "value"),
+    prevent_initial_call=True,
+)
+def handle_button_click(
+    run_clicks,
+    stop_clicks,
+    replay_clicks,
+    delete_clicks,
+    suites,
+    iqs,
+    models,
+    profiles,
+    auto_recovers,
+    dry_runs,
+):
+    """Single handler for every action button across all sessions."""
+    triggered = ctx.triggered_id
+    if not triggered or not isinstance(triggered, dict):
+        raise PreventUpdate
+
+    btn_type = triggered["type"]
+    idx = triggered["index"]
+
+    sessions = session_manager.list_sessions()
+    if idx >= len(sessions):
+        raise PreventUpdate
+    session = sessions[idx]
+
+    # -- Stop --
+    if btn_type == "stop-btn":
+        RobotRunnerFactory.stop_runner(session.session_id)
+        return _toast("Stopped test run", "Stopped", "info")
+
+    # -- Delete --
+    if btn_type == "delete-btn":
+        if session.status == SessionStatus.RUNNING:
+            RobotRunnerFactory.stop_runner(session.session_id)
+        session_manager.close_session(session.session_id)
+        return _toast("Session deleted", "Deleted", "secondary")
+
+    # -- Run / Replay --
+    if btn_type in ("run-btn", "replay-btn"):
+        if session.status == SessionStatus.RUNNING:
+            return _toast("Already running", "Warning", "warning")
+
+        # Build config from the form values at this index
+        suite_val = suites[idx] if idx < len(suites) else "robot"
+        iq_val = iqs[idx] if idx < len(iqs) else ["100", "110", "120"]
+        model_val = models[idx] if idx < len(models) else "llama3"
+        profile_val = profiles[idx] if idx < len(profiles) else "STANDARD"
+        ar_val = auto_recovers[idx] if idx < len(auto_recovers) else []
+        dr_val = dry_runs[idx] if idx < len(dry_runs) else []
+
+        session.config = SessionConfig(
+            suite=suite_val or "robot",
+            iq_levels=iq_val or ["100", "110", "120"],
+            model=model_val or "llama3",
+            profile=profile_val or "STANDARD",
+            auto_recover=bool(ar_val and True in ar_val),
+            dry_run=bool(dr_val and True in dr_val),
+        )
+
+        runner = RobotRunnerFactory.create_runner(session)
+        runner.start()
+        label = "Replaying" if btn_type == "replay-btn" else "Started"
+        return _toast(f"{label} test run", label, "success")
+
+    raise PreventUpdate
+
+
+def _toast(msg: str, header: str, color: str) -> dbc.Toast:
+    return dbc.Toast(
+        msg,
+        id="action-toast",
+        header=header,
+        is_open=True,
+        dismissable=True,
+        duration=3000,
+        color=color,
+    )
+
+
+# -- Callback 2: poll live output for ALL sessions ----------------------------
+
+
+@app.callback(
+    Output({"type": "console-output", "index": ALL}, "children"),
+    Output({"type": "progress-bar", "index": ALL}, "value"),
+    Output({"type": "progress-bar", "index": ALL}, "label"),
+    Output({"type": "current-test", "index": ALL}, "children"),
+    Input("interval-component", "n_intervals"),
+    State({"type": "console-output", "index": ALL}, "id"),
+)
+def update_live_output(n_intervals, panel_ids):
+    """Push console text and progress for every session panel."""
+    sessions = session_manager.list_sessions()
+    n = len(panel_ids)
+
+    console_texts: list[str] = []
+    progress_values: list[int] = []
+    progress_labels: list[str] = []
+    current_tests: list[str] = []
+
+    for i in range(n):
+        if i < len(sessions):
+            s = sessions[i]
+            console_texts.append("\n".join(s.output_buffer))
+            cur = s.progress.get("current", 0)
+            tot = s.progress.get("total", 0)
+            pct = min(100, int((cur / tot) * 100)) if tot else 0
+            progress_values.append(pct)
+            progress_labels.append(f"{pct}% ({cur}/{tot})" if tot else "Idle")
+            status = f"Status: {s.status.value}"
+            if s.current_test:
+                status += f" | {s.current_test}"
+            current_tests.append(status)
+        else:
+            # Panel exists but session was deleted
+            console_texts.append("")
+            progress_values.append(0)
+            progress_labels.append("Idle")
+            current_tests.append("Session deleted")
+
+    return console_texts, progress_values, progress_labels, current_tests
+
+
+# -- Callback 3: update button disabled states for ALL sessions ---------------
+
+
+@app.callback(
+    Output({"type": "run-btn", "index": ALL}, "disabled"),
+    Output({"type": "stop-btn", "index": ALL}, "disabled"),
+    Output({"type": "replay-btn", "index": ALL}, "disabled"),
+    Output({"type": "suite-dropdown", "index": ALL}, "disabled"),
+    Output({"type": "iq-dropdown", "index": ALL}, "disabled"),
+    Output({"type": "model-dropdown", "index": ALL}, "disabled"),
+    Output({"type": "profile-dropdown", "index": ALL}, "disabled"),
+    Output({"type": "auto-recover-check", "index": ALL}, "disabled"),
+    Output({"type": "dry-run-check", "index": ALL}, "disabled"),
+    Input("interval-component", "n_intervals"),
+    State({"type": "run-btn", "index": ALL}, "id"),
+)
+def update_ui_states(n_intervals, btn_ids):
+    """Enable / disable controls based on running state."""
+    sessions = session_manager.list_sessions()
+    n = len(btn_ids)
+
+    run_d: list[bool] = []
+    stop_d: list[bool] = []
+    replay_d: list[bool] = []
+    suite_d: list[bool] = []
+    iq_d: list[bool] = []
+    model_d: list[bool] = []
+    profile_d: list[bool] = []
+    ar_d: list[bool] = []
+    dr_d: list[bool] = []
+
+    for i in range(n):
+        running = i < len(sessions) and sessions[i].status == SessionStatus.RUNNING
+        run_d.append(running)
+        stop_d.append(not running)
+        replay_d.append(running)
+        suite_d.append(running)
+        iq_d.append(running)
+        model_d.append(running)
+        profile_d.append(running)
+        ar_d.append(running)
+        dr_d.append(running)
+
+    return run_d, stop_d, replay_d, suite_d, iq_d, model_d, profile_d, ar_d, dr_d
+
+
+# -- Callback 4: update tab labels / colours ---------------------------------
+
+
+@app.callback(
+    Output("session-tabs", "children"),
+    Input("interval-component", "n_intervals"),
+)
+def update_tab_styles(n_intervals):
+    """Rebuild tabs with status colours and runtime."""
+    sessions = session_manager.list_sessions()
+    tabs = []
+    for i, s in enumerate(sessions):
+        tabs.append(
+            dbc.Tab(
+                label=s.tab_label,
+                tab_id=f"tab-{i}",
+                label_style={
+                    "color": "white",
+                    "backgroundColor": s.tab_color,
+                    "fontWeight": "bold",
+                },
+                active_label_style={
+                    "color": "white",
+                    "backgroundColor": s.tab_color,
+                    "fontWeight": "bold",
+                    "border": "2px solid white",
+                },
+            )
+        )
+    return tabs
+
+
+# -- Callback 5: switch visible session panel ---------------------------------
+
+
+@app.callback(
+    Output({"type": "session-panel", "index": ALL}, "style"),
+    Input("session-tabs", "active_tab"),
+    State({"type": "session-panel", "index": ALL}, "id"),
+)
+def toggle_tab_visibility(active_tab, panel_ids):
+    """Show only the panel for the active tab; hide others."""
+    if not active_tab:
+        raise PreventUpdate
+    active_index = int(active_tab.replace("tab-", ""))
+    return [
+        {"display": "block"} if p["index"] == active_index else {"display": "none"}
+        for p in panel_ids
     ]
-)
 
 
-# Live update callback
+# -- Callback 6: add new session ---------------------------------------------
+
+
 @app.callback(
-    Output("console-output", "children"),
-    Output("progress-bar", "value"),
-    Output("progress-bar", "label"),
-    Output("current-test", "children"),
-    Input("interval-component", "n_intervals"),
-)
-def update_live_output(n_intervals):
-    """Update console output and progress."""
-    session = session_manager.get_session(SESSION_ID)
-    if not session:
-        raise PreventUpdate
-
-    output_text = "\n".join(session.output_buffer)
-
-    if session.progress:
-        current = session.progress.get("current", 0)
-        total = session.progress.get("total", 1)
-        percentage = min(100, int((current / total) * 100))
-    else:
-        current, total, percentage = 0, 0, 0
-
-    progress_label = f"{percentage}% ({current}/{total})"
-    status_text = f"Status: {session.status.value}"
-    if session.current_test:
-        status_text += f" | Current: {session.current_test}"
-
-    return output_text, percentage, progress_label, status_text
-
-
-# Run button callback
-@app.callback(
-    Output("toast-container", "children"),
-    Input("run-btn", "n_clicks"),
-    State("suite-dropdown", "value"),
-    State("iq-dropdown", "value"),
-    State("model-dropdown", "value"),
-    State("profile-dropdown", "value"),
-    State("auto-recover-check", "value"),
-    State("dry-run-check", "value"),
+    Output("sessions-container", "children"),
+    Output("session-tabs", "active_tab"),
+    Output("session-counter", "data"),
+    Input("new-session-btn", "n_clicks"),
+    State("sessions-container", "children"),
+    State("session-counter", "data"),
     prevent_initial_call=True,
 )
-def handle_run(
-    n_clicks,
-    suite_value,
-    iq_values,
-    model_value,
-    profile_value,
-    auto_recover_value,
-    dry_run_value,
-):
-    """Handle run button click."""
+def add_new_session(n_clicks, current_panels, counter):
+    """Create a new session and add its panel to the DOM."""
     if not n_clicks:
         raise PreventUpdate
 
-    session = session_manager.get_session(SESSION_ID)
-    if not session:
-        return dbc.Toast(
-            "Session not found",
-            id="run-error",
-            header="Error",
-            is_open=True,
-            color="danger",
-        )
+    sessions = session_manager.list_sessions()
+    if len(sessions) >= 5:
+        return current_panels, f"tab-{counter - 1}", counter
 
-    if session.status == SessionStatus.RUNNING:
-        return dbc.Toast(
-            "Session is already running",
-            id="run-warning",
-            header="Warning",
-            is_open=True,
-            color="warning",
-        )
+    session_manager.create_session(SessionConfig())
+    new_index = counter
+    current_panels.append(create_session_panel(new_index))
 
-    # Update config from UI values
-    config = SessionConfig(
-        suite=suite_value or "robot",
-        iq_levels=iq_values or ["100", "110", "120"],
-        model=model_value or "llama3",
-        profile=profile_value or "STANDARD",
-        auto_recover=bool(auto_recover_value and True in auto_recover_value),
-        dry_run=bool(dry_run_value and True in dry_run_value),
-    )
-    session.config = config
-
-    # Create and start runner
-    runner = RobotRunnerFactory.create_runner(session)
-    runner.start()
-
-    return dbc.Toast(
-        "Started test run",
-        id="run-success",
-        header="Started",
-        is_open=True,
-        color="success",
-    )
+    return current_panels, f"tab-{new_index}", counter + 1
 
 
-# Stop button callback
-@app.callback(
-    Output("toast-container", "children"),
-    Input("stop-btn", "n_clicks"),
-    prevent_initial_call=True,
-)
-def handle_stop(n_clicks):
-    """Handle stop button click."""
-    if not n_clicks:
-        raise PreventUpdate
-
-    success = RobotRunnerFactory.stop_runner(SESSION_ID)
-
-    return dbc.Toast(
-        "Stopped test run" if success else "Failed to stop",
-        id="stop-success" if success else "stop-error",
-        header="Stopped" if success else "Error",
-        is_open=True,
-        color="info" if success else "danger",
-    )
-
-
-# Replay button callback
-@app.callback(
-    Output("toast-container", "children"),
-    Input("replay-btn", "n_clicks"),
-    State("suite-dropdown", "value"),
-    State("iq-dropdown", "value"),
-    State("model-dropdown", "value"),
-    State("profile-dropdown", "value"),
-    State("auto-recover-check", "value"),
-    State("dry-run-check", "value"),
-    prevent_initial_call=True,
-)
-def handle_replay(
-    n_clicks,
-    suite_value,
-    iq_values,
-    model_value,
-    profile_value,
-    auto_recover_value,
-    dry_run_value,
-):
-    """Handle replay button click."""
-    if not n_clicks:
-        raise PreventUpdate
-
-    session = session_manager.get_session(SESSION_ID)
-    if not session:
-        return dbc.Toast(
-            "Session not found",
-            id="replay-error",
-            header="Error",
-            is_open=True,
-            color="danger",
-        )
-
-    # Update config from UI values
-    config = SessionConfig(
-        suite=suite_value or "robot",
-        iq_levels=iq_values or ["100", "110", "120"],
-        model=model_value or "llama3",
-        profile=profile_value or "STANDARD",
-        auto_recover=bool(auto_recover_value and True in auto_recover_value),
-        dry_run=bool(dry_run_value and True in dry_run_value),
-    )
-    session.config = config
-
-    # Create and start runner
-    runner = RobotRunnerFactory.create_runner(session)
-    runner.start()
-
-    return dbc.Toast(
-        "Replaying test run",
-        id="replay-success",
-        header="Replaying",
-        is_open=True,
-        color="warning",
-    )
-
-
-# Update button states based on session status
-@app.callback(
-    Output("stop-btn", "disabled"),
-    Output("run-btn", "disabled"),
-    Output("replay-btn", "disabled"),
-    Output("suite-dropdown", "disabled"),
-    Output("iq-dropdown", "disabled"),
-    Output("model-dropdown", "disabled"),
-    Output("profile-dropdown", "disabled"),
-    Output("auto-recover-check", "disabled"),
-    Output("dry-run-check", "disabled"),
-    Input("interval-component", "n_intervals"),
-)
-def update_button_states(n_intervals):
-    """Update button states based on session status."""
-    session = session_manager.get_session(SESSION_ID)
-    if not session:
-        # Default state: all enabled except stop
-        return True, False, False, False, False, False, False, False, False
-
-    is_running = session.status == SessionStatus.RUNNING
-
-    return (
-        not is_running,  # stop-btn: disabled when not running
-        is_running,  # run-btn: disabled when running
-        is_running,  # replay-btn: disabled when running
-        is_running,  # suite: disabled when running
-        is_running,  # iq: disabled when running
-        is_running,  # model: disabled when running
-        is_running,  # profile: disabled when running
-        is_running,  # auto-recover: disabled when running
-        is_running,  # dry-run: disabled when running
-    )
-
+# -- Entry point --------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
