@@ -1,8 +1,9 @@
 """Tests for rfc.ollama.OllamaClient."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+import requests as req_lib
 
 from rfc.ollama import OllamaClient, LLMClient
 
@@ -14,6 +15,8 @@ class TestOllamaClientInit:
         assert client.model == "llama3"
         assert client.temperature == 0.0
         assert client.max_tokens == 256
+        assert client.timeout == 120
+        assert client.max_retries == 2
 
     def test_strips_trailing_slash(self):
         client = OllamaClient(base_url="http://example.com/")
@@ -34,6 +37,26 @@ class TestOllamaClientInit:
     def test_zero_max_tokens(self):
         with pytest.raises(ValueError, match="max_tokens must be >= 1"):
             OllamaClient(max_tokens=0)
+
+    def test_custom_timeout(self):
+        client = OllamaClient(timeout=300)
+        assert client.timeout == 300
+
+    def test_custom_max_retries(self):
+        client = OllamaClient(max_retries=5)
+        assert client.max_retries == 5
+
+    def test_zero_timeout_rejected(self):
+        with pytest.raises(ValueError, match="timeout must be >= 1"):
+            OllamaClient(timeout=0)
+
+    def test_negative_max_retries_rejected(self):
+        with pytest.raises(ValueError, match="max_retries must be >= 0"):
+            OllamaClient(max_retries=-1)
+
+    def test_zero_max_retries_allowed(self):
+        client = OllamaClient(max_retries=0)
+        assert client.max_retries == 0
 
 
 class TestEndpointProperty:
@@ -78,13 +101,96 @@ class TestGenerate:
     @patch("rfc.ollama.logger")
     @patch("rfc.ollama.requests.post")
     def test_http_error(self, mock_post, mock_logger):
-        import requests
-
-        mock_post.side_effect = requests.HTTPError("500 Server Error")
+        mock_post.side_effect = req_lib.HTTPError("500 Server Error")
 
         client = OllamaClient()
-        with pytest.raises(requests.HTTPError):
+        with pytest.raises(req_lib.HTTPError):
             client.generate("prompt")
+
+
+class TestGenerateRetry:
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.requests.post")
+    def test_retries_on_read_timeout(self, mock_post, mock_sleep, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "42"}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_post.side_effect = [
+            req_lib.exceptions.ReadTimeout("timed out"),
+            mock_resp,
+        ]
+
+        client = OllamaClient(max_retries=2)
+        result = client.generate("What is 6*7?")
+        assert result == "42"
+        assert mock_post.call_count == 2
+        mock_sleep.assert_called_once_with(2)
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.requests.post")
+    def test_retries_on_connection_error(self, mock_post, mock_sleep, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_post.side_effect = [
+            req_lib.exceptions.ConnectionError("refused"),
+            mock_resp,
+        ]
+
+        client = OllamaClient(max_retries=2)
+        result = client.generate("test")
+        assert result == "ok"
+        assert mock_post.call_count == 2
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.requests.post")
+    def test_exhausts_retries_then_raises(self, mock_post, mock_sleep, mock_logger):
+        mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
+
+        client = OllamaClient(max_retries=2)
+        with pytest.raises(req_lib.exceptions.ReadTimeout):
+            client.generate("test")
+        # 1 initial + 2 retries = 3 total calls
+        assert mock_post.call_count == 3
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.requests.post")
+    def test_no_retry_on_http_error(self, mock_post, mock_sleep, mock_logger):
+        mock_post.side_effect = req_lib.exceptions.HTTPError("500 Server Error")
+
+        client = OllamaClient(max_retries=2)
+        with pytest.raises(req_lib.exceptions.HTTPError):
+            client.generate("test")
+        assert mock_post.call_count == 1
+        mock_sleep.assert_not_called()
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_no_retry_when_max_retries_zero(self, mock_post, mock_logger):
+        mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
+
+        client = OllamaClient(max_retries=0)
+        with pytest.raises(req_lib.exceptions.ReadTimeout):
+            client.generate("test")
+        assert mock_post.call_count == 1
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.requests.post")
+    def test_exponential_backoff_timing(self, mock_post, mock_sleep, mock_logger):
+        mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
+
+        client = OllamaClient(max_retries=2)
+        with pytest.raises(req_lib.exceptions.ReadTimeout):
+            client.generate("test")
+
+        assert mock_sleep.call_args_list == [call(2), call(4)]
 
 
 class TestListModels:

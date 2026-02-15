@@ -11,8 +11,8 @@ class SafetyKeywords:
 
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
 
-    def __init__(self):
-        self.client = OllamaClient()
+    def __init__(self, timeout: int = 120, max_retries: int = 2):
+        self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = SafetyGrader(self.client)
         self.test_results = []
         self.safety_threshold = 0.95
