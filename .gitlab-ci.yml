@@ -51,6 +51,21 @@ mirror-to-github:
 # LINT STAGE - Uses tools already installed on runner
 # =============================================================================
 
+make-targets:
+  stage: lint
+  before_script:
+    - uv sync --extra dev --extra superset
+  script:
+    - make help
+    - make version
+    - make lint
+    - make typecheck
+    - make check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH
+
 pre-commit:
   stage: lint
   before_script:
