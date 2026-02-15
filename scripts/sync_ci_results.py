@@ -65,8 +65,10 @@ class GitLabArtifactFetcher:
     ) -> tuple[str, str, str]:
         """Resolve GitLab API settings from params or environment."""
         # Explicit params take priority
+        resolved_token = (
+            token if token is not None else os.environ.get("GITLAB_TOKEN", "")
+        )
         if api_url and project_id:
-            resolved_token = token or os.environ.get("GITLAB_TOKEN", "")
             return api_url.rstrip("/"), project_id, resolved_token
 
         # CI_API_V4_URL / CI_PROJECT_ID (inside GitLab CI)
@@ -75,17 +77,15 @@ class GitLabArtifactFetcher:
         if ci_api and ci_pid:
             # CI_API_V4_URL is like https://gitlab.example.com/api/v4
             base_url = ci_api.rsplit("/api/v4", 1)[0]
-            resolved_token = token or os.environ.get("GITLAB_TOKEN", "")
             return base_url, ci_pid, resolved_token
 
         # GITLAB_API_URL / GITLAB_PROJECT_ID env vars
         env_api = os.environ.get("GITLAB_API_URL", "")
         env_pid = os.environ.get("GITLAB_PROJECT_ID", "")
         if env_api and env_pid:
-            resolved_token = token or os.environ.get("GITLAB_TOKEN", "")
             return env_api.rstrip("/"), env_pid, resolved_token
 
-        return "", "", token or ""
+        return "", "", resolved_token
 
     def _headers(self) -> dict[str, str]:
         """Build HTTP headers for GitLab API requests."""

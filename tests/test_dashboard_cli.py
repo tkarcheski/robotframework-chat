@@ -26,18 +26,12 @@ class TestDashboardCli:
 
     def test_default_args(self):
         mock_app = self._run_main()
-        mock_app.run.assert_called_once_with(
-            debug=False, host="0.0.0.0", port=8050
-        )
+        mock_app.run.assert_called_once_with(debug=False, host="0.0.0.0", port=8050)
 
     def test_custom_host_and_port(self):
         mock_app = self._run_main(host="127.0.0.1", port=9000)
-        mock_app.run.assert_called_once_with(
-            debug=False, host="127.0.0.1", port=9000
-        )
+        mock_app.run.assert_called_once_with(debug=False, host="127.0.0.1", port=9000)
 
     def test_debug_flag(self):
         mock_app = self._run_main(debug=True)
-        mock_app.run.assert_called_once_with(
-            debug=True, host="0.0.0.0", port=8050
-        )
+        mock_app.run.assert_called_once_with(debug=True, host="0.0.0.0", port=8050)

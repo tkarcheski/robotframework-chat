@@ -67,16 +67,16 @@ class GitMetaData:
 
             # Format Commit_SHA as a clickable link
             if project_url and commit_sha:
-                attributes["metadata"]["Commit_SHA"] = (
-                    self._format_commit_link(project_url, commit_sha, commit_short)
+                attributes["metadata"]["Commit_SHA"] = self._format_commit_link(
+                    project_url, commit_sha, commit_short
                 )
 
             # Format Source as a clickable link to the file at the commit
             source = attributes.get("source", "")
             if source and project_url and commit_sha:
                 rel_path = self._resolve_relative_path(source)
-                attributes["metadata"]["Source"] = (
-                    self._format_source_link(project_url, commit_sha, rel_path)
+                attributes["metadata"]["Source"] = self._format_source_link(
+                    project_url, commit_sha, rel_path
                 )
 
     def end_suite(self, name: str, attributes: Dict[str, Any]):
@@ -119,18 +119,14 @@ class GitMetaData:
             f"{attributes.get('skip', 0)} skipped"
         )
 
-    def _format_commit_link(
-        self, project_url: str, sha: str, short_sha: str
-    ) -> str:
+    def _format_commit_link(self, project_url: str, sha: str, short_sha: str) -> str:
         """Format a commit SHA as a clickable link for the detected platform."""
         if self.platform == "github":
             return f"[{short_sha}|{project_url}/commit/{sha}]"
         # GitLab (default)
         return f"[{short_sha}|{project_url}/-/commit/{sha}]"
 
-    def _format_source_link(
-        self, project_url: str, sha: str, rel_path: str
-    ) -> str:
+    def _format_source_link(self, project_url: str, sha: str, rel_path: str) -> str:
         """Format a source file path as a clickable link for the detected platform."""
         if self.platform == "github":
             return f"[{rel_path}|{project_url}/blob/{sha}/{rel_path}]"
@@ -142,11 +138,11 @@ class GitMetaData:
         if self.platform == "github":
             workspace = os.getenv("GITHUB_WORKSPACE", "")
             if workspace and source.startswith(workspace):
-                return source[len(workspace):].lstrip(os.sep)
+                return source[len(workspace) :].lstrip(os.sep)
         else:
             project_dir = os.getenv("CI_PROJECT_DIR", "")
             if project_dir and source.startswith(project_dir):
-                return source[len(project_dir):].lstrip(os.sep)
+                return source[len(project_dir) :].lstrip(os.sep)
         return source
 
     def _save_metadata_json(self, metadata: Dict[str, str]):
