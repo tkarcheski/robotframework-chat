@@ -135,3 +135,17 @@ ci:
       path: "robot/safety/"
       output_dir: "results/safety"
       tags: ["ollama"]
+
+# ---------------------------------------------------------------------------
+# Monitoring Configuration
+#
+# Settings for the dashboard's Ollama Hosts and GitLab Pipelines tabs.
+# ---------------------------------------------------------------------------
+monitoring:
+  poll_interval_seconds: 30
+  history_hours: 24
+  # GitLab API settings (leave empty to disable pipeline monitoring)
+  gitlab_api_url: ""
+  gitlab_project_id: ""
+  gitlab_token_env: "GITLAB_TOKEN"
+  pipeline_count: 20

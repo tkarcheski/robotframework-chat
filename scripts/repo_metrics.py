@@ -13,7 +13,6 @@ import json
 import subprocess
 import sys
 import tarfile
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -120,16 +119,44 @@ def collect_timeline(max_points: int = 30) -> list[dict]:
     sampled = sample_commits(commits, max_points)
     timeline = []
     for i, (sha, dt) in enumerate(sampled, 1):
-        print(f"  [{i}/{len(sampled)}] {sha[:8]} {dt.date()}", file=sys.stderr)
+        short = sha[:7]
+        ts = dt.strftime("%H:%M")
+        print(
+            f"  [{i}/{len(sampled)}] {short} {dt.date()} {ts}",
+            file=sys.stderr,
+        )
         snapshot = metrics_at_commit(sha)
         timeline.append(
             {
                 "sha": sha,
+                "short_sha": short,
                 "date": dt.isoformat(),
                 "metrics": snapshot,
             }
         )
     return timeline
+
+
+def _compute_deltas(timeline: list[dict]) -> dict[str, dict[str, int]]:
+    """Compute metric changes between the first and last snapshot.
+
+    Returns a dict keyed by category with ``delta_files``, ``delta_lines``,
+    and ``delta_bytes`` values.
+    """
+    if len(timeline) < 2:
+        return {}
+    first = timeline[0]["metrics"]
+    last = timeline[-1]["metrics"]
+    deltas: dict[str, dict[str, int]] = {}
+    for cat in last:
+        f0 = first.get(cat, {})
+        f1 = last[cat]
+        deltas[cat] = {
+            "delta_files": f1.get("files", 0) - f0.get("files", 0),
+            "delta_lines": f1.get("lines", 0) - f0.get("lines", 0),
+            "delta_bytes": f1.get("bytes", 0) - f0.get("bytes", 0),
+        }
+    return deltas
 
 
 def generate_plot(timeline: list[dict], output: Path) -> None:
@@ -148,9 +175,7 @@ def generate_plot(timeline: list[dict], output: Path) -> None:
 
     for cat in categories:
         lines_data = [s["metrics"].get(cat, {}).get("lines", 0) for s in timeline]
-        sizes_kb = [
-            s["metrics"].get(cat, {}).get("bytes", 0) / 1024 for s in timeline
-        ]
+        sizes_kb = [s["metrics"].get(cat, {}).get("bytes", 0) / 1024 for s in timeline]
         color = CATEGORY_COLORS[cat]
 
         ax1.fill_between(dates, lines_data, alpha=0.15, color=color)
@@ -184,7 +209,7 @@ def generate_plot(timeline: list[dict], output: Path) -> None:
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
 
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%b %d %H:%M"))
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
 
     fig.autofmt_xdate()
@@ -197,13 +222,21 @@ def generate_plot(timeline: list[dict], output: Path) -> None:
 
 
 def generate_summary(timeline: list[dict]) -> str:
-    """Generate a Markdown summary table of current repo metrics."""
+    """Generate a detailed Markdown metrics report."""
     latest = timeline[-1]["metrics"]
-    parts = []
-    parts.append("## Repository Metrics Summary\n")
-    parts.append(f"**Commit:** `{timeline[-1]['sha'][:8]}`  ")
-    parts.append(f"**Date:** {timeline[-1]['date'][:10]}  ")
+    latest_entry = timeline[-1]
+    dt = datetime.fromisoformat(latest_entry["date"])
+
+    parts: list[str] = []
+
+    # -- Header --
+    parts.append("## Repository Metrics Report\n")
+    parts.append(f"**Commit:** `{latest_entry['short_sha']}`  ")
+    parts.append(f"**Date:** {dt.strftime('%Y-%m-%d %H:%M')}  ")
     parts.append(f"**Sampled commits:** {len(timeline)}\n")
+
+    # -- Section 1: Current snapshot --
+    parts.append("### Current Snapshot\n")
     parts.append("| Category | Files | Lines | Size (KB) |")
     parts.append("|----------|------:|------:|----------:|")
 
@@ -219,10 +252,115 @@ def generate_summary(timeline: list[dict]) -> str:
 
     parts.append(
         f"| **Total** | **{total_files}** | **{total_lines:,}** | "
-        f"**{total_bytes / 1024:.1f}** |"
+        f"**{total_bytes / 1024:.1f}** |\n"
     )
-    parts.append("\n_Timeline plot available in job artifacts._")
+
+    # -- Section 2: Growth deltas --
+    deltas = _compute_deltas(timeline)
+    if deltas:
+        first_dt = datetime.fromisoformat(timeline[0]["date"])
+        parts.append("### Growth Since First Sampled Commit\n")
+        parts.append(
+            f"_From `{timeline[0]['short_sha']}` "
+            f"({first_dt.strftime('%Y-%m-%d %H:%M')}) "
+            f"to `{latest_entry['short_sha']}` "
+            f"({dt.strftime('%Y-%m-%d %H:%M')})_\n"
+        )
+        parts.append("| Category | Files | Lines | Size (KB) |")
+        parts.append("|----------|------:|------:|----------:|")
+        td_files = td_lines = td_bytes = 0
+        for cat, d in deltas.items():
+            parts.append(
+                f"| {cat} | {d['delta_files']:+d} | {d['delta_lines']:+,} | "
+                f"{d['delta_bytes'] / 1024:+.1f} |"
+            )
+            td_files += d["delta_files"]
+            td_lines += d["delta_lines"]
+            td_bytes += d["delta_bytes"]
+        parts.append(
+            f"| **Total** | **{td_files:+d}** | **{td_lines:+,}** | "
+            f"**{td_bytes / 1024:+.1f}** |\n"
+        )
+
+    # -- Section 3: Category breakdown percentages --
+    parts.append("### Composition\n")
+    if total_lines > 0:
+        for cat, data in latest.items():
+            pct = data["lines"] / total_lines * 100
+            bar = "#" * int(pct / 2)
+            parts.append(f"- **{cat}**: {pct:.1f}% `{bar}`")
+    parts.append("")
+
+    # -- Section 4: Timeline summary --
+    parts.append("### Timeline Highlights\n")
+    if len(timeline) >= 2:
+        # Find peak lines commit
+        peak_idx = max(
+            range(len(timeline)),
+            key=lambda i: sum(
+                v.get("lines", 0) for v in timeline[i]["metrics"].values()
+            ),
+        )
+        peak = timeline[peak_idx]
+        peak_dt = datetime.fromisoformat(peak["date"])
+        peak_lines = sum(v.get("lines", 0) for v in peak["metrics"].values())
+        parts.append(
+            f"- **Peak lines:** {peak_lines:,} at "
+            f"`{peak['short_sha']}` ({peak_dt.strftime('%Y-%m-%d %H:%M')})"
+        )
+
+        # Largest single-commit jump in total lines
+        max_jump = 0
+        jump_idx = 0
+        for i in range(1, len(timeline)):
+            prev_total = sum(
+                v.get("lines", 0) for v in timeline[i - 1]["metrics"].values()
+            )
+            cur_total = sum(v.get("lines", 0) for v in timeline[i]["metrics"].values())
+            diff = cur_total - prev_total
+            if abs(diff) > abs(max_jump):
+                max_jump = diff
+                jump_idx = i
+        if max_jump != 0:
+            j = timeline[jump_idx]
+            j_dt = datetime.fromisoformat(j["date"])
+            parts.append(
+                f"- **Largest change:** {max_jump:+,} lines at "
+                f"`{j['short_sha']}` ({j_dt.strftime('%Y-%m-%d %H:%M')})"
+            )
+    parts.append("")
+
+    # -- Section 5: Per-category line counts over time --
+    parts.append("### Lines of Code Over Time\n")
+    parts.append("| Commit | Date | Python | Robot | Other | Total |")
+    parts.append("|--------|------|-------:|------:|------:|------:|")
+    # Show at most 10 evenly spaced rows
+    indices = _thin_indices(len(timeline), 10)
+    for i in indices:
+        s = timeline[i]
+        s_dt = datetime.fromisoformat(s["date"])
+        py = s["metrics"].get("Python (.py)", {}).get("lines", 0)
+        rb = s["metrics"].get("Robot (.robot)", {}).get("lines", 0)
+        ot = s["metrics"].get(OTHER_LABEL, {}).get("lines", 0)
+        parts.append(
+            f"| `{s['short_sha']}` | {s_dt.strftime('%Y-%m-%d %H:%M')} "
+            f"| {py:,} | {rb:,} | {ot:,} | {py + rb + ot:,} |"
+        )
+    parts.append("")
+
+    parts.append("_Timeline plot available in job artifacts._")
     return "\n".join(parts)
+
+
+def _thin_indices(total: int, max_rows: int) -> list[int]:
+    """Return at most *max_rows* evenly spaced indices from 0..total-1."""
+    if total <= max_rows:
+        return list(range(total))
+    step = total / max_rows
+    out = [int(i * step) for i in range(max_rows)]
+    if out[-1] != total - 1:
+        out.append(total - 1)
+    return out
 
 
 def main() -> None:
