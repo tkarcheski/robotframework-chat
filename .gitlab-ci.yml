@@ -1,10 +1,19 @@
 # GitLab CI/CD Pipeline for robotframework-chat
 # Works with shell executor on any OS (macOS, Linux)
 # Assumes tools are pre-installed on runner
+#
+# Two pipeline modes:
+#   1. Regular  -- runs automatically on push/MR, one default model per suite
+#   2. Dynamic  -- manual play-button, discovers Ollama nodes on the network,
+#                  enumerates models, and runs every (node, model, suite) combo
+#
+# Both modes are generated from config/test_suites.yaml via
+# scripts/generate_pipeline.py so test-suite definitions stay DRY.
 
 stages:
   - sync
   - lint
+  - generate
   - test
   - report
   - deploy
@@ -23,9 +32,9 @@ variables:
   # DATABASE_URL: "postgresql://rfc:rfc@postgres:5432/rfc"
 
 
-## =============================================================================
+# =============================================================================
 # SYNC STAGE - Syncs repos so all CI runs
-## =============================================================================
+# =============================================================================
 mirror-to-github:
   stage: sync
   rules:
@@ -77,137 +86,84 @@ mypy-check:
   allow_failure: true
 
 # =============================================================================
-# TEST STAGE - Requires runner with 'ollama' tag
+# GENERATE STAGE
+#
+# Reads config/test_suites.yaml and produces child-pipeline YAML.
+# Two jobs: one for the regular (automatic) pipeline, one for the
+# dynamic (manual) Ollama-discovery pipeline.
+# =============================================================================
+
+generate-regular-pipeline:
+  stage: generate
+  before_script:
+    - uv sync --extra dev
+  script:
+    - uv run python scripts/generate_pipeline.py --mode regular -o generated-pipeline.yml
+    - cat generated-pipeline.yml
+  artifacts:
+    paths:
+      - generated-pipeline.yml
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Dynamic Ollama discovery -- manual play button
+#
+# Set OLLAMA_NODES (comma-separated host:port) or OLLAMA_SUBNET (CIDR)
+# in GitLab CI/CD variables to control which nodes are scanned.
+# When neither is set the script falls back to localhost:11434.
+generate-dynamic-pipeline:
+  stage: generate
+  when: manual
+  allow_failure: true
+  before_script:
+    - uv sync --extra dev
+  script:
+    - echo "Discovering Ollama nodes..."
+    - uv run python scripts/discover_ollama.py --pretty
+    - uv run python scripts/generate_pipeline.py --mode dynamic -o generated-dynamic-pipeline.yml
+    - cat generated-dynamic-pipeline.yml
+  artifacts:
+    paths:
+      - generated-dynamic-pipeline.yml
+
+# =============================================================================
+# TEST STAGE - child pipelines generated above
 #
 # Every robot run attaches both listeners:
-#   - DbListener: archives per-suite results to PostgreSQL or SQLite
-#   - CiMetadataListener: adds CI context to Robot Framework output
-# =============================================================================
-
-.robot_template: &robot_template
-  tags:
-    - ollama
-  before_script:
-    - uv sync --extra dev --extra superset
-    - |
-      echo "Checking Ollama at $OLLAMA_ENDPOINT..."
-      if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
-        echo "Ollama is available"
-      else
-        echo "Warning: Ollama not available - tests may fail"
-      fi
-
-robot-math-tests:
-  stage: test
-  <<: *robot_template
-  script:
-    - uv run robot -d results/math --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
-  artifacts:
-    when: always
-    paths:
-      - results/math/
-      - data/
-  rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
-
-robot-docker-tests:
-  stage: test
-  <<: *robot_template
-  tags:
-    - ollama
-    - docker
-  script:
-    - uv run robot -d results/docker --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
-  artifacts:
-    when: always
-    paths:
-      - results/docker/
-      - data/
-  rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
-
-robot-safety-tests:
-  stage: test
-  <<: *robot_template
-  script:
-    - uv run robot -d results/safety --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
-  artifacts:
-    when: always
-    paths:
-      - results/safety/
-      - data/
-  rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
-
-# =============================================================================
-# REPORT STAGE
+#   - DbListener:          archives per-suite results to PostgreSQL or SQLite
+#   - CiMetadataListener:  adds CI context to Robot Framework output
 #
-# 1. rebot merges all per-suite output.xml files into a single combined report
-# 2. The combined report is imported into the database as a pipeline-level run
+# The child pipeline YAML is self-contained (test + report stages).
 # =============================================================================
 
-aggregate-results:
-  stage: report
+run-regular-tests:
+  stage: test
   needs:
-    - job: robot-math-tests
+    - job: generate-regular-pipeline
       artifacts: true
-      optional: true
-    - job: robot-docker-tests
-      artifacts: true
-      optional: true
-    - job: robot-safety-tests
-      artifacts: true
-      optional: true
-  before_script:
-    - uv sync --extra dev --extra superset
-  script:
-    - mkdir -p results/combined
-
-    # ── Collect output.xml files from all test jobs ──
-    - |
-      OUTPUT_FILES=""
-      for f in results/math/output.xml results/docker/output.xml results/safety/output.xml; do
-        if [ -f "$f" ]; then
-          OUTPUT_FILES="$OUTPUT_FILES $f"
-        fi
-      done
-
-    # ── Merge with rebot ──
-    - |
-      if [ -z "$OUTPUT_FILES" ]; then
-        echo "No output.xml files found - nothing to aggregate"
-        exit 0
-      fi
-      echo "Combining:$OUTPUT_FILES"
-      uv run rebot \
-        --name "Combined Results" \
-        --outputdir results/combined \
-        --output output.xml \
-        --log log.html \
-        --report report.html \
-        --nostatusrc \
-        $OUTPUT_FILES
-      echo "Combined report: results/combined/report.html"
-
-    # ── Import combined results into the database ──
-    - uv run python scripts/import_test_results.py results/combined/output.xml --model "$DEFAULT_MODEL"
-
-    # ── CI metadata ──
-    - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
-
-  artifacts:
-    when: always
-    paths:
-      - results/combined/
+  trigger:
+    include:
+      - artifact: generated-pipeline.yml
+        job: generate-regular-pipeline
+    strategy: depend
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+run-dynamic-tests:
+  stage: test
+  needs:
+    - job: generate-dynamic-pipeline
+      artifacts: true
+  trigger:
+    include:
+      - artifact: generated-dynamic-pipeline.yml
+        job: generate-dynamic-pipeline
+    strategy: depend
+  rules:
+    - when: manual
+  allow_failure: true
 
 # =============================================================================
 # DEPLOY STAGE - Deploy / update Superset stack
