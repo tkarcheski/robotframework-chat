@@ -1,7 +1,7 @@
 # robotframework-chat Makefile
 # Run `make help` for a list of targets.
 
-COMPOSE  := docker compose
+COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 ROBOT    := uv run robot
 LISTENER := --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener
 
