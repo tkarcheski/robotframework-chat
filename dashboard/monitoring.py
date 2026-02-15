@@ -49,6 +49,7 @@ _DEFAULTS = {
     "gitlab_project_id": "",
     "gitlab_token_env": "GITLAB_TOKEN",
     "pipeline_count": 20,
+    "job_count": 50,
 }
 
 
@@ -214,6 +215,23 @@ class PipelineInfo:
     source: str = ""
 
 
+@dataclass
+class JobInfo:
+    """A single GitLab CI job."""
+
+    id: int
+    name: str
+    status: str
+    duration: float | None
+    pipeline_id: int
+    pipeline_ref: str
+    pipeline_sha: str
+    web_url: str
+    created_at: str
+    finished_at: str
+    artifacts_uploaded: bool = False
+
+
 def _detect_gitlab_from_git_remote() -> tuple[str, str]:
     """Try to detect GitLab API URL and project path from git remote.
 
@@ -271,7 +289,10 @@ class PipelineMonitor:
         cfg = _monitoring_config()
         self._token_env = cfg["gitlab_token_env"]
         self._count = cfg["pipeline_count"]
+        self._job_count = cfg.get("job_count", 50)
         self._pipelines: list[PipelineInfo] = []
+        self._jobs: list[JobInfo] = []
+        self._uploaded_pipeline_urls: set[str] = set()
         self._last_poll: float = 0
         self._poll_interval = max(cfg["poll_interval_seconds"], 30)
         self._fetch_error: str = ""
@@ -349,6 +370,8 @@ class PipelineMonitor:
             return
         self._last_poll = now
         self._fetch()
+        self._refresh_uploaded_pipelines()
+        self._fetch_jobs()
 
     def _fetch(self) -> None:
         if not self._api_url or not self._project_id:
@@ -403,6 +426,70 @@ class PipelineMonitor:
     @property
     def is_configured(self) -> bool:
         return bool(self._api_url and self._project_id)
+
+    # -- Job fetching --------------------------------------------------------
+
+    def _refresh_uploaded_pipelines(self) -> None:
+        """Query test_runs for known pipeline_urls."""
+        try:
+            from rfc.test_database import TestDatabase
+
+            db = TestDatabase()
+            runs = db.get_recent_runs(limit=200)
+            self._uploaded_pipeline_urls = {
+                r["pipeline_url"] for r in runs if r.get("pipeline_url")
+            }
+        except Exception as e:
+            _log.debug("Could not query test_runs for artifact status: %s", e)
+            self._uploaded_pipeline_urls = set()
+
+    def _fetch_jobs(self) -> None:
+        """Fetch recent CI jobs from the GitLab API."""
+        if not self._api_url or not self._project_id:
+            return
+        token = os.environ.get(self._token_env, "")
+        headers: dict[str, str] = {}
+        if token:
+            headers["PRIVATE-TOKEN"] = token
+        url = (
+            f"{self._api_url}/api/v4/projects/{self._project_id}"
+            f"/jobs?per_page={self._job_count}"
+        )
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            jobs = []
+            for j in resp.json():
+                pipeline = j.get("pipeline", {})
+                pipeline_id = pipeline.get("id", 0)
+                uploaded = self._is_uploaded(pipeline_id)
+                jobs.append(
+                    JobInfo(
+                        id=j["id"],
+                        name=j.get("name", ""),
+                        status=j.get("status", "unknown"),
+                        duration=j.get("duration"),
+                        pipeline_id=pipeline_id,
+                        pipeline_ref=pipeline.get("ref", ""),
+                        pipeline_sha=pipeline.get("sha", "")[:8],
+                        web_url=j.get("web_url", ""),
+                        created_at=j.get("created_at", ""),
+                        finished_at=j.get("finished_at", "") or "",
+                        artifacts_uploaded=uploaded,
+                    )
+                )
+            self._jobs = jobs
+        except Exception as e:
+            _log.debug("Failed to fetch jobs: %s", e)
+
+    def _is_uploaded(self, pipeline_id: int) -> bool:
+        """Check if any stored pipeline_url matches this pipeline ID."""
+        suffix = f"/pipelines/{pipeline_id}"
+        return any(url.endswith(suffix) for url in self._uploaded_pipeline_urls)
+
+    @property
+    def jobs(self) -> list[JobInfo]:
+        return list(self._jobs)
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +628,137 @@ def build_pipeline_table(
                     ),
                     html.Td(p.source, style={"color": _MUTED}),
                     html.Td(updated, style={"color": _MUTED}),
+                ]
+            )
+        )
+
+    body = html.Tbody(rows)
+    return html.Div(
+        dbc.Table(
+            [header, body],
+            bordered=True,
+            hover=True,
+            responsive=True,
+            size="sm",
+            style={"backgroundColor": _CARD_BG},
+        ),
+        style={
+            "borderRadius": "8px",
+            "overflow": "hidden",
+            "border": f"1px solid {_BORDER}",
+        },
+    )
+
+
+def build_job_table(
+    jobs: list[JobInfo],
+    monitor: PipelineMonitor | None = None,
+) -> html.Div:
+    """Return a table of recent CI jobs, or a placeholder message."""
+    if not jobs:
+        if monitor and monitor.fetch_error:
+            return html.Div(
+                html.P(monitor.fetch_error, style={"color": "#e94560"}),
+                style={
+                    "padding": "20px",
+                    "backgroundColor": _CARD_BG,
+                    "borderRadius": "8px",
+                    "border": f"1px solid {_BORDER}",
+                },
+            )
+        return html.Div(
+            html.P("No jobs found.", style={"color": _MUTED}),
+            style={
+                "padding": "20px",
+                "backgroundColor": _CARD_BG,
+                "borderRadius": "8px",
+                "border": f"1px solid {_BORDER}",
+            },
+        )
+
+    header = html.Thead(
+        html.Tr(
+            [
+                html.Th("Job ID", style={"color": _TEXT}),
+                html.Th("Name", style={"color": _TEXT}),
+                html.Th("Status", style={"color": _TEXT}),
+                html.Th("Duration", style={"color": _TEXT}),
+                html.Th("Pipeline", style={"color": _TEXT}),
+                html.Th("Branch", style={"color": _TEXT}),
+                html.Th("SHA", style={"color": _TEXT}),
+                html.Th("Artifacts", style={"color": _TEXT}),
+                html.Th("Finished", style={"color": _TEXT}),
+            ]
+        )
+    )
+
+    rows = []
+    for j in jobs:
+        badge_color = _STATUS_COLORS.get(j.status, "#8C7E6A")
+        finished = _short_ts(j.finished_at)
+        duration_str = _format_duration(j.duration)
+
+        if j.artifacts_uploaded:
+            artifact_badge = html.Span(
+                "Uploaded",
+                style={
+                    "backgroundColor": "#27AE60",
+                    "color": "white",
+                    "padding": "2px 8px",
+                    "borderRadius": "4px",
+                    "fontSize": "0.85em",
+                    "fontWeight": "bold",
+                },
+            )
+        else:
+            artifact_badge = html.Span("-", style={"color": _MUTED})
+
+        job_id_cell = (
+            html.A(
+                str(j.id),
+                href=j.web_url,
+                target="_blank",
+                style={"color": "#5dade2", "textDecoration": "none"},
+            )
+            if j.web_url
+            else html.Span(str(j.id), style={"color": _TEXT})
+        )
+
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(job_id_cell),
+                    html.Td(j.name, style={"color": _TEXT}),
+                    html.Td(
+                        html.Span(
+                            j.status,
+                            style={
+                                "backgroundColor": badge_color,
+                                "color": "white",
+                                "padding": "2px 8px",
+                                "borderRadius": "4px",
+                                "fontSize": "0.85em",
+                                "fontWeight": "bold",
+                            },
+                        )
+                    ),
+                    html.Td(
+                        duration_str,
+                        style={"color": _TEXT, "fontFamily": "monospace"},
+                    ),
+                    html.Td(str(j.pipeline_id), style={"color": _MUTED}),
+                    html.Td(j.pipeline_ref, style={"color": _TEXT}),
+                    html.Td(
+                        html.Code(
+                            j.pipeline_sha,
+                            style={
+                                "color": "#c9d1d9",
+                                "backgroundColor": "#0d1117",
+                            },
+                        )
+                    ),
+                    html.Td(artifact_badge),
+                    html.Td(finished, style={"color": _MUTED}),
                 ]
             )
         )
@@ -745,13 +963,32 @@ def _short_ts(iso_str: str) -> str:
         return iso_str[:16]
 
 
+def _format_duration(seconds: float | None) -> str:
+    """Format seconds as a human-readable duration string."""
+    if seconds is None:
+        return "-"
+    s = int(seconds)
+    if s == 0:
+        return "0s"
+    parts: list[str] = []
+    if s >= 3600:
+        parts.append(f"{s // 3600}h")
+        s %= 3600
+    if s >= 60:
+        parts.append(f"{s // 60}m")
+        s %= 60
+    if s > 0:
+        parts.append(f"{s}s")
+    return " ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Dash layout sections for each monitoring tab
 # ---------------------------------------------------------------------------
 
 
 def create_pipelines_layout() -> html.Div:
-    """Layout for the GitLab Pipelines tab."""
+    """Layout for the GitLab CI tab (pipelines + jobs)."""
     return html.Div(
         id="pipelines-content",
         children=[
@@ -759,7 +996,7 @@ def create_pipelines_layout() -> html.Div:
                 [
                     dbc.Col(
                         html.H5(
-                            "GitLab Pipelines",
+                            "Pipelines",
                             style={"color": _TEXT, "fontWeight": "600"},
                         ),
                         width="auto",
@@ -777,6 +1014,20 @@ def create_pipelines_layout() -> html.Div:
                 className="mb-3 align-items-center",
             ),
             html.Div(id="pipelines-table", children="Loading..."),
+            html.Hr(style={"borderColor": _BORDER, "margin": "24px 0"}),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        html.H5(
+                            "CI Jobs",
+                            style={"color": _TEXT, "fontWeight": "600"},
+                        ),
+                        width="auto",
+                    ),
+                ],
+                className="mb-3 align-items-center",
+            ),
+            html.Div(id="jobs-table", children="Loading..."),
         ],
         className="p-3",
     )
