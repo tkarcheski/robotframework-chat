@@ -8,6 +8,7 @@ dashboard, CI pipeline, and Makefile share a single source of truth.
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
+from dashboard.core.docker_network import resolve_node_hostname
 from dashboard.core.llm_registry import llm_registry
 from dashboard.monitoring import create_ollama_layout, create_pipelines_layout
 from rfc.suite_config import (
@@ -39,6 +40,25 @@ _DROPDOWN_STYLE = {
     "border": f"1px solid {_BORDER}",
     "borderRadius": "6px",
 }
+
+
+def _node_options() -> list[dict[str, str]]:
+    """Build Docker-aware Ollama Host dropdown options.
+
+    Applies hostname rewriting for Docker bridge networking so the
+    dropdown values are usable from inside the container.
+    """
+    raw_options = node_dropdown_options()
+    result = []
+    for opt in raw_options:
+        # opt["value"] is "hostname:port"
+        parts = opt["value"].split(":", 1)
+        hostname = parts[0]
+        port = parts[1] if len(parts) > 1 else "11434"
+        resolved = resolve_node_hostname(hostname)
+        new_value = f"{resolved}:{port}"
+        result.append({"label": opt["label"], "value": new_value})
+    return result
 
 
 def _model_options() -> list[dict]:
@@ -110,9 +130,9 @@ def create_session_panel(index: int) -> html.Div:
                             ),
                             dcc.Dropdown(
                                 id={"type": "host-dropdown", **idx},
-                                options=node_dropdown_options(),
-                                value=node_dropdown_options()[0]["value"]
-                                if node_dropdown_options()
+                                options=(host_opts := _node_options()),
+                                value=host_opts[0]["value"]
+                                if host_opts
                                 else "localhost:11434",
                                 clearable=False,
                                 style=_DROPDOWN_STYLE,

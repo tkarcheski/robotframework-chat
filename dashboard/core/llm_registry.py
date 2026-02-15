@@ -4,6 +4,7 @@ import os
 import time
 from typing import Any
 
+from dashboard.core.docker_network import docker_aware_nodes
 from rfc.ollama import OllamaClient
 from rfc.suite_config import master_models, nodes
 
@@ -24,23 +25,32 @@ class LLMRegistry:
         self._cache_ttl: int = 60
 
     def _get_node_list(self) -> list[dict]:
-        """Build node list from config or env."""
+        """Build node list from config or env.
+
+        When running inside Docker with bridge networking, localhost-like
+        hostnames are automatically rewritten to ``host.docker.internal``.
+        """
         env_list = os.environ.get("OLLAMA_NODES_LIST", "")
         if env_list:
-            return [
+            raw = [
                 {"hostname": h.strip(), "port": 11434}
                 for h in env_list.split(",")
                 if h.strip()
             ]
-        node_list = nodes()
-        if node_list:
-            return node_list
-        endpoint = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
-        host = endpoint.replace("http://", "").replace("https://", "")
-        parts = host.split(":")
-        hostname = parts[0]
-        port = int(parts[1]) if len(parts) > 1 else 11434
-        return [{"hostname": hostname, "port": port}]
+        else:
+            node_list = nodes()
+            if node_list:
+                raw = node_list
+            else:
+                endpoint = os.environ.get(
+                    "OLLAMA_ENDPOINT", "http://localhost:11434"
+                )
+                host = endpoint.replace("http://", "").replace("https://", "")
+                parts = host.split(":")
+                hostname = parts[0]
+                port = int(parts[1]) if len(parts) > 1 else 11434
+                raw = [{"hostname": hostname, "port": port}]
+        return docker_aware_nodes(raw)
 
     def refresh_models(self) -> None:
         """Query all nodes for available models."""
