@@ -1,6 +1,9 @@
 name: Sync to GitLab
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       branch:
@@ -46,7 +49,11 @@ jobs:
 
           AUTH_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/space-nomads/robotframework-chat.git"
 
-          git remote add gitlab "${AUTH_URL}"
+          if git remote get-url gitlab >/dev/null 2>&1; then
+            git remote set-url gitlab "${AUTH_URL}"
+          else
+            git remote add gitlab "${AUTH_URL}"
+          fi
 
           BRANCH="${{ github.event.inputs.branch }}"
 
