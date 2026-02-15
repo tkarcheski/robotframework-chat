@@ -57,18 +57,18 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 ## Pipeline Stages
 
 ```
-sync → lint → review → generate → test → report → deploy
+sync → lint → generate → test → report → deploy → review
 ```
 
 | Stage | Jobs | Notes |
 |-------|------|-------|
 | `sync` | `mirror-to-github` | Push mirror to GitHub |
 | `lint` | `pre-commit`, `ruff-check`, `mypy-check` | Code quality gates (allow_failure) |
-| `review` | `claude-code-review` | AI code review via Claude Code Opus 4.6 (MR only) |
 | `generate` | `generate-regular-pipeline`, `generate-dynamic-pipeline` | Produce child-pipeline YAML from `test_suites.yaml` |
 | `test` | `run-regular-tests`, `run-dynamic-tests` | Execute generated child pipelines |
 | `report` | (in child pipeline) | `rebot` merges output.xml, imports combined results to DB |
 | `deploy` | `deploy-superset` | Update Superset stack on default branch |
+| `review` | `claude-code-review` | AI code review + fix via Claude Code Opus 4.6 (label or manual) |
 
 ---
 

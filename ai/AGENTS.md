@@ -325,10 +325,10 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 ## CI/CD Pipeline
 
-The GitLab CI pipeline uses a five-stage architecture:
+The GitLab CI pipeline uses a seven-stage architecture:
 
 ```
-sync → lint → review → generate → test → report → deploy
+sync → lint → generate → test → report → deploy → review
 ```
 
 ### Pipeline Data Flow
@@ -350,6 +350,8 @@ During the **test stage**, each suite runs with both listeners attached. The `Db
 During the **report stage**, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a pipeline-level run.
 
 During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
+
+During the **review stage** (MR label `claude-code-review` or manual trigger), Claude Code (Opus 4.6) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/AGENTS.md` and `ai/REFACTOR.md`.
 
 ---
 
