@@ -3,6 +3,7 @@
 # Assumes tools are pre-installed on runner
 
 stages:
+  - sync
   - lint
   - test
   - report
@@ -14,6 +15,21 @@ variables:
 
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
+
+
+## =============================================================================
+# SYNC STAGE - Syncs repos so all CI runs
+## =============================================================================
+mirror-to-github:
+  stage: sync
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - when: manual
+  script:
+    - git clone --mirror "$CI_REPOSITORY_URL" repo.git
+    - cd repo.git
+    - git remote add github "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/${CI_PROJECT_NAME}.git"
+    - git push github --mirror --force
 
 # =============================================================================
 # LINT STAGE - Uses tools already installed on runner
