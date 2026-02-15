@@ -39,7 +39,7 @@ Start LLM Container
 
     # Get base profile and add dynamic port configuration
     ${profile_dict}=    Get Variable Value    ${${profile}}
-    ${full_config}=    Create Dictionary    &{profile_dict}    ports=${port_mapping}    auto_remove=False
+    ${full_config}=    Create Dictionary    &{profile_dict}    ports=${port_mapping}
 
     # Create container with dynamic port
     ${container_id}=    Docker.Create Configurable Container    ${full_config}    ${container_name}

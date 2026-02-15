@@ -51,7 +51,7 @@ Setup Shell Environment
     # Create container with a command that keeps it running
     # Use read_only=False and user=root since shell tests need to create files
     ${profile_dict}=    Get Variable Value    ${${profile}}
-    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep 3600    auto_remove=False    read_only=False    user=root
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    read_only=False    user=root
     ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${suite_name}
 
     # Install common tools
