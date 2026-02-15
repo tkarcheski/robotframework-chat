@@ -1,0 +1,112 @@
+# Test Suite Configuration - Single Source of Truth
+#
+# This file drives both the Dash dashboard UI and GitLab CI pipelines.
+# Changes here automatically propagate to:
+#   - Dashboard UI (test suite dropdown, IQ levels, container profiles)
+#   - GitLab CI pipeline (regular and dynamic pipeline generation)
+#
+# See src/rfc/suite_config.py for the Python loader.
+# See scripts/generate_pipeline.py for CI pipeline generation.
+
+defaults:
+  model: "llama3"
+  iq_levels: ["100", "110", "120"]
+  profile: "STANDARD"
+  timeout_seconds: 120
+  max_retries: 2
+  ollama_endpoint: "http://localhost:11434"
+
+# ---------------------------------------------------------------------------
+# Test Suites
+#
+# Each suite is an atomic unit the dashboard can run individually.
+# CI jobs may group several suites (see ci.job_groups below).
+# ---------------------------------------------------------------------------
+test_suites:
+  math:
+    label: "Math Tests"
+    path: "robot/math/tests"
+    description: "Basic arithmetic and IQ-level parameterized math tests"
+
+  docker-python:
+    label: "Docker Python"
+    path: "robot/docker/python/tests"
+    description: "Python code generation in Docker containers"
+
+  docker-llm:
+    label: "Docker LLM"
+    path: "robot/docker/llm/tests"
+    description: "Multi-model LLM testing in Docker"
+
+  docker-shell:
+    label: "Docker Shell"
+    path: "robot/docker/shell/tests"
+    description: "Shell command execution tests in Docker"
+
+  safety:
+    label: "Safety Tests"
+    path: "robot/safety/test_cases"
+    description: "Adversarial testing for prompt injection and jailbreaks"
+
+# Special "run all" entry used by the dashboard
+run_all:
+  label: "Run All Test Suites"
+  path: "robot"
+
+# ---------------------------------------------------------------------------
+# IQ Levels - available for parameterized IQ tests
+# ---------------------------------------------------------------------------
+iq_levels:
+  - "100"
+  - "110"
+  - "120"
+  - "130"
+  - "140"
+  - "150"
+  - "160"
+
+# ---------------------------------------------------------------------------
+# Container Profiles - resource limits for Docker-based tests
+# ---------------------------------------------------------------------------
+container_profiles:
+  MINIMAL:
+    label: "Minimal (0.25 CPU, 128MB)"
+    cpu: 0.25
+    memory_mb: 128
+  STANDARD:
+    label: "Standard (0.5 CPU, 512MB)"
+    cpu: 0.5
+    memory_mb: 512
+  PERFORMANCE:
+    label: "Performance (1.0 CPU, 1GB)"
+    cpu: 1.0
+    memory_mb: 1024
+
+# ---------------------------------------------------------------------------
+# CI Configuration
+#
+# Listeners, job grouping, and options used by generate_pipeline.py to
+# produce GitLab CI child pipelines.
+# ---------------------------------------------------------------------------
+ci:
+  listeners:
+    - "rfc.db_listener.DbListener"
+    - "rfc.ci_metadata_listener.CiMetadataListener"
+
+  # Job groups: combine multiple atomic suites into a single CI job.
+  # Suites not listed here run as individual jobs.
+  job_groups:
+    robot-math-tests:
+      path: "robot/math/tests/"
+      output_dir: "results/math"
+      tags: ["ollama"]
+
+    robot-docker-tests:
+      path: "robot/docker/"
+      output_dir: "results/docker"
+      tags: ["ollama", "docker"]
+
+    robot-safety-tests:
+      path: "robot/safety/"
+      output_dir: "results/safety"
+      tags: ["ollama"]

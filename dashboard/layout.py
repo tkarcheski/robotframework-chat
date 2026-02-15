@@ -1,34 +1,22 @@
-"""Layout builder functions for the dashboard. Pure HTML, no callbacks."""
+"""Layout builder functions for the dashboard. Pure HTML, no callbacks.
+
+All test-suite, IQ-level, and container-profile options are loaded from
+``config/test_suites.yaml`` via :mod:`rfc.suite_config` so that the
+dashboard, CI pipeline, and Makefile share a single source of truth.
+"""
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 from dashboard.core.llm_registry import llm_registry
-
-TEST_SUITES = [
-    {"label": "Run All Test Suites", "value": "robot"},
-    {"label": "Math Tests", "value": "robot/math/tests"},
-    {"label": "Docker Python", "value": "robot/docker/python/tests"},
-    {"label": "Docker LLM", "value": "robot/docker/llm/tests"},
-    {"label": "Docker Shell", "value": "robot/docker/shell/tests"},
-    {"label": "Safety Tests", "value": "robot/safety/test_cases"},
-]
-
-IQ_LEVELS = [
-    {"label": "100", "value": "100"},
-    {"label": "110", "value": "110"},
-    {"label": "120", "value": "120"},
-    {"label": "130", "value": "130"},
-    {"label": "140", "value": "140"},
-    {"label": "150", "value": "150"},
-    {"label": "160", "value": "160"},
-]
-
-CONTAINER_PROFILES = [
-    {"label": "Minimal (0.25 CPU, 128MB)", "value": "MINIMAL"},
-    {"label": "Standard (0.5 CPU, 512MB)", "value": "STANDARD"},
-    {"label": "Performance (1.0 CPU, 1GB)", "value": "PERFORMANCE"},
-]
+from rfc.suite_config import (
+    default_iq_levels,
+    default_model,
+    default_profile,
+    iq_dropdown_options,
+    profile_dropdown_options,
+    suite_dropdown_options,
+)
 
 
 def _model_options() -> list[dict]:
@@ -36,7 +24,8 @@ def _model_options() -> list[dict]:
     models = llm_registry.get_models()
     if models:
         return [{"label": m, "value": m} for m in models]
-    return [{"label": "llama3", "value": "llama3"}]
+    fallback = default_model()
+    return [{"label": fallback, "value": fallback}]
 
 
 def create_session_panel(index: int) -> html.Div:
@@ -58,7 +47,7 @@ def create_session_panel(index: int) -> html.Div:
                             dbc.Label("Test Suite"),
                             dcc.Dropdown(
                                 id={"type": "suite-dropdown", **idx},
-                                options=TEST_SUITES,
+                                options=suite_dropdown_options(),
                                 value="robot",
                                 clearable=False,
                             ),
@@ -70,8 +59,8 @@ def create_session_panel(index: int) -> html.Div:
                             dbc.Label("IQ Levels"),
                             dcc.Dropdown(
                                 id={"type": "iq-dropdown", **idx},
-                                options=IQ_LEVELS,
-                                value=["100", "110", "120"],
+                                options=iq_dropdown_options(),
+                                value=default_iq_levels(),
                                 multi=True,
                             ),
                         ],
@@ -83,7 +72,7 @@ def create_session_panel(index: int) -> html.Div:
                             dcc.Dropdown(
                                 id={"type": "model-dropdown", **idx},
                                 options=_model_options(),
-                                value="llama3",
+                                value=default_model(),
                                 clearable=False,
                             ),
                         ],
@@ -100,8 +89,8 @@ def create_session_panel(index: int) -> html.Div:
                             dbc.Label("Container Profile"),
                             dcc.Dropdown(
                                 id={"type": "profile-dropdown", **idx},
-                                options=CONTAINER_PROFILES,
-                                value="STANDARD",
+                                options=profile_dropdown_options(),
+                                value=default_profile(),
                                 clearable=False,
                             ),
                         ],

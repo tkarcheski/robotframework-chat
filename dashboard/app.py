@@ -12,6 +12,7 @@ from dashboard.core.session_manager import (
     session_manager,
 )
 from dashboard.layout import create_app_layout, create_session_panel
+from rfc.suite_config import default_iq_levels, default_model, default_profile
 
 # -- App init ----------------------------------------------------------------
 
@@ -92,17 +93,17 @@ def handle_button_click(
 
         # Build config from the form values at this index
         suite_val = suites[idx] if idx < len(suites) else "robot"
-        iq_val = iqs[idx] if idx < len(iqs) else ["100", "110", "120"]
-        model_val = models[idx] if idx < len(models) else "llama3"
-        profile_val = profiles[idx] if idx < len(profiles) else "STANDARD"
+        iq_val = iqs[idx] if idx < len(iqs) else default_iq_levels()
+        model_val = models[idx] if idx < len(models) else default_model()
+        profile_val = profiles[idx] if idx < len(profiles) else default_profile()
         ar_val = auto_recovers[idx] if idx < len(auto_recovers) else []
         dr_val = dry_runs[idx] if idx < len(dry_runs) else []
 
         session.config = SessionConfig(
             suite=suite_val or "robot",
-            iq_levels=iq_val or ["100", "110", "120"],
-            model=model_val or "llama3",
-            profile=profile_val or "STANDARD",
+            iq_levels=iq_val or default_iq_levels(),
+            model=model_val or default_model(),
+            profile=profile_val or default_profile(),
             auto_recover=bool(ar_val and True in ar_val),
             dry_run=bool(dr_val and True in dr_val),
         )
