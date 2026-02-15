@@ -2,10 +2,17 @@
 
 import json
 import os
+import sys
 from datetime import datetime
+from pathlib import Path
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from rfc import __version__
 
 data = {
-    "version": "0.1.0",
+    "version": __version__,
     "gitlab": {
         "project_url": os.getenv("CI_PROJECT_URL", ""),
         "commit_sha": os.getenv("CI_COMMIT_SHA", ""),
@@ -27,7 +34,8 @@ data = {
     "timestamp": datetime.utcnow().isoformat() + "Z",
 }
 
-with open("results/aggregated/ci_metadata.json", "w") as f:
+os.makedirs("results/combined", exist_ok=True)
+with open("results/combined/ci_metadata.json", "w") as f:
     json.dump(data, f, indent=2)
 
 print("Metadata generated")

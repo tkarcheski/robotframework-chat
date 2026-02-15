@@ -77,7 +77,7 @@ mypy-check:
 # =============================================================================
 # TEST STAGE - Requires runner with 'ollama' tag
 #
-# Every robot run attaches the DbListener which archives results to:
+# Every robot run attaches the DbListener which archives per-suite results to:
 #   - PostgreSQL when DATABASE_URL is set (Superset reads from here)
 #   - SQLite (data/test_history.db) otherwise
 # =============================================================================
@@ -142,6 +142,9 @@ robot-safety-tests:
 
 # =============================================================================
 # REPORT STAGE
+#
+# 1. rebot merges all per-suite output.xml files into a single combined report
+# 2. The combined report is imported into the database as a pipeline-level run
 # =============================================================================
 
 aggregate-results:
@@ -157,45 +160,49 @@ aggregate-results:
       artifacts: true
       optional: true
   before_script:
-    - uv sync --extra dev
+    - uv sync --extra dev --extra superset
   script:
-    - mkdir -p results/aggregated
+    - mkdir -p results/combined
+
+    # ── Collect output.xml files from all test jobs ──
+    - |
+      OUTPUT_FILES=""
+      for f in results/math/output.xml results/docker/output.xml results/safety/output.xml; do
+        if [ -f "$f" ]; then
+          OUTPUT_FILES="$OUTPUT_FILES $f"
+        fi
+      done
+
+    # ── Merge with rebot ──
+    - |
+      if [ -z "$OUTPUT_FILES" ]; then
+        echo "No output.xml files found - nothing to aggregate"
+        exit 0
+      fi
+      echo "Combining:$OUTPUT_FILES"
+      uv run rebot \
+        --name "Combined Results" \
+        --outputdir results/combined \
+        --output output.xml \
+        --log log.html \
+        --report report.html \
+        --nostatusrc \
+        $OUTPUT_FILES
+      echo "Combined report: results/combined/report.html"
+
+    # ── Import combined results into the database ──
+    - uv run python scripts/import_test_results.py results/combined/output.xml --model "$DEFAULT_MODEL"
+
+    # ── CI metadata ──
     - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
+
   artifacts:
     when: always
     paths:
-      - results/aggregated/
+      - results/combined/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
-# Re-import from output.xml as a safety net (e.g. if listener failed or
-# results need to be backfilled into a different database).
-archive-results:
-  stage: report
-  needs:
-    - job: robot-math-tests
-      artifacts: true
-      optional: true
-    - job: robot-docker-tests
-      artifacts: true
-      optional: true
-    - job: robot-safety-tests
-      artifacts: true
-      optional: true
-  before_script:
-    - uv sync --extra dev --extra superset
-  script:
-    - |
-      if [ -z "$DATABASE_URL" ]; then
-        echo "DATABASE_URL not set - skipping XML re-import (listener already archived to SQLite)"
-        exit 0
-      fi
-    - uv run python scripts/import_test_results.py results/ -r --model "$DEFAULT_MODEL" || echo "XML re-import failed"
-  rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
 
 # =============================================================================
 # DEPLOY STAGE - Deploy / update Superset stack
