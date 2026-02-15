@@ -18,6 +18,15 @@
 
 set -euo pipefail
 
+# Load .env if present (same vars the Makefile exports via -include .env)
+ENV_FILE="${ENV_FILE:-.env}"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    set +a
+fi
+
 echo "=== Sync CI Results to Database ==="
 
 # Validate at least one GitLab config source exists
