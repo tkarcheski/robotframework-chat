@@ -2,12 +2,13 @@
 # Works with shell executor on any OS (macOS, Linux)
 # Assumes tools are pre-installed on runner
 #
-# Two pipeline modes:
+# Three pipeline modes:
 #   1. Regular  -- runs automatically on push/MR, one default model per suite
 #   2. Dynamic  -- manual play-button, discovers Ollama nodes on the network,
 #                  enumerates models, and runs every (node, model, suite) combo
+#   3. Schedule -- hourly cron trigger runs the dynamic pipeline automatically
 #
-# Both modes are generated from config/test_suites.yaml via
+# All modes are generated from config/test_suites.yaml via
 # scripts/generate_pipeline.py so test-suite definitions stay DRY.
 
 stages:
@@ -107,15 +108,15 @@ generate-regular-pipeline:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-# Dynamic Ollama discovery -- manual play button
+# Dynamic Ollama discovery -- manual play button or hourly schedule
 #
 # Set OLLAMA_NODES (comma-separated host:port) or OLLAMA_SUBNET (CIDR)
 # in GitLab CI/CD variables to control which nodes are scanned.
 # When neither is set the script falls back to localhost:11434.
 generate-dynamic-pipeline:
   stage: generate
-  when: manual
   allow_failure: true
+  timeout: 60 minutes
   before_script:
     - uv sync --extra dev
   script:
@@ -126,6 +127,10 @@ generate-dynamic-pipeline:
   artifacts:
     paths:
       - generated-dynamic-pipeline.yml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - when: manual
+      allow_failure: true
 
 # =============================================================================
 # TEST STAGE - child pipelines generated above
@@ -153,6 +158,7 @@ run-regular-tests:
 
 run-dynamic-tests:
   stage: test
+  timeout: 60 minutes
   needs:
     - job: generate-dynamic-pipeline
       artifacts: true
@@ -162,7 +168,9 @@ run-dynamic-tests:
         job: generate-dynamic-pipeline
     strategy: depend
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: manual
+      allow_failure: true
   allow_failure: true
 
 # =============================================================================
