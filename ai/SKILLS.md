@@ -78,7 +78,7 @@ This document outlines the capabilities and skills of the AI agent working on ro
 - API documentation
 - Architecture decision records
 - CI/CD setup guides
-- Agent instructions (AGENTS.md, SKILLS.md)
+- Agent instructions (ai/AGENTS.md, ai/SKILLS.md)
 
 **Documentation Standards:**
 - Clear, concise language
@@ -105,7 +105,7 @@ This document outlines the capabilities and skills of the AI agent working on ro
 
 ### When Starting Work
 
-1. Read AGENTS.md and SKILLS.md
+1. Read ai/AGENTS.md and ai/SKILLS.md
 2. Understand project structure and conventions
 3. Check for existing issues or PRs
 4. Create feature branch: `git checkout -b feature/description`
@@ -209,6 +209,6 @@ The agent:
 
 For issues or questions:
 - Check existing documentation
-- Review AGENTS.md for project-specific rules
+- Review ai/AGENTS.md for project-specific rules
 - Consult project maintainers
 - Open an issue in the repository
