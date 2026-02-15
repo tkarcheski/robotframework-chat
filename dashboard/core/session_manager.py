@@ -8,6 +8,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable
 
+from rfc.suite_config import (
+    default_iq_levels,
+    default_model,
+    default_profile,
+    test_suites,
+)
+
+
+def _first_suite_path() -> str:
+    """Return the path of the first configured test suite."""
+    suites = test_suites()
+    if suites:
+        return next(iter(suites.values()))["path"]
+    return "robot/math/tests"
+
 
 class SessionStatus(Enum):
     """Session status states."""
@@ -21,12 +36,15 @@ class SessionStatus(Enum):
 
 @dataclass
 class SessionConfig:
-    """Configuration for a test session."""
+    """Configuration for a test session.
 
-    suite: str = "robot/math/tests"
-    iq_levels: list = field(default_factory=lambda: ["100", "110", "120"])
-    model: str = "llama3"
-    profile: str = "STANDARD"
+    Defaults are loaded from ``config/test_suites.yaml``.
+    """
+
+    suite: str = field(default_factory=_first_suite_path)
+    iq_levels: list = field(default_factory=default_iq_levels)
+    model: str = field(default_factory=default_model)
+    profile: str = field(default_factory=default_profile)
     auto_recover: bool = False
     dry_run: bool = False
     randomize: bool = False
