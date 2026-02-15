@@ -246,6 +246,7 @@ robotframework-chat/
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
+│   ├── REFACTOR.md             # Refactoring & maintenance guide
 │   └── roadmap.md              # Project roadmap
 ├── Makefile                    # Build, test, deploy targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
@@ -327,7 +328,7 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 The GitLab CI pipeline uses a five-stage architecture:
 
 ```
-sync → lint → test → report → deploy
+sync → lint → review → generate → test → report → deploy
 ```
 
 ### Pipeline Data Flow
