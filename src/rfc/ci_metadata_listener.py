@@ -49,6 +49,30 @@ class CiMetadataListener:
         if "metadata" in attributes:
             attributes["metadata"].update(self.ci_info)
 
+            project_url = self.ci_info.get("GitLab_URL", "")
+            commit_sha = self.ci_info.get("Commit_SHA", "")
+            commit_short = self.ci_info.get(
+                "Commit_Short_SHA", commit_sha[:8] if commit_sha else ""
+            )
+
+            # Format Commit_SHA as a clickable link to the GitLab commit
+            if project_url and commit_sha:
+                attributes["metadata"]["Commit_SHA"] = (
+                    f"[{commit_short}|{project_url}/-/commit/{commit_sha}]"
+                )
+
+            # Format Source as a clickable link to the file at the commit
+            source = attributes.get("source", "")
+            if source and project_url and commit_sha:
+                project_dir = os.getenv("CI_PROJECT_DIR", "")
+                if project_dir and source.startswith(project_dir):
+                    rel_path = source[len(project_dir) :].lstrip(os.sep)
+                else:
+                    rel_path = source
+                attributes["metadata"]["Source"] = (
+                    f"[{rel_path}|{project_url}/-/blob/{commit_sha}/{rel_path}]"
+                )
+
     def end_suite(self, name: str, attributes: Dict[str, Any]):
         """Called when a test suite ends.
 
