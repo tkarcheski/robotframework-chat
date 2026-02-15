@@ -410,7 +410,7 @@ During the **report stage**, `rebot` merges all `output.xml` files into a single
 
 During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
 
-During the **review stage** (MR label `claude-code-review` or manual trigger), Claude Code (Opus 4.6) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/AGENTS.md` and `ai/REFACTOR.md`.
+During the **review stage** (MR label `opencode-review` or manual trigger), OpenCode (Kimi K2.5 via OpenRouter) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/AGENTS.md` and `ai/REFACTOR.md`.
 
 ---
 
