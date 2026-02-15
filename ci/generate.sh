@@ -38,7 +38,8 @@ case "$MODE" in
     dynamic)
         echo "=== Generate Dynamic Pipeline ==="
         echo "Discovering Ollama nodes..."
-        uv run python scripts/discover_ollama.py --pretty
+        # Node discovery is best-effort; generate pipeline even if some nodes unreachable
+        uv run python scripts/discover_ollama.py --pretty || echo "WARNING: Ollama discovery failed (continuing with defaults)"
         uv run python scripts/generate_pipeline.py --mode dynamic -o generated-dynamic-pipeline.yml
         echo "--- generated-dynamic-pipeline.yml ---"
         cat generated-dynamic-pipeline.yml

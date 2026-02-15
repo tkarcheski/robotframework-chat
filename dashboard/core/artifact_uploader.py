@@ -225,22 +225,21 @@ def upload_session_results(
 
     url = database_url or os.getenv("DATABASE_URL")
     if not url:
-        return {
-            "status": "error",
-            "message": (
-                "DATABASE_URL is not configured. "
-                "Set it to a PostgreSQL connection string to enable uploads."
-            ),
-        }
+        # Fall back to SQLite when PostgreSQL isn't configured
+        logger.info("DATABASE_URL not set; uploading to local SQLite database")
+        url = None  # TestDatabase will use SQLite default
 
     try:
-        db = TestDatabase(database_url=url)
+        kwargs = {"database_url": url} if url else {}
+        db = TestDatabase(**kwargs)
         run_id = _import_output_xml(str(xml_path), db)
 
+        backend = "PostgreSQL" if url else "SQLite"
         logger.info(
-            "Uploaded session %s results (run_id=%d) from %s",
+            "Uploaded session %s results (run_id=%d) to %s from %s",
             session_id,
             run_id,
+            backend,
             xml_path,
         )
 
@@ -249,6 +248,7 @@ def upload_session_results(
             "run_id": run_id,
             "file": str(xml_path),
             "session_id": session_id,
+            "backend": backend,
         }
 
     except Exception as e:

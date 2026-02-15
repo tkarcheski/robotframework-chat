@@ -10,7 +10,7 @@
 
 defaults:
   model: "llama3"
-  iq_levels: ["100", "110", "120"]
+  iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
   profile: "STANDARD"
   timeout_seconds: 120
   max_retries: 2
@@ -41,6 +41,31 @@ nodes:
     port: 11434
   - hostname: dev2
     port: 11434
+
+# ---------------------------------------------------------------------------
+# Master Models List
+#
+# All known model names across the fleet.  The dashboard always shows these
+# in the LLM Model dropdown.  Models found on at least one node are
+# selectable; models not found on any node appear grayed out.
+#
+# This list is updated automatically by the discover-nodes CI job, or you
+# can maintain it manually.
+# ---------------------------------------------------------------------------
+master_models:
+  - "llama3"
+  - "llama3:latest"
+  - "llama3.1:latest"
+  - "llama3.2:latest"
+  - "llama3.3:latest"
+  - "mistral:latest"
+  - "mixtral:latest"
+  - "codellama:latest"
+  - "gemma:latest"
+  - "gemma2:latest"
+  - "phi3:latest"
+  - "qwen2:latest"
+  - "deepseek-coder:latest"
 
 # ---------------------------------------------------------------------------
 # Test Suites
@@ -81,6 +106,9 @@ run_all:
 
 # ---------------------------------------------------------------------------
 # IQ Levels - available for parameterized IQ tests
+#
+# These map to Robot Framework tags like [Tags]  IQ:100
+# The dashboard IQ dropdown is populated from this list.
 # ---------------------------------------------------------------------------
 iq_levels:
   - "100"
@@ -142,11 +170,15 @@ ci:
 # Monitoring Configuration
 #
 # Settings for the dashboard's Ollama Hosts and GitLab Pipelines tabs.
+#
+# To enable GitLab pipeline monitoring, either:
+#   1. Set GITLAB_API_URL, GITLAB_PROJECT_ID, GITLAB_TOKEN env vars, or
+#   2. Fill in the gitlab_api_url and gitlab_project_id fields below.
 # ---------------------------------------------------------------------------
 monitoring:
   poll_interval_seconds: 30
   history_hours: 24
-  # GitLab API settings (leave empty to disable pipeline monitoring)
+  # GitLab API settings (set via env vars or fill in here)
   gitlab_api_url: ""
   gitlab_project_id: ""
   gitlab_token_env: "GITLAB_TOKEN"

@@ -67,6 +67,16 @@ def container_profiles() -> dict[str, dict[str, Any]]:
     return load_config().get("container_profiles", {})
 
 
+def nodes() -> list[dict[str, Any]]:
+    """Return the ``nodes`` list."""
+    return load_config().get("nodes", [])
+
+
+def master_models() -> list[str]:
+    """Return the ``master_models`` list of known model names."""
+    return load_config().get("master_models", [])
+
+
 def ci_config() -> dict[str, Any]:
     """Return the ``ci`` section."""
     return load_config().get("ci", {})
@@ -91,13 +101,30 @@ def suite_dropdown_options() -> list[dict[str, str]]:
 
 def iq_dropdown_options() -> list[dict[str, str]]:
     """Build the Dash dropdown options list for IQ levels."""
-    return [{"label": v, "value": v} for v in iq_levels()]
+    return [{"label": f"IQ:{v}", "value": v} for v in iq_levels()]
 
 
 def profile_dropdown_options() -> list[dict[str, str]]:
     """Build the Dash dropdown options list for container profiles."""
     profiles = container_profiles()
     return [{"label": info["label"], "value": pid} for pid, info in profiles.items()]
+
+
+def node_dropdown_options() -> list[dict[str, str]]:
+    """Build the Dash dropdown options list for Ollama nodes.
+
+    Each option value is ``hostname:port`` for easy URL construction.
+    """
+    node_list = nodes()
+    if not node_list:
+        return [{"label": "localhost:11434", "value": "localhost:11434"}]
+    return [
+        {
+            "label": f"{n['hostname']}:{n.get('port', 11434)}",
+            "value": f"{n['hostname']}:{n.get('port', 11434)}",
+        }
+        for n in node_list
+    ]
 
 
 def default_model() -> str:

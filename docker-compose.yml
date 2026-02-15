@@ -25,6 +25,8 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - rfc-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rfc}"]
       interval: 5s
@@ -35,6 +37,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    networks:
+      - rfc-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -61,6 +65,8 @@ services:
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
       - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
+    networks:
+      - rfc-net
     entrypoint: /bin/bash
     command:
       - -c
@@ -99,6 +105,8 @@ services:
       - "${SUPERSET_PORT:-8088}:8088"
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
+    networks:
+      - rfc-net
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8088/health || exit 1"]
       interval: 15s
@@ -114,15 +122,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Host networking: allow the dashboard to reach local-network Ollama
+    # nodes directly (mini1, ai1, dev1, etc.).
+    # host.docker.internal maps to the Docker host for macOS/Windows;
+    # extra_hosts provides the mapping on Linux.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     dns:
       - 8.8.8.8
+      - 8.8.4.4
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}"
       OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
-      OLLAMA_NODES_LIST: ${OLLAMA_NODES_LIST:-localhost}
+      # Comma-separated list of Ollama node hostnames.
+      # These must be resolvable from inside the container.
+      # For hosts on the local network, use their DNS names or IPs.
+      # "localhost" is auto-rewritten to host.docker.internal.
+      OLLAMA_NODES_LIST: ${OLLAMA_NODES_LIST:-}
       # GitLab pipeline monitoring (leave empty to disable)
       GITLAB_API_URL: ${GITLAB_API_URL:-}
       GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-}
@@ -132,11 +149,18 @@ services:
     volumes:
       - dashboard-results:/app/results/dashboard
       - ./robot:/app/robot:ro
+      - ./config:/app/config:ro
+    networks:
+      - rfc-net
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8050/\")' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
+
+networks:
+  rfc-net:
+    driver: bridge
 
 volumes:
   pgdata:
