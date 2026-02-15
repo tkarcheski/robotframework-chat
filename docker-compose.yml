@@ -131,6 +131,7 @@ services:
       - "${DASHBOARD_PORT:-8050}:8050"
     volumes:
       - dashboard-results:/app/results/dashboard
+      - ./robot:/app/robot:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8050/\")' || exit 1"]
       interval: 15s

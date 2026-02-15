@@ -10,6 +10,7 @@ COPY pyproject.toml ./
 COPY src/ src/
 COPY dashboard/ dashboard/
 COPY config/ config/
+COPY robot/ robot/
 
 # Install the project with dashboard and superset extras
 RUN uv pip install --system --no-cache ".[dashboard,superset]"
