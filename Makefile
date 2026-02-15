@@ -3,7 +3,7 @@
 
 COMPOSE  := docker compose
 ROBOT    := uv run robot
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
 
 # Load .env if present
 -include .env

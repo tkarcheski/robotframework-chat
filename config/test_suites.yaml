@@ -92,6 +92,7 @@ ci:
   listeners:
     - "rfc.db_listener.DbListener"
     - "rfc.ci_metadata_listener.CiMetadataListener"
+    - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
 
   # Job groups: combine multiple atomic suites into a single CI job.
   # Suites not listed here run as individual jobs.

@@ -179,11 +179,13 @@ Robot Framework Test
 │   ├─ CI Metadata (ci_metadata.py) ── GitLab CI env collection
 │   ├─ CI Metadata Listener (ci_metadata_listener.py) ── attaches CI metadata to output
 │   ├─ DB Listener (db_listener.py) ── archives results to SQL database
+│   ├─ Ollama Timestamp Listener (ollama_timestamp_listener.py) ── timestamps Ollama chats
 │   └─ Test Database (test_database.py) ── SQLite + PostgreSQL backends
 │
 ├─> Listeners (auto-attached to every test run)
 │   ├─ DbListener ── archives runs/results to SQL (SQLite or PostgreSQL)
-│   └─ CiMetadataListener ── adds CI context to Robot Framework output
+│   ├─ CiMetadataListener ── adds CI context to Robot Framework output
+│   └─ OllamaTimestampListener ── timestamps every Ollama chat call
 │
 ├─> Docker Containers
 │   ├─ Code Execution (Python, Node, Shell)
@@ -223,6 +225,7 @@ robotframework-chat/
 │   ├── ci_metadata.py          # CI metadata collection
 │   ├── ci_metadata_listener.py # Listener: CI metadata → Robot output
 │   ├── db_listener.py          # Listener: test results → SQL database
+│   ├── ollama_timestamp_listener.py # Listener: timestamps Ollama chats
 │   ├── test_database.py        # SQLite + PostgreSQL database backends
 │   ├── keywords.py             # Core LLM keywords
 │   ├── grader.py               # LLM answer grading
@@ -259,19 +262,21 @@ logic outside of these directories.
 
 ## Listeners
 
-Two Robot Framework listeners handle test result collection:
+Three Robot Framework listeners handle test result collection:
 
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
 | `rfc.ci_metadata_listener.CiMetadataListener` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
+| `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama keyword call (Ask LLM, Wait For LLM, etc.) and saves `ollama_timestamps.json` |
 
-Both listeners are always active in the Makefile targets and in CI. Use them together:
+All listeners are always active in the Makefile targets and in CI. Use them together:
 
 ```bash
 uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
   --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.ollama_timestamp_listener.OllamaTimestampListener \
   robot/math/tests/
 ```
 
