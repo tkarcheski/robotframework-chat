@@ -114,10 +114,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}"
       OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
+      OLLAMA_NODES_LIST: ${OLLAMA_NODES_LIST:-localhost}
+      # GitLab pipeline monitoring (leave empty to disable)
+      GITLAB_API_URL: ${GITLAB_API_URL:-}
+      GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
     ports:
       - "${DASHBOARD_PORT:-8050}:8050"
     volumes:

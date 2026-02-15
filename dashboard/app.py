@@ -253,8 +253,16 @@ def update_ui_states(n_intervals, btn_ids):
         dr_d.append(running)
 
     return (
-        run_d, stop_d, replay_d, upload_d,
-        suite_d, iq_d, model_d, profile_d, ar_d, dr_d,
+        run_d,
+        stop_d,
+        replay_d,
+        upload_d,
+        suite_d,
+        iq_d,
+        model_d,
+        profile_d,
+        ar_d,
+        dr_d,
     )
 
 

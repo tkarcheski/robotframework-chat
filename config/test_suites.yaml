@@ -27,6 +27,8 @@ defaults:
 # hostnames).  The port defaults to 11434 but can be overridden per-node.
 # ---------------------------------------------------------------------------
 nodes:
+  - hostname: localhost
+    port: 11434
   - hostname: mini1
     port: 11434
   - hostname: mini2

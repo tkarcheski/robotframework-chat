@@ -104,12 +104,12 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
                 ),
                 (
                     'echo "Checking model $DEFAULT_MODEL..." && '
-                    'if curl -sf "$OLLAMA_ENDPOINT/api/show" -d "{\\\"name\\\": \\\"$DEFAULT_MODEL\\\"}" > /dev/null 2>&1; then '
+                    'if curl -sf "$OLLAMA_ENDPOINT/api/show" -d "{\\"name\\": \\"$DEFAULT_MODEL\\"}" > /dev/null 2>&1; then '
                     'echo "Model $DEFAULT_MODEL is available"; else '
                     'echo "ERROR: Model $DEFAULT_MODEL not found on $OLLAMA_ENDPOINT. '
                     'Available models:" && curl -s "$OLLAMA_ENDPOINT/api/tags" | python3 -c '
                     "\"import sys,json; [print(f\\\"  - {m['name']}\\\") for m in json.load(sys.stdin).get('models',[])]\" "
-                    '2>/dev/null; exit 1; fi'
+                    "2>/dev/null; exit 1; fi"
                 ),
             ],
             "script": [robot_cmd],
@@ -201,12 +201,12 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                         ),
                         (
                             'echo "Checking model $DEFAULT_MODEL..." && '
-                            'if curl -sf "$OLLAMA_ENDPOINT/api/show" -d "{\\\"name\\\": \\\"$DEFAULT_MODEL\\\"}" > /dev/null 2>&1; then '
+                            'if curl -sf "$OLLAMA_ENDPOINT/api/show" -d "{\\"name\\": \\"$DEFAULT_MODEL\\"}" > /dev/null 2>&1; then '
                             'echo "Model $DEFAULT_MODEL is available"; else '
                             'echo "ERROR: Model $DEFAULT_MODEL not found on $OLLAMA_ENDPOINT. '
                             'Available models:" && curl -s "$OLLAMA_ENDPOINT/api/tags" | python3 -c '
                             "\"import sys,json; [print(f\\\"  - {m['name']}\\\") for m in json.load(sys.stdin).get('models',[])]\" "
-                            '2>/dev/null; exit 1; fi'
+                            "2>/dev/null; exit 1; fi"
                         ),
                     ],
                     "script": [robot_cmd],

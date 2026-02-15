@@ -13,6 +13,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -44,9 +45,43 @@ def _monitoring_config() -> dict:
 
 
 def _node_list() -> list[dict]:
-    """Return the ``nodes`` list from config."""
-    cfg = load_config()
-    return cfg.get("nodes", [])
+    """Return the ``nodes`` list from config.
+
+    Priority:
+    1. ``OLLAMA_NODES_LIST`` env-var (comma-separated hostnames)
+    2. ``nodes`` section in ``config/test_suites.yaml``
+
+    When running inside Docker, ``localhost`` nodes are automatically
+    rewritten to ``host.docker.internal`` so the container can reach
+    the host machine's Ollama instance.
+    """
+    env_list = os.environ.get("OLLAMA_NODES_LIST", "")
+    if env_list:
+        nodes = [
+            {"hostname": h.strip(), "port": 11434}
+            for h in env_list.split(",")
+            if h.strip()
+        ]
+    else:
+        cfg = load_config()
+        nodes = list(cfg.get("nodes", []))
+
+    # Inside Docker, localhost refers to the container itself.
+    # Rewrite to host.docker.internal so we can reach the host's Ollama.
+    if _running_in_docker():
+        for node in nodes:
+            if node["hostname"] in ("localhost", "127.0.0.1"):
+                node["hostname"] = "host.docker.internal"
+
+    return nodes
+
+
+def _running_in_docker() -> bool:
+    """Detect whether the current process is running inside a Docker container."""
+    try:
+        return Path("/.dockerenv").exists()
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -154,8 +189,11 @@ class PipelineMonitor:
 
     def __init__(self) -> None:
         cfg = _monitoring_config()
-        self._api_url = cfg["gitlab_api_url"]
-        self._project_id = cfg["gitlab_project_id"]
+        # Env vars override YAML config so docker-compose can inject values
+        self._api_url = os.environ.get("GITLAB_API_URL") or cfg["gitlab_api_url"]
+        self._project_id = (
+            os.environ.get("GITLAB_PROJECT_ID") or cfg["gitlab_project_id"]
+        )
         self._token_env = cfg["gitlab_token_env"]
         self._count = cfg["pipeline_count"]
         self._pipelines: list[PipelineInfo] = []

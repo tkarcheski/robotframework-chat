@@ -1,5 +1,6 @@
 """LLM model registry for discovering available models."""
 
+import os
 import time
 from typing import Any
 
@@ -13,7 +14,9 @@ class LLMRegistry:
     where frequent polling shouldn't hammer the Ollama endpoint.
     """
 
-    def __init__(self, ollama_host: str = "http://localhost:11434"):
+    def __init__(self, ollama_host: str | None = None):
+        if ollama_host is None:
+            ollama_host = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
         self._client = OllamaClient(base_url=ollama_host)
         self._models: list[str] = []
         self._model_info: dict[str, dict] = {}
