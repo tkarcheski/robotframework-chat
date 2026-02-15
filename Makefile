@@ -24,7 +24,11 @@ install: ## Install Python dependencies
 
 # ── Docker / Superset ─────────────────────────────────────────────────
 
-up: ## Start PostgreSQL + Redis + Superset
+.env: ## Create .env from .env.example if missing
+	cp .env.example .env
+	@echo "Created .env from .env.example – edit it if needed."
+
+up: .env ## Start PostgreSQL + Redis + Superset
 	$(COMPOSE) up -d
 
 down: ## Stop all services
