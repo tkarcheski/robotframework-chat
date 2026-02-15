@@ -41,7 +41,9 @@ class ModelAwarePreRunModifier:
         self.config_path = config_path or "robot/ci/models.yaml"
         self.default_model = default_model or os.getenv("DEFAULT_MODEL") or "llama3"
 
-        self._client = OllamaClient(base_url=self.ollama_endpoint, model=self.default_model)
+        self._client = OllamaClient(
+            base_url=self.ollama_endpoint, model=self.default_model
+        )
         self.available_models: List[str] = []
         self.model_config: Dict[str, Any] = {}
         self.ci_metadata: Dict[str, str] = {}
