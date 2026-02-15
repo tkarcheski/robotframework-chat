@@ -70,6 +70,8 @@ class OllamaTimestampListener:
         """Record the end time and compute duration for Ollama keywords."""
         if self._current_keyword is None:
             return
+        if self._current_keyword["keyword"] != name:
+            return
 
         end_time = datetime.utcnow()
         end_iso = end_time.isoformat() + "Z"

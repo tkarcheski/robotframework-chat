@@ -42,6 +42,8 @@ results/
 log.html
 output.xml
 report.html
+ci_metadata.json
+ollama_timestamps.json
 
 # OS
 .DS_Store
