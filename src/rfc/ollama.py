@@ -1,5 +1,6 @@
 """Ollama API client for LLM generation and model discovery."""
 
+import time
 from typing import Any, Dict, List
 
 from robot.api import logger
@@ -19,11 +20,27 @@ class OllamaClient:
         model: str = "llama3",
         temperature: float = 0.0,
         max_tokens: int = 256,
+        timeout: int = 120,
+        max_retries: int = 2,
     ):
+        if not isinstance(base_url, str) or not base_url:
+            raise ValueError("base_url must be a non-empty string")
+        if not isinstance(model, str) or not model:
+            raise ValueError("model must be a non-empty string")
+        if temperature < 0:
+            raise ValueError(f"temperature must be >= 0, got {temperature}")
+        if max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1, got {max_tokens}")
+        if timeout < 1:
+            raise ValueError(f"timeout must be >= 1, got {timeout}")
+        if max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {max_retries}")
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.timeout = timeout
+        self.max_retries = max_retries
 
     @property
     def endpoint(self) -> str:
@@ -42,12 +59,19 @@ class OllamaClient:
     def generate(self, prompt: str) -> str:
         """Send a prompt to the LLM and return the response text.
 
+        Retries on transient errors (ReadTimeout, ConnectionError) with
+        exponential backoff.  Non-transient errors are raised immediately.
+
         Args:
             prompt: The text prompt to send.
 
         Returns:
             The generated text response, stripped of whitespace.
         """
+        if not isinstance(prompt, str):
+            raise TypeError(f"prompt must be a str, got {type(prompt).__name__}")
+        if not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -58,14 +82,37 @@ class OllamaClient:
             },
         }
 
-        response = requests.post(
-            f"{self.base_url}/api/generate", json=payload, timeout=60
-        )
-        response.raise_for_status()
+        last_exception: Exception | None = None
+        for attempt in range(1 + self.max_retries):
+            try:
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                text = response.json()["response"].strip()
+                logger.info(f"{self.model} >> {text}")
+                return text
+            except (
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError,
+            ) as exc:
+                last_exception = exc
+                if attempt < self.max_retries:
+                    delay = 2 ** (attempt + 1)
+                    logger.warn(
+                        f"generate() attempt {attempt + 1} failed: {exc}. "
+                        f"Retrying in {delay}s "
+                        f"({self.max_retries - attempt} retries left)"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"generate() failed after {attempt + 1} attempts: {exc}"
+                    )
 
-        text = response.json()["response"].strip()
-        logger.info(f"{self.model} >> {text}")
-        return text
+        raise last_exception  # type: ignore[misc]
 
     def list_models(self) -> List[str]:
         """Query available models from the Ollama endpoint.
@@ -166,7 +213,10 @@ class OllamaClient:
         Raises:
             TimeoutError: If Ollama is still busy after timeout expires.
         """
-        import time
+        if timeout < 1:
+            raise ValueError(f"timeout must be >= 1, got {timeout}")
+        if poll_interval < 1:
+            raise ValueError(f"poll_interval must be >= 1, got {poll_interval}")
 
         start = time.time()
         while time.time() - start < timeout:

@@ -48,22 +48,16 @@ class TestResolveNodeHostname:
         running_in_docker.cache_clear()
         _host_docker_internal_resolves.cache_clear()
 
-    @patch(
-        "dashboard.core.docker_network.running_in_docker", return_value=False
-    )
+    @patch("dashboard.core.docker_network.running_in_docker", return_value=False)
     def test_noop_outside_docker(self, _mock):
         _host_docker_internal_resolves.cache_clear()
         assert resolve_node_hostname("localhost") == "localhost"
         assert resolve_node_hostname("127.0.0.1") == "127.0.0.1"
 
-    @patch(
-        "dashboard.core.docker_network.running_in_docker", return_value=True
-    )
+    @patch("dashboard.core.docker_network.running_in_docker", return_value=True)
     @patch("dashboard.core.docker_network.socket.getaddrinfo")
     def test_rewrites_localhost_in_bridge_docker(self, mock_dns, _mock):
-        mock_dns.return_value = [
-            (None, None, None, None, ("192.168.65.2", 0))
-        ]
+        mock_dns.return_value = [(None, None, None, None, ("192.168.65.2", 0))]
         _host_docker_internal_resolves.cache_clear()
         assert resolve_node_hostname("localhost") == "host.docker.internal"
         assert resolve_node_hostname("127.0.0.1") == "host.docker.internal"
@@ -73,9 +67,7 @@ class TestResolveNodeHostname:
         assert resolve_node_hostname("ai1") == "ai1"
         assert resolve_node_hostname("192.168.1.100") == "192.168.1.100"
 
-    @patch(
-        "dashboard.core.docker_network.running_in_docker", return_value=True
-    )
+    @patch("dashboard.core.docker_network.running_in_docker", return_value=True)
     @patch(
         "dashboard.core.docker_network.socket.getaddrinfo",
         side_effect=socket.gaierror("Name not resolved"),

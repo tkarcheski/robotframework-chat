@@ -40,6 +40,9 @@ class SessionStatus(Enum):
     RECOVERING = "recovering"
 
 
+_VALID_LOG_LEVELS = frozenset({"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "NONE"})
+
+
 @dataclass
 class SessionConfig:
     """Configuration for a test session.
@@ -56,6 +59,15 @@ class SessionConfig:
     dry_run: bool = False
     randomize: bool = False
     log_level: str = "INFO"
+
+    def __post_init__(self):
+        if self.log_level not in _VALID_LOG_LEVELS:
+            raise ValueError(
+                f"log_level must be one of {sorted(_VALID_LOG_LEVELS)}, "
+                f"got {self.log_level!r}"
+            )
+        if not isinstance(self.ollama_host, str) or not self.ollama_host:
+            raise ValueError("ollama_host must be a non-empty string")
 
 
 @dataclass
@@ -126,6 +138,10 @@ class SessionManager:
 
     def create_session(self, config: SessionConfig | None = None) -> RobotSession:
         """Create a new session if under limit."""
+        if config is not None and not isinstance(config, SessionConfig):
+            raise TypeError(
+                f"config must be a SessionConfig or None, got {type(config).__name__}"
+            )
         with self._lock:
             if len(self._sessions) >= self.MAX_SESSIONS:
                 raise SessionLimitError(f"Maximum {self.MAX_SESSIONS} sessions allowed")
@@ -138,6 +154,12 @@ class SessionManager:
 
     def get_session(self, session_id: str) -> RobotSession | None:
         """Get session by ID."""
+        if not isinstance(session_id, str):
+            raise TypeError(
+                f"session_id must be a str, got {type(session_id).__name__}"
+            )
+        if not session_id:
+            raise ValueError("session_id must be a non-empty string")
         with self._lock:
             return self._sessions.get(session_id)
 
@@ -148,6 +170,10 @@ class SessionManager:
 
     def close_session(self, session_id: str) -> bool:
         """Close and cleanup a session."""
+        if not isinstance(session_id, str):
+            raise TypeError(
+                f"session_id must be a str, got {type(session_id).__name__}"
+            )
         with self._lock:
             session = self._sessions.get(session_id)
             if session and session.process:
@@ -160,6 +186,10 @@ class SessionManager:
 
     def update_session_status(self, session_id: str, status: SessionStatus) -> None:
         """Update session status."""
+        if not isinstance(status, SessionStatus):
+            raise TypeError(
+                f"status must be a SessionStatus, got {type(status).__name__}"
+            )
         with self._lock:
             session = self._sessions.get(session_id)
             if session:
@@ -170,6 +200,8 @@ class SessionManager:
 
     def add_output_line(self, session_id: str, line: str) -> None:
         """Add line to session output buffer."""
+        if not isinstance(line, str):
+            raise TypeError(f"line must be a str, got {type(line).__name__}")
         with self._lock:
             session = self._sessions.get(session_id)
             if session:
@@ -183,6 +215,12 @@ class SessionManager:
         current_test: str = "",
     ) -> None:
         """Update session progress."""
+        if current < 0:
+            raise ValueError(f"current must be >= 0, got {current}")
+        if total < 0:
+            raise ValueError(f"total must be >= 0, got {total}")
+        if current > total:
+            raise ValueError(f"current ({current}) must not exceed total ({total})")
         with self._lock:
             session = self._sessions.get(session_id)
             if session:
@@ -192,6 +230,8 @@ class SessionManager:
 
     def register_observer(self, callback: Callable[[str], None]) -> None:
         """Register status change observer."""
+        if not callable(callback):
+            raise TypeError(f"callback must be callable, got {type(callback).__name__}")
         self._observers.append(callback)
 
     def _notify_observers(self, session_id: str) -> None:

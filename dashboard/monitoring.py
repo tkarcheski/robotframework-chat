@@ -240,9 +240,7 @@ def _detect_gitlab_from_git_remote() -> tuple[str, str]:
         return f"https://{host}", path
 
     # HTTPS: https://gitlab.example.com/group/project.git
-    https_match = re.match(
-        r"https?://(?:[^@]+@)?([^/]+)/(.+?)(?:\.git)?$", remote
-    )
+    https_match = re.match(r"https?://(?:[^@]+@)?([^/]+)/(.+?)(?:\.git)?$", remote)
     if https_match:
         host = https_match.group(1)
         path = https_match.group(2)
@@ -317,7 +315,9 @@ class PipelineMonitor:
             if resolved_id:
                 return final_url.rstrip("/"), resolved_id
 
-        return api_url.rstrip("/") if api_url else "", str(project_id) if project_id else ""
+        return api_url.rstrip("/") if api_url else "", str(
+            project_id
+        ) if project_id else ""
 
     def _resolve_project_id(self, api_url: str, project_path: str) -> str:
         """Resolve a project path (group/project) to a numeric GitLab ID."""
@@ -432,20 +432,22 @@ def build_pipeline_table(
 
         if monitor and monitor.is_configured and monitor.fetch_error:
             # Configured but failing
-            children.extend([
-                html.H6(
-                    "GitLab Pipeline Error",
-                    style={"color": "#e94560"},
-                ),
-                html.P(
-                    monitor.fetch_error,
-                    style={
-                        "color": "#e94560",
-                        "fontFamily": "monospace",
-                        "fontSize": "0.9em",
-                    },
-                ),
-            ])
+            children.extend(
+                [
+                    html.H6(
+                        "GitLab Pipeline Error",
+                        style={"color": "#e94560"},
+                    ),
+                    html.P(
+                        monitor.fetch_error,
+                        style={
+                            "color": "#e94560",
+                            "fontFamily": "monospace",
+                            "fontSize": "0.9em",
+                        },
+                    ),
+                ]
+            )
         else:
             children.append(
                 html.H6(
@@ -454,35 +456,37 @@ def build_pipeline_table(
                 )
             )
 
-        children.extend([
-            html.P(
-                "To enable pipeline monitoring, set the following in "
-                "your .env file or environment:",
-                style={"color": _MUTED},
-            ),
-            html.Pre(
-                "GITLAB_API_URL=https://gitlab.example.com\n"
-                "GITLAB_PROJECT_ID=12345\n"
-                "GITLAB_TOKEN=glpat-xxxxxxxxxxxx",
-                style={
-                    "backgroundColor": "#0d1117",
-                    "color": "#c9d1d9",
-                    "padding": "12px",
-                    "borderRadius": "6px",
-                    "fontSize": "13px",
-                },
-            ),
-            html.P(
-                [
-                    "Auto-detection: the dashboard will also check ",
-                    html.Code("CI_API_V4_URL"),
-                    " / ",
-                    html.Code("CI_PROJECT_ID"),
-                    " (GitLab CI env) and the git remote URL.",
-                ],
-                style={"color": _MUTED, "fontSize": "0.9em"},
-            ),
-        ])
+        children.extend(
+            [
+                html.P(
+                    "To enable pipeline monitoring, set the following in "
+                    "your .env file or environment:",
+                    style={"color": _MUTED},
+                ),
+                html.Pre(
+                    "GITLAB_API_URL=https://gitlab.example.com\n"
+                    "GITLAB_PROJECT_ID=12345\n"
+                    "GITLAB_TOKEN=glpat-xxxxxxxxxxxx",
+                    style={
+                        "backgroundColor": "#0d1117",
+                        "color": "#c9d1d9",
+                        "padding": "12px",
+                        "borderRadius": "6px",
+                        "fontSize": "13px",
+                    },
+                ),
+                html.P(
+                    [
+                        "Auto-detection: the dashboard will also check ",
+                        html.Code("CI_API_V4_URL"),
+                        " / ",
+                        html.Code("CI_PROJECT_ID"),
+                        " (GitLab CI env) and the git remote URL.",
+                    ],
+                    style={"color": _MUTED, "fontSize": "0.9em"},
+                ),
+            ]
+        )
 
         return html.Div(
             children,

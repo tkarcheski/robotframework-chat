@@ -20,6 +20,12 @@ class RobotRunner(threading.Thread):
         session: RobotSession,
         output_dir: str = "results/dashboard",
     ):
+        if not isinstance(session, RobotSession):
+            raise TypeError(
+                f"session must be a RobotSession, got {type(session).__name__}"
+            )
+        if not isinstance(output_dir, str) or not output_dir:
+            raise ValueError("output_dir must be a non-empty string")
         super().__init__(daemon=True)
         self.session = session
         self.output_dir = Path(output_dir)
@@ -212,6 +218,10 @@ class RobotRunnerFactory:
         session: RobotSession,
     ) -> RobotRunner:
         """Create a new runner for a session."""
+        if not isinstance(session, RobotSession):
+            raise TypeError(
+                f"session must be a RobotSession, got {type(session).__name__}"
+            )
         with cls._lock:
             runner = RobotRunner(session)
             cls._runners[session.session_id] = runner
@@ -220,12 +230,20 @@ class RobotRunnerFactory:
     @classmethod
     def get_runner(cls, session_id: str) -> RobotRunner | None:
         """Get runner by session ID."""
+        if not isinstance(session_id, str):
+            raise TypeError(
+                f"session_id must be a str, got {type(session_id).__name__}"
+            )
         with cls._lock:
             return cls._runners.get(session_id)
 
     @classmethod
     def stop_runner(cls, session_id: str) -> bool:
         """Stop a runner."""
+        if not isinstance(session_id, str):
+            raise TypeError(
+                f"session_id must be a str, got {type(session_id).__name__}"
+            )
         with cls._lock:
             runner = cls._runners.get(session_id)
             if runner:

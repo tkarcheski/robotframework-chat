@@ -11,8 +11,8 @@ class LLMKeywords:
     Robot Framework keywords for testing LLMs.
     """
 
-    def __init__(self):
-        self.client = OllamaClient()
+    def __init__(self, timeout: int = 120, max_retries: int = 2):
+        self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = Grader(self.client)
 
     @keyword("Set LLM Endpoint")

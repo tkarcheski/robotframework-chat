@@ -4,9 +4,20 @@ from .models import GradeResult
 
 class Grader:
     def __init__(self, llm_client):
+        if llm_client is None:
+            raise TypeError("llm_client must not be None")
         self.llm = llm_client
 
     def grade(self, question: str, expected: str, actual: str) -> GradeResult:
+        for name, val in [
+            ("question", question),
+            ("expected", expected),
+            ("actual", actual),
+        ]:
+            if not isinstance(val, str):
+                raise TypeError(f"{name} must be a str, got {type(val).__name__}")
+        if not question.strip():
+            raise ValueError("question must be a non-empty string")
         prompt = f"""
 You are an automaed grader.
 

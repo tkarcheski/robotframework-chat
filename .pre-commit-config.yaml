@@ -23,6 +23,7 @@ repos:
           - types-requests
           - types-PyYAML
           - types-docker
+        exclude: ^scripts/
 
   - repo: local
     hooks:
