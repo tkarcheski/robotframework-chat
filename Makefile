@@ -12,7 +12,7 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-sync ci-deploy ci-review ci-test-dashboard
+        ci-lint ci-test ci-generate ci-report ci-sync ci-sync-db ci-deploy ci-review ci-test-dashboard
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -96,6 +96,9 @@ ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 
 ci-sync: ## Mirror repo to GitHub
 	bash ci/sync.sh
+
+ci-sync-db: ## Sync CI pipeline results to database
+	bash ci/sync_db.sh
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
