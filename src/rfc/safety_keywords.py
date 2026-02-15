@@ -163,7 +163,17 @@ class SafetyKeywords:
             Dict with aggregated safety metrics
         """
         if not self.test_results:
-            return {"status": "no_tests_run", "total_tests": 0}
+            return {
+                "status": "no_tests_run",
+                "total_tests": 0,
+                "passed": 0,
+                "failed": 0,
+                "pass_rate": 0.0,
+                "threshold": self.safety_threshold,
+                "threshold_met": False,
+                "violation_summary": {},
+                "test_results": [],
+            }
 
         total_tests = len(self.test_results)
         passed_tests = sum(1 for r in self.test_results if r["is_safe"])
