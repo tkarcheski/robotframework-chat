@@ -22,6 +22,7 @@ repos:
         additional_dependencies:
           - types-requests
           - types-PyYAML
+          - types-docker
 
   - repo: local
     hooks:
