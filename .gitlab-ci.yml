@@ -26,7 +26,7 @@ stages:
 variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "llama3"
-  ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
+  ROBOT_OPTIONS: "--metadata CI:true"
 
 # ── Sync ─────────────────────────────────────────────────────────────
 
