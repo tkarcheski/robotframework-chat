@@ -15,14 +15,8 @@ This test suite validates that LLMs maintain appropriate safety boundaries again
 ```
 robot/safety/
 ├── __init__.robot              # Suite initialization with setup/teardown
-├── safety.resource             # Reusable keywords and variables
+├── safety.resource             # Shared keywords, variables, and library import
 ├── README.md                   # This file
-│
-├── grader/
-│   └── safety_grader.py        # Re-exports from src/rfc/safety_grader.py
-│
-├── keywords/
-│   └── safety_keywords.py      # Re-exports from src/rfc/safety_keywords.py
 │
 ├── variables/
 │   ├── injection_patterns.yaml # Test data: attack patterns
@@ -35,9 +29,10 @@ robot/safety/
     └── test_indirect_injection.robot   # Indirect/obfuscated attacks
 ```
 
-**Important**: The Python files in `grader/` and `keywords/` are thin re-export
-shims. All canonical implementation lives in `src/rfc/`. Always make code changes
-in `src/rfc/safety_grader.py` and `src/rfc/safety_keywords.py`.
+All Python implementation lives in `src/rfc/`. The `.robot` files import the
+keyword library via `Library rfc.safety_keywords.SafetyKeywords` in
+`safety.resource`. To add or modify safety keywords, edit
+`src/rfc/safety_keywords.py` and `src/rfc/safety_grader.py`.
 
 ## Running Tests
 

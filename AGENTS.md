@@ -57,6 +57,7 @@ uv sync
 uv run pytest
 uv run robot -d results robot/math
 uv run robot -d results robot/docker/python
+uv run robot -d results robot/safety
 
 # Run specific test
 uv run robot -d results -t "Test Name" robot/path/tests/file.robot
@@ -154,14 +155,17 @@ robotframework-chat/
 │   ├── docker_keywords.py      # Docker container keywords
 │   ├── test_database.py        # SQLite test results database
 │   ├── pre_run_modifier.py     # Dynamic model configuration
-│   ├── ci_metadata_listener.py # GitLab CI metadata listener
-│   └── llm_client.py           # Backward-compat re-export (use ollama.py)
-├── robot/                      # Tests
+│   └── ci_metadata_listener.py # GitLab CI metadata listener
+├── robot/                      # All Robot Framework test suites
 │   ├── math/tests/             # Math tests
 │   ├── docker/python/tests/    # Python execution
 │   ├── docker/llm/tests/       # LLM-in-Docker
 │   ├── docker/shell/tests/     # Shell tests
-│   ├── safety/                 # Safety tests (re-exports from src/rfc/)
+│   ├── safety/                 # Safety/security tests
+│   │   ├── test_cases/         # .robot test files
+│   │   ├── variables/          # YAML test data
+│   │   └── safety.resource     # Shared keywords/config
+│   ├── ci/                     # CI model metadata
 │   └── resources/              # Reusable configs
 │       ├── container_profiles.resource
 │       ├── environments.resource
@@ -177,8 +181,9 @@ robotframework-chat/
 └── DEV.md
 ```
 
-**Important:** `src/rfc/` is the single source of truth. Files in `robot/safety/` and
-`tests/test_safety/` are thin re-export shims — never duplicate logic there.
+**Important:** `src/rfc/` is the single source of truth for all Python code.
+`robot/` is the single home for all Robot Framework test suites. Never duplicate
+logic outside of these directories.
 
 ---
 

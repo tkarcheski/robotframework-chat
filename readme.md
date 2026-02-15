@@ -38,6 +38,9 @@ uv run robot -d results robot/docker/python
 # Run LLM-in-Docker multi-model tests
 uv run robot -d results robot/docker/llm
 
+# Run safety tests
+uv run robot -d results robot/safety
+
 # Run specific test by name
 uv run robot -d results -t "LLM Can Do Basic Math" robot/math/tests/llm_maths.robot
 
