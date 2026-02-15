@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Discover Ollama models on a known set of named nodes.
+
+Reads the ``nodes`` list from ``config/test_suites.yaml`` (or from the
+``OLLAMA_NODES_LIST`` env-var) and probes each host to determine:
+
+* whether the node is online (TCP connect + ``/api/tags`` responds)
+* which models are available
+
+Results are written to ``config/nodes_inventory.yaml`` (default) so that
+downstream CI jobs can build dynamic pipelines per online node.
+
+Usage::
+
+    # Probe all configured nodes and write the inventory file
+    python scripts/discover_nodes.py
+
+    # Write to a custom path
+    python scripts/discover_nodes.py -o nodes_inventory.yaml
+
+    # Dry-run -- print to stdout without writing a file
+    python scripts/discover_nodes.py --dry-run
+
+    # Override the node list via env-var (comma-separated hostnames)
+    OLLAMA_NODES_LIST=mini1,ai1 python scripts/discover_nodes.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+# Re-use low-level helpers from the existing discovery module
+_project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_project_root / "src"))
+sys.path.insert(0, str(_project_root))
+
+from scripts.discover_ollama import (  # noqa: E402
+    CONNECT_TIMEOUT,
+    DEFAULT_PORT,
+    MAX_SCAN_WORKERS,
+    _probe_port,
+    _query_models,
+)
+
+DEFAULT_INVENTORY_PATH = _project_root / "config" / "nodes_inventory.yaml"
+CONFIG_PATH = _project_root / "config" / "test_suites.yaml"
+
+
+# ---------------------------------------------------------------------------
+# Node list loading
+# ---------------------------------------------------------------------------
+
+
+def _load_node_list() -> list[dict[str, Any]]:
+    """Return the list of nodes to probe.
+
+    Priority:
+    1. ``OLLAMA_NODES_LIST`` env-var (comma-separated hostnames, optional
+       ``host:port`` syntax)
+    2. ``nodes`` key in ``config/test_suites.yaml``
+    """
+    env_val = os.environ.get("OLLAMA_NODES_LIST", "").strip()
+    if env_val:
+        nodes: list[dict[str, Any]] = []
+        for entry in env_val.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if ":" in entry:
+                host, port_s = entry.rsplit(":", 1)
+                nodes.append({"hostname": host, "port": int(port_s)})
+            else:
+                nodes.append({"hostname": entry, "port": DEFAULT_PORT})
+        return nodes
+
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as fh:
+            config = yaml.safe_load(fh) or {}
+        raw_nodes = config.get("nodes", [])
+        if raw_nodes:
+            return [
+                {
+                    "hostname": n["hostname"],
+                    "port": n.get("port", DEFAULT_PORT),
+                }
+                for n in raw_nodes
+            ]
+
+    print("Warning: no nodes configured -- nothing to discover", file=sys.stderr)
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------------
+
+
+def _probe_node(hostname: str, port: int) -> dict[str, Any]:
+    """Probe a single node and return its inventory entry."""
+    endpoint = f"http://{hostname}:{port}"
+    online = _probe_port(hostname, port, timeout=CONNECT_TIMEOUT)
+    models: list[str] = []
+    if online:
+        models = _query_models(endpoint)
+        # A host may accept TCP but not return valid model data;
+        # still mark it online if the port is open.
+    return {
+        "hostname": hostname,
+        "endpoint": endpoint,
+        "online": online,
+        "models": models,
+    }
+
+
+def discover_all_nodes() -> dict[str, Any]:
+    """Probe every configured node and return the full inventory dict."""
+    node_defs = _load_node_list()
+    if not node_defs:
+        return {
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "nodes": [],
+        }
+
+    results: list[dict[str, Any]] = []
+
+    with ThreadPoolExecutor(max_workers=min(len(node_defs), MAX_SCAN_WORKERS)) as pool:
+        futures = {
+            pool.submit(_probe_node, n["hostname"], n["port"]): n
+            for n in node_defs
+        }
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    # Sort by hostname for stable output
+    results.sort(key=lambda r: r["hostname"])
+
+    return {
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "nodes": results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# YAML output
+# ---------------------------------------------------------------------------
+
+
+def _write_inventory(inventory: dict[str, Any], path: Path) -> None:
+    """Write the inventory dict to a YAML file."""
+    header = (
+        "# Auto-generated by scripts/discover_nodes.py\n"
+        "# Do not edit manually -- this file is refreshed by the\n"
+        "# discover-nodes scheduled CI job.\n"
+        "#\n"
+        f"# Last updated: {inventory['last_updated']}\n\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(header)
+        yaml.dump(inventory, fh, default_flow_style=False, sort_keys=False)
+
+
+def _print_summary(inventory: dict[str, Any]) -> None:
+    """Print a human-readable summary to stdout."""
+    nodes = inventory.get("nodes", [])
+    online = [n for n in nodes if n["online"]]
+    offline = [n for n in nodes if not n["online"]]
+
+    print(f"Node discovery completed at {inventory['last_updated']}")
+    print(f"  Total nodes: {len(nodes)}")
+    print(f"  Online:      {len(online)}")
+    print(f"  Offline:     {len(offline)}")
+
+    if online:
+        print("\nOnline nodes:")
+        for node in online:
+            model_count = len(node["models"])
+            print(f"  {node['hostname']:12s}  {node['endpoint']:30s}  {model_count} model(s)")
+            for model in node["models"]:
+                print(f"    - {model}")
+
+    if offline:
+        print("\nOffline nodes:")
+        for node in offline:
+            print(f"  {node['hostname']:12s}  {node['endpoint']}")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Discover Ollama models on named nodes and write an inventory YAML"
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=str(DEFAULT_INVENTORY_PATH),
+        help=f"Output YAML path (default: {DEFAULT_INVENTORY_PATH})",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print results to stdout without writing a file",
+    )
+    args = parser.parse_args()
+
+    inventory = discover_all_nodes()
+    _print_summary(inventory)
+
+    if args.dry_run:
+        print("\n--- inventory YAML (dry-run) ---")
+        print(yaml.dump(inventory, default_flow_style=False, sort_keys=False))
+    else:
+        out_path = Path(args.output)
+        _write_inventory(inventory, out_path)
+        print(f"\nInventory written to {out_path}")
+
+
+if __name__ == "__main__":
+    main()

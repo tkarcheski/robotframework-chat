@@ -109,6 +109,35 @@ generate-regular-pipeline:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
+# ---------------------------------------------------------------------------
+# Node discovery -- scheduled or manual
+#
+# Probes a fixed list of named nodes (mini1, mini2, ai1, ai2, dev1, dev2)
+# defined in config/test_suites.yaml, checks which are online, queries
+# their models, and writes config/nodes_inventory.yaml.
+#
+# Override the node list at runtime by setting the OLLAMA_NODES_LIST
+# CI/CD variable (comma-separated hostnames or host:port entries).
+# ---------------------------------------------------------------------------
+discover-nodes:
+  stage: generate
+  allow_failure: true
+  before_script:
+    - uv sync --extra dev
+  script:
+    - echo "Probing configured nodes for Ollama services..."
+    - uv run python scripts/discover_nodes.py -o config/nodes_inventory.yaml
+    - echo "--- nodes_inventory.yaml ---"
+    - cat config/nodes_inventory.yaml
+  artifacts:
+    paths:
+      - config/nodes_inventory.yaml
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - when: manual
+      allow_failure: true
+
 # Dynamic Ollama discovery -- manual play button or hourly schedule
 #
 # Set OLLAMA_NODES (comma-separated host:port) or OLLAMA_SUBNET (CIDR)
@@ -116,6 +145,10 @@ generate-regular-pipeline:
 # When neither is set the script falls back to localhost:11434.
 generate-dynamic-pipeline:
   stage: generate
+  needs:
+    - job: discover-nodes
+      artifacts: true
+      optional: true
   allow_failure: true
   timeout: 60 minutes
   before_script:
