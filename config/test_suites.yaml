@@ -17,6 +17,30 @@ defaults:
   ollama_endpoint: "http://localhost:11434"
 
 # ---------------------------------------------------------------------------
+# Ollama Nodes
+#
+# Named hosts running Ollama.  The scheduled discover-nodes CI job probes
+# each host and writes config/nodes_inventory.yaml with online status and
+# the list of models available on each node.
+#
+# Override at runtime with the OLLAMA_NODES_LIST env-var (comma-separated
+# hostnames).  The port defaults to 11434 but can be overridden per-node.
+# ---------------------------------------------------------------------------
+nodes:
+  - hostname: mini1
+    port: 11434
+  - hostname: mini2
+    port: 11434
+  - hostname: ai1
+    port: 11434
+  - hostname: ai2
+    port: 11434
+  - hostname: dev1
+    port: 11434
+  - hostname: dev2
+    port: 11434
+
+# ---------------------------------------------------------------------------
 # Test Suites
 #
 # Each suite is an atomic unit the dashboard can run individually.
