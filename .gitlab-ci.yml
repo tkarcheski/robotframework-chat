@@ -173,6 +173,40 @@ run-dynamic-tests:
   allow_failure: true
 
 # =============================================================================
+# REPORT STAGE - Repo metrics (lines of code / filesize timeline)
+#
+# Samples commits across the repo history, counts lines and file sizes
+# by type (.py, .robot, other), and generates a timeline plot.
+# Posts a Markdown summary as an MR comment when GITLAB_TOKEN is set.
+# =============================================================================
+
+repo-metrics:
+  stage: report
+  needs: []          # no dependencies -- start immediately
+  before_script:
+    - uv sync
+    - uv pip install matplotlib
+  script:
+    - uv run python scripts/repo_metrics.py -o metrics
+    # Post summary as MR note (requires GITLAB_TOKEN with api scope)
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ] && [ -n "$GITLAB_TOKEN" ]; then
+        curl --fail --request POST \
+          --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes" \
+          --data-urlencode "body@metrics/summary.md" \
+          && echo "MR comment posted." \
+          || echo "Warning: could not post MR comment."
+      fi
+  artifacts:
+    paths:
+      - metrics/
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
 # DEPLOY STAGE - Deploy / update Superset stack
 #
 # Runs only on the default branch when SUPERSET_DEPLOY_HOST is configured.
