@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable
 
+from dashboard.core.docker_network import resolve_node_hostname
 from rfc.suite_config import (
     default_iq_levels,
     default_model,
@@ -22,6 +23,11 @@ def _first_suite_path() -> str:
     if suites:
         return next(iter(suites.values()))["path"]
     return "robot/math/tests"
+
+
+def _default_ollama_host() -> str:
+    """Return a Docker-aware default Ollama host."""
+    return f"{resolve_node_hostname('localhost')}:11434"
 
 
 class SessionStatus(Enum):
@@ -45,7 +51,7 @@ class SessionConfig:
     iq_levels: list = field(default_factory=default_iq_levels)
     model: str = field(default_factory=default_model)
     profile: str = field(default_factory=default_profile)
-    ollama_host: str = "localhost:11434"
+    ollama_host: str = field(default_factory=_default_ollama_host)
     auto_recover: bool = False
     dry_run: bool = False
     randomize: bool = False

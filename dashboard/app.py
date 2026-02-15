@@ -8,6 +8,7 @@ from dash import ALL, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 
 from dashboard.core.artifact_uploader import upload_session_results
+from dashboard.core.docker_network import resolve_node_hostname
 from dashboard.core.robot_runner import RobotRunnerFactory
 from dashboard.core.session_manager import (
     SessionConfig,
@@ -27,6 +28,8 @@ from dashboard.monitoring import (
     build_pipeline_table,
 )
 from rfc.suite_config import default_iq_levels, default_model, default_profile
+
+_DEFAULT_HOST = f"{resolve_node_hostname('localhost')}:11434"
 
 # -- App init ----------------------------------------------------------------
 
@@ -125,7 +128,7 @@ def handle_button_click(
         # Build config from the form values at this index
         suite_val = suites[idx] if idx < len(suites) else "robot"
         iq_val = iqs[idx] if idx < len(iqs) else default_iq_levels()
-        host_val = hosts[idx] if idx < len(hosts) else "localhost:11434"
+        host_val = hosts[idx] if idx < len(hosts) else _DEFAULT_HOST
         model_val = models[idx] if idx < len(models) else default_model()
         profile_val = profiles[idx] if idx < len(profiles) else default_profile()
         ar_val = auto_recovers[idx] if idx < len(auto_recovers) else []
@@ -136,7 +139,7 @@ def handle_button_click(
             iq_levels=iq_val or default_iq_levels(),
             model=model_val or default_model(),
             profile=profile_val or default_profile(),
-            ollama_host=host_val or "localhost:11434",
+            ollama_host=host_val or _DEFAULT_HOST,
             auto_recover=bool(ar_val and True in ar_val),
             dry_run=bool(dr_val and True in dr_val),
         )

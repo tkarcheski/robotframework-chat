@@ -16,7 +16,6 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from pathlib import Path
 from urllib.parse import quote_plus
 
 import dash_bootstrap_components as dbc
@@ -24,6 +23,7 @@ import plotly.graph_objects as go
 import requests
 from dash import dcc, html
 
+from dashboard.core.docker_network import docker_aware_nodes
 from rfc.suite_config import load_config
 
 _log = logging.getLogger(__name__)
@@ -82,22 +82,9 @@ def _node_list() -> list[dict]:
         cfg = load_config()
         nodes = list(cfg.get("nodes", []))
 
-    # Inside Docker, localhost refers to the container itself.
-    # Rewrite to host.docker.internal so we can reach the host's Ollama.
-    if _running_in_docker():
-        for node in nodes:
-            if node["hostname"] in ("localhost", "127.0.0.1"):
-                node["hostname"] = "host.docker.internal"
-
-    return nodes
-
-
-def _running_in_docker() -> bool:
-    """Detect whether the current process is running inside a Docker container."""
-    try:
-        return Path("/.dockerenv").exists()
-    except Exception:
-        return False
+    # When running in Docker with bridge networking, rewrite localhost
+    # to host.docker.internal.  Under host networking this is a no-op.
+    return docker_aware_nodes(nodes)
 
 
 # ---------------------------------------------------------------------------
