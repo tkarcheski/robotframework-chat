@@ -144,10 +144,14 @@ robot --prerunmodifier rfc.pre_run_modifier:ModelAwarePreRunModifier tests/
 ```
 
 Features:
-1. Queries Ollama for available models
-2. Reads model configuration
-3. Filters tests by model availability
-4. Adds CI metadata to results
+1. Queries Ollama for available models (via `rfc.ollama.OllamaClient`)
+2. Reads model configuration from `robot/ci/models.yaml`
+3. Filters tests by model availability (removes tests with unmet `model:` tags)
+4. Adds CI metadata to results (via shared `rfc.ci_metadata.collect_ci_metadata()`)
+
+The CI metadata listener (`rfc.ci_metadata_listener.CiMetadataListener`) uses the
+same shared `rfc.ci_metadata` module, so metadata collection is consistent across
+both the pre-run modifier and the listener.
 
 ## Docker CI Image
 

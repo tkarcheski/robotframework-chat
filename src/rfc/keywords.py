@@ -1,6 +1,6 @@
 from robot.api import logger
 from robot.api.deco import keyword
-from .llm_client import LLMClient
+from .ollama import OllamaClient
 from .grader import Grader
 
 
@@ -10,7 +10,7 @@ class LLMKeywords:
     """
 
     def __init__(self):
-        self.client = LLMClient()
+        self.client = OllamaClient()
         self.grader = Grader(self.client)
 
     @keyword("Set LLM Endpoint")

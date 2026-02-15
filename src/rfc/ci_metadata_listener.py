@@ -11,6 +11,8 @@ from typing import Dict, Any, Optional
 from robot.api import logger  # type: ignore
 from robot.result import TestSuite  # type: ignore
 
+from .ci_metadata import collect_ci_metadata
+
 
 class CiMetadataListener:
     """Listener that collects CI metadata and adds it to test results.
@@ -33,7 +35,7 @@ class CiMetadataListener:
         Collects CI metadata and adds it to the suite metadata.
         """
         self.start_time = datetime.utcnow()
-        self.ci_info = self._collect_ci_metadata()
+        self.ci_info = collect_ci_metadata()
 
         # Log CI information
         if self.ci_info.get("CI"):
@@ -79,50 +81,6 @@ class CiMetadataListener:
             f"{attributes.get('skip', 0)} skipped"
         )
 
-    def _collect_ci_metadata(self) -> Dict[str, str]:
-        """Collect metadata from GitLab CI environment variables.
-
-        Returns:
-            Dictionary containing CI metadata
-        """
-        metadata = {
-            # GitLab CI Variables
-            "CI": os.getenv("CI", "false"),
-            "GitLab_URL": os.getenv("CI_PROJECT_URL", ""),
-            "Commit_SHA": os.getenv("CI_COMMIT_SHA", ""),
-            "Commit_Short_SHA": os.getenv("CI_COMMIT_SHORT_SHA", ""),
-            "Branch": os.getenv("CI_COMMIT_REF_NAME", ""),
-            "Pipeline_URL": os.getenv("CI_PIPELINE_URL", ""),
-            "Pipeline_ID": os.getenv("CI_PIPELINE_ID", ""),
-            "Job_URL": os.getenv("CI_JOB_URL", ""),
-            "Job_ID": os.getenv("CI_JOB_ID", ""),
-            "Job_Name": os.getenv("CI_JOB_NAME", ""),
-            "Merge_Request_IID": os.getenv("CI_MERGE_REQUEST_IID", ""),
-            "Merge_Request_Source_Branch": os.getenv(
-                "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", ""
-            ),
-            "Merge_Request_Target_Branch": os.getenv(
-                "CI_MERGE_REQUEST_TARGET_BRANCH_NAME", ""
-            ),
-            "Repository_URL": os.getenv("CI_REPOSITORY_URL", ""),
-            "Triggered_By": os.getenv("CI_PIPELINE_SOURCE", ""),
-            # Runner Information
-            "Runner_ID": os.getenv("CI_RUNNER_ID", ""),
-            "Runner_Description": os.getenv("CI_RUNNER_DESCRIPTION", ""),
-            "Runner_Tags": os.getenv("CI_RUNNER_TAGS", ""),
-            # Test Environment
-            "Test_Environment": os.getenv("CI_ENVIRONMENT_NAME", ""),
-            "User": os.getenv("GITLAB_USER_LOGIN", ""),
-            # Model Information
-            "Ollama_Endpoint": os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"),
-            "Default_Model": os.getenv("DEFAULT_MODEL", "llama3"),
-            # Timestamp
-            "Timestamp": datetime.utcnow().isoformat() + "Z",
-        }
-
-        # Filter out empty values
-        return {k: v for k, v in metadata.items() if v}
-
     def _save_metadata_json(self, metadata: Dict[str, str]):
         """Save metadata to a JSON file for external tools.
 
@@ -145,7 +103,6 @@ class CiMetadataListener:
             logger.warn(f"Could not save metadata JSON: {e}")
 
 
-# Convenience function for use as a pre-run modifier
 class CiMetadataModifier(CiMetadataListener):
     """Version of the listener that works as a pre-run modifier."""
 
@@ -155,7 +112,7 @@ class CiMetadataModifier(CiMetadataListener):
         Called by Robot Framework before execution.
         """
         self.start_time = datetime.utcnow()
-        self.ci_info = self._collect_ci_metadata()
+        self.ci_info = collect_ci_metadata()
 
         # Add metadata to suite
         for key, value in self.ci_info.items():
@@ -166,8 +123,7 @@ class CiMetadataModifier(CiMetadataListener):
 
 def main():
     """Entry point for testing the listener."""
-    listener = CiMetadataListener()
-    metadata = listener._collect_ci_metadata()
+    metadata = collect_ci_metadata()
 
     print("CI Metadata collected:")
     print(json.dumps(metadata, indent=2))

@@ -10,10 +10,13 @@ This module provides a Robot Framework pre-run modifier that:
 import os
 import sys
 from typing import List, Dict, Any, Optional
-import requests
+
 import yaml
 from robot.api import logger  # type: ignore
 from robot.running import TestSuite  # type: ignore
+
+from .ci_metadata import collect_ci_metadata
+from .ollama import OllamaClient
 
 
 class ModelAwarePreRunModifier:
@@ -32,12 +35,13 @@ class ModelAwarePreRunModifier:
             config_path: Path to models.yaml config file
             default_model: Default model to use (default: env DEFAULT_MODEL or llama3)
         """
-        self.ollama_endpoint = ollama_endpoint or os.getenv(
-            "OLLAMA_ENDPOINT", "http://localhost:11434"
+        self.ollama_endpoint = (
+            ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
         self.config_path = config_path or "robot/ci/models.yaml"
-        self.default_model = default_model or os.getenv("DEFAULT_MODEL", "llama3")
+        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or "llama3"
 
+        self._client = OllamaClient(base_url=self.ollama_endpoint, model=self.default_model)
         self.available_models: List[str] = []
         self.model_config: Dict[str, Any] = {}
         self.ci_metadata: Dict[str, str] = {}
@@ -50,7 +54,8 @@ class ModelAwarePreRunModifier:
         logger.info(f"Starting ModelAwarePreRunModifier for suite: {suite.name}")
 
         # Gather CI metadata
-        self._gather_ci_metadata()
+        self.ci_metadata = collect_ci_metadata()
+        logger.info(f"CI Metadata gathered: {len(self.ci_metadata)} items")
 
         # Load model configuration
         self._load_model_config()
@@ -68,23 +73,6 @@ class ModelAwarePreRunModifier:
             f"Pre-run modifier complete. Available models: {self.available_models}"
         )
 
-    def _gather_ci_metadata(self) -> None:
-        """Gather metadata from GitLab CI environment."""
-        self.ci_metadata = {
-            "CI": "true",
-            "GitLab_URL": os.getenv("CI_PROJECT_URL") or "",
-            "Commit_SHA": os.getenv("CI_COMMIT_SHA") or "",
-            "Branch": os.getenv("CI_COMMIT_REF_NAME") or "",
-            "Pipeline_URL": os.getenv("CI_PIPELINE_URL") or "",
-            "Runner_ID": os.getenv("CI_RUNNER_ID") or "",
-            "Runner_Description": os.getenv("CI_RUNNER_DESCRIPTION") or "",
-            "Runner_Tags": os.getenv("CI_RUNNER_TAGS") or "",
-            "Ollama_Endpoint": self.ollama_endpoint or "",
-            "Default_Model": self.default_model or "",
-        }
-
-        logger.info(f"CI Metadata gathered: {len(self.ci_metadata)} items")
-
     def _load_model_config(self) -> None:
         """Load model configuration from YAML file."""
         try:
@@ -101,24 +89,12 @@ class ModelAwarePreRunModifier:
     def _query_available_models(self) -> None:
         """Query available models from Ollama endpoint."""
         try:
-            response = requests.get(f"{self.ollama_endpoint}/api/tags", timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
-            models = data.get("models", [])
-
-            self.available_models = [
-                model.get("name", "").split(":")[0]  # Remove tag if present
-                for model in models
-            ]
-
+            self.available_models = self._client.list_models()
             logger.info(
                 f"Found {len(self.available_models)} models on Ollama: {self.available_models}"
             )
-
         except Exception as e:
             logger.error(f"Error querying Ollama models: {e}")
-            # Fallback to default model
             self.available_models = [self.default_model or "llama3"]
             logger.info(
                 f"Falling back to default model: {self.default_model or 'llama3'}"

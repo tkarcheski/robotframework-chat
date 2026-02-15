@@ -38,6 +38,9 @@ uv run robot -d results robot/docker/python
 # Run LLM-in-Docker multi-model tests
 uv run robot -d results robot/docker/llm
 
+# Run safety tests
+uv run robot -d results robot/safety
+
 # Run specific test by name
 uv run robot -d results -t "LLM Can Do Basic Math" robot/math/tests/llm_maths.robot
 
@@ -89,10 +92,23 @@ uv run robot -d results -i IQ:120 robot/docker/python
 - Multi-model comparison testing
 - Suite-level container lifecycle management
 
+✅ **Safety Testing**
+- Prompt injection resistance testing
+- System prompt extraction detection
+- Jailbreak attempt validation
+- Regex-based pattern detection with confidence scoring
+
 ✅ **Test Organization**
 - IQ levels (100-160) for difficulty progression
 - Tag-based filtering and execution
 - Reusable resource files for environments
+- Multi-session dashboard UI for concurrent test runs
+
+✅ **CI/CD Integration**
+- GitLab CI pipeline with pre-run model filtering
+- Automatic CI metadata collection
+- SQLite database for test history tracking
+- Import/export utilities for test results
 
 ### Planned Features
 
@@ -105,15 +121,22 @@ See [ROADMAP.md](ROADMAP.md) for detailed planning.
 ```
 Robot Framework Test
 │
-├─> Python Keyword Library (rfc/)
-│   ├─ LLM Client (llm_client.py)
+├─> Python Keyword Library (src/rfc/)
+│   ├─ Ollama Client (ollama.py) ── generation + model discovery
 │   ├─ Grader (grader.py)
+│   ├─ Safety Grader (safety_grader.py)
 │   ├─ Docker Manager (container_manager.py)
-│   └─ Keywords (keywords.py, docker_keywords.py)
+│   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
+│   ├─ Data Models (models.py) ── GradeResult, SafetyResult
+│   ├─ CI Metadata (ci_metadata.py) ── GitLab CI env collection
+│   └─ Test Database (test_database.py) ── SQLite results storage
 │
 ├─> Docker Containers
 │   ├─ Code Execution (Python, Node, Shell)
 │   └─ LLM Services (Ollama)
+│
+├─> Dashboard (dashboard/)
+│   └─ Multi-session test runner UI (Dash)
 │
 └─> Test Results & Reports
 ```
@@ -208,24 +231,37 @@ robotframework-chat/
 ├── README.md                   # This file
 ├── ROADMAP.md                  # Project roadmap
 ├── AGENTS.md                   # Agent instructions
+├── DEV.md                      # Development guidelines
 ├── pyproject.toml              # Python dependencies
-├── src/rfc/                    # Python keyword library
+├── src/rfc/                    # Python keyword library (canonical source)
+│   ├── ollama.py               # Ollama API client (generation + model discovery)
+│   ├── models.py               # Shared data classes (GradeResult, SafetyResult)
+│   ├── ci_metadata.py          # Shared CI metadata collection
 │   ├── keywords.py             # Core LLM keywords
+│   ├── grader.py               # LLM answer grading
+│   ├── safety_keywords.py      # Safety testing keywords
+│   ├── safety_grader.py        # Regex-based safety grading
+│   ├── docker_config.py        # Container configuration models
+│   ├── container_manager.py    # Docker lifecycle management
 │   ├── docker_keywords.py      # Docker container keywords
-│   ├── container_manager.py    # Container lifecycle
-│   ├── docker_config.py        # Configuration models
-│   ├── llm_client.py           # LLM API client
-│   └── grader.py               # LLM grading logic
+│   ├── test_database.py        # SQLite test results database
+│   ├── pre_run_modifier.py     # Dynamic model configuration
+│   └── ci_metadata_listener.py # GitLab CI metadata listener
 ├── robot/                      # Robot Framework tests
-│   ├── math/tests/             # Math tests (original)
+│   ├── math/tests/             # Math reasoning tests
 │   ├── docker/                 # Docker-based tests
 │   │   ├── python/tests/       # Python code execution
 │   │   ├── llm/tests/          # LLM-in-Docker tests
 │   │   └── shell/tests/        # Shell/terminal tests
+│   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
 │       ├── container_profiles.resource
 │       ├── environments.resource
 │       └── llm_containers.resource
+├── dashboard/                  # Dash-based test runner UI
+│   └── core/                   # Session management, runner, model discovery
+├── scripts/                    # Import/query/CI utilities
+├── docs/                       # Additional documentation
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks
 ```
