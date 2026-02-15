@@ -2,7 +2,18 @@
 
 import pytest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _load_dotenv():
+    """Load .env as default env vars (won't override existing vars or test patches)."""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.is_file():
+        from dotenv import load_dotenv
+
+        load_dotenv(env_path, override=False)
 
 
 @pytest.fixture

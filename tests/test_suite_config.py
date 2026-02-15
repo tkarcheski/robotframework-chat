@@ -1,8 +1,10 @@
 """Tests for rfc.suite_config."""
 
+import os
 from unittest.mock import patch
 
 from rfc.suite_config import (
+    _apply_env_overrides,
     defaults,
     test_suites,
     run_all_entry,
@@ -126,3 +128,37 @@ class TestDefaultHelpers:
 
     def test_default_profile(self, mock_suite_config):
         assert default_profile() == "STANDARD"
+
+
+class TestEnvVarOverrides:
+    """Env vars from .env override YAML config values."""
+
+    def test_default_model_overridden_by_env(self):
+        cfg = {"defaults": {"model": "llama3"}}
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
+            result = _apply_env_overrides(cfg)
+        assert result["defaults"]["model"] == "mistral"
+
+    def test_ollama_endpoint_overridden_by_env(self):
+        cfg = {"defaults": {"ollama_endpoint": "http://localhost:11434"}}
+        with patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"}):
+            result = _apply_env_overrides(cfg)
+        assert result["defaults"]["ollama_endpoint"] == "http://gpu1:11434"
+
+    def test_gitlab_api_url_overridden_by_env(self):
+        cfg = {"monitoring": {"gitlab_api_url": ""}}
+        with patch.dict(os.environ, {"GITLAB_API_URL": "https://gitlab.example.com"}):
+            result = _apply_env_overrides(cfg)
+        assert result["monitoring"]["gitlab_api_url"] == "https://gitlab.example.com"
+
+    def test_empty_env_var_does_not_override(self):
+        cfg = {"defaults": {"model": "llama3"}}
+        with patch.dict(os.environ, {"DEFAULT_MODEL": ""}, clear=False):
+            result = _apply_env_overrides(cfg)
+        assert result["defaults"]["model"] == "llama3"
+
+    def test_missing_section_created_by_override(self):
+        cfg = {}
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi3"}):
+            result = _apply_env_overrides(cfg)
+        assert result["defaults"]["model"] == "phi3"

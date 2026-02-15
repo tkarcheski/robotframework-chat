@@ -261,7 +261,7 @@ robotframework-chat/
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
-│   └── roadmap.md              # Project roadmap
+│   └── FEATURES.md             # Feature tracker (prioritized)
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
 │   ├── lint.sh                 # Code quality checks
@@ -269,6 +269,7 @@ robotframework-chat/
 │   ├── generate.sh             # Child pipeline generation
 │   ├── report.sh               # Metrics and MR comments
 │   ├── sync.sh                 # GitHub mirror
+│   ├── sync_db.sh              # Pipeline artifact sync (sources .env)
 │   ├── deploy.sh               # Superset deployment
 │   └── review.sh               # Claude Code review
 ├── Makefile                    # Build, test, deploy, ci-* targets
@@ -384,6 +385,7 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 
 All scripts follow these conventions:
 - `set -euo pipefail` (fail fast)
+- Source `.env` when present (auto-export via `set -a`)
 - Verbose output on failure (diagnostics, paths, troubleshooting hints)
 - Validate required env vars before proceeding
 - Runnable locally: `bash ci/lint.sh` or `make ci-lint`
@@ -429,6 +431,36 @@ DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
 ```
 
 See [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) for schema details, queries, and maintenance.
+
+---
+
+## Environment Configuration
+
+All runtime settings live in `.env` (copied from `.env.example`). The file is
+loaded at multiple layers so the same values propagate everywhere:
+
+| Layer | How `.env` is loaded |
+|-------|---------------------|
+| **Makefile** | `-include .env` + `export` (lines 8-10) |
+| **CI scripts** (`ci/*.sh`) | `set -a; source .env; set +a` (conditional) |
+| **Python tests** (pytest) | `python-dotenv` via session fixture in `conftest.py` (`override=False`) |
+| **suite_config.py** | `load_config()` overlays env vars onto YAML values |
+| **Docker Compose** | Native `${VAR:-default}` interpolation |
+
+### Env var → YAML config overrides
+
+`load_config()` in `src/rfc/suite_config.py` applies these env var overrides
+after loading `config/test_suites.yaml`:
+
+| Env var | YAML path | Example |
+|---------|-----------|---------|
+| `DEFAULT_MODEL` | `defaults.model` | `mistral` |
+| `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
+| `GITLAB_API_URL` | `monitoring.gitlab_api_url` | `https://gitlab.example.com` |
+| `GITLAB_PROJECT_ID` | `monitoring.gitlab_project_id` | `42` |
+
+Empty env vars are ignored (YAML defaults are preserved). The `OLLAMA_NODES_LIST`
+env var is handled separately by `dashboard/monitoring.py::_node_list()`.
 
 ---
 

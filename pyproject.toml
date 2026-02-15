@@ -43,6 +43,7 @@ superset = [
 ]
 dev = [
     "pre-commit",
+    "python-dotenv",
     "ruff",
     "mypy",
     "types-requests",
