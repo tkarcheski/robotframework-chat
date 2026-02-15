@@ -136,6 +136,19 @@ make format        # Auto-format code
 make typecheck     # Run mypy type checker
 make check         # Run all code quality checks
 make version       # Print current version
+
+# CI targets (wrappers around ci/*.sh scripts)
+make ci-lint                 # Run all CI lint checks
+make ci-lint CHECK=ruff      # Run specific lint check
+make ci-test                 # Run all tests with Ollama health check
+make ci-test SUITE=math      # Run specific test suite
+make ci-generate             # Generate regular child pipeline
+make ci-generate MODE=dynamic # Generate dynamic child pipeline
+make ci-report               # Generate repo metrics
+make ci-report POST_MR=1     # Generate and post to MR
+make ci-sync                 # Mirror to GitHub
+make ci-deploy               # Deploy Superset
+make ci-review               # Run Claude Code review
 ```
 
 ---
@@ -248,7 +261,16 @@ robotframework-chat/
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
 │   └── roadmap.md              # Project roadmap
-├── Makefile                    # Build, test, deploy targets
+├── ci/                         # CI scripts (all pipeline logic lives here)
+│   ├── common.yml              # Shared YAML templates
+│   ├── lint.sh                 # Code quality checks
+│   ├── test.sh                 # Test runner with health checks
+│   ├── generate.sh             # Child pipeline generation
+│   ├── report.sh               # Metrics and MR comments
+│   ├── sync.sh                 # GitHub mirror
+│   ├── deploy.sh               # Superset deployment
+│   └── review.sh               # Claude Code review
+├── Makefile                    # Build, test, deploy, ci-* targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
 ├── .env.example                # Environment variable template
 ├── pyproject.toml              # Python dependencies + optional extras
@@ -325,11 +347,44 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 ## CI/CD Pipeline
 
-The GitLab CI pipeline uses a seven-stage architecture:
+The GitLab CI pipeline uses a seven-stage architecture with all logic
+delegated to bash scripts in `ci/` and Makefile targets:
 
 ```
 sync → lint → generate → test → report → deploy → review
 ```
+
+### Architecture: Minimal YAML, Modular Scripts
+
+`.gitlab-ci.yml` is a bare-bones skeleton (~170 lines). It defines stages,
+variables, rules, and artifacts — nothing else. All executable logic lives in:
+
+| Layer | Location | Role |
+|-------|----------|------|
+| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review, sync |
+| **Templates** | `ci/common.yml` | Shared YAML templates (`.uv-setup`, `.robot-test`) |
+| **Makefile** | `Makefile` | `ci-*` targets wrap scripts for local and CI use |
+| **Python** | `scripts/generate_pipeline.py` | Generates child-pipeline YAML from `config/test_suites.yaml` |
+
+To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
+
+### CI Scripts
+
+| Script | Purpose | Makefile target |
+|--------|---------|-----------------|
+| `ci/lint.sh` | Run all linters, collect all failures, report summary | `make ci-lint` |
+| `ci/test.sh` | Ollama health check + run test suites via Makefile | `make ci-test` |
+| `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
+| `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
+| `ci/sync.sh` | Mirror repo to GitHub | `make ci-sync` |
+| `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
+| `ci/review.sh` | Claude Code review + pipeline fix | `make ci-review` |
+
+All scripts follow these conventions:
+- `set -euo pipefail` (fail fast)
+- Verbose output on failure (diagnostics, paths, troubleshooting hints)
+- Validate required env vars before proceeding
+- Runnable locally: `bash ci/lint.sh` or `make ci-lint`
 
 ### Pipeline Data Flow
 
@@ -345,7 +400,7 @@ report stage:          rebot merges output.xml files
                            └── import → DB  (pipeline-level combined run)
 ```
 
-During the **test stage**, each suite runs with both listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
+During the **test stage**, each suite runs with all listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
 
 During the **report stage**, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a pipeline-level run.
 

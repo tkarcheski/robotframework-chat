@@ -150,6 +150,18 @@ make test
 
 If a module starts doing two things, split it.
 
+### CI Script Responsibilities
+
+| Script | Single Responsibility |
+|--------|----------------------|
+| `ci/lint.sh` | Run code quality checks -- no test execution |
+| `ci/test.sh` | Run Robot Framework tests -- delegates to Makefile targets |
+| `ci/generate.sh` | Generate child pipeline YAML -- delegates to Python scripts |
+| `ci/report.sh` | Generate metrics and post MR comments |
+| `ci/sync.sh` | Mirror repo to GitHub -- no other side effects |
+| `ci/deploy.sh` | Deploy Superset stack -- SSH to remote host |
+| `ci/review.sh` | Claude Code review -- pipeline fix + diff review |
+
 ### Adding New Test Suites
 
 1. Create directory: `robot/<suite-name>/tests/`
@@ -183,10 +195,11 @@ current change:
 
 | Pattern | Resolution |
 |---------|-----------|
-| Duplicated listener attachment flags | Centralize in a shared config or Makefile variable |
+| Duplicated listener attachment flags | Already centralized in `Makefile` `LISTENER` variable and `config/test_suites.yaml` |
 | Magic strings for model names | Use constants or config file lookups |
 | Mixed sync/async patterns | Standardize on one approach per module |
 | Test setup duplication | Extract shared fixtures to resource files |
+| Inline CI logic in `.gitlab-ci.yml` | Move to `ci/*.sh` scripts (completed) |
 
 ---
 
@@ -226,6 +239,50 @@ When reviewing code (whether as a human or an AI agent):
 - [ ] New behavior has corresponding tests
 - [ ] No TODOs without issue references
 - [ ] Config changes reflected in `.env.example` if applicable
+
+---
+
+## CI/CD Maintenance
+
+### Architecture
+
+The CI pipeline follows a strict layering:
+
+```
+.gitlab-ci.yml   → bare-bones skeleton (stages, rules, artifacts only)
+ci/common.yml    → shared YAML templates (.uv-setup, .robot-test)
+ci/*.sh          → all executable logic (bash scripts)
+Makefile         → ci-* targets wrap scripts for local + CI use
+```
+
+### CI Script Conventions
+
+All scripts in `ci/` must follow these patterns:
+
+- **Shebang:** `#!/usr/bin/env bash`
+- **Strict mode:** `set -euo pipefail` (fail fast, undefined vars are errors)
+- **Verbose on failure:** Print diagnostics, file paths, troubleshooting hints
+- **Validate env vars:** Check required variables before doing work
+- **One concern per script:** lint, test, deploy, etc. — not combined
+- **Runnable locally:** `bash ci/lint.sh` or `make ci-lint` must work on developer machines
+
+### When to Modify CI
+
+| Change needed | Where to edit |
+|---------------|---------------|
+| Add/remove a pipeline stage | `.gitlab-ci.yml` |
+| Change trigger rules or artifacts | `.gitlab-ci.yml` |
+| Change what a job actually does | `ci/*.sh` script |
+| Add a new test suite to CI | `config/test_suites.yaml` (auto-propagates) |
+| Add shared YAML templates | `ci/common.yml` |
+| Add a new CI script | Create `ci/<name>.sh`, add Makefile target, add job in `.gitlab-ci.yml` |
+
+### Adding a New CI Script
+
+1. Create `ci/<name>.sh` with `#!/usr/bin/env bash` and `set -euo pipefail`
+2. Add a Makefile target: `ci-<name>: ## Description` → `bash ci/<name>.sh`
+3. Add a job in `.gitlab-ci.yml` with `script: [bash ci/<name>.sh]`
+4. Document in `ai/PIPELINES.md`
 
 ---
 

@@ -5,6 +5,33 @@ strategy for robotframework-chat CI/CD.
 
 ---
 
+## Architecture: Minimal YAML, Modular Scripts
+
+The CI pipeline follows a strict separation of concerns:
+
+```
+.gitlab-ci.yml          # Skeleton: stages, rules, artifacts (~170 lines)
+ci/common.yml           # Shared YAML templates (.uv-setup, .robot-test)
+ci/*.sh                 # All executable logic (bash scripts)
+Makefile                # ci-* targets wrap scripts for local + CI use
+scripts/generate_pipeline.py  # Child-pipeline YAML from config/test_suites.yaml
+config/test_suites.yaml       # Single source of truth for test suites
+```
+
+**Strong requirement:** `.gitlab-ci.yml` stays minimal. To change pipeline
+behavior, edit `ci/*.sh` scripts or `Makefile` targets — not the YAML.
+
+### Design Principles
+
+1. **Simple** — the YAML skeleton is readable at a glance
+2. **Modular** — each script handles one concern (lint, test, deploy, etc.)
+3. **Reusable** — scripts run identically in CI and locally (`make ci-lint`)
+4. **Extendable** — add a new script, add a job that calls it
+5. **Fail fast and loud** — `set -euo pipefail`, verbose error diagnostics
+6. **Dynamic** — child pipelines generated from config, not hardcoded YAML
+
+---
+
 ## Pipeline Modes
 
 There are three pipeline modes, all generated from
@@ -60,15 +87,31 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 sync → lint → generate → test → report → deploy → review
 ```
 
-| Stage | Jobs | Notes |
-|-------|------|-------|
-| `sync` | `mirror-to-github` | Push mirror to GitHub |
-| `lint` | `pre-commit`, `ruff-check`, `mypy-check` | Code quality gates (allow_failure) |
-| `generate` | `generate-regular-pipeline`, `generate-dynamic-pipeline` | Produce child-pipeline YAML from `test_suites.yaml` |
-| `test` | `run-regular-tests`, `run-dynamic-tests` | Execute generated child pipelines |
-| `report` | (in child pipeline) | `rebot` merges output.xml, imports combined results to DB |
-| `deploy` | `deploy-superset` | Update Superset stack on default branch |
-| `review` | `claude-code-review` | AI code review + fix via Claude Code Opus 4.6 (label or manual) |
+| Stage | Job(s) | Script | Notes |
+|-------|--------|--------|-------|
+| `sync` | `mirror-to-github` | `ci/sync.sh` | Push mirror to GitHub |
+| `lint` | `lint` | `ci/lint.sh` | Runs pre-commit, ruff, mypy (allow_failure) |
+| `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `ci/generate.sh` | Produce child-pipeline YAML from `test_suites.yaml` |
+| `test` | `run-regular-tests`, `run-dynamic-tests` | (child pipelines) | Execute generated child pipelines |
+| `report` | `repo-metrics` | `ci/report.sh` | Repo metrics, MR comments |
+| `deploy` | `deploy-superset` | `ci/deploy.sh` | Update Superset stack on default branch |
+| `review` | `claude-code-review` | `ci/review.sh` | AI code review + fix via Claude Code Opus 4.6 |
+
+---
+
+## CI Scripts Reference
+
+| Script | Usage | Arguments |
+|--------|-------|-----------|
+| `ci/lint.sh` | `bash ci/lint.sh [all\|pre-commit\|ruff\|mypy]` | Check type (default: all) |
+| `ci/test.sh` | `bash ci/test.sh [all\|math\|docker\|safety]` | Suite to run (default: all) |
+| `ci/generate.sh` | `bash ci/generate.sh [regular\|dynamic\|discover]` | Pipeline mode |
+| `ci/report.sh` | `bash ci/report.sh [--post-mr]` | Post metrics as MR comment |
+| `ci/sync.sh` | `bash ci/sync.sh` | Requires GITHUB_USER, GITHUB_TOKEN |
+| `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
+| `ci/review.sh` | `bash ci/review.sh` | Requires ANTHROPIC_API_KEY |
+
+All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`, etc.
 
 ---
 

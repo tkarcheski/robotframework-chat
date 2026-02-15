@@ -11,7 +11,8 @@ export
 
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety \
-        import lint format typecheck check version
+        import lint format typecheck check version \
+        ci-lint ci-test ci-generate ci-report ci-sync ci-deploy ci-review
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -71,6 +72,30 @@ typecheck: ## Run mypy type checker
 	uv run mypy src/
 
 check: lint typecheck ## Run all code quality checks
+
+# ── CI Scripts ────────────────────────────────────────────────────────
+# Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
+
+ci-lint: ## Run CI lint checks (all, or: make ci-lint CHECK=ruff)
+	bash ci/lint.sh $(or $(CHECK),all)
+
+ci-test: ## Run CI tests with health checks (all, or: make ci-test SUITE=math)
+	bash ci/test.sh $(or $(SUITE),all)
+
+ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
+	bash ci/generate.sh $(or $(MODE),regular)
+
+ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
+	bash ci/report.sh $(if $(POST_MR),--post-mr,)
+
+ci-sync: ## Mirror repo to GitHub
+	bash ci/sync.sh
+
+ci-deploy: ## Deploy Superset to remote host
+	bash ci/deploy.sh
+
+ci-review: ## Run Claude Code review
+	bash ci/review.sh
 
 # ── Versioning ────────────────────────────────────────────────────────
 
