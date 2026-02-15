@@ -16,6 +16,7 @@ Environment variables:
 """
 
 import argparse
+import logging
 import os
 import sys
 import tempfile
@@ -30,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from import_test_results import import_results
 from rfc.test_database import TestDatabase
+
+_log = logging.getLogger(__name__)
 
 
 class GitLabArtifactFetcher:
@@ -87,12 +90,62 @@ class GitLabArtifactFetcher:
 
         return "", "", token or ""
 
+    @property
+    def api_url(self) -> str:
+        """The resolved GitLab base URL."""
+        return self._api_url
+
+    @property
+    def project_id(self) -> str:
+        """The resolved GitLab project ID."""
+        return self._project_id
+
+    @property
+    def has_token(self) -> bool:
+        """Whether an API token is configured."""
+        return bool(self._token)
+
     def _headers(self) -> dict[str, str]:
         """Build HTTP headers for GitLab API requests."""
         headers: dict[str, str] = {}
         if self._token:
             headers["PRIVATE-TOKEN"] = self._token
         return headers
+
+    def check_connection(self) -> dict[str, Any]:
+        """Test connectivity to the GitLab API.
+
+        Returns:
+            Dictionary with connection status and details.
+        """
+        url = f"{self._api_url}/api/v4/projects/{self._project_id}"
+        result: dict[str, Any] = {
+            "ok": False,
+            "api_url": self._api_url,
+            "project_id": self._project_id,
+            "has_token": bool(self._token),
+            "error": None,
+            "project_name": None,
+        }
+        try:
+            resp = requests.get(url, headers=self._headers(), timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            result["ok"] = True
+            result["project_name"] = data.get("path_with_namespace", "")
+        except requests.exceptions.ConnectionError:
+            result["error"] = f"Cannot connect to {self._api_url}"
+        except requests.exceptions.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else "?"
+            if code == 401:
+                result["error"] = "Authentication failed (check GITLAB_TOKEN)"
+            elif code == 404:
+                result["error"] = f"Project {self._project_id} not found"
+            else:
+                result["error"] = f"HTTP {code}"
+        except requests.exceptions.RequestException as exc:
+            result["error"] = str(exc)
+        return result
 
     def fetch_recent_pipelines(
         self,
@@ -122,7 +175,8 @@ class GitLabArtifactFetcher:
             resp = requests.get(url, headers=self._headers(), timeout=30)
             resp.raise_for_status()
             return resp.json()
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            _log.warning("Failed to fetch pipelines: %s", exc)
             return []
 
     def fetch_pipeline_jobs(
@@ -148,7 +202,8 @@ class GitLabArtifactFetcher:
             resp = requests.get(url, headers=self._headers(), timeout=30)
             resp.raise_for_status()
             return resp.json()
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            _log.warning("Failed to fetch jobs for pipeline %s: %s", pipeline_id, exc)
             return []
 
     def download_job_artifact(
@@ -175,10 +230,12 @@ class GitLabArtifactFetcher:
         try:
             resp = requests.get(url, headers=self._headers(), timeout=60)
             resp.raise_for_status()
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            _log.debug("No artifact %s for job %s: %s", artifact_path, job_id, exc)
             return None
 
-        out_path = os.path.join(output_dir, f"job_{job_id}_{artifact_path}")
+        safe_name = artifact_path.replace("/", "_")
+        out_path = os.path.join(output_dir, f"job_{job_id}_{safe_name}")
         with open(out_path, "wb") as f:
             f.write(resp.content)
         return out_path
@@ -214,7 +271,7 @@ def sync_ci_results(
 
     # Get existing pipeline URLs to avoid duplicates
     recent_runs = db.get_recent_runs(limit=100)
-    existing_urls = {run.get("gitlab_pipeline_url", "") for run in recent_runs if run}
+    existing_urls = {run.get("pipeline_url", "") for run in recent_runs if run}
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for pipeline in pipelines:
@@ -269,70 +326,112 @@ def verify_sync(db: TestDatabase, min_runs: int = 1) -> dict[str, Any]:
     }
 
 
-def main() -> None:
-    """CLI entry point for CI pipeline sync."""
-    parser = argparse.ArgumentParser(
-        description="Sync CI pipeline test results to database"
-    )
-    parser.add_argument(
-        "--limit",
-        "-n",
-        type=int,
-        default=5,
-        help="Number of recent pipelines to sync (default: 5)",
-    )
-    parser.add_argument(
-        "--ref",
-        help="Filter pipelines by branch (default: all branches)",
-    )
-    parser.add_argument(
-        "--db",
-        help="Database path (default: from DATABASE_URL env var)",
-    )
-    parser.add_argument(
-        "--verify-only",
-        action="store_true",
-        help="Only verify database contents, don't sync",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be synced without importing",
-    )
-
-    args = parser.parse_args()
-
-    # Initialize database
-    if args.db:
-        db = TestDatabase(db_path=args.db)
-    else:
-        db = TestDatabase()
-
-    if args.verify_only:
-        result = verify_sync(db)
-        print(f"Database verification: {'PASS' if result['success'] else 'FAIL'}")
-        print(f"  Recent runs: {result['recent_runs']}")
-        print(f"  Latest timestamp: {result['latest_timestamp']}")
-        print(f"  Models found: {', '.join(result['models_found'])}")
-        sys.exit(0 if result["success"] else 1)
-
-    # Initialize fetcher
+def _make_fetcher() -> GitLabArtifactFetcher:
+    """Create a GitLabArtifactFetcher, exiting on config errors."""
     try:
-        fetcher = GitLabArtifactFetcher()
+        return GitLabArtifactFetcher()
     except ValueError as e:
         print(f"ERROR: {e}")
         sys.exit(1)
+
+
+def _make_db(db_path: Optional[str] = None) -> TestDatabase:
+    """Create a TestDatabase from CLI args or environment."""
+    if db_path:
+        return TestDatabase(db_path=db_path)
+    return TestDatabase()
+
+
+# -- Subcommand handlers ----------------------------------------------------
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    """Show GitLab connection status and configuration."""
+    fetcher = _make_fetcher()
+    info = fetcher.check_connection()
+    print("GitLab CI Status")
+    print(f"  API URL:     {info['api_url']}")
+    print(f"  Project ID:  {info['project_id']}")
+    print(f"  Token:       {'configured' if info['has_token'] else 'NOT SET'}")
+    print(f"  Connection:  {'OK' if info['ok'] else 'FAILED'}")
+    if info["project_name"]:
+        print(f"  Project:     {info['project_name']}")
+    if info["error"]:
+        print(f"  Error:       {info['error']}")
+    sys.exit(0 if info["ok"] else 1)
+
+
+def cmd_list_pipelines(args: argparse.Namespace) -> None:
+    """List recent pipelines from GitLab."""
+    fetcher = _make_fetcher()
+    pipelines = fetcher.fetch_recent_pipelines(
+        ref=args.ref, status=args.status, limit=args.limit
+    )
+    if not pipelines:
+        print("No pipelines found.")
+        sys.exit(0)
+    print(f"{'ID':<12} {'Status':<10} {'Branch':<20} {'SHA':<10} URL")
+    print("-" * 80)
+    for p in pipelines:
+        print(
+            f"{p['id']:<12} {p.get('status', '?'):<10} "
+            f"{p.get('ref', '?'):<20} {p.get('sha', '?')[:8]:<10} "
+            f"{p.get('web_url', '')}"
+        )
+
+
+def cmd_list_jobs(args: argparse.Namespace) -> None:
+    """List jobs from a specific pipeline."""
+    fetcher = _make_fetcher()
+    jobs = fetcher.fetch_pipeline_jobs(
+        pipeline_id=args.pipeline_id, scope=args.scope
+    )
+    if not jobs:
+        print(f"No jobs found for pipeline {args.pipeline_id}.")
+        sys.exit(0)
+    print(f"{'Job ID':<12} {'Name':<25} {'Status':<10} {'Duration':<10}")
+    print("-" * 60)
+    for j in jobs:
+        dur = j.get("duration")
+        dur_str = f"{dur:.0f}s" if dur else "-"
+        print(
+            f"{j['id']:<12} {j.get('name', '?'):<25} "
+            f"{j.get('status', '?'):<10} {dur_str:<10}"
+        )
+
+
+def cmd_fetch_artifact(args: argparse.Namespace) -> None:
+    """Download an artifact from a specific job."""
+    fetcher = _make_fetcher()
+    output_dir = args.output_dir or "."
+    os.makedirs(output_dir, exist_ok=True)
+    path = fetcher.download_job_artifact(
+        job_id=args.job_id,
+        output_dir=output_dir,
+        artifact_path=args.artifact_path,
+    )
+    if path:
+        print(f"Downloaded: {path}")
+    else:
+        print(f"Artifact '{args.artifact_path}' not found for job {args.job_id}.")
+        sys.exit(1)
+
+
+def cmd_sync(args: argparse.Namespace) -> None:
+    """Sync recent pipeline artifacts into the database."""
+    fetcher = _make_fetcher()
+    db = _make_db(args.db)
 
     if args.dry_run:
         pipelines = fetcher.fetch_recent_pipelines(ref=args.ref, limit=args.limit)
         print(f"Would sync {len(pipelines)} pipeline(s):")
         for p in pipelines:
             print(
-                f"  Pipeline #{p['id']} ({p.get('ref', '?')}) - {p.get('web_url', '')}"
+                f"  Pipeline #{p['id']} ({p.get('ref', '?')}) "
+                f"- {p.get('web_url', '')}"
             )
         sys.exit(0)
 
-    # Run sync
     result = sync_ci_results(fetcher, db, pipeline_limit=args.limit, ref=args.ref)
 
     print("Sync complete:")
@@ -344,6 +443,109 @@ def main() -> None:
         for err in result["errors"]:
             print(f"    - {err}")
         sys.exit(1)
+
+
+def cmd_verify(args: argparse.Namespace) -> None:
+    """Verify database contents after sync."""
+    db = _make_db(args.db)
+    result = verify_sync(db)
+    print(f"Database verification: {'PASS' if result['success'] else 'FAIL'}")
+    print(f"  Recent runs: {result['recent_runs']}")
+    print(f"  Latest timestamp: {result['latest_timestamp']}")
+    print(f"  Models found: {', '.join(result['models_found'])}")
+    sys.exit(0 if result["success"] else 1)
+
+
+def main() -> None:
+    """CLI entry point for CI pipeline sync."""
+    parser = argparse.ArgumentParser(
+        description="GitLab CI artifact sync tools",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # -- status ---------------------------------------------------------------
+    sub.add_parser("status", help="Check GitLab connection and configuration")
+
+    # -- list-pipelines -------------------------------------------------------
+    lp = sub.add_parser("list-pipelines", help="List recent GitLab pipelines")
+    lp.add_argument("-n", "--limit", type=int, default=10, help="Max pipelines")
+    lp.add_argument("--ref", help="Filter by branch")
+    lp.add_argument(
+        "--status", default="success", help="Pipeline status filter (default: success)"
+    )
+
+    # -- list-jobs ------------------------------------------------------------
+    lj = sub.add_parser("list-jobs", help="List jobs from a pipeline")
+    lj.add_argument("pipeline_id", type=int, help="Pipeline ID")
+    lj.add_argument(
+        "--scope", default="success", help="Job scope filter (default: success)"
+    )
+
+    # -- fetch-artifact -------------------------------------------------------
+    fa = sub.add_parser("fetch-artifact", help="Download a job artifact")
+    fa.add_argument("job_id", type=int, help="Job ID")
+    fa.add_argument(
+        "--artifact-path", default="output.xml", help="Path within archive"
+    )
+    fa.add_argument("-o", "--output-dir", help="Output directory (default: .)")
+
+    # -- sync (default) -------------------------------------------------------
+    sy = sub.add_parser("sync", help="Sync pipeline artifacts to database")
+    sy.add_argument("-n", "--limit", type=int, default=5, help="Pipelines to sync")
+    sy.add_argument("--ref", help="Filter by branch")
+    sy.add_argument("--db", help="Database path override")
+    sy.add_argument("--dry-run", action="store_true", help="Show what would sync")
+
+    # -- verify ---------------------------------------------------------------
+    ve = sub.add_parser("verify", help="Verify database contents")
+    ve.add_argument("--db", help="Database path override")
+
+    args = parser.parse_args()
+
+    # Configure logging
+    level = logging.DEBUG if args.verbose else logging.WARNING
+    logging.basicConfig(
+        level=level, format="%(levelname)s: %(message)s", stream=sys.stderr
+    )
+
+    # Dispatch to subcommand (default: sync for backward compat)
+    handlers = {
+        "status": cmd_status,
+        "list-pipelines": cmd_list_pipelines,
+        "list-jobs": cmd_list_jobs,
+        "fetch-artifact": cmd_fetch_artifact,
+        "sync": cmd_sync,
+        "verify": cmd_verify,
+    }
+
+    if args.command is None:
+        # Backward compatibility: no subcommand = old-style flags
+        # Re-parse with legacy argument set
+        legacy = argparse.ArgumentParser(description="Sync CI results (legacy)")
+        legacy.add_argument("-v", "--verbose", action="store_true")
+        legacy.add_argument("-n", "--limit", type=int, default=5)
+        legacy.add_argument("--ref")
+        legacy.add_argument("--db")
+        legacy.add_argument("--verify-only", action="store_true")
+        legacy.add_argument("--dry-run", action="store_true")
+        args = legacy.parse_args()
+
+        level = logging.DEBUG if args.verbose else logging.WARNING
+        logging.basicConfig(
+            level=level, format="%(levelname)s: %(message)s", stream=sys.stderr
+        )
+
+        if args.verify_only:
+            args.command = "verify"
+            cmd_verify(args)
+        else:
+            args.command = "sync"
+            cmd_sync(args)
+    else:
+        handlers[args.command](args)
 
 
 if __name__ == "__main__":

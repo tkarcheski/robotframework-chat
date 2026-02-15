@@ -12,7 +12,8 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-sync ci-sync-db ci-deploy ci-review ci-test-dashboard
+        ci-lint ci-test ci-generate ci-report ci-sync ci-sync-db ci-deploy ci-review ci-test-dashboard \
+        ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -99,6 +100,21 @@ ci-sync: ## Mirror repo to GitHub
 
 ci-sync-db: ## Sync CI pipeline results to database
 	bash ci/sync_db.sh
+
+ci-status: ## Check GitLab CI connection status
+	bash ci/sync_db.sh status
+
+ci-list-pipelines: ## List recent GitLab pipelines (REF=branch LIMIT=n)
+	bash ci/sync_db.sh list-pipelines $(if $(REF),--ref $(REF),) $(if $(LIMIT),-n $(LIMIT),)
+
+ci-list-jobs: ## List jobs from a pipeline: make ci-list-jobs PIPELINE=12345
+	bash ci/sync_db.sh list-jobs $(PIPELINE)
+
+ci-fetch-artifact: ## Download artifact: make ci-fetch-artifact JOB=67890
+	bash ci/sync_db.sh fetch-artifact $(JOB) $(if $(ARTIFACT),--artifact-path $(ARTIFACT),) $(if $(OUT),-o $(OUT),)
+
+ci-verify-db: ## Verify database contents after sync
+	bash ci/sync_db.sh verify
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh

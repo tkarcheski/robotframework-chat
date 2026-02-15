@@ -4,6 +4,14 @@
 # Fetches output.xml artifacts from recent GitLab CI pipelines
 # and imports them into the PostgreSQL/Superset database.
 #
+# Subcommands:
+#   sync            Full sync (default)
+#   verify          Verify database contents
+#   status          Check GitLab connection
+#   list-pipelines  List recent pipelines
+#   list-jobs ID    List jobs from a pipeline
+#   fetch-artifact  Download a job artifact
+#
 # Required env vars:
 #   GITLAB_API_URL     - GitLab instance URL (or CI_API_V4_URL in CI)
 #   GITLAB_PROJECT_ID  - Numeric project ID (or CI_PROJECT_ID in CI)
@@ -14,7 +22,13 @@
 #   SYNC_LIMIT         - Number of pipelines to sync (default: 5)
 #   SYNC_REF           - Branch to filter (default: all)
 #
-# Usage: bash ci/sync_db.sh
+# Usage:
+#   bash ci/sync_db.sh              # full sync + verify
+#   bash ci/sync_db.sh status       # check connection
+#   bash ci/sync_db.sh list-pipelines
+#   bash ci/sync_db.sh list-jobs 12345
+#   bash ci/sync_db.sh fetch-artifact 67890
+#   bash ci/sync_db.sh verify
 
 set -euo pipefail
 
@@ -27,6 +41,16 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
+# If a subcommand is given, pass it through directly
+SUBCMD="${1:-}"
+
+if [ -n "$SUBCMD" ] && [ "$SUBCMD" != "sync" ]; then
+    # Direct passthrough to Python CLI
+    uv run python scripts/sync_ci_results.py "$@"
+    exit $?
+fi
+
+# Default: full sync + verify workflow
 echo "=== Sync CI Results to Database ==="
 
 # Validate at least one GitLab config source exists
@@ -58,7 +82,7 @@ echo "Database: ${DATABASE_URL:-sqlite (default)}"
 echo ""
 
 # Build arguments
-ARGS=""
+ARGS="sync"
 if [ -n "${SYNC_LIMIT:-}" ]; then
     ARGS="$ARGS --limit $SYNC_LIMIT"
 fi
@@ -72,7 +96,7 @@ uv run python scripts/sync_ci_results.py $ARGS
 
 echo ""
 echo "=== Verifying sync ==="
-uv run python scripts/sync_ci_results.py --verify-only
+uv run python scripts/sync_ci_results.py verify
 
 echo ""
 echo "=== Sync complete ==="
