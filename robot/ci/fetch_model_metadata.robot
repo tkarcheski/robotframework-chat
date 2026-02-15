@@ -1,16 +1,16 @@
 *** Settings ***
 Documentation     Research LLM model metadata using Playwright
 ...               Fetches model information including release dates from various sources
-Library           Browser
 Library           Collections
 Library           OperatingSystem
 Library           DateTime
-Library           YAML
+Suite Setup       Import Browser Dependencies Or Skip
+Test Tags         browser
 
 *** Variables ***
 ${OLLAMA_LIBRARY_URL}      https://ollama.com/library
 ${OUTPUT_FILE}           ${CURDIR}/models.yaml
-${KNOWN_MODELS}          @{llama3,mistral,codellama,llama3.1}
+@{KNOWN_MODELS}          llama3    mistral    codellama    llama3.1
 
 *** Keywords ***
 Research Ollama Model
@@ -95,6 +95,15 @@ Research Hugging Face Model
     EXCEPT
         Log    Could not research Hugging Face for ${model_name}
         RETURN    ${EMPTY}
+    END
+
+Import Browser Dependencies Or Skip
+    [Documentation]    Try importing Browser and YAML libraries; skip suite if unavailable.
+    TRY
+        Import Library    Browser
+        Import Library    YAML
+    EXCEPT
+        Skip    Browser or YAML library not installed. Install with: uv sync --extra playwright
     END
 
 Save Model Metadata

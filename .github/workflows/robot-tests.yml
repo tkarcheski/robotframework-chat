@@ -1,0 +1,111 @@
+name: Robot Framework Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src/
+
+  dashboard-pytest:
+    name: Dashboard Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra dashboard
+
+      - name: Run dashboard pytest
+        run: uv run pytest tests/test_dashboard_layout.py tests/test_dashboard_monitoring.py -v
+
+  robot-dryrun:
+    name: Robot Suite Validation (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Validate robot files (dry-run)
+        run: uv run robot --dryrun --exclude browser -d results/dryrun robot/
+
+      - name: Upload dry-run results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dryrun-results
+          path: results/dryrun/
+
+  robot-tests:
+    name: Robot Tests
+    runs-on: self-hosted
+    needs: [lint, robot-dryrun]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run math tests
+        run: >
+          uv run robot -d results/math
+          --listener rfc.db_listener.DbListener
+          --listener rfc.ci_metadata_listener.CiMetadataListener
+          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+          robot/math/tests/
+
+      - name: Run safety tests
+        if: always()
+        run: >
+          uv run robot -d results/safety
+          --listener rfc.db_listener.DbListener
+          --listener rfc.ci_metadata_listener.CiMetadataListener
+          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+          robot/safety/
+
+      - name: Run Docker tests
+        if: always()
+        run: >
+          uv run robot -d results/docker
+          --listener rfc.db_listener.DbListener
+          --listener rfc.ci_metadata_listener.CiMetadataListener
+          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+          robot/docker/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-results
+          path: results/
