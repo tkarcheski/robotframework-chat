@@ -23,6 +23,16 @@ from dash import dcc, html
 from rfc.suite_config import load_config
 
 # ---------------------------------------------------------------------------
+# Cream theme constants (must match layout.py)
+# ---------------------------------------------------------------------------
+
+_BG = "#FAF3E8"
+_CARD_BG = "#FFF8F0"
+_BORDER = "#E0D5C5"
+_TEXT = "#3E3529"
+_MUTED = "#8C7E6A"
+
+# ---------------------------------------------------------------------------
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
@@ -255,47 +265,78 @@ class PipelineMonitor:
 # ---------------------------------------------------------------------------
 
 _STATUS_COLORS = {
-    "success": "#28a745",
-    "failed": "#dc3545",
-    "running": "#ffc107",
-    "pending": "#6c757d",
-    "canceled": "#868e96",
-    "skipped": "#adb5bd",
-    "manual": "#17a2b8",
-    "unknown": "#555555",
+    "success": "#27AE60",
+    "failed": "#C0392B",
+    "running": "#D4A017",
+    "pending": "#8C7E6A",
+    "canceled": "#A59B8C",
+    "skipped": "#C4B8A5",
+    "manual": "#2980B9",
+    "unknown": "#8C7E6A",
 }
 
 
-def build_pipeline_table(pipelines: list[PipelineInfo]) -> dbc.Table:
-    """Return a Bootstrap table of recent pipeline runs."""
+def build_pipeline_table(pipelines: list[PipelineInfo]) -> html.Div:
+    """Return a table of recent pipeline runs, or configuration help."""
     if not pipelines:
         return html.Div(
-            "No pipeline data. Configure monitoring.gitlab_* in "
-            "config/test_suites.yaml.",
-            className="text-muted p-3",
+            [
+                html.H6(
+                    "GitLab Pipeline Monitoring Not Configured",
+                    style={"color": _TEXT},
+                ),
+                html.P(
+                    "To enable pipeline monitoring, set the following in "
+                    "your .env file or environment:",
+                    style={"color": _MUTED},
+                ),
+                html.Pre(
+                    "GITLAB_API_URL=https://gitlab.example.com\n"
+                    "GITLAB_PROJECT_ID=12345\n"
+                    "GITLAB_TOKEN=glpat-xxxxxxxxxxxx",
+                    style={
+                        "backgroundColor": "#2B2520",
+                        "color": "#E8DFD0",
+                        "padding": "12px",
+                        "borderRadius": "6px",
+                        "fontSize": "13px",
+                    },
+                ),
+                html.P(
+                    "Or configure in config/test_suites.yaml under "
+                    "monitoring.gitlab_api_url and monitoring.gitlab_project_id.",
+                    style={"color": _MUTED, "fontSize": "0.9em"},
+                ),
+            ],
+            style={
+                "padding": "20px",
+                "backgroundColor": _CARD_BG,
+                "borderRadius": "8px",
+                "border": f"1px solid {_BORDER}",
+            },
         )
 
     header = html.Thead(
         html.Tr(
             [
-                html.Th("ID"),
-                html.Th("Status"),
-                html.Th("Branch"),
-                html.Th("SHA"),
-                html.Th("Source"),
-                html.Th("Updated"),
+                html.Th("ID", style={"color": _TEXT}),
+                html.Th("Status", style={"color": _TEXT}),
+                html.Th("Branch", style={"color": _TEXT}),
+                html.Th("SHA", style={"color": _TEXT}),
+                html.Th("Source", style={"color": _TEXT}),
+                html.Th("Updated", style={"color": _TEXT}),
             ]
         )
     )
 
     rows = []
     for p in pipelines:
-        badge_color = _STATUS_COLORS.get(p.status, "#555")
+        badge_color = _STATUS_COLORS.get(p.status, "#8C7E6A")
         updated = _short_ts(p.updated_at)
         rows.append(
             html.Tr(
                 [
-                    html.Td(str(p.id)),
+                    html.Td(str(p.id), style={"color": _TEXT}),
                     html.Td(
                         html.Span(
                             p.status,
@@ -309,22 +350,34 @@ def build_pipeline_table(pipelines: list[PipelineInfo]) -> dbc.Table:
                             },
                         )
                     ),
-                    html.Td(p.ref),
-                    html.Td(html.Code(p.sha)),
-                    html.Td(p.source),
-                    html.Td(updated),
+                    html.Td(p.ref, style={"color": _TEXT}),
+                    html.Td(
+                        html.Code(
+                            p.sha,
+                            style={"color": _TEXT, "backgroundColor": "#E8DFD0"},
+                        )
+                    ),
+                    html.Td(p.source, style={"color": _MUTED}),
+                    html.Td(updated, style={"color": _MUTED}),
                 ]
             )
         )
 
     body = html.Tbody(rows)
-    return dbc.Table(
-        [header, body],
-        bordered=True,
-        dark=True,
-        hover=True,
-        responsive=True,
-        size="sm",
+    return html.Div(
+        dbc.Table(
+            [header, body],
+            bordered=True,
+            hover=True,
+            responsive=True,
+            size="sm",
+            style={"backgroundColor": _CARD_BG},
+        ),
+        style={
+            "borderRadius": "8px",
+            "overflow": "hidden",
+            "border": f"1px solid {_BORDER}",
+        },
     )
 
 
@@ -356,7 +409,7 @@ def build_ollama_cards(monitor: OllamaMonitor) -> list:
                 dbc.CardHeader(
                     html.Div(
                         [
-                            html.Strong(host),
+                            html.Strong(host, style={"color": _TEXT}),
                             dbc.Badge(
                                 status_text,
                                 color=badge_color,
@@ -364,7 +417,8 @@ def build_ollama_cards(monitor: OllamaMonitor) -> list:
                             ),
                         ],
                         className="d-flex align-items-center",
-                    )
+                    ),
+                    style={"backgroundColor": _CARD_BG},
                 ),
                 dbc.CardBody(
                     [
@@ -372,17 +426,20 @@ def build_ollama_cards(monitor: OllamaMonitor) -> list:
                             f"Models: {model_info}"
                             if model_info
                             else "No models loaded",
-                            className="small text-muted mb-2",
+                            className="small mb-2",
+                            style={"color": _MUTED},
                         ),
                         dcc.Graph(
                             figure=_build_timeline_fig(monitor, host),
                             config={"displayModeBar": False},
                             style={"height": "120px"},
                         ),
-                    ]
+                    ],
+                    style={"backgroundColor": _CARD_BG},
                 ),
             ],
             className="mb-3",
+            style={"border": f"1px solid {_BORDER}", "borderRadius": "8px"},
         )
         cards.append(card)
     return cards
@@ -395,9 +452,11 @@ def _build_timeline_fig(monitor: OllamaMonitor, hostname: str) -> go.Figure:
 
     if not history:
         fig.update_layout(
-            template="plotly_dark",
+            template="plotly_white",
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
             height=100,
+            paper_bgcolor=_CARD_BG,
+            plot_bgcolor=_CARD_BG,
             xaxis={"visible": False},
             yaxis={"visible": False},
             annotations=[
@@ -408,7 +467,7 @@ def _build_timeline_fig(monitor: OllamaMonitor, hostname: str) -> go.Figure:
                     "x": 0.5,
                     "y": 0.5,
                     "showarrow": False,
-                    "font": {"color": "#888"},
+                    "font": {"color": _MUTED},
                 }
             ],
         )
@@ -425,14 +484,14 @@ def _build_timeline_fig(monitor: OllamaMonitor, hostname: str) -> go.Figure:
             continue
         times.append(snap.ts)
         if not snap.reachable:
-            colors.append("#dc3545")  # red = offline
+            colors.append("#C0392B")  # warm red = offline
             hovers.append("Offline")
         elif snap.running_models:
-            colors.append("#ffc107")  # yellow = busy
+            colors.append("#D4A017")  # warm gold = busy
             names = ", ".join(m.get("name", "?") for m in snap.running_models)
             hovers.append(f"Busy: {names}")
         else:
-            colors.append("#28a745")  # green = idle
+            colors.append("#27AE60")  # green = idle
             hovers.append("Idle")
 
     fig.add_trace(
@@ -450,13 +509,16 @@ def _build_timeline_fig(monitor: OllamaMonitor, hostname: str) -> go.Figure:
     )
 
     fig.update_layout(
-        template="plotly_dark",
+        template="plotly_white",
         margin={"l": 0, "r": 0, "t": 0, "b": 25},
         height=100,
+        paper_bgcolor=_CARD_BG,
+        plot_bgcolor="#FAF3E8",
         xaxis={
             "range": [window_start, now],
             "tickformat": "%H:%M",
             "dtick": 3600000 * 4,  # 4-hour ticks
+            "tickfont": {"color": _MUTED},
         },
         yaxis={"visible": False},
         showlegend=False,
@@ -489,13 +551,17 @@ def create_pipelines_layout() -> html.Div:
             dbc.Row(
                 [
                     dbc.Col(
-                        html.H5("GitLab Pipelines"),
+                        html.H5(
+                            "GitLab Pipelines",
+                            style={"color": _TEXT, "fontWeight": "600"},
+                        ),
                         width="auto",
                     ),
                     dbc.Col(
                         html.Span(
                             id="pipelines-last-updated",
-                            className="text-muted small",
+                            className="small",
+                            style={"color": _MUTED},
                         ),
                         width="auto",
                         className="ms-auto d-flex align-items-center",
@@ -517,7 +583,10 @@ def create_ollama_layout() -> html.Div:
             dbc.Row(
                 [
                     dbc.Col(
-                        html.H5("Ollama Hosts"),
+                        html.H5(
+                            "Ollama Hosts",
+                            style={"color": _TEXT, "fontWeight": "600"},
+                        ),
                         width="auto",
                     ),
                     dbc.Col(

@@ -111,6 +111,7 @@ run-dynamic-tests:
   needs:
     - job: generate-dynamic-pipeline
       artifacts: true
+      optional: true
   trigger:
     include:
       - artifact: generated-dynamic-pipeline.yml

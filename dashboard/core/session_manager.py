@@ -45,6 +45,7 @@ class SessionConfig:
     iq_levels: list = field(default_factory=default_iq_levels)
     model: str = field(default_factory=default_model)
     profile: str = field(default_factory=default_profile)
+    ollama_host: str = "localhost:11434"
     auto_recover: bool = False
     dry_run: bool = False
     randomize: bool = False
@@ -79,18 +80,18 @@ class RobotSession:
 
     @property
     def tab_color(self) -> str:
-        """Get tab color based on status."""
+        """Get tab color based on status (cream theme)."""
         if (
             self.status == SessionStatus.RUNNING
             or self.status == SessionStatus.RECOVERING
         ):
-            return "#6c757d"  # Gray for busy
+            return "#8C7E6A"  # Warm gray for busy
         elif self.status == SessionStatus.FAILED:
-            return "#dc3545"  # Red for failed
+            return "#C0392B"  # Warm red for failed
         elif self.status == SessionStatus.COMPLETED:
-            return "#28a745"  # Green for complete
+            return "#27AE60"  # Green for complete
         else:
-            return "#adb5bd"  # Light gray for idle
+            return "#C4B8A5"  # Warm beige for idle
 
     @property
     def tab_label(self) -> str:

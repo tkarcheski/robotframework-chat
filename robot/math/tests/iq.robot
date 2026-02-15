@@ -72,3 +72,13 @@ IQ 150 Nested Addition and Multiplication
     ${question}=    Set Variable    Compute (${p} + ${q}) * ${r}. Explain each calculation step.
     ${expected}=    Evaluate    (${p}+${q})*${r}
     Ask And Validate    ${question}    ${expected}
+
+IQ 160 Multi-Step Algebraic Expression
+    [Tags]    IQ:160
+    ${a}=    Generate Random Integer
+    ${b}=    Generate Random Integer
+    ${c}=    Generate Random Integer
+    ${d}=    Generate Random Integer
+    ${question}=    Set Variable    Evaluate ((${a} * ${b}) + (${c} - ${d})) / 2. Show your work step by step.
+    ${expected}=    Evaluate    ((${a}*${b})+(${c}-${d}))/2
+    Ask And Validate    ${question}    ${expected}

@@ -14,7 +14,12 @@ from dashboard.core.session_manager import (
     SessionStatus,
     session_manager,
 )
-from dashboard.layout import create_app_layout, create_session_panel
+from dashboard.layout import (
+    _BORDER,
+    _CARD_BG,
+    create_app_layout,
+    create_session_panel,
+)
 from dashboard.monitoring import (
     OllamaMonitor,
     PipelineMonitor,
@@ -27,7 +32,7 @@ from rfc.suite_config import default_iq_levels, default_model, default_profile
 
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.DARKLY],
+    external_stylesheets=[dbc.themes.FLATLY],
     suppress_callback_exceptions=True,
 )
 app.title = "Robot Framework Chat Control Panel"
@@ -53,6 +58,7 @@ app.layout = create_app_layout()
     Input({"type": "upload-btn", "index": ALL}, "n_clicks"),
     State({"type": "suite-dropdown", "index": ALL}, "value"),
     State({"type": "iq-dropdown", "index": ALL}, "value"),
+    State({"type": "host-dropdown", "index": ALL}, "value"),
     State({"type": "model-dropdown", "index": ALL}, "value"),
     State({"type": "profile-dropdown", "index": ALL}, "value"),
     State({"type": "auto-recover-check", "index": ALL}, "value"),
@@ -67,6 +73,7 @@ def handle_button_click(
     upload_clicks,
     suites,
     iqs,
+    hosts,
     models,
     profiles,
     auto_recovers,
@@ -118,6 +125,7 @@ def handle_button_click(
         # Build config from the form values at this index
         suite_val = suites[idx] if idx < len(suites) else "robot"
         iq_val = iqs[idx] if idx < len(iqs) else default_iq_levels()
+        host_val = hosts[idx] if idx < len(hosts) else "localhost:11434"
         model_val = models[idx] if idx < len(models) else default_model()
         profile_val = profiles[idx] if idx < len(profiles) else default_profile()
         ar_val = auto_recovers[idx] if idx < len(auto_recovers) else []
@@ -128,6 +136,7 @@ def handle_button_click(
             iq_levels=iq_val or default_iq_levels(),
             model=model_val or default_model(),
             profile=profile_val or default_profile(),
+            ollama_host=host_val or "localhost:11434",
             auto_recover=bool(ar_val and True in ar_val),
             dry_run=bool(dr_val and True in dr_val),
         )
@@ -206,6 +215,7 @@ def update_live_output(n_intervals, panel_ids):
     Output({"type": "upload-btn", "index": ALL}, "disabled"),
     Output({"type": "suite-dropdown", "index": ALL}, "disabled"),
     Output({"type": "iq-dropdown", "index": ALL}, "disabled"),
+    Output({"type": "host-dropdown", "index": ALL}, "disabled"),
     Output({"type": "model-dropdown", "index": ALL}, "disabled"),
     Output({"type": "profile-dropdown", "index": ALL}, "disabled"),
     Output({"type": "auto-recover-check", "index": ALL}, "disabled"),
@@ -224,6 +234,7 @@ def update_ui_states(n_intervals, btn_ids):
     upload_d: list[bool] = []
     suite_d: list[bool] = []
     iq_d: list[bool] = []
+    host_d: list[bool] = []
     model_d: list[bool] = []
     profile_d: list[bool] = []
     ar_d: list[bool] = []
@@ -247,6 +258,7 @@ def update_ui_states(n_intervals, btn_ids):
         upload_d.append(not has_results)
         suite_d.append(running)
         iq_d.append(running)
+        host_d.append(running)
         model_d.append(running)
         profile_d.append(running)
         ar_d.append(running)
@@ -259,6 +271,7 @@ def update_ui_states(n_intervals, btn_ids):
         upload_d,
         suite_d,
         iq_d,
+        host_d,
         model_d,
         profile_d,
         ar_d,
@@ -286,12 +299,14 @@ def update_tab_styles(n_intervals):
                     "color": "white",
                     "backgroundColor": s.tab_color,
                     "fontWeight": "bold",
+                    "borderRadius": "6px 6px 0 0",
                 },
                 active_label_style={
                     "color": "white",
                     "backgroundColor": s.tab_color,
                     "fontWeight": "bold",
-                    "border": "2px solid white",
+                    "border": f"2px solid {_BORDER}",
+                    "borderRadius": "6px 6px 0 0",
                 },
             )
         )
@@ -299,6 +314,22 @@ def update_tab_styles(n_intervals):
 
 
 # -- Callback 5: switch visible session panel ---------------------------------
+
+
+_PANEL_SHOW = {
+    "display": "block",
+    "backgroundColor": _CARD_BG,
+    "padding": "16px",
+    "borderRadius": "8px",
+    "border": f"1px solid {_BORDER}",
+}
+_PANEL_HIDE = {
+    "display": "none",
+    "backgroundColor": _CARD_BG,
+    "padding": "16px",
+    "borderRadius": "8px",
+    "border": f"1px solid {_BORDER}",
+}
 
 
 @app.callback(
@@ -312,8 +343,7 @@ def toggle_tab_visibility(active_tab, panel_ids):
         raise PreventUpdate
     active_index = int(active_tab.replace("tab-", ""))
     return [
-        {"display": "block"} if p["index"] == active_index else {"display": "none"}
-        for p in panel_ids
+        _PANEL_SHOW if p["index"] == active_index else _PANEL_HIDE for p in panel_ids
     ]
 
 

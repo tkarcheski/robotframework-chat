@@ -15,16 +15,36 @@ from rfc.suite_config import (
     default_model,
     default_profile,
     iq_dropdown_options,
+    node_dropdown_options,
     profile_dropdown_options,
     suite_dropdown_options,
 )
 
+# -- Cream theme colour constants --------------------------------------------
+
+_BG = "#FAF3E8"  # page background
+_CARD_BG = "#FFF8F0"  # card / panel background
+_HEADER_BG = "#5D4E37"  # navbar brown
+_BORDER = "#E0D5C5"  # subtle warm border
+_TEXT = "#3E3529"  # primary text
+_MUTED = "#8C7E6A"  # muted / secondary text
+_CONSOLE_BG = "#2B2520"  # console stays dark for readability
+_CONSOLE_TEXT = "#E8DFD0"  # warm light text in console
+
+# Dropdown styling for high visibility on cream backgrounds
+_DROPDOWN_STYLE = {
+    "backgroundColor": _CARD_BG,
+    "color": _TEXT,
+    "border": f"1px solid {_BORDER}",
+    "borderRadius": "6px",
+}
+
 
 def _model_options() -> list[dict]:
-    """Get LLM model options from Ollama, with a fallback."""
-    models = llm_registry.get_models()
-    if models:
-        return [{"label": m, "value": m} for m in models]
+    """Get LLM model options from all Ollama nodes, with availability info."""
+    all_models = llm_registry.get_all_models()
+    if all_models:
+        return all_models
     fallback = default_model()
     return [{"label": fallback, "value": fallback}]
 
@@ -38,46 +58,82 @@ def create_session_panel(index: int) -> html.Div:
 
     return html.Div(
         id={"type": "session-panel", **idx},
-        style={"display": "block" if index == 0 else "none"},
+        style={
+            "display": "block" if index == 0 else "none",
+            "backgroundColor": _CARD_BG,
+            "padding": "16px",
+            "borderRadius": "8px",
+            "border": f"1px solid {_BORDER}",
+        },
         children=[
             # Settings row 1: dropdowns
             dbc.Row(
                 [
                     dbc.Col(
                         [
-                            dbc.Label("Test Suite"),
+                            dbc.Label(
+                                "Test Suite",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             dcc.Dropdown(
                                 id={"type": "suite-dropdown", **idx},
                                 options=suite_dropdown_options(),
                                 value="robot",
                                 clearable=False,
+                                style=_DROPDOWN_STYLE,
                             ),
                         ],
-                        width=4,
+                        width=3,
                     ),
                     dbc.Col(
                         [
-                            dbc.Label("IQ Levels"),
+                            dbc.Label(
+                                "IQ Levels (Tags)",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             dcc.Dropdown(
                                 id={"type": "iq-dropdown", **idx},
                                 options=iq_dropdown_options(),
                                 value=default_iq_levels(),
                                 multi=True,
+                                style=_DROPDOWN_STYLE,
                             ),
                         ],
-                        width=4,
+                        width=3,
                     ),
                     dbc.Col(
                         [
-                            dbc.Label("LLM Model"),
+                            dbc.Label(
+                                "Ollama Host",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
+                            dcc.Dropdown(
+                                id={"type": "host-dropdown", **idx},
+                                options=node_dropdown_options(),
+                                value=node_dropdown_options()[0]["value"]
+                                if node_dropdown_options()
+                                else "localhost:11434",
+                                clearable=False,
+                                style=_DROPDOWN_STYLE,
+                            ),
+                        ],
+                        width=3,
+                    ),
+                    dbc.Col(
+                        [
+                            dbc.Label(
+                                "LLM Model",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             dcc.Dropdown(
                                 id={"type": "model-dropdown", **idx},
                                 options=_model_options(),
                                 value=default_model(),
                                 clearable=False,
+                                style=_DROPDOWN_STYLE,
                             ),
                         ],
-                        width=4,
+                        width=3,
                     ),
                 ],
                 className="mb-3",
@@ -87,12 +143,16 @@ def create_session_panel(index: int) -> html.Div:
                 [
                     dbc.Col(
                         [
-                            dbc.Label("Container Profile"),
+                            dbc.Label(
+                                "Container Profile",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             dcc.Dropdown(
                                 id={"type": "profile-dropdown", **idx},
                                 options=profile_dropdown_options(),
                                 value=default_profile(),
                                 clearable=False,
+                                style=_DROPDOWN_STYLE,
                             ),
                         ],
                         width=3,
@@ -109,12 +169,14 @@ def create_session_panel(index: int) -> html.Div:
                                 value=[],
                                 id={"type": "auto-recover-check", **idx},
                                 switch=True,
+                                style={"color": _TEXT},
                             ),
                             dbc.Checklist(
                                 options=[{"label": " Dry run", "value": True}],
                                 value=[],
                                 id={"type": "dry-run-check", **idx},
                                 switch=True,
+                                style={"color": _TEXT},
                             ),
                         ],
                         width=3,
@@ -145,6 +207,7 @@ def create_session_panel(index: int) -> html.Div:
                                     dbc.Button(
                                         "Delete",
                                         id={"type": "delete-btn", **idx},
+                                        outline=True,
                                         color="dark",
                                     ),
                                 ]
@@ -171,34 +234,44 @@ def create_session_panel(index: int) -> html.Div:
                         value=0,
                         label="Idle",
                         className="mb-2",
+                        color="info",
+                        style={"backgroundColor": "#E8DFD0"},
                     ),
                     html.Div(
                         id={"type": "current-test", **idx},
                         children="Status: idle",
-                        className="text-muted small",
+                        className="small",
+                        style={"color": _MUTED},
                     ),
                 ],
-                className="p-2 border rounded mb-3",
+                className="p-2 rounded mb-3",
+                style={
+                    "border": f"1px solid {_BORDER}",
+                    "backgroundColor": _BG,
+                },
             ),
             # Console + results
             dbc.Row(
                 [
                     dbc.Col(
                         [
-                            html.H6("Console Output"),
+                            html.H6(
+                                "Console Output",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             html.Pre(
                                 id={"type": "console-output", **idx},
                                 children="",
                                 style={
                                     "height": "300px",
                                     "overflow": "auto",
-                                    "backgroundColor": "#1e1e1e",
-                                    "color": "#d4d4d4",
+                                    "backgroundColor": _CONSOLE_BG,
+                                    "color": _CONSOLE_TEXT,
                                     "padding": "10px",
                                     "fontFamily": "monospace",
                                     "fontSize": "12px",
-                                    "border": "1px solid #444",
-                                    "borderRadius": "4px",
+                                    "border": f"1px solid {_BORDER}",
+                                    "borderRadius": "6px",
                                 },
                             ),
                         ],
@@ -206,13 +279,17 @@ def create_session_panel(index: int) -> html.Div:
                     ),
                     dbc.Col(
                         [
-                            html.H6("Test Results"),
+                            html.H6(
+                                "Test Results",
+                                style={"color": _TEXT, "fontWeight": "600"},
+                            ),
                             html.Div(
                                 id={"type": "results-table", **idx},
                                 children="No results yet.",
                                 style={
                                     "height": "300px",
                                     "overflow": "auto",
+                                    "color": _MUTED,
                                 },
                             ),
                         ],
@@ -263,19 +340,21 @@ def _sessions_section() -> html.Div:
 def create_app_layout() -> html.Div:
     """Build the full application layout with top-level tab navigation."""
     return html.Div(
-        [
+        style={"backgroundColor": _BG, "minHeight": "100vh", "color": _TEXT},
+        children=[
             # Header
             dbc.Navbar(
                 dbc.Container(
                     [
                         html.H4(
                             "Robot Framework Chat Control Panel",
-                            className="text-white mb-0",
+                            className="mb-0",
+                            style={"color": "#FFF8F0"},
                         ),
                     ],
                     className="d-flex align-items-center",
                 ),
-                color="dark",
+                style={"backgroundColor": _HEADER_BG},
                 dark=True,
                 className="mb-3",
             ),
@@ -319,5 +398,5 @@ def create_app_layout() -> html.Div:
             html.Div(id="toast-container"),
             # Hidden counter for total sessions created (never decrements)
             dcc.Store(id="session-counter", data=1),
-        ]
+        ],
     )

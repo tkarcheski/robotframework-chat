@@ -109,6 +109,10 @@ class RobotRunner(threading.Thread):
         cmd.extend(["-v", f"MODEL:{config.model}"])
         cmd.extend(["-v", f"CONTAINER_PROFILE:{config.profile}"])
 
+        # Ollama endpoint from selected host
+        ollama_url = f"http://{config.ollama_host}"
+        cmd.extend(["-v", f"OLLAMA_ENDPOINT:{ollama_url}"])
+
         # Timestamp outputs
         cmd.append("-T")
 
