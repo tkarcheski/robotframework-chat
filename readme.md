@@ -73,6 +73,7 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 | [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, architecture, and detailed reference |
 | [ai/DEV.md](ai/DEV.md) | Development guidelines and TDD workflow |
 | [ai/SKILLS.md](ai/SKILLS.md) | Agent capabilities and tools |
+| [ai/PIPELINES.md](ai/PIPELINES.md) | Pipeline strategy and model selection |
 | [ai/roadmap.md](ai/roadmap.md) | Project roadmap |
 | [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |

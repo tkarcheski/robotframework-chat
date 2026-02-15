@@ -245,6 +245,7 @@ robotframework-chat/
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
+│   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   └── roadmap.md              # Project roadmap
 ├── Makefile                    # Build, test, deploy targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
