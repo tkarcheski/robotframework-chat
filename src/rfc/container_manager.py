@@ -56,6 +56,9 @@ class ContainerManager:
     def stop_container(self, container_id: str, timeout: int = 10) -> None:
         """Stop and remove a container.
 
+        Handles containers that have already been stopped or auto-removed
+        by Docker (auto_remove=True) without raising warnings.
+
         Args:
             container_id: ID of container to stop
             timeout: Seconds to wait for graceful shutdown
@@ -64,19 +67,24 @@ class ContainerManager:
             container = self.client.containers.get(container_id)
             logger.info(f"Stopping container {container_id[:12]}")
             container.stop(timeout=timeout)
-            container.remove(force=True)
-
-            if container_id in self._active_containers:
-                del self._active_containers[container_id]
+            try:
+                container.remove(force=True)
+            except NotFound:
+                # Container was auto-removed after stop, this is expected
+                pass
 
             logger.info(f"Container {container_id[:12]} stopped and removed")
 
         except NotFound:
-            logger.warn(
-                f"Container {container_id[:12]} not found, may already be stopped"
+            # Container already gone (auto-removed or manually stopped)
+            logger.info(
+                f"Container {container_id[:12]} already removed"
             )
         except DockerException as e:
             logger.error(f"Error stopping container {container_id[:12]}: {e}")
+        finally:
+            # Always clean up internal tracking regardless of outcome
+            self._active_containers.pop(container_id, None)
 
     def execute_command(
         self,
