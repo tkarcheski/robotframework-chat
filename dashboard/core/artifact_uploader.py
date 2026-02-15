@@ -125,15 +125,34 @@ def _import_output_xml(xml_path: str, db: TestDatabase) -> int:
         model_release_date=metadata.get("Model_Release_Date"),
         model_parameters=metadata.get("Model_Parameters"),
         test_suite=suite_name or "unknown",
-        gitlab_commit=metadata.get("GitLab Commit", os.getenv("CI_COMMIT_SHA", "")),
-        gitlab_branch=metadata.get(
-            "GitLab Branch", os.getenv("CI_COMMIT_REF_NAME", "")
+        git_commit=(
+            metadata.get("Commit_SHA")
+            or metadata.get("GitLab Commit")
+            or os.getenv("CI_COMMIT_SHA")
+            or os.getenv("GITHUB_SHA", "")
         ),
-        gitlab_pipeline_url=metadata.get(
-            "GitLab Pipeline", os.getenv("CI_PIPELINE_URL", "")
+        git_branch=(
+            metadata.get("Branch")
+            or metadata.get("GitLab Branch")
+            or os.getenv("CI_COMMIT_REF_NAME")
+            or os.getenv("GITHUB_REF_NAME", "")
         ),
-        runner_id=metadata.get("Runner ID", os.getenv("CI_RUNNER_ID", "")),
-        runner_tags=metadata.get("Runner Tags", os.getenv("CI_RUNNER_TAGS", "")),
+        pipeline_url=(
+            metadata.get("Pipeline_URL")
+            or metadata.get("GitLab Pipeline")
+            or os.getenv("CI_PIPELINE_URL", "")
+        ),
+        runner_id=(
+            metadata.get("Runner_ID")
+            or metadata.get("Runner ID")
+            or os.getenv("CI_RUNNER_ID")
+            or os.getenv("RUNNER_NAME", "")
+        ),
+        runner_tags=(
+            metadata.get("Runner_Tags")
+            or metadata.get("Runner Tags")
+            or os.getenv("CI_RUNNER_TAGS", "")
+        ),
         total_tests=total_tests,
         passed=passed,
         failed=failed,

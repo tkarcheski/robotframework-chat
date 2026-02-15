@@ -24,7 +24,7 @@ systems under test**.
 - Binary scoring (pass / fail) with strict JSON-only grader contracts
 - Ollama client with polling, model discovery, and health checks
 - CI-compatible execution (GitLab CI with child pipelines)
-- Three listeners always active: DbListener, CiMetadataListener,
+- Three listeners always active: DbListener, GitMetaData,
   OllamaTimestampListener
 - SQLite and PostgreSQL dual-backend result archiving
 - Pre-run modifier for dynamic model-aware test filtering

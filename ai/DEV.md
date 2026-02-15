@@ -112,7 +112,7 @@ make version       # Print current version
 
 All `make test-*` targets attach both listeners automatically:
 - `rfc.db_listener.DbListener` — archives results to database
-- `rfc.ci_metadata_listener.CiMetadataListener` — collects CI metadata
+- `rfc.git_metadata_listener.GitMetaData` — collects CI metadata
 
 ### Manual Robot Framework Commands
 
@@ -120,13 +120,13 @@ All `make test-*` targets attach both listeners automatically:
 # Run with both listeners
 uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   robot/math/tests/
 
 # Run specific test
 uv run robot -d results -t "Test Name" \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   robot/path/tests/file.robot
 
 # Run pre-commit
@@ -167,13 +167,13 @@ make logs          # Tail service logs
 # Run with debug output
 uv run robot -d results -L DEBUG \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   robot/
 
 # Run single test with verbose output
 uv run robot -d results -t "Test Name" -L TRACE \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   robot/path/tests/file.robot
 
 # Check container logs

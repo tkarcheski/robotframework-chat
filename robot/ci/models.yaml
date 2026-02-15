@@ -128,9 +128,9 @@ ci:
     - model_name
     - release_date
     - parameters
-    - gitlab_commit
-    - gitlab_branch
-    - gitlab_pipeline
+    - git_commit
+    - git_branch
+    - pipeline_url
     - runner_id
     - runner_description
     - timestamp

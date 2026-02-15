@@ -178,7 +178,7 @@ def bootstrap() -> None:
                         "failed",
                         "skipped",
                         "duration_seconds",
-                        "gitlab_branch",
+                        "git_branch",
                     ],
                     "order_desc": True,
                     "row_limit": 50,

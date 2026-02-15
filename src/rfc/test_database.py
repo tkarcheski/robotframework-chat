@@ -48,9 +48,9 @@ class TestRun:
     model_release_date: Optional[str]
     model_parameters: Optional[str]
     test_suite: str
-    gitlab_commit: str
-    gitlab_branch: str
-    gitlab_pipeline_url: str
+    git_commit: str
+    git_branch: str
+    pipeline_url: str
     runner_id: str
     runner_tags: str
     total_tests: int
@@ -127,9 +127,9 @@ class _SQLiteBackend(_Backend):
         model_release_date TEXT,
         model_parameters TEXT,
         test_suite TEXT NOT NULL,
-        gitlab_commit TEXT,
-        gitlab_branch TEXT,
-        gitlab_pipeline_url TEXT,
+        git_commit TEXT,
+        git_branch TEXT,
+        pipeline_url TEXT,
         runner_id TEXT,
         runner_tags TEXT,
         total_tests INTEGER DEFAULT 0,
@@ -168,11 +168,26 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
     """
 
+    # Idempotent migrations for renaming gitlab_* columns.
+    # Each statement is wrapped in try/except so it succeeds on
+    # fresh databases (columns already have new names) and on
+    # already-migrated databases.
+    _MIGRATIONS = [
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
+    ]
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         with sqlite3.connect(db_path) as conn:
             conn.executescript(self.SCHEMA)
+            for migration in self._MIGRATIONS:
+                try:
+                    conn.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # Column already renamed or freshly created
 
     def add_test_run(self, run: TestRun) -> int:
         with sqlite3.connect(self.db_path) as conn:
@@ -180,7 +195,7 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO test_runs
                 (timestamp, model_name, model_release_date, model_parameters,
-                 test_suite, gitlab_commit, gitlab_branch, gitlab_pipeline_url,
+                 test_suite, git_commit, git_branch, pipeline_url,
                  runner_id, runner_tags, total_tests, passed, failed, skipped,
                  duration_seconds, rfc_version)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -191,9 +206,9 @@ class _SQLiteBackend(_Backend):
                     run.model_release_date,
                     run.model_parameters,
                     run.test_suite,
-                    run.gitlab_commit,
-                    run.gitlab_branch,
-                    run.gitlab_pipeline_url,
+                    run.git_commit,
+                    run.git_branch,
+                    run.pipeline_url,
                     run.runner_id,
                     run.runner_tags,
                     run.total_tests,
@@ -310,7 +325,7 @@ class _SQLiteBackend(_Backend):
                     tr.*,
                     truns.model_name,
                     truns.timestamp,
-                    truns.gitlab_commit
+                    truns.git_commit
                 FROM test_results tr
                 JOIN test_runs truns ON tr.run_id = truns.id
                 WHERE tr.test_name = ?
@@ -360,9 +375,9 @@ class _SQLAlchemyBackend(_Backend):
             Column("model_release_date", String(255)),
             Column("model_parameters", String(255)),
             Column("test_suite", String(255), nullable=False),
-            Column("gitlab_commit", String(255)),
-            Column("gitlab_branch", String(255)),
-            Column("gitlab_pipeline_url", Text),
+            Column("git_commit", String(255)),
+            Column("git_branch", String(255)),
+            Column("pipeline_url", Text),
             Column("runner_id", String(255)),
             Column("runner_tags", Text),
             Column("total_tests", Integer, default=0),
@@ -417,9 +432,9 @@ class _SQLAlchemyBackend(_Backend):
                     model_release_date=run.model_release_date,
                     model_parameters=run.model_parameters,
                     test_suite=run.test_suite,
-                    gitlab_commit=run.gitlab_commit,
-                    gitlab_branch=run.gitlab_branch,
-                    gitlab_pipeline_url=run.gitlab_pipeline_url,
+                    git_commit=run.git_commit,
+                    git_branch=run.git_branch,
+                    pipeline_url=run.pipeline_url,
                     runner_id=run.runner_id,
                     runner_tags=run.runner_tags,
                     total_tests=run.total_tests,
@@ -540,7 +555,7 @@ class _SQLAlchemyBackend(_Backend):
                         tr.*,
                         truns.model_name,
                         truns.timestamp,
-                        truns.gitlab_commit
+                        truns.git_commit
                     FROM test_results tr
                     JOIN test_runs truns ON tr.run_id = truns.id
                     WHERE tr.test_name = :test_name

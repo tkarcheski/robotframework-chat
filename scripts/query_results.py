@@ -79,7 +79,7 @@ def cmd_recent(db: TestDatabase, args):
                 run["passed"],
                 run["failed"],
                 run["skipped"],
-                (run["gitlab_commit"] or "")[:8],
+                (run["git_commit"] or "")[:8],
             ]
         )
 

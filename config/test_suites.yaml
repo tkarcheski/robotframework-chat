@@ -150,7 +150,7 @@ container_profiles:
 ci:
   listeners:
     - "rfc.db_listener.DbListener"
-    - "rfc.ci_metadata_listener.CiMetadataListener"
+    - "rfc.git_metadata_listener.GitMetaData"
     - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
 
   # Job groups: combine multiple atomic suites into a single CI job.
