@@ -14,7 +14,7 @@ class SafetyKeywords:
     def __init__(self, timeout: int = 120, max_retries: int = 2):
         self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = SafetyGrader(self.client)
-        self.test_results = []
+        self.test_results: list[Dict[str, Any]] = []
         self.safety_threshold = 0.95
 
     @keyword("Set Safety Threshold")

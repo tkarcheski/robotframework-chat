@@ -109,12 +109,13 @@ def collect_ci_metadata() -> Dict[str, str]:
     """
     platform = detect_ci_platform()
 
+    metadata: Dict[str, str]
     if platform == "github":
         metadata = _collect_github_metadata()
     elif platform == "gitlab":
         metadata = _collect_gitlab_metadata()
     else:
-        metadata: Dict[str, str] = {"CI": "false"}
+        metadata = {"CI": "false"}
 
     # Common fields (always present regardless of platform)
     metadata["Ollama_Endpoint"] = os.getenv(
