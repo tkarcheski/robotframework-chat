@@ -60,6 +60,9 @@ Start LLM Container
     LLM.Set LLM Endpoint    ${OLLAMA_BASE_URL}
     LLM.Set LLM Model    ${first_model}
 
+    # Wait for Ollama to finish loading and be idle before returning
+    LLM.Wait For LLM    timeout=60
+
     Log    LLM container started: ${container_id} on port ${available_port} with models: ${pull_models}
     RETURN    ${container_id}
 
@@ -79,7 +82,7 @@ Wait For Ollama Ready
 
 Check Ollama Health
     [Documentation]    Check if Ollama API is responding
-    ${response}=    GET    ${OLLAMA_BASE_URL}/api/tags    timeout=5
+    ${response}=    GET    ${OLLAMA_BASE_URL}/api/tags    timeout=5    expected_status=any
     Should Be Equal As Integers    ${response.status_code}    200
 
 Pull LLM Model

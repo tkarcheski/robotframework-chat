@@ -45,7 +45,7 @@ Extract Code From Response
 
 Check Ollama Health On Endpoint
     [Arguments]    ${endpoint}
-    ${response}=    GET    ${endpoint}/api/tags    timeout=5
+    ${response}=    GET    ${endpoint}/api/tags    timeout=5    expected_status=any
     Should Be Equal As Integers    ${response.status_code}    200
 
 *** Test Cases ***

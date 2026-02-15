@@ -107,6 +107,36 @@ class OllamaClient:
                 )
         return result
 
+    def running_models(self) -> List[Dict[str, Any]]:
+        """Query currently running models from the Ollama endpoint.
+
+        Uses the /api/ps endpoint to check which models are loaded
+        and actively processing requests.
+
+        Returns:
+            List of dicts with model name, size, and expiry info.
+        """
+        response = requests.get(f"{self.base_url}/api/ps", timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+        return data.get("models", [])
+
+    def is_busy(self) -> bool:
+        """Check if Ollama is currently processing a request.
+
+        Queries /api/ps and checks if any model has a non-zero
+        size_vram, indicating it is loaded and potentially busy.
+
+        Returns:
+            True if any model is currently loaded and running.
+        """
+        try:
+            models = self.running_models()
+            return len(models) > 0
+        except Exception:
+            return False
+
     def is_available(self) -> bool:
         """Check if the Ollama endpoint is accessible.
 
@@ -118,6 +148,55 @@ class OllamaClient:
             return response.status_code == 200
         except Exception:
             return False
+
+    def wait_until_ready(self, timeout: int = 120, poll_interval: int = 2) -> bool:
+        """Wait until Ollama is available and not busy processing another request.
+
+        Polls the /api/ps endpoint to detect when the LLM is idle.
+        This prevents timeout errors caused by sending a request while
+        Ollama is still processing a previous one.
+
+        Args:
+            timeout: Maximum seconds to wait.
+            poll_interval: Seconds between checks.
+
+        Returns:
+            True if Ollama became ready within timeout.
+
+        Raises:
+            TimeoutError: If Ollama is still busy after timeout expires.
+        """
+        import time
+
+        start = time.time()
+        while time.time() - start < timeout:
+            if not self.is_available():
+                logger.info("Ollama endpoint not available yet, waiting...")
+                time.sleep(poll_interval)
+                continue
+
+            models = []
+            try:
+                models = self.running_models()
+            except Exception:
+                # /api/ps may not be available on older Ollama versions
+                logger.debug("Could not query /api/ps, assuming idle")
+                return True
+
+            if len(models) == 0:
+                logger.info("Ollama is idle, no models running")
+                return True
+
+            # Log what's running
+            names = [m.get("name", "unknown") for m in models]
+            logger.info(f"Ollama busy with models: {', '.join(names)} - waiting...")
+            time.sleep(poll_interval)
+
+        elapsed = int(time.time() - start)
+        raise TimeoutError(
+            f"Ollama still busy after {elapsed}s. "
+            f"Running models: {[m.get('name', '?') for m in models]}"
+        )
 
 
 # Backward-compatible alias
