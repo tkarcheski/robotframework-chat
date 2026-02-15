@@ -7,13 +7,17 @@ dashboard only needs to import high-level functions.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
+import subprocess
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -22,15 +26,17 @@ from dash import dcc, html
 
 from rfc.suite_config import load_config
 
+_log = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# Cream theme constants (must match layout.py)
+# Dark theme constants (must match layout.py)
 # ---------------------------------------------------------------------------
 
-_BG = "#FAF3E8"
-_CARD_BG = "#FFF8F0"
-_BORDER = "#E0D5C5"
-_TEXT = "#3E3529"
-_MUTED = "#8C7E6A"
+_BG = "#1a1a2e"
+_CARD_BG = "#16213e"
+_BORDER = "#2a2a4a"
+_TEXT = "#e0e0e0"
+_MUTED = "#8892a0"
 
 # ---------------------------------------------------------------------------
 # Configuration helpers
@@ -105,6 +111,7 @@ class _OllamaSnapshot:
     ts: datetime
     reachable: bool
     running_models: list[dict] = field(default_factory=list)
+    error: str = ""  # diagnostic info when unreachable
 
 
 class OllamaMonitor:
@@ -126,6 +133,10 @@ class OllamaMonitor:
             n["hostname"]: deque(maxlen=max_pts) for n in self._nodes
         }
         self._last_poll: float = 0
+        # Perform the first poll immediately in a background thread so the
+        # dashboard has data before the first monitoring-interval callback.
+        t = threading.Thread(target=self._poll_all, daemon=True)
+        t.start()
 
     @classmethod
     def get(cls) -> OllamaMonitor:
@@ -146,19 +157,44 @@ class OllamaMonitor:
         self._last_poll = now
         self._poll_all()
 
+    def force_poll(self) -> None:
+        """Force an immediate poll regardless of the interval."""
+        self._last_poll = time.time()
+        self._poll_all()
+
     def _poll_all(self) -> None:
+        self._last_poll = time.time()
         for node in self._nodes:
             host = node["hostname"]
             port = node.get("port", 11434)
-            url = f"http://{host}:{port}/api/ps"
             snap = _OllamaSnapshot(ts=datetime.now(), reachable=False)
+
+            # Try /api/tags first (available in all Ollama versions), then
+            # /api/ps for running-model info.  This two-step approach avoids
+            # marking a host as offline just because /api/ps is not supported.
+            base_url = f"http://{host}:{port}"
             try:
-                resp = requests.get(url, timeout=3)
+                # Health check via /api/tags
+                resp = requests.get(f"{base_url}/api/tags", timeout=5)
                 if resp.status_code == 200:
                     snap.reachable = True
-                    snap.running_models = resp.json().get("models", [])
-            except Exception:
-                pass
+                    # Now try to get running models from /api/ps
+                    try:
+                        ps_resp = requests.get(f"{base_url}/api/ps", timeout=3)
+                        if ps_resp.status_code == 200:
+                            snap.running_models = ps_resp.json().get("models", [])
+                    except Exception:
+                        pass  # /api/ps may not exist, host is still reachable
+                else:
+                    snap.error = f"HTTP {resp.status_code}"
+            except requests.exceptions.ConnectionError as e:
+                snap.error = f"Connection refused ({host}:{port})"
+                if "Name or service not known" in str(e) or "getaddrinfo" in str(e):
+                    snap.error = f"DNS lookup failed for '{host}'"
+            except requests.exceptions.Timeout:
+                snap.error = f"Timeout after 5s ({host}:{port})"
+            except Exception as e:
+                snap.error = str(e)[:80]
             self._history[host].append(snap)
 
     # -- Data access ---------------------------------------------------------
@@ -191,24 +227,126 @@ class PipelineInfo:
     source: str = ""
 
 
+def _detect_gitlab_from_git_remote() -> tuple[str, str]:
+    """Try to detect GitLab API URL and project path from git remote.
+
+    Returns (api_url, project_path) or ("", "") if detection fails.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return "", ""
+        remote = result.stdout.strip()
+    except Exception:
+        return "", ""
+
+    # SSH: git@gitlab.example.com:group/project.git
+    ssh_match = re.match(r"git@([^:]+):(.+?)(?:\.git)?$", remote)
+    if ssh_match:
+        host = ssh_match.group(1)
+        path = ssh_match.group(2)
+        return f"https://{host}", path
+
+    # HTTPS: https://gitlab.example.com/group/project.git
+    https_match = re.match(
+        r"https?://(?:[^@]+@)?([^/]+)/(.+?)(?:\.git)?$", remote
+    )
+    if https_match:
+        host = https_match.group(1)
+        path = https_match.group(2)
+        # Skip proxy / localhost remotes (e.g. 127.0.0.1 from Claude Code)
+        if host.startswith("127.") or host == "localhost":
+            return "", ""
+        # Strip /git/ prefix if present (some proxies add it)
+        path = re.sub(r"^git/", "", path)
+        return f"https://{host}", path
+
+    return "", ""
+
+
 class PipelineMonitor:
-    """Fetch recent GitLab CI pipeline runs."""
+    """Fetch recent GitLab CI pipeline runs.
+
+    Detection priority for GitLab settings:
+    1. ``CI_API_V4_URL`` / ``CI_PROJECT_ID`` env vars (inside GitLab CI)
+    2. ``GITLAB_API_URL`` / ``GITLAB_PROJECT_ID`` env vars
+    3. YAML config ``monitoring.gitlab_api_url`` / ``monitoring.gitlab_project_id``
+    4. Auto-detect from git remote URL (resolves project path -> numeric ID)
+    """
 
     _instance: PipelineMonitor | None = None
     _lock = threading.Lock()
 
     def __init__(self) -> None:
         cfg = _monitoring_config()
-        # Env vars override YAML config so docker-compose can inject values
-        self._api_url = os.environ.get("GITLAB_API_URL") or cfg["gitlab_api_url"]
-        self._project_id = (
-            os.environ.get("GITLAB_PROJECT_ID") or cfg["gitlab_project_id"]
-        )
         self._token_env = cfg["gitlab_token_env"]
         self._count = cfg["pipeline_count"]
         self._pipelines: list[PipelineInfo] = []
         self._last_poll: float = 0
         self._poll_interval = max(cfg["poll_interval_seconds"], 30)
+        self._fetch_error: str = ""
+
+        # Resolve API URL and project ID from multiple sources
+        self._api_url, self._project_id = self._resolve_gitlab_settings(cfg)
+        if self._api_url and self._project_id:
+            _log.info(
+                "GitLab monitoring: %s (project %s)", self._api_url, self._project_id
+            )
+        else:
+            _log.warning("GitLab monitoring not configured")
+
+    def _resolve_gitlab_settings(self, cfg: dict) -> tuple[str, str]:
+        """Resolve GitLab API URL and project ID from env/config/git."""
+        # 1. GitLab CI environment variables (highest priority)
+        ci_api = os.environ.get("CI_API_V4_URL", "")
+        ci_pid = os.environ.get("CI_PROJECT_ID", "")
+        if ci_api and ci_pid:
+            # CI_API_V4_URL is like https://gitlab.example.com/api/v4
+            # Strip the /api/v4 suffix to get the base URL
+            api_url = ci_api.rsplit("/api/v4", 1)[0]
+            return api_url, ci_pid
+
+        # 2. Explicit env vars
+        api_url = os.environ.get("GITLAB_API_URL", "") or cfg.get("gitlab_api_url", "")
+        project_id = os.environ.get("GITLAB_PROJECT_ID", "") or cfg.get(
+            "gitlab_project_id", ""
+        )
+        if api_url and project_id:
+            return api_url.rstrip("/"), str(project_id)
+
+        # 3. Auto-detect from git remote
+        remote_url, project_path = _detect_gitlab_from_git_remote()
+        if remote_url and project_path:
+            # If we have an explicit API URL but no project ID, use the remote
+            # to resolve the project path to a numeric ID.
+            final_url = api_url or remote_url
+            # Try to resolve the project path to a numeric ID via the API
+            resolved_id = self._resolve_project_id(final_url, project_path)
+            if resolved_id:
+                return final_url.rstrip("/"), resolved_id
+
+        return api_url.rstrip("/") if api_url else "", str(project_id) if project_id else ""
+
+    def _resolve_project_id(self, api_url: str, project_path: str) -> str:
+        """Resolve a project path (group/project) to a numeric GitLab ID."""
+        token = os.environ.get(self._token_env, "")
+        headers: dict[str, str] = {}
+        if token:
+            headers["PRIVATE-TOKEN"] = token
+        encoded = quote_plus(project_path)
+        url = f"{api_url}/api/v4/projects/{encoded}"
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                return str(resp.json()["id"])
+        except Exception:
+            pass
+        return ""
 
     @classmethod
     def get(cls) -> PipelineMonitor:
@@ -227,6 +365,7 @@ class PipelineMonitor:
 
     def _fetch(self) -> None:
         if not self._api_url or not self._project_id:
+            self._fetch_error = "Not configured"
             return
         token = os.environ.get(self._token_env, "")
         headers: dict[str, str] = {}
@@ -252,12 +391,31 @@ class PipelineMonitor:
                 )
                 for p in resp.json()
             ]
-        except Exception:
-            pass  # keep stale data on transient failures
+            self._fetch_error = ""
+        except requests.exceptions.ConnectionError:
+            self._fetch_error = f"Cannot connect to {self._api_url}"
+        except requests.exceptions.HTTPError as e:
+            code = e.response.status_code if e.response is not None else "?"
+            if code == 401:
+                self._fetch_error = "Authentication failed (check GITLAB_TOKEN)"
+            elif code == 404:
+                self._fetch_error = f"Project {self._project_id} not found"
+            else:
+                self._fetch_error = f"HTTP {code} from GitLab API"
+        except Exception as e:
+            self._fetch_error = str(e)[:100]
 
     @property
     def pipelines(self) -> list[PipelineInfo]:
         return list(self._pipelines)
+
+    @property
+    def fetch_error(self) -> str:
+        return self._fetch_error
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self._api_url and self._project_id)
 
 
 # ---------------------------------------------------------------------------
@@ -276,38 +434,71 @@ _STATUS_COLORS = {
 }
 
 
-def build_pipeline_table(pipelines: list[PipelineInfo]) -> html.Div:
+def build_pipeline_table(
+    pipelines: list[PipelineInfo],
+    monitor: PipelineMonitor | None = None,
+) -> html.Div:
     """Return a table of recent pipeline runs, or configuration help."""
     if not pipelines:
-        return html.Div(
-            [
+        # Show different help depending on whether GitLab is configured
+        children: list = []
+
+        if monitor and monitor.is_configured and monitor.fetch_error:
+            # Configured but failing
+            children.extend([
+                html.H6(
+                    "GitLab Pipeline Error",
+                    style={"color": "#e94560"},
+                ),
+                html.P(
+                    monitor.fetch_error,
+                    style={
+                        "color": "#e94560",
+                        "fontFamily": "monospace",
+                        "fontSize": "0.9em",
+                    },
+                ),
+            ])
+        else:
+            children.append(
                 html.H6(
                     "GitLab Pipeline Monitoring Not Configured",
                     style={"color": _TEXT},
-                ),
-                html.P(
-                    "To enable pipeline monitoring, set the following in "
-                    "your .env file or environment:",
-                    style={"color": _MUTED},
-                ),
-                html.Pre(
-                    "GITLAB_API_URL=https://gitlab.example.com\n"
-                    "GITLAB_PROJECT_ID=12345\n"
-                    "GITLAB_TOKEN=glpat-xxxxxxxxxxxx",
-                    style={
-                        "backgroundColor": "#2B2520",
-                        "color": "#E8DFD0",
-                        "padding": "12px",
-                        "borderRadius": "6px",
-                        "fontSize": "13px",
-                    },
-                ),
-                html.P(
-                    "Or configure in config/test_suites.yaml under "
-                    "monitoring.gitlab_api_url and monitoring.gitlab_project_id.",
-                    style={"color": _MUTED, "fontSize": "0.9em"},
-                ),
-            ],
+                )
+            )
+
+        children.extend([
+            html.P(
+                "To enable pipeline monitoring, set the following in "
+                "your .env file or environment:",
+                style={"color": _MUTED},
+            ),
+            html.Pre(
+                "GITLAB_API_URL=https://gitlab.example.com\n"
+                "GITLAB_PROJECT_ID=12345\n"
+                "GITLAB_TOKEN=glpat-xxxxxxxxxxxx",
+                style={
+                    "backgroundColor": "#0d1117",
+                    "color": "#c9d1d9",
+                    "padding": "12px",
+                    "borderRadius": "6px",
+                    "fontSize": "13px",
+                },
+            ),
+            html.P(
+                [
+                    "Auto-detection: the dashboard will also check ",
+                    html.Code("CI_API_V4_URL"),
+                    " / ",
+                    html.Code("CI_PROJECT_ID"),
+                    " (GitLab CI env) and the git remote URL.",
+                ],
+                style={"color": _MUTED, "fontSize": "0.9em"},
+            ),
+        ])
+
+        return html.Div(
+            children,
             style={
                 "padding": "20px",
                 "backgroundColor": _CARD_BG,
@@ -354,7 +545,7 @@ def build_pipeline_table(pipelines: list[PipelineInfo]) -> html.Div:
                     html.Td(
                         html.Code(
                             p.sha,
-                            style={"color": _TEXT, "backgroundColor": "#E8DFD0"},
+                            style={"color": "#c9d1d9", "backgroundColor": "#0d1117"},
                         )
                     ),
                     html.Td(p.source, style={"color": _MUTED}),
@@ -387,22 +578,60 @@ def build_ollama_cards(monitor: OllamaMonitor) -> list:
     for host in monitor.node_names():
         snap = monitor.latest(host)
         if snap is None:
-            status_text = "No data"
+            status_text = "Polling..."
             badge_color = "secondary"
             model_info = ""
+            error_info = ""
         elif not snap.reachable:
             status_text = "Offline"
             badge_color = "danger"
             model_info = ""
+            error_info = snap.error
         elif snap.running_models:
             status_text = "Busy"
             badge_color = "warning"
             names = [m.get("name", "?") for m in snap.running_models]
             model_info = ", ".join(names)
+            error_info = ""
         else:
             status_text = "Idle"
             badge_color = "success"
             model_info = ""
+            error_info = ""
+
+        body_children = []
+        if model_info:
+            body_children.append(
+                html.Div(
+                    f"Running: {model_info}",
+                    className="small mb-2",
+                    style={"color": _TEXT},
+                )
+            )
+        elif error_info:
+            body_children.append(
+                html.Div(
+                    error_info,
+                    className="small mb-2",
+                    style={"color": "#e94560", "fontFamily": "monospace"},
+                )
+            )
+        else:
+            body_children.append(
+                html.Div(
+                    "No models running" if snap and snap.reachable else "No data yet",
+                    className="small mb-2",
+                    style={"color": _MUTED},
+                )
+            )
+
+        body_children.append(
+            dcc.Graph(
+                figure=_build_timeline_fig(monitor, host),
+                config={"displayModeBar": False},
+                style={"height": "120px"},
+            )
+        )
 
         card = dbc.Card(
             [
@@ -421,20 +650,7 @@ def build_ollama_cards(monitor: OllamaMonitor) -> list:
                     style={"backgroundColor": _CARD_BG},
                 ),
                 dbc.CardBody(
-                    [
-                        html.Div(
-                            f"Models: {model_info}"
-                            if model_info
-                            else "No models loaded",
-                            className="small mb-2",
-                            style={"color": _MUTED},
-                        ),
-                        dcc.Graph(
-                            figure=_build_timeline_fig(monitor, host),
-                            config={"displayModeBar": False},
-                            style={"height": "120px"},
-                        ),
-                    ],
+                    body_children,
                     style={"backgroundColor": _CARD_BG},
                 ),
             ],
@@ -513,7 +729,7 @@ def _build_timeline_fig(monitor: OllamaMonitor, hostname: str) -> go.Figure:
         margin={"l": 0, "r": 0, "t": 0, "b": 25},
         height=100,
         paper_bgcolor=_CARD_BG,
-        plot_bgcolor="#FAF3E8",
+        plot_bgcolor="#1a1a2e",
         xaxis={
             "range": [window_start, now],
             "tickformat": "%H:%M",

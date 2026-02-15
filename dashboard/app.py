@@ -32,7 +32,7 @@ from rfc.suite_config import default_iq_levels, default_model, default_profile
 
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.FLATLY],
+    external_stylesheets=[dbc.themes.DARKLY],
     suppress_callback_exceptions=True,
 )
 app.title = "Robot Framework Chat Control Panel"
@@ -407,7 +407,7 @@ def update_pipelines(n_intervals):
     """Fetch and render the GitLab pipelines table."""
     monitor = PipelineMonitor.get()
     monitor.poll_if_due()
-    table = build_pipeline_table(monitor.pipelines)
+    table = build_pipeline_table(monitor.pipelines, monitor=monitor)
     ts = datetime.now().strftime("Updated %H:%M")
     return table, ts
 
