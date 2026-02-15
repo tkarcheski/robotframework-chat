@@ -38,6 +38,13 @@ A Robot Framework-based test harness for systematically testing LLMs.
 7. Update PR description if scope changes
 8. Only merge after approval and all checks pass
 
+**CI / GitHub Sync Warning:**
+Running the GitLab CI pipeline resets the GitHub mirror. This means:
+- Feature branches pushed to GitHub may be removed after a pipeline run
+- Always push your branch **after** the pipeline completes if you need it on GitHub
+- Do not assume a previously pushed branch still exists on GitHub — verify first
+- Keep local branches until your PR is merged
+
 ---
 
 ## Commands
@@ -134,27 +141,44 @@ Custom Keyword
 
 ```
 robotframework-chat/
-├── src/rfc/                    # Python library
+├── src/rfc/                    # Python library (canonical source)
+│   ├── ollama.py               # Ollama API client (generation + model discovery)
+│   ├── models.py               # Shared data classes (GradeResult, SafetyResult)
+│   ├── ci_metadata.py          # Shared CI metadata collection
 │   ├── keywords.py             # Core LLM keywords
+│   ├── grader.py               # LLM answer grading
+│   ├── safety_keywords.py      # Safety testing keywords
+│   ├── safety_grader.py        # Regex-based safety grading
+│   ├── docker_config.py        # Container configuration models
+│   ├── container_manager.py    # Docker lifecycle management
 │   ├── docker_keywords.py      # Docker container keywords
-│   ├── container_manager.py    # Container management
-│   ├── docker_config.py        # Configuration models
-│   ├── llm_client.py           # LLM API client
-│   ├── grader.py               # Grading logic
-│   └── models.py               # Data classes
+│   ├── test_database.py        # SQLite test results database
+│   ├── pre_run_modifier.py     # Dynamic model configuration
+│   ├── ci_metadata_listener.py # GitLab CI metadata listener
+│   └── llm_client.py           # Backward-compat re-export (use ollama.py)
 ├── robot/                      # Tests
 │   ├── math/tests/             # Math tests
 │   ├── docker/python/tests/    # Python execution
 │   ├── docker/llm/tests/       # LLM-in-Docker
 │   ├── docker/shell/tests/     # Shell tests
+│   ├── safety/                 # Safety tests (re-exports from src/rfc/)
 │   └── resources/              # Reusable configs
 │       ├── container_profiles.resource
 │       ├── environments.resource
 │       └── llm_containers.resource
+├── dashboard/                  # Dash-based test runner UI
+│   └── core/
+│       ├── llm_registry.py     # Model discovery (wraps OllamaClient)
+│       ├── robot_runner.py     # Threaded test runner
+│       └── session_manager.py  # Multi-session management
+├── scripts/                    # Utility scripts
 ├── pyproject.toml
 ├── AGENTS.md
 └── DEV.md
 ```
+
+**Important:** `src/rfc/` is the single source of truth. Files in `robot/safety/` and
+`tests/test_safety/` are thin re-export shims — never duplicate logic there.
 
 ---
 
