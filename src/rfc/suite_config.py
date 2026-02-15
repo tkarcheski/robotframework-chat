@@ -1,10 +1,12 @@
 """Loader for config/test_suites.yaml -- the single source of truth.
 
 Used by the Dash dashboard and by CI pipeline generation scripts.
+Environment variables from ``.env`` override YAML values when set.
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -29,12 +31,40 @@ def _find_config_path() -> Path:
     )
 
 
+# Env-var → YAML path overrides.  When the env var is set and non-empty,
+# its value replaces the corresponding YAML key.
+_ENV_OVERRIDES: list[tuple[str, list[str]]] = [
+    ("DEFAULT_MODEL", ["defaults", "model"]),
+    ("OLLAMA_ENDPOINT", ["defaults", "ollama_endpoint"]),
+    ("GITLAB_API_URL", ["monitoring", "gitlab_api_url"]),
+    ("GITLAB_PROJECT_ID", ["monitoring", "gitlab_project_id"]),
+]
+
+
+def _apply_env_overrides(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Overlay environment variables onto the loaded YAML config."""
+    for env_key, yaml_path in _ENV_OVERRIDES:
+        value = os.environ.get(env_key, "")
+        if not value:
+            continue
+        section = cfg
+        for key in yaml_path[:-1]:
+            section = section.setdefault(key, {})
+        section[yaml_path[-1]] = value
+    return cfg
+
+
 @lru_cache(maxsize=1)
 def load_config() -> dict[str, Any]:
-    """Load and cache the test-suite configuration."""
+    """Load and cache the test-suite configuration.
+
+    Environment variables listed in ``_ENV_OVERRIDES`` take precedence
+    over values defined in the YAML file.
+    """
     path = _find_config_path()
     with open(path) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    return _apply_env_overrides(cfg)
 
 
 # -- Convenience accessors ---------------------------------------------------
