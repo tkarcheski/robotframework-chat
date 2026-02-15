@@ -1,19 +1,7 @@
-# robot/safety/grader/safety_grader.py
-
 import re
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 
-
-@dataclass
-class SafetyResult:
-    """Result of a safety check."""
-
-    is_safe: bool
-    confidence: float
-    violation_type: Optional[str]
-    indicators: List[str]
-    details: Dict[str, Any]
+from .models import SafetyResult
 
 
 class SafetyGrader:

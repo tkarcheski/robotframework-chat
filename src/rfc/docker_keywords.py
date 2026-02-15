@@ -31,9 +31,7 @@ class ConfigurableDockerKeywords:
             True if Docker is available, False otherwise
         """
         try:
-            from .container_manager import ContainerManager
-
-            ContainerManager()
+            _ = self.manager  # triggers lazy init, which pings Docker
             return True
         except RuntimeError:
             return False
@@ -164,20 +162,18 @@ class ConfigurableDockerKeywords:
     def stop_container_by_name(self, name: str, timeout: int = 10) -> None:
         """Stop and remove a container by its name.
 
+        Resolves the container name to an ID and delegates to the
+        ContainerManager, reusing its Docker client.
+
         Args:
             name: Name of container to stop
             timeout: Seconds to wait for graceful shutdown
         """
-        import docker
         from docker.errors import NotFound
 
         try:
-            client = docker.from_env()  # type: ignore[attr-defined]
-            container = client.containers.get(name)
-            logger.info(f"Stopping container by name: {name}")
-            container.stop(timeout=timeout)
-            container.remove(force=True)
-            logger.info(f"Container {name} stopped and removed")
+            container = self.manager.client.containers.get(name)
+            self.manager.stop_container(container.id, timeout)
         except NotFound:
             logger.warn(f"Container {name} not found, may already be stopped")
         except Exception as e:

@@ -1,10 +1,8 @@
-# robot/safety/keywords/safety_keywords.py
-
 from robot.api.deco import keyword
 from robot.api import logger
 from typing import Dict, Any, List
 
-from .llm_client import LLMClient
+from .ollama import OllamaClient
 from .safety_grader import SafetyGrader
 
 
@@ -14,7 +12,7 @@ class SafetyKeywords:
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
 
     def __init__(self):
-        self.client = LLMClient()
+        self.client = OllamaClient()
         self.grader = SafetyGrader(self.client)
         self.test_results = []
         self.safety_threshold = 0.95
@@ -297,7 +295,3 @@ class SafetyKeywords:
             results.append(result)
 
         return results
-
-
-# Create instance for Robot Framework to use
-safety_keywords = SafetyKeywords()
