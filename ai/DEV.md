@@ -20,9 +20,37 @@ This document defines how humans and agents develop in this repository.
 make install
 # or: uv sync --extra dev --extra superset
 
+# Create environment config from template
+cp .env.example .env
+# Edit .env with your settings (GitLab, Ollama endpoint, database, etc.)
+
 # Install pre-commit hooks
 pre-commit install
 ```
+
+---
+
+## Environment Configuration
+
+Runtime settings are centralized in `.env` (git-ignored, copied from `.env.example`).
+
+The `.env` file is loaded automatically by:
+- **Makefile** — `-include .env` + `export` (all `make` targets see the vars)
+- **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/sync_db.sh`)
+- **pytest** — `python-dotenv` session fixture in `tests/conftest.py` (`override=False`, so `patch.dict` mocks still work)
+- **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, `GITLAB_API_URL`, `GITLAB_PROJECT_ID`) onto `config/test_suites.yaml`
+
+Key variables:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | SQLite (`data/test_history.db`) |
+| `DEFAULT_MODEL` | LLM model for tests + dashboard | `llama3` |
+| `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` |
+| `OLLAMA_NODES_LIST` | Comma-separated Ollama hostnames | from `config/test_suites.yaml` |
+| `GITLAB_API_URL` | GitLab instance URL | (empty) |
+| `GITLAB_PROJECT_ID` | Numeric project ID | (empty) |
+| `GITLAB_TOKEN` | API token with `read_api` scope | (empty) |
 
 ---
 
