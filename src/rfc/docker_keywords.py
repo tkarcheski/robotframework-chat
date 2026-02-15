@@ -139,7 +139,7 @@ class ConfigurableDockerKeywords:
             read_only=to_bool(config.get("read_only"), True),
             user=config.get("user", "nobody"),
             working_dir=config.get("working_dir", "/workspace"),
-            auto_remove=to_bool(config.get("auto_remove"), True),
+            auto_remove=to_bool(config.get("auto_remove"), False),
             detach=to_bool(config.get("detach"), True),
         )
 
@@ -323,6 +323,7 @@ class ConfigurableDockerKeywords:
         """
         config = {
             "image": image,
+            "command": "sleep infinity",
             "cpu_cores": cpu_cores,
             "memory_mb": memory_mb,
             "network_mode": network_mode,
@@ -363,6 +364,7 @@ class ConfigurableDockerKeywords:
             # Create temporary container
             config = {
                 "image": image,
+                "command": "sleep infinity",
                 "cpu_cores": 0.5,
                 "memory_mb": 512,
                 "network_mode": "none",

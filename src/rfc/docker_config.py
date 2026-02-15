@@ -80,7 +80,7 @@ class ContainerConfig:
     read_only: bool = True
     user: Optional[str] = "nobody"
     working_dir: Optional[str] = "/workspace"
-    auto_remove: bool = True
+    auto_remove: bool = False
     detach: bool = True
 
     @classmethod

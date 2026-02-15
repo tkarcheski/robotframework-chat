@@ -4,18 +4,18 @@ Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME   
 
 *** Variables ***
 # Resource Profiles - Define resource constraints
-&{MINIMAL}          image=python:3.11-alpine    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True
-&{STANDARD}         image=python:3.11-slim      cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True
-&{PERFORMANCE}      image=python:3.11-slim      cpu_cores=1.0     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=True
-&{NETWORKED}        image=python:3.11-slim      cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=bridge  read_only=True
+&{MINIMAL}          image=python:3.11-alpine    command=sleep infinity    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True
+&{STANDARD}         image=python:3.11-slim      command=sleep infinity    cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True
+&{PERFORMANCE}      image=python:3.11-slim      command=sleep infinity    cpu_cores=1.0     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=True
+&{NETWORKED}        image=python:3.11-slim      command=sleep infinity    cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=bridge  read_only=True
 
 # Language-specific profiles
-&{PYTHON_MINIMAL}   image=python:3.11-alpine    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True    user=nobody
-&{PYTHON_STANDARD}  image=python:3.11-slim      cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True    user=nobody
-&{PYTHON_PERF}      image=python:3.11-slim      cpu_cores=2.0     memory_mb=2048   scratch_mb=1024   network_mode=none    read_only=True    user=nobody
-&{NODE_STANDARD}    image=node:18-alpine        cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True    user=node
-&{ALPINE_SHELL}     image=alpine:latest         cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True    user=nobody
-&{UBUNTU_DEV}       image=ubuntu:22.04          cpu_cores=0.5     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=False   user=root
+&{PYTHON_MINIMAL}   image=python:3.11-alpine    command=sleep infinity    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True    user=nobody
+&{PYTHON_STANDARD}  image=python:3.11-slim      command=sleep infinity    cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True    user=nobody
+&{PYTHON_PERF}      image=python:3.11-slim      command=sleep infinity    cpu_cores=2.0     memory_mb=2048   scratch_mb=1024   network_mode=none    read_only=True    user=nobody
+&{NODE_STANDARD}    image=node:18-alpine        command=sleep infinity    cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=True    user=node
+&{ALPINE_SHELL}     image=alpine:latest         command=sleep infinity    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True    user=nobody
+&{UBUNTU_DEV}       image=ubuntu:22.04          command=sleep infinity    cpu_cores=0.5     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=False   user=root
 
 # LLM Container Profiles (Ollama) - ports are assigned dynamically
 &{OLLAMA_CPU}       image=ollama/ollama:latest    cpu_cores=2.0     memory_mb=4096    scratch_mb=1024   network_mode=bridge    read_only=False    user=root
