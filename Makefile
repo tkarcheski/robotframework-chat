@@ -10,9 +10,9 @@ LISTENER := --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_lis
 export
 
 .PHONY: help install up down restart logs bootstrap \
-        test test-math test-docker test-safety \
+        test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-sync ci-deploy ci-review
+        ci-lint ci-test ci-generate ci-report ci-sync ci-deploy ci-review ci-test-dashboard
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -57,6 +57,12 @@ test-docker: ## Run Docker tests
 test-safety: ## Run safety tests
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
 
+test-dashboard: ## Run dashboard pytest unit tests
+	uv run pytest tests/test_dashboard_layout.py tests/test_dashboard_monitoring.py -v
+
+test-dashboard-playwright: ## Run dashboard Playwright browser self-tests
+	bash ci/test_dashboard.sh playwright
+
 import: ## Import results from output.xml files: make import PATH=results/
 	uv run python scripts/import_test_results.py $(or $(PATH),results/) -r
 
@@ -93,6 +99,9 @@ ci-sync: ## Mirror repo to GitHub
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
+
+ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
+	bash ci/test_dashboard.sh $(or $(MODE),all)
 
 ci-review: ## Run Claude Code review
 	bash ci/review.sh

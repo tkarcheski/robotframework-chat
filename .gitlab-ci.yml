@@ -93,6 +93,47 @@ generate-dynamic-pipeline:
 
 # ── Test ─────────────────────────────────────────────────────────────
 
+# Dashboard unit tests (pytest) - no Ollama/LLM dependency
+dashboard-pytest:
+  extends: .uv-setup
+  stage: test
+  needs: []
+  before_script:
+    - uv sync --extra dev --extra dashboard
+  script: [bash ci/test_dashboard.sh pytest]
+  artifacts:
+    when: always
+    paths:
+      - results/dashboard/
+    reports:
+      junit: results/dashboard/pytest-results.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  allow_failure: false
+
+# Dashboard browser self-tests (Robot Framework + Playwright)
+dashboard-playwright:
+  extends: .uv-setup
+  stage: test
+  needs: []
+  before_script:
+    - uv sync --extra dev --extra dashboard
+    - uv pip install robotframework-browser
+    - uv run rfbrowser init chromium
+  script: [bash ci/test_dashboard.sh playwright]
+  artifacts:
+    when: always
+    paths:
+      - results/dashboard/
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+
 run-regular-tests:
   stage: test
   needs:

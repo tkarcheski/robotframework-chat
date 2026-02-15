@@ -99,6 +99,11 @@ test_suites:
     path: "robot/safety/test_cases"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
+  dashboard:
+    label: "Dashboard Self-Tests"
+    path: "robot/dashboard/tests"
+    description: "Playwright browser tests for the dashboard UI (no LLM dependency)"
+
 # Special "run all" entry used by the dashboard
 run_all:
   label: "Run All Test Suites"

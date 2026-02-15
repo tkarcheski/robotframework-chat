@@ -19,3 +19,7 @@
       - results/
       - data/
   allow_failure: true
+
+.dashboard-setup:
+  before_script:
+    - uv sync --extra dev --extra dashboard

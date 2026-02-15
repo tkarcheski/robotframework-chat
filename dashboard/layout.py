@@ -20,20 +20,21 @@ from rfc.suite_config import (
     suite_dropdown_options,
 )
 
-# -- Cream theme colour constants --------------------------------------------
+# -- Dark theme colour constants ----------------------------------------------
 
-_BG = "#FAF3E8"  # page background
-_CARD_BG = "#FFF8F0"  # card / panel background
-_HEADER_BG = "#5D4E37"  # navbar brown
-_BORDER = "#E0D5C5"  # subtle warm border
-_TEXT = "#3E3529"  # primary text
-_MUTED = "#8C7E6A"  # muted / secondary text
-_CONSOLE_BG = "#2B2520"  # console stays dark for readability
-_CONSOLE_TEXT = "#E8DFD0"  # warm light text in console
+_BG = "#1a1a2e"  # page background (deep navy)
+_CARD_BG = "#16213e"  # card / panel background (dark blue)
+_HEADER_BG = "#0f3460"  # navbar (medium blue)
+_BORDER = "#2a2a4a"  # subtle border
+_TEXT = "#e0e0e0"  # primary text (light gray)
+_MUTED = "#8892a0"  # muted / secondary text
+_CONSOLE_BG = "#0d1117"  # console (near black)
+_CONSOLE_TEXT = "#c9d1d9"  # console text (GitHub-style light)
+_ACCENT = "#e94560"  # accent colour for highlights
 
-# Dropdown styling for high visibility on cream backgrounds
+# Dropdown styling for dark theme
 _DROPDOWN_STYLE = {
-    "backgroundColor": _CARD_BG,
+    "backgroundColor": "#1e2a3a",
     "color": _TEXT,
     "border": f"1px solid {_BORDER}",
     "borderRadius": "6px",
@@ -235,7 +236,7 @@ def create_session_panel(index: int) -> html.Div:
                         label="Idle",
                         className="mb-2",
                         color="info",
-                        style={"backgroundColor": "#E8DFD0"},
+                        style={"backgroundColor": "#2a2a4a"},
                     ),
                     html.Div(
                         id={"type": "current-test", **idx},
