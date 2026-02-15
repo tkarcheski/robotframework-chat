@@ -42,7 +42,9 @@ class TestGitMetaDataInit:
 
 
 class TestGitMetaDataSuiteDepth:
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_start_suite_increments_depth(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Top", _suite_start_attrs())
@@ -50,7 +52,9 @@ class TestGitMetaDataSuiteDepth:
         listener.start_suite("Nested", _suite_start_attrs())
         assert listener._suite_depth == 2
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_start_suite_only_collects_metadata_at_top_level(self, mock_ci):
         listener = GitMetaData()
         listener.start_suite("Top", _suite_start_attrs())
@@ -60,7 +64,9 @@ class TestGitMetaDataSuiteDepth:
         # Should NOT re-collect metadata for nested suite
         assert mock_ci.call_count == 1
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_end_suite_decrements_depth(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Top", _suite_start_attrs())
@@ -68,7 +74,9 @@ class TestGitMetaDataSuiteDepth:
         listener.end_suite("Nested", _suite_end_attrs())
         assert listener._suite_depth == 1
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_end_suite_only_saves_json_at_top_level(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Top", _suite_start_attrs())
@@ -199,7 +207,9 @@ class TestGitMetaDataStartSuite:
 
 
 class TestGitMetaDataEndSuite:
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_adds_timing_metadata(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Suite", _suite_start_attrs())
@@ -213,7 +223,9 @@ class TestGitMetaDataEndSuite:
         assert end_attrs["metadata"]["Test_End_Time"].endswith("Z")
         assert end_attrs["metadata"]["Test_Start_Time"].endswith("Z")
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_adds_statistics(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Suite", _suite_start_attrs())
@@ -226,7 +238,9 @@ class TestGitMetaDataEndSuite:
         assert end_attrs["metadata"]["Failed_Tests"] == "1"
         assert end_attrs["metadata"]["Skipped_Tests"] == "1"
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_saves_metadata_json(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Suite", _suite_start_attrs())
@@ -243,7 +257,9 @@ class TestGitMetaDataEndSuite:
                 data = json.load(f)
             assert "Test_Duration_Seconds" in data
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_handles_missing_metadata_key(self, _mock_ci):
         listener = GitMetaData()
         listener.start_suite("Suite", _suite_start_attrs())
@@ -252,7 +268,9 @@ class TestGitMetaDataEndSuite:
         attrs = {"totaltests": 1, "pass": 1, "fail": 0, "skip": 0}
         listener.end_suite("Suite", attrs)
 
-    @patch("rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"})
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
     def test_duration_zero_without_start_time(self, _mock_ci):
         listener = GitMetaData()
         # Manually skip start_suite so start_time is None
@@ -320,7 +338,10 @@ class TestGitMetaDataFormatLinks:
         result = listener._format_source_link(
             "https://gitlab.com/org/repo", "abc123", "robot/test.robot"
         )
-        assert result == "[robot/test.robot|https://gitlab.com/org/repo/-/blob/abc123/robot/test.robot]"
+        assert (
+            result
+            == "[robot/test.robot|https://gitlab.com/org/repo/-/blob/abc123/robot/test.robot]"
+        )
 
     def test_format_source_link_github(self):
         listener = GitMetaData()
@@ -328,4 +349,7 @@ class TestGitMetaDataFormatLinks:
         result = listener._format_source_link(
             "https://github.com/org/repo", "abc123", "robot/test.robot"
         )
-        assert result == "[robot/test.robot|https://github.com/org/repo/blob/abc123/robot/test.robot]"
+        assert (
+            result
+            == "[robot/test.robot|https://github.com/org/repo/blob/abc123/robot/test.robot]"
+        )

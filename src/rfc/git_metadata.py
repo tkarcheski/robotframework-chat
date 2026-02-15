@@ -76,10 +76,14 @@ def _collect_github_metadata() -> Dict[str, str]:
         "Commit_SHA": sha,
         "Commit_Short_SHA": sha[:8] if sha else "",
         "Branch": os.getenv("GITHUB_REF_NAME", ""),
-        "Pipeline_URL": f"{project_url}/actions/runs/{run_id}" if project_url and run_id else "",
+        "Pipeline_URL": f"{project_url}/actions/runs/{run_id}"
+        if project_url and run_id
+        else "",
         "Pipeline_ID": run_id,
         # Job information
-        "Job_URL": f"{project_url}/actions/runs/{run_id}" if project_url and run_id else "",
+        "Job_URL": f"{project_url}/actions/runs/{run_id}"
+        if project_url and run_id
+        else "",
         "Job_ID": os.getenv("GITHUB_RUN_NUMBER", ""),
         "Job_Name": os.getenv("GITHUB_JOB", ""),
         # Pull request information
@@ -118,9 +122,7 @@ def collect_ci_metadata() -> Dict[str, str]:
         metadata = {"CI": "false"}
 
     # Common fields (always present regardless of platform)
-    metadata["Ollama_Endpoint"] = os.getenv(
-        "OLLAMA_ENDPOINT", "http://localhost:11434"
-    )
+    metadata["Ollama_Endpoint"] = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     metadata["Default_Model"] = os.getenv("DEFAULT_MODEL", "llama3")
     metadata["Timestamp"] = datetime.utcnow().isoformat() + "Z"
 
