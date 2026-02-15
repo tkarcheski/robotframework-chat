@@ -1,10 +1,11 @@
-# Production Docker Compose for robotframework-chat + Superset
+# Production Docker Compose for robotframework-chat + Superset + Dashboard
 #
 # Quick start:
 #   cp .env.example .env        # edit credentials
 #   make up                     # start the stack
 #   make bootstrap              # first-time Superset setup
-#   open http://localhost:8088
+#   open http://localhost:8050   # Dashboard control panel
+#   open http://localhost:8088   # Superset analytics
 #
 # Run tests with archiving to PostgreSQL:
 #   make test-math
@@ -104,5 +105,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Dashboard (Dash control panel) ──────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}"
+      OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
+    ports:
+      - "${DASHBOARD_PORT:-8050}:8050"
+    volumes:
+      - dashboard-results:/app/results/dashboard
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8050/\")' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pgdata:
+  dashboard-results:

@@ -149,6 +149,13 @@ def create_session_panel(index: int) -> html.Div:
                                     ),
                                 ]
                             ),
+                            dbc.Button(
+                                "Upload to DB",
+                                id={"type": "upload-btn", **idx},
+                                color="info",
+                                className="ms-3",
+                                disabled=True,
+                            ),
                         ],
                         width=6,
                         className="d-flex align-items-end",

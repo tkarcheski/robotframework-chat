@@ -21,7 +21,7 @@ help: ## Show this help
 # ── Setup ─────────────────────────────────────────────────────────────
 
 install: ## Install Python dependencies
-	uv sync --extra dev --extra superset
+	uv sync --extra dev --extra dashboard --extra superset
 
 # ── Docker / Superset ─────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ install: ## Install Python dependencies
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-up: .env ## Start PostgreSQL + Redis + Superset
+up: .env ## Start PostgreSQL + Redis + Superset + Dashboard
 	$(COMPOSE) up -d
 
 down: ## Stop all services

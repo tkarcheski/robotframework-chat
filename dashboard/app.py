@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 from dash import ALL, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 
+from dashboard.core.artifact_uploader import upload_session_results
 from dashboard.core.robot_runner import RobotRunnerFactory
 from dashboard.core.session_manager import (
     SessionConfig,
@@ -49,6 +50,7 @@ app.layout = create_app_layout()
     Input({"type": "stop-btn", "index": ALL}, "n_clicks"),
     Input({"type": "replay-btn", "index": ALL}, "n_clicks"),
     Input({"type": "delete-btn", "index": ALL}, "n_clicks"),
+    Input({"type": "upload-btn", "index": ALL}, "n_clicks"),
     State({"type": "suite-dropdown", "index": ALL}, "value"),
     State({"type": "iq-dropdown", "index": ALL}, "value"),
     State({"type": "model-dropdown", "index": ALL}, "value"),
@@ -62,6 +64,7 @@ def handle_button_click(
     stop_clicks,
     replay_clicks,
     delete_clicks,
+    upload_clicks,
     suites,
     iqs,
     models,
@@ -93,6 +96,19 @@ def handle_button_click(
             RobotRunnerFactory.stop_runner(session.session_id)
         session_manager.close_session(session.session_id)
         return _toast("Session deleted", "Deleted", "secondary")
+
+    # -- Upload to DB --
+    if btn_type == "upload-btn":
+        if session.status == SessionStatus.RUNNING:
+            return _toast("Wait for tests to finish", "Warning", "warning")
+        result = upload_session_results(session.session_id)
+        if result["status"] == "success":
+            return _toast(
+                f"Uploaded to database (run_id={result['run_id']})",
+                "Uploaded",
+                "success",
+            )
+        return _toast(result["message"], "Upload Failed", "danger")
 
     # -- Run / Replay --
     if btn_type in ("run-btn", "replay-btn"):
@@ -187,6 +203,7 @@ def update_live_output(n_intervals, panel_ids):
     Output({"type": "run-btn", "index": ALL}, "disabled"),
     Output({"type": "stop-btn", "index": ALL}, "disabled"),
     Output({"type": "replay-btn", "index": ALL}, "disabled"),
+    Output({"type": "upload-btn", "index": ALL}, "disabled"),
     Output({"type": "suite-dropdown", "index": ALL}, "disabled"),
     Output({"type": "iq-dropdown", "index": ALL}, "disabled"),
     Output({"type": "model-dropdown", "index": ALL}, "disabled"),
@@ -204,6 +221,7 @@ def update_ui_states(n_intervals, btn_ids):
     run_d: list[bool] = []
     stop_d: list[bool] = []
     replay_d: list[bool] = []
+    upload_d: list[bool] = []
     suite_d: list[bool] = []
     iq_d: list[bool] = []
     model_d: list[bool] = []
@@ -212,10 +230,21 @@ def update_ui_states(n_intervals, btn_ids):
     dr_d: list[bool] = []
 
     for i in range(n):
-        running = i < len(sessions) and sessions[i].status == SessionStatus.RUNNING
+        if i < len(sessions):
+            s = sessions[i]
+            running = s.status == SessionStatus.RUNNING
+            has_results = s.status in (
+                SessionStatus.COMPLETED,
+                SessionStatus.FAILED,
+            )
+        else:
+            running = False
+            has_results = False
         run_d.append(running)
         stop_d.append(not running)
         replay_d.append(running)
+        # Upload enabled only when session has completed or failed (has results)
+        upload_d.append(not has_results)
         suite_d.append(running)
         iq_d.append(running)
         model_d.append(running)
@@ -223,7 +252,10 @@ def update_ui_states(n_intervals, btn_ids):
         ar_d.append(running)
         dr_d.append(running)
 
-    return run_d, stop_d, replay_d, suite_d, iq_d, model_d, profile_d, ar_d, dr_d
+    return (
+        run_d, stop_d, replay_d, upload_d,
+        suite_d, iq_d, model_d, profile_d, ar_d, dr_d,
+    )
 
 
 # -- Callback 4: update tab labels / colours ---------------------------------
