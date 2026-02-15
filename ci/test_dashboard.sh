@@ -27,6 +27,11 @@ run_pytest() {
 # Playwright: Robot Framework Browser tests against a running dashboard
 # ---------------------------------------------------------------------------
 run_playwright() {
+    echo "--- Ensuring compatible Node.js ---"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/ensure_node.sh"
+
     echo "--- Installing Playwright browsers ---"
     uv run rfbrowser init chromium
 
