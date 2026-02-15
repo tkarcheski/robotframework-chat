@@ -20,6 +20,14 @@ class OllamaClient:
         temperature: float = 0.0,
         max_tokens: int = 256,
     ):
+        if not isinstance(base_url, str) or not base_url:
+            raise ValueError("base_url must be a non-empty string")
+        if not isinstance(model, str) or not model:
+            raise ValueError("model must be a non-empty string")
+        if temperature < 0:
+            raise ValueError(f"temperature must be >= 0, got {temperature}")
+        if max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1, got {max_tokens}")
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
@@ -48,6 +56,10 @@ class OllamaClient:
         Returns:
             The generated text response, stripped of whitespace.
         """
+        if not isinstance(prompt, str):
+            raise TypeError(f"prompt must be a str, got {type(prompt).__name__}")
+        if not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -166,6 +178,10 @@ class OllamaClient:
         Raises:
             TimeoutError: If Ollama is still busy after timeout expires.
         """
+        if timeout < 1:
+            raise ValueError(f"timeout must be >= 1, got {timeout}")
+        if poll_interval < 1:
+            raise ValueError(f"poll_interval must be >= 1, got {poll_interval}")
         import time
 
         start = time.time()

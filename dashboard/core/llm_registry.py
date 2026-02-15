@@ -118,11 +118,23 @@ class LLMRegistry:
 
     def models_on_node(self, host_port: str) -> list[str]:
         """Return models available on a specific node."""
+        if not isinstance(host_port, str):
+            raise TypeError(
+                f"host_port must be a str, got {type(host_port).__name__}"
+            )
+        if not host_port:
+            raise ValueError("host_port must be a non-empty string")
         self._ensure_fresh()
         return list(self._node_models.get(host_port, []))
 
     def get_model_info(self, model_name: str) -> dict[str, Any]:
         """Get information about a specific model."""
+        if not isinstance(model_name, str):
+            raise TypeError(
+                f"model_name must be a str, got {type(model_name).__name__}"
+            )
+        if not model_name:
+            raise ValueError("model_name must be a non-empty string")
         self._ensure_fresh()
         return self._model_info.get(model_name, {})
 

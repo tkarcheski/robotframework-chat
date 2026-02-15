@@ -24,6 +24,10 @@ def _find_output_xml(session_dir: Path) -> Path | None:
     ``output-20240213-123456.xml``.  We prefer the plain ``output.xml``
     first, then fall back to the most recent timestamped variant.
     """
+    if not isinstance(session_dir, Path):
+        raise TypeError(
+            f"session_dir must be a Path, got {type(session_dir).__name__}"
+        )
     plain = session_dir / "output.xml"
     if plain.exists():
         return plain
@@ -39,6 +43,8 @@ def _parse_rf_timestamp(ts: str) -> Optional[datetime]:
     RF 7.x uses ISO-like format (2024-02-13T12:34:56.789000).
     Older versions use 20240213 12:34:56.789.
     """
+    if not isinstance(ts, str):
+        raise TypeError(f"ts must be a str, got {type(ts).__name__}")
     if not ts:
         return None
     try:
@@ -208,6 +214,12 @@ def upload_session_results(
             {"status": "success", "run_id": 42, "file": "output.xml", ...}
             {"status": "error", "message": "..."}
     """
+    if not isinstance(session_id, str):
+        raise TypeError(
+            f"session_id must be a str, got {type(session_id).__name__}"
+        )
+    if not session_id:
+        raise ValueError("session_id must be a non-empty string")
     session_dir = Path(output_dir) / session_id
 
     if not session_dir.exists():
