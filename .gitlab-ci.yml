@@ -158,7 +158,6 @@ run-regular-tests:
 
 run-dynamic-tests:
   stage: test
-  timeout: 60 minutes
   needs:
     - job: generate-dynamic-pipeline
       artifacts: true
