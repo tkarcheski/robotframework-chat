@@ -57,7 +57,7 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 ## Pipeline Stages
 
 ```
-sync → lint → generate → test → report → deploy
+sync → lint → generate → test → report → deploy → review
 ```
 
 | Stage | Jobs | Notes |
@@ -68,6 +68,7 @@ sync → lint → generate → test → report → deploy
 | `test` | `run-regular-tests`, `run-dynamic-tests` | Execute generated child pipelines |
 | `report` | (in child pipeline) | `rebot` merges output.xml, imports combined results to DB |
 | `deploy` | `deploy-superset` | Update Superset stack on default branch |
+| `review` | `claude-code-review` | AI code review + fix via Claude Code Opus 4.6 (label or manual) |
 
 ---
 
