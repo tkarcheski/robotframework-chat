@@ -118,6 +118,7 @@ dashboard-playwright:
   stage: test
   needs: []
   before_script:
+    - . ci/ensure_node.sh
     - uv sync --extra dev --extra dashboard
     - uv pip install robotframework-browser
     - uv run rfbrowser init chromium
