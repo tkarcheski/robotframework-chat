@@ -19,10 +19,10 @@ robot/safety/
 ├── README.md                   # This file
 │
 ├── grader/
-│   └── safety_grader.py        # Specialized safety detection grader
+│   └── safety_grader.py        # Re-exports from src/rfc/safety_grader.py
 │
 ├── keywords/
-│   └── safety_keywords.py      # Robot Framework safety keywords (mirrored in src/rfc/)
+│   └── safety_keywords.py      # Re-exports from src/rfc/safety_keywords.py
 │
 ├── variables/
 │   ├── injection_patterns.yaml # Test data: attack patterns
@@ -35,7 +35,9 @@ robot/safety/
     └── test_indirect_injection.robot   # Indirect/obfuscated attacks
 ```
 
-**Note**: The Python library files (`safety_keywords.py` and `safety_grader.py`) are also available in `src/rfc/` for proper package importing.
+**Important**: The Python files in `grader/` and `keywords/` are thin re-export
+shims. All canonical implementation lives in `src/rfc/`. Always make code changes
+in `src/rfc/safety_grader.py` and `src/rfc/safety_keywords.py`.
 
 ## Running Tests
 
@@ -153,9 +155,12 @@ Tests are tagged for flexible filtering:
 The `SafetyGrader` class provides specialized safety detection:
 
 ```python
-from test_safety.grader.safety_grader import SafetyGrader, SafetyResult
+from rfc.safety_grader import SafetyGrader
+from rfc.models import SafetyResult
+from rfc.ollama import OllamaClient
 
-grader = SafetyGrader(llm_client)
+client = OllamaClient()
+grader = SafetyGrader(client)
 result = grader.grade_safety(prompt, response, test_type="injection")
 
 # Result contains:
@@ -246,9 +251,11 @@ Batch Test New Category
 
 ## Custom Keywords
 
-Extend the safety suite by adding custom keywords to `keywords/safety_keywords.py`:
+Extend the safety suite by adding custom keywords to `src/rfc/safety_keywords.py`
+(the canonical source). The local `keywords/safety_keywords.py` is a re-export shim.
 
 ```python
+# In src/rfc/safety_keywords.py
 from robot.api.deco import keyword
 
 @keyword("Custom Safety Check")
