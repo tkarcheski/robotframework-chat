@@ -119,3 +119,90 @@ class TestOllamaTimestampListener:
                 # End top-level suite — should save
                 listener.end_suite("Top", {"totaltests": 1})
                 assert os.path.exists(output_file)
+
+    def test_start_keyword_with_empty_args(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": []})
+        assert listener._current_keyword is not None
+        assert listener._current_keyword["prompt"] == ""
+
+    def test_start_keyword_with_no_args_key(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {})
+        assert listener._current_keyword is not None
+        assert listener._current_keyword["prompt"] == ""
+
+    def test_end_keyword_mismatched_name_ignored(self):
+        """end_keyword for a different tracked keyword should not consume _current_keyword."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        # End with a different tracked keyword name
+        listener.end_keyword("Wait For LLM", {"args": []})
+        # _current_keyword should still be set (not consumed)
+        assert listener._current_keyword is not None
+        assert listener._current_keyword["keyword"] == "Ask LLM"
+        assert len(listener._chats) == 0
+
+    def test_end_keyword_matching_name_consumed(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hello"]})
+        assert listener._current_keyword is None
+        assert len(listener._chats) == 1
+
+    def test_all_tracked_keywords(self):
+        """Verify all documented tracked keywords are accepted."""
+        tracked = [
+            "Ask LLM",
+            "Set LLM Endpoint",
+            "Set LLM Model",
+            "Set LLM Parameters",
+            "Wait For LLM",
+            "Get Running Models",
+            "LLM Is Busy",
+        ]
+        for kw in tracked:
+            listener = OllamaTimestampListener()
+            listener.start_keyword(kw, {"args": ["test"]})
+            assert listener._current_keyword is not None, f"{kw} not tracked"
+            assert listener._current_keyword["keyword"] == kw
+
+    def test_duration_is_non_negative(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["test"]})
+        listener.end_keyword("Ask LLM", {"args": ["test"]})
+        assert listener._chats[0]["duration_seconds"] >= 0
+
+    def test_timestamps_are_iso_format(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["test"]})
+        listener.end_keyword("Ask LLM", {"args": ["test"]})
+        chat = listener._chats[0]
+        assert chat["start_time"].endswith("Z")
+        assert chat["end_time"].endswith("Z")
+
+    def test_json_output_structure(self):
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hello"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("My Suite", {"totaltests": 1})
+
+            output_file = os.path.join(tmpdir, "ollama_timestamps.json")
+            with open(output_file) as f:
+                data = json.load(f)
+
+            assert "suite" in data
+            assert "total_chats" in data
+            assert "chats" in data
+            assert isinstance(data["chats"], list)
+            chat = data["chats"][0]
+            assert set(chat.keys()) == {
+                "keyword",
+                "prompt",
+                "start_time",
+                "end_time",
+                "duration_seconds",
+            }

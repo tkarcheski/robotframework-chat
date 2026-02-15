@@ -32,15 +32,19 @@ class GitMetaData:
         self.start_time: Optional[datetime] = None
         self.ci_info: Dict[str, str] = {}
         self.platform: Optional[str] = None
+        self._suite_depth: int = 0
 
     def start_suite(self, name: str, attributes: Dict[str, Any]):
         """Called when a test suite starts.
 
-        Collects CI metadata and adds it to the suite metadata.
+        Collects CI metadata at the top-level suite and adds it to
+        every suite's metadata dict.
         """
-        self.start_time = datetime.utcnow()
-        self.ci_info = collect_ci_metadata()
-        self.platform = self.ci_info.get("CI_Platform")
+        self._suite_depth += 1
+        if self._suite_depth == 1:
+            self.start_time = datetime.utcnow()
+            self.ci_info = collect_ci_metadata()
+            self.platform = self.ci_info.get("CI_Platform")
 
         # Log CI information
         if self.ci_info.get("CI"):
@@ -78,28 +82,36 @@ class GitMetaData:
     def end_suite(self, name: str, attributes: Dict[str, Any]):
         """Called when a test suite ends.
 
-        Adds final metadata and generates summary.
+        Adds final metadata and generates summary.  The JSON metadata
+        file is only written when the top-level suite finishes.
         """
+        self._suite_depth -= 1
+
+        metadata = attributes.get("metadata")
+        if metadata is None:
+            return
+
         end_time = datetime.utcnow()
         duration = (
             (end_time - self.start_time).total_seconds() if self.start_time else 0
         )
 
         # Add execution metadata
-        attributes["metadata"]["Test_Duration_Seconds"] = str(duration)
-        attributes["metadata"]["Test_End_Time"] = end_time.isoformat() + "Z"
-        attributes["metadata"]["Test_Start_Time"] = (
+        metadata["Test_Duration_Seconds"] = str(duration)
+        metadata["Test_End_Time"] = end_time.isoformat() + "Z"
+        metadata["Test_Start_Time"] = (
             self.start_time.isoformat() + "Z" if self.start_time else ""
         )
 
         # Add summary statistics
-        attributes["metadata"]["Total_Tests"] = str(attributes.get("totaltests", 0))
-        attributes["metadata"]["Passed_Tests"] = str(attributes.get("pass", 0))
-        attributes["metadata"]["Failed_Tests"] = str(attributes.get("fail", 0))
-        attributes["metadata"]["Skipped_Tests"] = str(attributes.get("skip", 0))
+        metadata["Total_Tests"] = str(attributes.get("totaltests", 0))
+        metadata["Passed_Tests"] = str(attributes.get("pass", 0))
+        metadata["Failed_Tests"] = str(attributes.get("fail", 0))
+        metadata["Skipped_Tests"] = str(attributes.get("skip", 0))
 
-        # Generate metadata JSON file
-        self._save_metadata_json(attributes["metadata"])
+        # Only save JSON at the top-level suite
+        if self._suite_depth == 0:
+            self._save_metadata_json(metadata)
 
         logger.info(
             f"Suite '{name}' completed: {attributes.get('pass', 0)} passed, "

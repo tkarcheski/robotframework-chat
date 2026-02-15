@@ -2,6 +2,7 @@
 
 Status of every major feature, ordered by priority.
 Updated from code audit and git history as of 2026-02-15.
+Updated listener review as of 2026-02-15.
 
 **Legend:** Done / In Progress / Not Started
 
@@ -41,6 +42,26 @@ works; the gap is data quality, retention, and operational polish.
    Superset charts so users can investigate regressions interactively.
 3. **Regression alerts** — flag when a model's pass rate drops below a
    configurable threshold (could be a CI job or Superset alert).
+
+---
+
+## Listener Infrastructure (Done)
+
+Three Robot Framework listeners handle test result collection. All three
+have been reviewed, bugs fixed, and comprehensive unit tests added.
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| DbListener — SQL archival | Done | `src/rfc/db_listener.py` — archives runs + results to SQLite/PostgreSQL |
+| GitMetaData — CI metadata | Done | `src/rfc/git_metadata_listener.py` — collects CI context, formats links |
+| OllamaTimestampListener — chat timing | Done | `src/rfc/ollama_timestamp_listener.py` — timestamps Ollama keyword calls |
+| DbListener unit tests | Done | `tests/test_db_listener.py` — 27 tests |
+| GitMetaData unit tests | Done | `tests/test_git_metadata_listener.py` — 26 tests |
+| OllamaTimestampListener unit tests | Done | `tests/test_ollama_timestamp_listener.py` — 22 tests |
+| GitMetaData suite depth tracking | Done | Fixed: metadata collection and JSON save restricted to top-level suite |
+| OllamaTimestampListener keyword verification | Done | Fixed: `end_keyword` verifies keyword name matches before recording |
+| git_metadata module unit tests | Done | `tests/test_git_metadata.py` — 10 tests |
+| TestDatabase unit tests | Done | `tests/test_test_database.py` — 13 tests |
 
 ---
 
