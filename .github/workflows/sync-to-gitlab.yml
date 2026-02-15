@@ -19,6 +19,7 @@ on:
 jobs:
   sync:
     runs-on: self-hosted
+    environment: robotframework
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v4
