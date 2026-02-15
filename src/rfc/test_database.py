@@ -58,6 +58,7 @@ class TestRun:
     failed: int
     skipped: int
     duration_seconds: float
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -135,7 +136,8 @@ class _SQLiteBackend(_Backend):
         passed INTEGER DEFAULT 0,
         failed INTEGER DEFAULT 0,
         skipped INTEGER DEFAULT 0,
-        duration_seconds REAL
+        duration_seconds REAL,
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -180,8 +182,8 @@ class _SQLiteBackend(_Backend):
                 (timestamp, model_name, model_release_date, model_parameters,
                  test_suite, gitlab_commit, gitlab_branch, gitlab_pipeline_url,
                  runner_id, runner_tags, total_tests, passed, failed, skipped,
-                 duration_seconds)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 duration_seconds, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -199,6 +201,7 @@ class _SQLiteBackend(_Backend):
                     run.failed,
                     run.skipped,
                     run.duration_seconds,
+                    run.rfc_version,
                 ),
             )
             run_id = cursor.lastrowid
@@ -367,6 +370,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("failed", Integer, default=0),
             Column("skipped", Integer, default=0),
             Column("duration_seconds", Float),
+            Column("rfc_version", String(50)),
         )
 
         self.test_results = Table(
@@ -423,6 +427,7 @@ class _SQLAlchemyBackend(_Backend):
                     failed=run.failed,
                     skipped=run.skipped,
                     duration_seconds=run.duration_seconds,
+                    rfc_version=run.rfc_version,
                 )
             )
             run_id = result.inserted_primary_key[0]

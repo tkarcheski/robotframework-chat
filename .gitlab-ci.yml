@@ -7,6 +7,7 @@ stages:
   - lint
   - test
   - report
+  - deploy
 
 variables:
   # Ollama configuration
@@ -16,7 +17,9 @@ variables:
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
 
-  # Database for test result archiving (set in GitLab CI/CD variables)
+  # Database for test result archiving
+  # Set DATABASE_URL in GitLab CI/CD variables to archive to PostgreSQL.
+  # When unset the DbListener archives to local SQLite automatically.
   # DATABASE_URL: "postgresql://rfc:rfc@postgres:5432/rfc"
 
 
@@ -73,6 +76,10 @@ mypy-check:
 
 # =============================================================================
 # TEST STAGE - Requires runner with 'ollama' tag
+#
+# Every robot run attaches the DbListener which archives results to:
+#   - PostgreSQL when DATABASE_URL is set (Superset reads from here)
+#   - SQLite (data/test_history.db) otherwise
 # =============================================================================
 
 .robot_template: &robot_template
@@ -85,27 +92,19 @@ mypy-check:
       if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
         echo "Ollama is available"
       else
-        echo "⚠️  Warning: Ollama not available - tests may fail"
-      fi
-    - |
-      # Build listener flag when DATABASE_URL is configured
-      if [ -n "$DATABASE_URL" ]; then
-        export ROBOT_DB_LISTENER="--listener rfc.db_listener.DbListener"
-        echo "DB archiving enabled"
-      else
-        export ROBOT_DB_LISTENER=""
-        echo "DB archiving disabled (set DATABASE_URL to enable)"
+        echo "Warning: Ollama not available - tests may fail"
       fi
 
 robot-math-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/math $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
+    - uv run robot -d results/math --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
   artifacts:
     when: always
     paths:
       - results/math/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -115,11 +114,12 @@ robot-docker-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/docker $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+    - uv run robot -d results/docker --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
   artifacts:
     when: always
     paths:
       - results/docker/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -129,11 +129,12 @@ robot-safety-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/safety $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
+    - uv run robot -d results/safety --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
   artifacts:
     when: always
     paths:
       - results/safety/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -168,6 +169,8 @@ aggregate-results:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
+# Re-import from output.xml as a safety net (e.g. if listener failed or
+# results need to be backfilled into a different database).
 archive-results:
   stage: report
   needs:
@@ -185,11 +188,29 @@ archive-results:
   script:
     - |
       if [ -z "$DATABASE_URL" ]; then
-        echo "DATABASE_URL not set — skipping result archiving"
+        echo "DATABASE_URL not set - skipping XML re-import (listener already archived to SQLite)"
         exit 0
       fi
-    - uv run python scripts/import_test_results.py results/ -r --model "$DEFAULT_MODEL" || echo "Import failed"
+    - uv run python scripts/import_test_results.py results/ -r --model "$DEFAULT_MODEL" || echo "XML re-import failed"
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
+
+# =============================================================================
+# DEPLOY STAGE - Deploy / update Superset stack
+#
+# Runs only on the default branch when SUPERSET_DEPLOY_HOST is configured.
+# Requires a runner with SSH access to the deploy target.
+# =============================================================================
+
+deploy-superset:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
+  script:
+    - |
+      echo "Deploying Superset stack to $SUPERSET_DEPLOY_HOST ..."
+      ssh "$SUPERSET_DEPLOY_USER@$SUPERSET_DEPLOY_HOST" \
+        "cd $SUPERSET_DEPLOY_PATH && git pull && docker compose -f docker-compose.yml up -d --pull always"
   allow_failure: true

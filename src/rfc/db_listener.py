@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from robot.api import logger  # type: ignore
 
+from . import __version__
 from .ci_metadata import collect_ci_metadata
 from .test_database import TestDatabase, TestResult, TestRun
 
@@ -121,6 +122,7 @@ class DbListener:
             failed=fail_count,
             skipped=skip_count,
             duration_seconds=duration,
+            rfc_version=__version__,
         )
 
         try:

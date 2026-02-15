@@ -1,0 +1,74 @@
+# robotframework-chat Makefile
+# Run `make help` for a list of targets.
+
+COMPOSE  := docker compose
+ROBOT    := uv run robot
+LISTENER := --listener rfc.db_listener.DbListener
+
+# Load .env if present
+-include .env
+export
+
+.PHONY: help install up down restart logs bootstrap \
+        test test-math test-docker test-safety \
+        import lint format typecheck check version
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+# ── Setup ─────────────────────────────────────────────────────────────
+
+install: ## Install Python dependencies
+	uv sync --extra dev --extra superset
+
+# ── Docker / Superset ─────────────────────────────────────────────────
+
+up: ## Start PostgreSQL + Redis + Superset
+	$(COMPOSE) up -d
+
+down: ## Stop all services
+	$(COMPOSE) down
+
+restart: ## Restart all services
+	$(COMPOSE) restart
+
+logs: ## Tail service logs
+	$(COMPOSE) logs -f
+
+bootstrap: ## First-time Superset setup (run after 'make up')
+	$(COMPOSE) run --rm superset-init
+
+# ── Tests ─────────────────────────────────────────────────────────────
+
+test: test-math test-docker test-safety ## Run all test suites
+
+test-math: ## Run math tests
+	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+
+test-docker: ## Run Docker tests
+	$(ROBOT) -d results/docker $(LISTENER) robot/docker/
+
+test-safety: ## Run safety tests
+	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+
+import: ## Import results from output.xml files: make import PATH=results/
+	uv run python scripts/import_test_results.py $(or $(PATH),results/) -r
+
+# ── Code quality ──────────────────────────────────────────────────────
+
+lint: ## Run ruff linter
+	uv run ruff check .
+
+format: ## Auto-format code
+	uv run ruff format .
+
+typecheck: ## Run mypy type checker
+	uv run mypy src/
+
+check: lint typecheck ## Run all code quality checks
+
+# ── Versioning ────────────────────────────────────────────────────────
+
+version: ## Print current version
+	@python -c "from src.rfc import __version__; print(__version__)"

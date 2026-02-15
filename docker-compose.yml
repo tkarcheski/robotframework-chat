@@ -1,50 +1,48 @@
-# Docker Compose for Robot Framework test results with Apache Superset
+# Production Docker Compose for robotframework-chat + Superset
 #
-# Usage:
-#   docker compose -f docker-compose.superset.yml up -d
-#   docker compose -f docker-compose.superset.yml exec superset-init sh  # wait for init
-#   open http://localhost:8088  (admin / admin)
+# Quick start:
+#   cp .env.example .env        # edit credentials
+#   make up                     # start the stack
+#   make bootstrap              # first-time Superset setup
+#   open http://localhost:8088
 #
-# Run tests with archiving:
-#   DATABASE_URL=postgresql://rfc:rfc@localhost:5432/rfc \
-#     uv run robot --listener rfc.db_listener.DbListener -d results robot/math
+# Run tests with archiving to PostgreSQL:
+#   make test-math
 #
-# Or import existing results:
-#   DATABASE_URL=postgresql://rfc:rfc@localhost:5432/rfc \
-#     python scripts/import_test_results.py results/output.xml
+# See Makefile for all available targets.
 
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: rfc
-      POSTGRES_PASSWORD: rfc
-      POSTGRES_DB: rfc
+      POSTGRES_USER: ${POSTGRES_USER:-rfc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rfc}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rfc"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rfc}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # ── Redis (Superset cache / Celery broker) ──────────────────────────
+  # ── Redis (Superset cache) ──────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # ── Superset init (one-shot: DB migrate + admin user + bootstrap) ──
+  # ── Superset init (one-shot: migrate, create admin, bootstrap) ──────
   superset-init:
-    image: apache/superset:latest
+    image: apache/superset:4.1.1
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,8 +50,13 @@ services:
         condition: service_healthy
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
-      SUPERSET_SECRET_KEY: robotframework-chat-superset-secret-change-me
-      DATABASE_URL: postgresql://rfc:rfc@postgres:5432/rfc
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?Set SUPERSET_SECRET_KEY in .env}
+      POSTGRES_USER: ${POSTGRES_USER:-rfc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
       - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
@@ -63,11 +66,11 @@ services:
       - |
         superset db upgrade &&
         superset fab create-admin \
-          --username admin \
+          --username "$SUPERSET_ADMIN_USER" \
           --firstname Admin \
           --lastname User \
-          --email admin@rfc.local \
-          --password admin || true &&
+          --email "$SUPERSET_ADMIN_EMAIL" \
+          --password "$SUPERSET_ADMIN_PASSWORD" || true &&
         superset init &&
         python /app/bootstrap_dashboards.py &&
         echo "=== Superset init complete ==="
@@ -75,7 +78,8 @@ services:
 
   # ── Superset web server ─────────────────────────────────────────────
   superset:
-    image: apache/superset:latest
+    image: apache/superset:4.1.1
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,9 +89,12 @@ services:
         condition: service_completed_successfully
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
-      SUPERSET_SECRET_KEY: robotframework-chat-superset-secret-change-me
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?Set SUPERSET_SECRET_KEY in .env}
+      POSTGRES_USER: ${POSTGRES_USER:-rfc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rfc}
     ports:
-      - "8088:8088"
+      - "${SUPERSET_PORT:-8088}:8088"
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
     healthcheck:

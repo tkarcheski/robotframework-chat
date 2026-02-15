@@ -1,13 +1,18 @@
 """Superset configuration for robotframework-chat.
 
 Connects Superset's own metadata DB to the same PostgreSQL instance
-that holds the Robot Framework test results.
+that holds the Robot Framework test results.  All credentials are
+read from environment variables set by docker-compose.
 """
 
 import os
 
-# Superset metadata database (its own tables)
-SQLALCHEMY_DATABASE_URI = "postgresql://rfc:rfc@postgres:5432/rfc"
+_pg_user = os.getenv("POSTGRES_USER", "rfc")
+_pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
+_pg_db = os.getenv("POSTGRES_DB", "rfc")
+
+# Superset metadata database (its own tables, same PG instance)
+SQLALCHEMY_DATABASE_URI = f"postgresql://{_pg_user}:{_pg_pass}@postgres:5432/{_pg_db}"
 
 SECRET_KEY = os.getenv(
     "SUPERSET_SECRET_KEY",

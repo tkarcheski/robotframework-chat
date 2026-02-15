@@ -8,6 +8,7 @@ Run inside the Superset container after `superset init` to create:
 """
 
 import logging
+import os
 import sys
 
 logging.basicConfig(level=logging.INFO)
@@ -31,13 +32,19 @@ def bootstrap() -> None:
         )
         from superset.models.slice import Slice  # type: ignore[import-untyped]
 
+        # Build connection URI from env (same vars docker-compose sets)
+        pg_user = os.getenv("POSTGRES_USER", "rfc")
+        pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
+        pg_db = os.getenv("POSTGRES_DB", "rfc")
+        pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:5432/{pg_db}"
+
         # ── 1. Database connection ──────────────────────────────────
         db_name = "Robot Framework Results"
         database = db.session.query(Database).filter_by(database_name=db_name).first()
         if database is None:
             database = Database(
                 database_name=db_name,
-                sqlalchemy_uri="postgresql://rfc:rfc@postgres:5432/rfc",
+                sqlalchemy_uri=pg_uri,
                 expose_in_sqllab=True,
             )
             db.session.add(database)

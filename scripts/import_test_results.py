@@ -15,6 +15,7 @@ from xml.etree import ElementTree as ET
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from rfc import __version__
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -191,6 +192,7 @@ def import_results(
         failed=data["failed"],
         skipped=data["skipped"],
         duration_seconds=data["duration"],
+        rfc_version=__version__,
     )
 
     # Insert test run
