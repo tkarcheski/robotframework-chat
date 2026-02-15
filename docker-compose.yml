@@ -42,7 +42,7 @@ services:
 
   # ── Superset init (one-shot: migrate, create admin, bootstrap) ──────
   superset-init:
-    image: apache/superset:4.1.1
+    build: ./superset
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,13 +72,14 @@ services:
           --email "$SUPERSET_ADMIN_EMAIL" \
           --password "$SUPERSET_ADMIN_PASSWORD" || true &&
         superset init &&
-        python /app/bootstrap_dashboards.py &&
+        (python /app/bootstrap_dashboards.py ||
+          echo "WARNING: dashboard bootstrap failed (non-fatal)") &&
         echo "=== Superset init complete ==="
     restart: "no"
 
   # ── Superset web server ─────────────────────────────────────────────
   superset:
-    image: apache/superset:4.1.1
+    build: ./superset
     restart: unless-stopped
     depends_on:
       postgres:
