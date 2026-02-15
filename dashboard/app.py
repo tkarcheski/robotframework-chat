@@ -1,5 +1,7 @@
 """Robot Framework Chat Control Panel - Dash application."""
 
+from datetime import datetime
+
 import dash
 import dash_bootstrap_components as dbc
 from dash import ALL, Input, Output, State, ctx
@@ -12,6 +14,12 @@ from dashboard.core.session_manager import (
     session_manager,
 )
 from dashboard.layout import create_app_layout, create_session_panel
+from dashboard.monitoring import (
+    OllamaMonitor,
+    PipelineMonitor,
+    build_ollama_cards,
+    build_pipeline_table,
+)
 from rfc.suite_config import default_iq_levels, default_model, default_profile
 
 # -- App init ----------------------------------------------------------------
@@ -295,6 +303,57 @@ def add_new_session(n_clicks, current_panels, counter):
     current_panels.append(create_session_panel(new_index))
 
     return current_panels, f"tab-{new_index}", counter + 1
+
+
+# -- Callback 7: top-level tab switching --------------------------------------
+
+
+@app.callback(
+    Output("top-tab-sessions", "style"),
+    Output("top-tab-ollama", "style"),
+    Output("top-tab-pipelines", "style"),
+    Input("top-tabs", "active_tab"),
+)
+def switch_top_tab(active_tab):
+    """Show only the content panel for the active top-level tab."""
+    show = {"display": "block"}
+    hide = {"display": "none"}
+    return (
+        show if active_tab == "top-sessions" else hide,
+        show if active_tab == "top-ollama" else hide,
+        show if active_tab == "top-pipelines" else hide,
+    )
+
+
+# -- Callback 8: update pipeline table ---------------------------------------
+
+
+@app.callback(
+    Output("pipelines-table", "children"),
+    Output("pipelines-last-updated", "children"),
+    Input("monitoring-interval", "n_intervals"),
+)
+def update_pipelines(n_intervals):
+    """Fetch and render the GitLab pipelines table."""
+    monitor = PipelineMonitor.get()
+    monitor.poll_if_due()
+    table = build_pipeline_table(monitor.pipelines)
+    ts = datetime.now().strftime("Updated %H:%M")
+    return table, ts
+
+
+# -- Callback 9: update Ollama host cards -------------------------------------
+
+
+@app.callback(
+    Output("ollama-cards", "children"),
+    Input("monitoring-interval", "n_intervals"),
+)
+def update_ollama(n_intervals):
+    """Poll Ollama nodes and rebuild the host cards."""
+    monitor = OllamaMonitor.get()
+    monitor.poll_if_due()
+    return build_ollama_cards(monitor)
 
 
 # -- Entry point --------------------------------------------------------------

@@ -9,6 +9,7 @@ import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 from dashboard.core.llm_registry import llm_registry
+from dashboard.monitoring import create_ollama_layout, create_pipelines_layout
 from rfc.suite_config import (
     default_iq_levels,
     default_model,
@@ -216,8 +217,44 @@ def create_session_panel(index: int) -> html.Div:
     )
 
 
+# ---------------------------------------------------------------------------
+# Top-level application layout with tabbed navigation
+# ---------------------------------------------------------------------------
+
+
+def _sessions_section() -> html.Div:
+    """The existing session management UI (tabs + panels)."""
+    return html.Div(
+        [
+            dbc.Row(
+                dbc.Col(
+                    dbc.Button(
+                        "+ New Session",
+                        id="new-session-btn",
+                        color="primary",
+                        size="sm",
+                    ),
+                    className="d-flex justify-content-end mb-2",
+                ),
+            ),
+            dbc.Tabs(
+                id="session-tabs",
+                active_tab="tab-0",
+                children=[
+                    dbc.Tab(label="Session 1 (0m 0s)", tab_id="tab-0"),
+                ],
+            ),
+            html.Div(
+                id="sessions-container",
+                children=[create_session_panel(0)],
+                className="mt-3",
+            ),
+        ]
+    )
+
+
 def create_app_layout() -> html.Div:
-    """Build the full application layout with one default session."""
+    """Build the full application layout with top-level tab navigation."""
     return html.Div(
         [
             # Header
@@ -228,13 +265,6 @@ def create_app_layout() -> html.Div:
                             "Robot Framework Chat Control Panel",
                             className="text-white mb-0",
                         ),
-                        dbc.Button(
-                            "+ New Session",
-                            id="new-session-btn",
-                            color="primary",
-                            size="sm",
-                            className="ms-auto",
-                        ),
                     ],
                     className="d-flex align-items-center",
                 ),
@@ -242,29 +272,42 @@ def create_app_layout() -> html.Div:
                 dark=True,
                 className="mb-3",
             ),
-            # Main content
+            # Top-level navigation tabs
             dbc.Container(
                 [
-                    # Session tabs
                     dbc.Tabs(
-                        id="session-tabs",
-                        active_tab="tab-0",
+                        id="top-tabs",
+                        active_tab="top-sessions",
                         children=[
-                            dbc.Tab(label="Session 1 (0m 0s)", tab_id="tab-0"),
+                            dbc.Tab(label="Sessions", tab_id="top-sessions"),
+                            dbc.Tab(label="Ollama Hosts", tab_id="top-ollama"),
+                            dbc.Tab(label="GitLab Pipelines", tab_id="top-pipelines"),
                         ],
+                        className="mb-3",
                     ),
-                    # Container for all session panels (all rendered upfront)
+                    # Tab content panels (all rendered; visibility toggled)
                     html.Div(
-                        id="sessions-container",
-                        children=[create_session_panel(0)],
-                        className="mt-3",
+                        id="top-tab-sessions",
+                        children=_sessions_section(),
+                        style={"display": "block"},
+                    ),
+                    html.Div(
+                        id="top-tab-ollama",
+                        children=create_ollama_layout(),
+                        style={"display": "none"},
+                    ),
+                    html.Div(
+                        id="top-tab-pipelines",
+                        children=create_pipelines_layout(),
+                        style={"display": "none"},
                     ),
                 ],
                 fluid=True,
                 className="px-4",
             ),
-            # Polling timer
+            # Polling timers
             dcc.Interval(id="interval-component", interval=500),
+            dcc.Interval(id="monitoring-interval", interval=30_000),
             # Single toast container
             html.Div(id="toast-container"),
             # Hidden counter for total sessions created (never decrements)
