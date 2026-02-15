@@ -77,9 +77,7 @@ class ContainerManager:
 
         except NotFound:
             # Container already gone (auto-removed or manually stopped)
-            logger.info(
-                f"Container {container_id[:12]} already removed"
-            )
+            logger.info(f"Container {container_id[:12]} already removed")
         except DockerException as e:
             logger.error(f"Error stopping container {container_id[:12]}: {e}")
         finally:
