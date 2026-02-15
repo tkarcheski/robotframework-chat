@@ -3,10 +3,9 @@ Documentation     Self-tests for the Robot Framework Chat Dashboard UI.
 ...               These tests use Robot Framework Browser (Playwright) to
 ...               verify the dashboard renders correctly and responds to
 ...               user interactions.  They are independent of LLM tests.
-Library           Browser
 Suite Setup       Open Dashboard
-Suite Teardown    Close Browser    ALL
-Test Tags         dashboard    ui
+Suite Teardown    Close Dashboard Browser
+Test Tags         dashboard    ui    browser
 
 *** Variables ***
 ${DASHBOARD_URL}    http://localhost:8050
@@ -86,6 +85,19 @@ Dark Theme Applied
 *** Keywords ***
 Open Dashboard
     [Documentation]    Launch a browser and navigate to the dashboard.
+    TRY
+        Import Library    Browser
+    EXCEPT
+        Skip    Browser library not installed. Install with: uv sync --extra playwright
+    END
     New Browser    chromium    headless=true
     New Page    ${DASHBOARD_URL}
     Wait For Load State    networkidle    timeout=${TIMEOUT}
+
+Close Dashboard Browser
+    [Documentation]    Close browser if it was opened (no-op when Browser is unavailable).
+    TRY
+        Close Browser    ALL
+    EXCEPT
+        Log    Browser was not opened; nothing to close.
+    END
