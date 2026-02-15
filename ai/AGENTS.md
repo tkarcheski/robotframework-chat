@@ -147,6 +147,7 @@ make ci-generate MODE=dynamic # Generate dynamic child pipeline
 make ci-report               # Generate repo metrics
 make ci-report POST_MR=1     # Generate and post to MR
 make ci-sync                 # Mirror to GitHub
+make ci-sync-db              # Sync CI pipeline results to database
 make ci-deploy               # Deploy Superset
 make ci-review               # Run Claude Code review
 ```
@@ -377,6 +378,7 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
 | `ci/sync.sh` | Mirror repo to GitHub | `make ci-sync` |
+| `ci/sync_db.sh` | Fetch CI pipeline artifacts + import to database | `make ci-sync-db` |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
 | `ci/review.sh` | Claude Code review + pipeline fix | `make ci-review` |
 
