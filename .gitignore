@@ -39,6 +39,9 @@ venv.bak/
 # Robot Framework results
 results/
 *.log
+log.html
+output.xml
+report.html
 
 # OS
 .DS_Store
