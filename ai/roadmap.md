@@ -251,7 +251,9 @@ Compare Code Generation Models (IQ:130)
 
 ## Roadmap Principles
 
-* Determinism before intelligence
+See [AGENTS.md — Core Philosophy](AGENTS.md#core-philosophy) for the project's
+foundational principles. The roadmap additionally follows these sequencing rules:
+
 * Testing before training
 * Automation before dashboards
 * Regression detection over anecdotal evaluation

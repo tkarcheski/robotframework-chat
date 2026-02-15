@@ -54,12 +54,15 @@ LLM Can Do Basic Math
 
 ## Core Philosophy
 
-- **LLMs are software** — they should be tested like software
-- **Judging must be constrained** — graders return structured data only
-- **Determinism first, intelligence later**
-- **Robot Framework as the orchestration layer**
-- **CI-native, regression-focused**
-- **Every test run is archived** — listeners always active
+- **LLMs are software** — test them like software
+- **Determinism before intelligence** — structured, machine-verifiable evaluation first
+- **Constrained grading** — scores, categories, pass/fail; no prose from the evaluation layer
+- **Modular by design** — composable pieces; new providers and graders plug in without rewriting core
+- **Robot Framework as the orchestration layer** — readable, keyword-driven tests
+- **Every test run is archived** — listeners always active, results flow to SQL
+- **CI-native, regression-focused** — if it can't run unattended, it's not done
+
+See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 ---
 
