@@ -16,6 +16,9 @@ variables:
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
 
+  # Database for test result archiving (set in GitLab CI/CD variables)
+  # DATABASE_URL: "postgresql://rfc:rfc@postgres:5432/rfc"
+
 
 ## =============================================================================
 # SYNC STAGE - Syncs repos so all CI runs
@@ -76,7 +79,7 @@ mypy-check:
   tags:
     - ollama
   before_script:
-    - uv sync --extra dev
+    - uv sync --extra dev --extra superset
     - |
       echo "Checking Ollama at $OLLAMA_ENDPOINT..."
       if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
@@ -84,12 +87,21 @@ mypy-check:
       else
         echo "⚠️  Warning: Ollama not available - tests may fail"
       fi
+    - |
+      # Build listener flag when DATABASE_URL is configured
+      if [ -n "$DATABASE_URL" ]; then
+        export ROBOT_DB_LISTENER="--listener rfc.db_listener.DbListener"
+        echo "DB archiving enabled"
+      else
+        export ROBOT_DB_LISTENER=""
+        echo "DB archiving disabled (set DATABASE_URL to enable)"
+      fi
 
 robot-math-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/math -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
+    - uv run robot -d results/math $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
   artifacts:
     when: always
     paths:
@@ -103,7 +115,7 @@ robot-docker-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/docker -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+    - uv run robot -d results/docker $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
   artifacts:
     when: always
     paths:
@@ -117,7 +129,7 @@ robot-safety-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/safety -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
+    - uv run robot -d results/safety $ROBOT_DB_LISTENER -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
   artifacts:
     when: always
     paths:
@@ -155,3 +167,29 @@ aggregate-results:
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+archive-results:
+  stage: report
+  needs:
+    - job: robot-math-tests
+      artifacts: true
+      optional: true
+    - job: robot-docker-tests
+      artifacts: true
+      optional: true
+    - job: robot-safety-tests
+      artifacts: true
+      optional: true
+  before_script:
+    - uv sync --extra dev --extra superset
+  script:
+    - |
+      if [ -z "$DATABASE_URL" ]; then
+        echo "DATABASE_URL not set — skipping result archiving"
+        exit 0
+      fi
+    - uv run python scripts/import_test_results.py results/ -r --model "$DEFAULT_MODEL" || echo "Import failed"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
