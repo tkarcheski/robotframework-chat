@@ -122,7 +122,7 @@ Every Robot Framework run in CI attaches all three listeners:
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives results to SQL (SQLite or PostgreSQL) |
-| `rfc.ci_metadata_listener.CiMetadataListener` | Adds CI context (commit, branch, pipeline URL) |
+| `rfc.git_metadata_listener.GitMetaData` | Adds CI context (commit, branch, pipeline URL) from GitHub Actions or GitLab CI |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama chat call |
 
 ---

@@ -40,14 +40,14 @@ Every test job runs with both listeners attached:
 script:
   - uv run robot -d results/math
       --listener rfc.db_listener.DbListener
-      --listener rfc.ci_metadata_listener.CiMetadataListener
+      --listener rfc.git_metadata_listener.GitMetaData
       robot/math/tests/
 ```
 
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives test runs and results to SQL database |
-| `rfc.ci_metadata_listener.CiMetadataListener` | Adds CI metadata (commit, branch, pipeline URL) to Robot Framework output |
+| `rfc.git_metadata_listener.GitMetaData` | Adds CI metadata (commit, branch, pipeline URL) from GitHub Actions or GitLab CI to Robot Framework output |
 
 The `DbListener` uses `DATABASE_URL` when set, otherwise falls back to SQLite.
 

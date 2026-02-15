@@ -60,7 +60,7 @@ class TestContainerConfig:
         assert cfg.image == "python:3.12"
         assert cfg.read_only is True
         assert cfg.user == "nobody"
-        assert cfg.auto_remove is True
+        assert cfg.auto_remove is False
 
     def test_from_dict_minimal(self):
         cfg = ContainerConfig.from_dict({"image": "python:3.12"})

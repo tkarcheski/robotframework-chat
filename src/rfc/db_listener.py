@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from robot.api import logger  # type: ignore
 
 from . import __version__
-from .ci_metadata import collect_ci_metadata
+from .git_metadata import collect_ci_metadata
 from .test_database import TestDatabase, TestResult, TestRun
 
 
@@ -112,9 +112,9 @@ class DbListener:
             model_release_date=self._ci_info.get("Model_Release_Date"),
             model_parameters=self._ci_info.get("Model_Parameters"),
             test_suite=name,
-            gitlab_commit=self._ci_info.get("Commit_SHA", ""),
-            gitlab_branch=self._ci_info.get("Branch", ""),
-            gitlab_pipeline_url=self._ci_info.get("Pipeline_URL", ""),
+            git_commit=self._ci_info.get("Commit_SHA", ""),
+            git_branch=self._ci_info.get("Branch", ""),
+            pipeline_url=self._ci_info.get("Pipeline_URL", ""),
             runner_id=self._ci_info.get("Runner_ID", ""),
             runner_tags=self._ci_info.get("Runner_Tags", ""),
             total_tests=total,

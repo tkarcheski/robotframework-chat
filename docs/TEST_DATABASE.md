@@ -35,7 +35,7 @@ Results are archived automatically via the `DbListener` Robot Framework listener
 ```bash
 uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   robot/math/tests/
 ```
 
@@ -74,9 +74,9 @@ One row per test suite execution (or per pipeline-level combined run):
 | `model_release_date` | TEXT | Model release date from metadata |
 | `model_parameters` | TEXT | Model size (e.g., 8B, 70B) |
 | `test_suite` | TEXT | Test suite name (math, docker, safety) |
-| `gitlab_commit` | TEXT | Git commit SHA |
-| `gitlab_branch` | TEXT | Git branch name |
-| `gitlab_pipeline_url` | TEXT | Link to CI pipeline |
+| `git_commit` | TEXT | Git commit SHA |
+| `git_branch` | TEXT | Git branch name |
+| `pipeline_url` | TEXT | Link to CI pipeline |
 | `runner_id` | TEXT | CI runner identifier |
 | `runner_tags` | TEXT | Runner capabilities |
 | `total_tests` | INTEGER | Total test count |

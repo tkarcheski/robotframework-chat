@@ -15,7 +15,7 @@ import yaml
 from robot.api import logger  # type: ignore
 from robot.running import TestSuite  # type: ignore
 
-from .ci_metadata import collect_ci_metadata
+from .git_metadata import collect_ci_metadata
 from .ollama import OllamaClient
 
 

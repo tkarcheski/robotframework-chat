@@ -1,7 +1,7 @@
-"""Robot Framework listener for GitLab CI metadata collection.
+"""Robot Framework listener for Git/CI metadata collection.
 
-This listener automatically collects and adds GitLab CI metadata
-to Robot Framework test results.
+This listener automatically collects metadata from GitHub Actions
+or GitLab CI and adds it to Robot Framework test results.
 """
 
 import json
@@ -11,14 +11,17 @@ from typing import Dict, Any, Optional
 from robot.api import logger  # type: ignore
 from robot.result import TestSuite  # type: ignore
 
-from .ci_metadata import collect_ci_metadata
+from .git_metadata import collect_ci_metadata
 
 
-class CiMetadataListener:
-    """Listener that collects CI metadata and adds it to test results.
+class GitMetaData:
+    """Listener that collects Git/CI metadata and adds it to test results.
+
+    Auto-detects GitHub Actions or GitLab CI and formats links
+    appropriately for the detected platform.
 
     Usage:
-        robot --listener rfc.ci_metadata_listener.CiMetadataListener tests/
+        robot --listener rfc.git_metadata_listener.GitMetaData tests/
     """
 
     ROBOT_LISTENER_API_VERSION = 2
@@ -28,6 +31,7 @@ class CiMetadataListener:
         self.metadata: Dict[str, Any] = {}
         self.start_time: Optional[datetime] = None
         self.ci_info: Dict[str, str] = {}
+        self.platform: Optional[str] = None
 
     def start_suite(self, name: str, attributes: Dict[str, Any]):
         """Called when a test suite starts.
@@ -36,11 +40,13 @@ class CiMetadataListener:
         """
         self.start_time = datetime.utcnow()
         self.ci_info = collect_ci_metadata()
+        self.platform = self.ci_info.get("CI_Platform")
 
         # Log CI information
         if self.ci_info.get("CI"):
             logger.info(
-                f"Running in CI environment: {self.ci_info.get('GitLab_URL', 'Unknown')}"
+                f"Running in CI environment: "
+                f"{self.ci_info.get('Project_URL', 'Unknown')}"
             )
             logger.info(f"Commit: {self.ci_info.get('Commit_SHA', 'Unknown')[:8]}")
             logger.info(f"Branch: {self.ci_info.get('Branch', 'Unknown')}")
@@ -49,28 +55,24 @@ class CiMetadataListener:
         if "metadata" in attributes:
             attributes["metadata"].update(self.ci_info)
 
-            project_url = self.ci_info.get("GitLab_URL", "")
+            project_url = self.ci_info.get("Project_URL", "")
             commit_sha = self.ci_info.get("Commit_SHA", "")
             commit_short = self.ci_info.get(
                 "Commit_Short_SHA", commit_sha[:8] if commit_sha else ""
             )
 
-            # Format Commit_SHA as a clickable link to the GitLab commit
+            # Format Commit_SHA as a clickable link
             if project_url and commit_sha:
                 attributes["metadata"]["Commit_SHA"] = (
-                    f"[{commit_short}|{project_url}/-/commit/{commit_sha}]"
+                    self._format_commit_link(project_url, commit_sha, commit_short)
                 )
 
             # Format Source as a clickable link to the file at the commit
             source = attributes.get("source", "")
             if source and project_url and commit_sha:
-                project_dir = os.getenv("CI_PROJECT_DIR", "")
-                if project_dir and source.startswith(project_dir):
-                    rel_path = source[len(project_dir) :].lstrip(os.sep)
-                else:
-                    rel_path = source
+                rel_path = self._resolve_relative_path(source)
                 attributes["metadata"]["Source"] = (
-                    f"[{rel_path}|{project_url}/-/blob/{commit_sha}/{rel_path}]"
+                    self._format_source_link(project_url, commit_sha, rel_path)
                 )
 
     def end_suite(self, name: str, attributes: Dict[str, Any]):
@@ -105,6 +107,36 @@ class CiMetadataListener:
             f"{attributes.get('skip', 0)} skipped"
         )
 
+    def _format_commit_link(
+        self, project_url: str, sha: str, short_sha: str
+    ) -> str:
+        """Format a commit SHA as a clickable link for the detected platform."""
+        if self.platform == "github":
+            return f"[{short_sha}|{project_url}/commit/{sha}]"
+        # GitLab (default)
+        return f"[{short_sha}|{project_url}/-/commit/{sha}]"
+
+    def _format_source_link(
+        self, project_url: str, sha: str, rel_path: str
+    ) -> str:
+        """Format a source file path as a clickable link for the detected platform."""
+        if self.platform == "github":
+            return f"[{rel_path}|{project_url}/blob/{sha}/{rel_path}]"
+        # GitLab (default)
+        return f"[{rel_path}|{project_url}/-/blob/{sha}/{rel_path}]"
+
+    def _resolve_relative_path(self, source: str) -> str:
+        """Resolve a source path to a repository-relative path."""
+        if self.platform == "github":
+            workspace = os.getenv("GITHUB_WORKSPACE", "")
+            if workspace and source.startswith(workspace):
+                return source[len(workspace):].lstrip(os.sep)
+        else:
+            project_dir = os.getenv("CI_PROJECT_DIR", "")
+            if project_dir and source.startswith(project_dir):
+                return source[len(project_dir):].lstrip(os.sep)
+        return source
+
     def _save_metadata_json(self, metadata: Dict[str, str]):
         """Save metadata to a JSON file for external tools.
 
@@ -127,7 +159,7 @@ class CiMetadataListener:
             logger.warn(f"Could not save metadata JSON: {e}")
 
 
-class CiMetadataModifier(CiMetadataListener):
+class GitMetaDataModifier(GitMetaData):
     """Version of the listener that works as a pre-run modifier."""
 
     def start_suite(self, suite: TestSuite):  # type: ignore[override]
@@ -137,6 +169,7 @@ class CiMetadataModifier(CiMetadataListener):
         """
         self.start_time = datetime.utcnow()
         self.ci_info = collect_ci_metadata()
+        self.platform = self.ci_info.get("CI_Platform")
 
         # Add metadata to suite
         for key, value in self.ci_info.items():

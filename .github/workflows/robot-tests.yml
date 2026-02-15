@@ -68,6 +68,11 @@ jobs:
     runs-on: self-hosted
     needs: [lint, robot-dryrun]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      LISTENERS: >-
+        --listener rfc.db_listener.DbListener
+        --listener rfc.git_metadata_listener.GitMetaData
+        --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
     steps:
       - uses: actions/checkout@v4
 
@@ -78,30 +83,15 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run math tests
-        run: >
-          uv run robot -d results/math
-          --listener rfc.db_listener.DbListener
-          --listener rfc.ci_metadata_listener.CiMetadataListener
-          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
-          robot/math/tests/
+        run: uv run robot -d results/math $LISTENERS robot/math/tests/
 
       - name: Run safety tests
         if: always()
-        run: >
-          uv run robot -d results/safety
-          --listener rfc.db_listener.DbListener
-          --listener rfc.ci_metadata_listener.CiMetadataListener
-          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
-          robot/safety/
+        run: uv run robot -d results/safety $LISTENERS robot/safety/
 
       - name: Run Docker tests
         if: always()
-        run: >
-          uv run robot -d results/docker
-          --listener rfc.db_listener.DbListener
-          --listener rfc.ci_metadata_listener.CiMetadataListener
-          --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
-          robot/docker/
+        run: uv run robot -d results/docker $LISTENERS robot/docker/
 
       - name: Upload test results
         if: always()

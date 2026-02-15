@@ -221,15 +221,15 @@ Robot Framework Test
 │   ├─ Docker Manager (container_manager.py)
 │   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
 │   ├─ Data Models (models.py) ── GradeResult, SafetyResult
-│   ├─ CI Metadata (ci_metadata.py) ── GitLab CI env collection
-│   ├─ CI Metadata Listener (ci_metadata_listener.py) ── attaches CI metadata to output
+│   ├─ CI Metadata (git_metadata.py) ── GitLab CI env collection
+│   ├─ CI Metadata Listener (git_metadata_listener.py) ── attaches CI metadata to output
 │   ├─ DB Listener (db_listener.py) ── archives results to SQL database
 │   ├─ Ollama Timestamp Listener (ollama_timestamp_listener.py) ── timestamps Ollama chats
 │   └─ Test Database (test_database.py) ── SQLite + PostgreSQL backends
 │
 ├─> Listeners (auto-attached to every test run)
 │   ├─ DbListener ── archives runs/results to SQL (SQLite or PostgreSQL)
-│   ├─ CiMetadataListener ── adds CI context to Robot Framework output
+│   ├─ GitMetaData ── adds CI context to Robot Framework output
 │   └─ OllamaTimestampListener ── timestamps every Ollama chat call
 │
 ├─> Docker Containers
@@ -278,8 +278,8 @@ robotframework-chat/
 │   ├── __init__.py             # Package version (__version__)
 │   ├── ollama.py               # Ollama API client
 │   ├── models.py               # Shared data classes
-│   ├── ci_metadata.py          # CI metadata collection
-│   ├── ci_metadata_listener.py # Listener: CI metadata → Robot output
+│   ├── git_metadata.py          # CI metadata collection
+│   ├── git_metadata_listener.py # Listener: CI metadata → Robot output
 │   ├── db_listener.py          # Listener: test results → SQL database
 │   ├── ollama_timestamp_listener.py # Listener: timestamps Ollama chats
 │   ├── test_database.py        # SQLite + PostgreSQL database backends
@@ -323,7 +323,7 @@ Three Robot Framework listeners handle test result collection:
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
-| `rfc.ci_metadata_listener.CiMetadataListener` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
+| `rfc.git_metadata_listener.GitMetaData` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama keyword call (Ask LLM, Wait For LLM, etc.) and saves `ollama_timestamps.json` |
 
 All listeners are always active in the Makefile targets and in CI. Use them together:
@@ -331,7 +331,7 @@ All listeners are always active in the Makefile targets and in CI. Use them toge
 ```bash
 uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
-  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  --listener rfc.git_metadata_listener.GitMetaData \
   --listener rfc.ollama_timestamp_listener.OllamaTimestampListener \
   robot/math/tests/
 ```

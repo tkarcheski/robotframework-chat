@@ -168,11 +168,35 @@ def import_results(
     model_release_date = metadata.get("Model_Release_Date")
     model_parameters = metadata.get("Model_Parameters")
 
-    gitlab_commit = metadata.get("GitLab Commit", os.getenv("CI_COMMIT_SHA", ""))
-    gitlab_branch = metadata.get("GitLab Branch", os.getenv("CI_COMMIT_REF_NAME", ""))
-    gitlab_pipeline = metadata.get("GitLab Pipeline", os.getenv("CI_PIPELINE_URL", ""))
-    runner_id = metadata.get("Runner ID", os.getenv("CI_RUNNER_ID", ""))
-    runner_tags = metadata.get("Runner Tags", os.getenv("CI_RUNNER_TAGS", ""))
+    # Canonical keys first, then legacy GitLab-specific keys, then env vars
+    git_commit = (
+        metadata.get("Commit_SHA")
+        or metadata.get("GitLab Commit")
+        or os.getenv("CI_COMMIT_SHA")
+        or os.getenv("GITHUB_SHA", "")
+    )
+    git_branch = (
+        metadata.get("Branch")
+        or metadata.get("GitLab Branch")
+        or os.getenv("CI_COMMIT_REF_NAME")
+        or os.getenv("GITHUB_REF_NAME", "")
+    )
+    pipeline_url = (
+        metadata.get("Pipeline_URL")
+        or metadata.get("GitLab Pipeline")
+        or os.getenv("CI_PIPELINE_URL", "")
+    )
+    runner_id = (
+        metadata.get("Runner_ID")
+        or metadata.get("Runner ID")
+        or os.getenv("CI_RUNNER_ID")
+        or os.getenv("RUNNER_NAME", "")
+    )
+    runner_tags = (
+        metadata.get("Runner_Tags")
+        or metadata.get("Runner Tags")
+        or os.getenv("CI_RUNNER_TAGS", "")
+    )
 
     timestamp_str = metadata.get("Timestamp")
     if timestamp_str:
@@ -189,9 +213,9 @@ def import_results(
         model_release_date=model_release_date,
         model_parameters=model_parameters,
         test_suite=data["suite_name"],
-        gitlab_commit=gitlab_commit,
-        gitlab_branch=gitlab_branch,
-        gitlab_pipeline_url=gitlab_pipeline,
+        git_commit=git_commit,
+        git_branch=git_branch,
+        pipeline_url=pipeline_url,
         runner_id=runner_id,
         runner_tags=runner_tags,
         total_tests=data["total_tests"],
