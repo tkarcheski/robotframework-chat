@@ -220,9 +220,7 @@ class SessionManager:
         if total < 0:
             raise ValueError(f"total must be >= 0, got {total}")
         if current > total:
-            raise ValueError(
-                f"current ({current}) must not exceed total ({total})"
-            )
+            raise ValueError(f"current ({current}) must not exceed total ({total})")
         with self._lock:
             session = self._sessions.get(session_id)
             if session:
@@ -233,9 +231,7 @@ class SessionManager:
     def register_observer(self, callback: Callable[[str], None]) -> None:
         """Register status change observer."""
         if not callable(callback):
-            raise TypeError(
-                f"callback must be callable, got {type(callback).__name__}"
-            )
+            raise TypeError(f"callback must be callable, got {type(callback).__name__}")
         self._observers.append(callback)
 
     def _notify_observers(self, session_id: str) -> None:

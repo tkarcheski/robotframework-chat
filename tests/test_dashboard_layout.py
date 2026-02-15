@@ -80,6 +80,7 @@ class TestCreateAppLayout:
         # Should contain interval components for polling
         children_types = [type(c).__name__ for c in layout.children]
         assert "Interval" in children_types or any(
-            hasattr(c, "id") and getattr(c, "id", "") in ("interval-component", "monitoring-interval")
+            hasattr(c, "id")
+            and getattr(c, "id", "") in ("interval-component", "monitoring-interval")
             for c in layout.children
         )

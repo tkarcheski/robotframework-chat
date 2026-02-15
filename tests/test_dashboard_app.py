@@ -6,7 +6,7 @@ import dash_bootstrap_components as dbc
 import pytest
 from dash.exceptions import PreventUpdate
 
-from dashboard.core.session_manager import SessionConfig, SessionStatus
+from dashboard.core.session_manager import SessionStatus
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ class TestUpdateUiStates:
         btn_ids = [{"type": "run-btn", "index": 0}]
         result = update_ui_states(1, btn_ids)
 
-        run_d, stop_d, replay_d, upload_d = result[0], result[1], result[2], result[3]
+        run_d, stop_d, replay_d, _ = result[0], result[1], result[2], result[3]
         assert run_d[0] is True  # Run disabled
         assert stop_d[0] is False  # Stop enabled
         assert replay_d[0] is True  # Replay disabled

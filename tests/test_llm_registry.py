@@ -40,7 +40,12 @@ class TestLLMRegistry:
         reg = LLMRegistry()
         mock_client = MagicMock()
         mock_client.list_models_detailed.return_value = [
-            {"name": "llama3", "size": 1000, "modified_at": "2024-01-01", "digest": "abc"},
+            {
+                "name": "llama3",
+                "size": 1000,
+                "modified_at": "2024-01-01",
+                "digest": "abc",
+            },
         ]
         mock_cls.return_value = mock_client
 
@@ -210,7 +215,10 @@ class TestLLMRegistry:
 
         assert reg.get_models() == ["alpha", "zebra"]
 
-    @patch("dashboard.core.llm_registry.master_models", return_value=["llama3", "missing_model"])
+    @patch(
+        "dashboard.core.llm_registry.master_models",
+        return_value=["llama3", "missing_model"],
+    )
     @patch("dashboard.core.llm_registry.nodes", return_value=[])
     @patch("dashboard.core.llm_registry.OllamaClient")
     def test_get_all_models_includes_unavailable_master(

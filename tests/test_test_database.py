@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -96,18 +94,20 @@ class TestSQLiteBackend:
     def test_get_test_history(self, tmp_path):
         db = TestDatabase(db_path=str(tmp_path / "test.db"))
         run_id = db.add_test_run(_make_run())
-        db.add_test_results([
-            TestResult(
-                run_id=run_id,
-                test_name="Math Addition",
-                test_status="PASS",
-                score=1,
-                question="What is 2+2?",
-                expected_answer="4",
-                actual_answer="4",
-                grading_reason="correct",
-            ),
-        ])
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Math Addition",
+                    test_status="PASS",
+                    score=1,
+                    question="What is 2+2?",
+                    expected_answer="4",
+                    actual_answer="4",
+                    grading_reason="correct",
+                ),
+            ]
+        )
 
         history = db.get_test_history("Math Addition")
         assert len(history) > 0

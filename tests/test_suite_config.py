@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from rfc.suite_config import (
     defaults,
     test_suites,

@@ -9,7 +9,11 @@ class Grader:
         self.llm = llm_client
 
     def grade(self, question: str, expected: str, actual: str) -> GradeResult:
-        for name, val in [("question", question), ("expected", expected), ("actual", actual)]:
+        for name, val in [
+            ("question", question),
+            ("expected", expected),
+            ("actual", actual),
+        ]:
             if not isinstance(val, str):
                 raise TypeError(f"{name} must be a str, got {type(val).__name__}")
         if not question.strip():

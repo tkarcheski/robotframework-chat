@@ -42,9 +42,7 @@ class LLMRegistry:
             if node_list:
                 raw = node_list
             else:
-                endpoint = os.environ.get(
-                    "OLLAMA_ENDPOINT", "http://localhost:11434"
-                )
+                endpoint = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
                 host = endpoint.replace("http://", "").replace("https://", "")
                 parts = host.split(":")
                 hostname = parts[0]
@@ -129,9 +127,7 @@ class LLMRegistry:
     def models_on_node(self, host_port: str) -> list[str]:
         """Return models available on a specific node."""
         if not isinstance(host_port, str):
-            raise TypeError(
-                f"host_port must be a str, got {type(host_port).__name__}"
-            )
+            raise TypeError(f"host_port must be a str, got {type(host_port).__name__}")
         if not host_port:
             raise ValueError("host_port must be a non-empty string")
         self._ensure_fresh()

@@ -25,9 +25,7 @@ def _find_output_xml(session_dir: Path) -> Path | None:
     first, then fall back to the most recent timestamped variant.
     """
     if not isinstance(session_dir, Path):
-        raise TypeError(
-            f"session_dir must be a Path, got {type(session_dir).__name__}"
-        )
+        raise TypeError(f"session_dir must be a Path, got {type(session_dir).__name__}")
     plain = session_dir / "output.xml"
     if plain.exists():
         return plain
@@ -215,9 +213,7 @@ def upload_session_results(
             {"status": "error", "message": "..."}
     """
     if not isinstance(session_id, str):
-        raise TypeError(
-            f"session_id must be a str, got {type(session_id).__name__}"
-        )
+        raise TypeError(f"session_id must be a str, got {type(session_id).__name__}")
     if not session_id:
         raise ValueError("session_id must be a non-empty string")
     session_dir = Path(output_dir) / session_id

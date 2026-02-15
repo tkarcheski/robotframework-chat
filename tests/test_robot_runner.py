@@ -1,6 +1,6 @@
 """Tests for dashboard.core.robot_runner."""
 
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -72,9 +72,7 @@ class TestRobotRunner:
     @patch("dashboard.core.robot_runner.session_manager")
     @patch("dashboard.core.robot_runner.subprocess.Popen")
     @patch("dashboard.core.robot_runner.Path.mkdir")
-    def test_execute_robot_includes_model_var(
-        self, mock_mkdir, mock_popen, mock_sm
-    ):
+    def test_execute_robot_includes_model_var(self, mock_mkdir, mock_popen, mock_sm):
         session = _make_session()
         mock_process = MagicMock()
         mock_process.stdout = []
@@ -139,9 +137,7 @@ class TestRobotRunner:
     @patch("dashboard.core.robot_runner.session_manager")
     @patch("dashboard.core.robot_runner.subprocess.Popen")
     @patch("dashboard.core.robot_runner.Path.mkdir")
-    def test_execute_robot_custom_log_level(
-        self, mock_mkdir, mock_popen, mock_sm
-    ):
+    def test_execute_robot_custom_log_level(self, mock_mkdir, mock_popen, mock_sm):
         session = _make_session(
             config=SessionConfig(
                 suite="robot/math",
@@ -186,9 +182,7 @@ class TestRobotRunner:
     @patch("dashboard.core.robot_runner.session_manager")
     @patch("dashboard.core.robot_runner.subprocess.Popen")
     @patch("dashboard.core.robot_runner.Path.mkdir")
-    def test_execute_robot_failure_sets_failed(
-        self, mock_mkdir, mock_popen, mock_sm
-    ):
+    def test_execute_robot_failure_sets_failed(self, mock_mkdir, mock_popen, mock_sm):
         session = _make_session()
         mock_process = MagicMock()
         mock_process.stdout = []
@@ -257,9 +251,7 @@ class TestRobotRunner:
     @patch("dashboard.core.robot_runner.session_manager")
     @patch("dashboard.core.robot_runner.subprocess.Popen")
     @patch("dashboard.core.robot_runner.Path.mkdir")
-    def test_execute_robot_ollama_endpoint_var(
-        self, mock_mkdir, mock_popen, mock_sm
-    ):
+    def test_execute_robot_ollama_endpoint_var(self, mock_mkdir, mock_popen, mock_sm):
         session = _make_session(
             config=SessionConfig(
                 suite="robot/math",

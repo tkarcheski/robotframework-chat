@@ -2,8 +2,7 @@
 
 import os
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -128,7 +127,7 @@ class TestImportOutputXml:
     def test_extracts_statistics(self, tmp_path, tmp_db):
         xml_file = tmp_path / "output.xml"
         xml_file.write_text(MINIMAL_OUTPUT_XML)
-        run_id = _import_output_xml(str(xml_file), tmp_db)
+        _import_output_xml(str(xml_file), tmp_db)
         runs = tmp_db.get_recent_runs(limit=1)
         assert len(runs) == 1
         assert runs[0]["passed"] == 1
@@ -163,9 +162,7 @@ class TestUploadSessionResults:
     def test_no_output_xml(self, tmp_path):
         session_dir = tmp_path / "test_session"
         session_dir.mkdir()
-        result = upload_session_results(
-            "test_session", output_dir=str(tmp_path)
-        )
+        result = upload_session_results("test_session", output_dir=str(tmp_path))
         assert result["status"] == "error"
         assert "No output.xml" in result["message"]
 
@@ -175,9 +172,7 @@ class TestUploadSessionResults:
         (session_dir / "output.xml").write_text(MINIMAL_OUTPUT_XML)
 
         with patch.dict(os.environ, {"DATABASE_URL": ""}, clear=False):
-            result = upload_session_results(
-                "test_session", output_dir=str(tmp_path)
-            )
+            result = upload_session_results("test_session", output_dir=str(tmp_path))
 
         assert result["status"] == "success"
         assert result["run_id"] > 0
@@ -200,8 +195,6 @@ class TestUploadSessionResults:
             "dashboard.core.artifact_uploader.TestDatabase",
             side_effect=RuntimeError("db connection failed"),
         ):
-            result = upload_session_results(
-                "test_session", output_dir=str(tmp_path)
-            )
+            result = upload_session_results("test_session", output_dir=str(tmp_path))
         assert result["status"] == "error"
         assert "Upload failed" in result["message"]

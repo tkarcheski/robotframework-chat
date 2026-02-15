@@ -1,7 +1,5 @@
 """Tests for rfc.docker_config dataclasses."""
 
-import pytest
-
 from rfc.docker_config import ContainerConfig, ContainerNetwork, ContainerResources
 
 
@@ -45,9 +43,7 @@ class TestContainerNetwork:
         assert result["network_mode"] == "host"
 
     def test_bridge_mode_with_ports(self):
-        n = ContainerNetwork(
-            mode="bridge", ports={"8080/tcp": "8080"}
-        )
+        n = ContainerNetwork(mode="bridge", ports={"8080/tcp": "8080"})
         result = n.to_docker_network()
         assert result["ports"] == {"8080/tcp": "8080"}
         assert result.get("network_disabled") is False
@@ -71,15 +67,17 @@ class TestContainerConfig:
         assert cfg.image == "python:3.12"
 
     def test_from_dict_full(self):
-        cfg = ContainerConfig.from_dict({
-            "image": "python:3.12",
-            "name": "test-container",
-            "command": "python -c 'print(1)'",
-            "resources": {"memory_mb": 512},
-            "network": {"mode": "bridge"},
-            "env": {"FOO": "bar"},
-            "read_only": False,
-        })
+        cfg = ContainerConfig.from_dict(
+            {
+                "image": "python:3.12",
+                "name": "test-container",
+                "command": "python -c 'print(1)'",
+                "resources": {"memory_mb": 512},
+                "network": {"mode": "bridge"},
+                "env": {"FOO": "bar"},
+                "read_only": False,
+            }
+        )
         assert cfg.name == "test-container"
         assert cfg.resources.memory_mb == 512
         assert cfg.network.mode == "bridge"

@@ -91,9 +91,7 @@ class TestRobotSession:
     def _make_session(self, **kwargs):
         defaults = dict(
             session_id="abcd1234",
-            config=SessionConfig(
-                suite="x", iq_levels=[], model="m", profile="p"
-            ),
+            config=SessionConfig(suite="x", iq_levels=[], model="m", profile="p"),
         )
         defaults.update(kwargs)
         return RobotSession(**defaults)
@@ -180,9 +178,7 @@ class TestSessionManager:
 
     def test_create_session_custom_config(self):
         mgr = self._make_manager()
-        cfg = SessionConfig(
-            suite="robot/safety", iq_levels=[], model="m", profile="p"
-        )
+        cfg = SessionConfig(suite="robot/safety", iq_levels=[], model="m", profile="p")
         session = mgr.create_session(cfg)
         assert session.config.suite == "robot/safety"
 
