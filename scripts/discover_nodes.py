@@ -133,8 +133,7 @@ def discover_all_nodes() -> dict[str, Any]:
 
     with ThreadPoolExecutor(max_workers=min(len(node_defs), MAX_SCAN_WORKERS)) as pool:
         futures = {
-            pool.submit(_probe_node, n["hostname"], n["port"]): n
-            for n in node_defs
+            pool.submit(_probe_node, n["hostname"], n["port"]): n for n in node_defs
         }
         for future in as_completed(futures):
             results.append(future.result())
@@ -183,7 +182,9 @@ def _print_summary(inventory: dict[str, Any]) -> None:
         print("\nOnline nodes:")
         for node in online:
             model_count = len(node["models"])
-            print(f"  {node['hostname']:12s}  {node['endpoint']:30s}  {model_count} model(s)")
+            print(
+                f"  {node['hostname']:12s}  {node['endpoint']:30s}  {model_count} model(s)"
+            )
             for model in node["models"]:
                 print(f"    - {model}")
 
