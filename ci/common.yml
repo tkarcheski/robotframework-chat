@@ -1,0 +1,21 @@
+# ci/common.yml - Shared job templates for GitLab CI
+#
+# Include this in .gitlab-ci.yml with:
+#   include:
+#     - local: ci/common.yml
+#
+# All logic lives in ci/*.sh scripts. Jobs here are thin wrappers.
+
+.uv-setup:
+  before_script:
+    - uv sync --extra dev --extra superset
+
+.robot-test:
+  extends: .uv-setup
+  stage: test
+  artifacts:
+    when: always
+    paths:
+      - results/
+      - data/
+  allow_failure: true
