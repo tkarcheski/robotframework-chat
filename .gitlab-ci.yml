@@ -104,6 +104,9 @@ robot-math-tests:
 robot-docker-tests:
   stage: test
   <<: *robot_template
+  tags:
+    - ollama
+    - docker
   script:
     - uv run robot -d results/docker -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
   artifacts:
