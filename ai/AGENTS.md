@@ -5,6 +5,38 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ---
 
+## Core Philosophy
+
+1. **LLMs are software — test them like software.**
+   They take input, produce output, and regress. They deserve the same CI,
+   versioning, and regression discipline as any other software.
+
+2. **Determinism before intelligence.**
+   Structured, machine-verifiable evaluation first. Subjective or fuzzy scoring
+   only after the deterministic foundation is solid.
+
+3. **Constrained grading.**
+   Graders return structured data only — scores, categories, pass/fail. No prose,
+   no opinions, no unstructured output from the evaluation layer.
+
+4. **Modular by design.**
+   Start minimal, grow through composable pieces. New providers, graders, test
+   types, and output formats plug in without rewriting core. Ollama today, any
+   provider tomorrow.
+
+5. **Robot Framework as the orchestration layer.**
+   Tests are readable, keyword-driven, and framework-managed. Robot handles
+   lifecycle, sequencing, and reporting — Python handles implementation.
+
+6. **Every test run is archived.**
+   Listeners are always active. Results flow to SQL. If it ran, it's queryable.
+
+7. **CI-native, regression-focused.**
+   Tests run in pipelines, gate deployments, and catch regressions. If it can't
+   run unattended, it's not done.
+
+---
+
 ## Agent Contract
 
 **Rules:**
@@ -213,6 +245,7 @@ robotframework-chat/
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
+│   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   └── roadmap.md              # Project roadmap
 ├── Makefile                    # Build, test, deploy targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
