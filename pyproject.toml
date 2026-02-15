@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "0.1.0"
+version = "0.2.0"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 readme = "readme.md"
 requires-python = ">=3.11"
@@ -33,6 +33,10 @@ dashboard = [
     "ansi2html>=1.8.0",
     "watchdog>=3.0.0",
     "psutil>=5.9.0",
+]
+superset = [
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
 ]
 dev = [
     "pre-commit",

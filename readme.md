@@ -1,6 +1,6 @@
 # robotframework-chat
 
-A Robot Framework-based test harness for systematically testing Large Language Models (LLMs) using LLMs as both the system under test and as automated graders.
+A Robot Framework-based test harness for systematically testing Large Language Models (LLMs) using LLMs as both the system under test and as automated graders. Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ---
 
@@ -8,16 +8,16 @@ A Robot Framework-based test harness for systematically testing Large Language M
 
 ### Prerequisites
 
-- **Docker** - Required for containerized code execution and LLM testing
-- **Python 3.11+** - For running the test framework
-- **astral-uv** - For dependency management
-- **Ollama** (optional) - For local LLM testing
+- **Python 3.11+** and **astral-uv** for dependency management
+- **Docker** for containerized code execution, LLM testing, and the Superset stack
+- **Ollama** (optional) for local LLM testing
 
 ### Installation
 
 ```bash
-# Clone and setup
-uv sync
+# Install all dependencies (including Superset/PostgreSQL support)
+make install
+# or: uv sync --extra dev --extra superset
 
 # Install pre-commit hooks
 pre-commit install
@@ -28,91 +28,108 @@ ollama pull llama3
 
 ### Running Tests
 
+Every test run automatically archives results to the database via listeners.
+
 ```bash
-# Run all math tests
-uv run robot -d results robot/math
+# Run all test suites (math, docker, safety)
+make test
 
-# Run Docker-based Python tests
-uv run robot -d results robot/docker/python
+# Run individual suites
+make test-math
+make test-docker
+make test-safety
 
-# Run LLM-in-Docker multi-model tests
-uv run robot -d results robot/docker/llm
-
-# Run safety tests
-uv run robot -d results robot/safety
+# Run with custom options
+uv run robot -d results/math \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/
 
 # Run specific test by name
-uv run robot -d results -t "LLM Can Do Basic Math" robot/math/tests/llm_maths.robot
+uv run robot -d results -t "LLM Can Do Basic Math" \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/llm_maths.robot
 
 # Run tests by IQ tag
-uv run robot -d results -i IQ:120 robot/docker/python
+uv run robot -d results -i IQ:120 \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/docker/python
+```
+
+### Superset Dashboard Setup
+
+```bash
+# 1. Configure environment
+cp .env.example .env       # edit credentials
+
+# 2. Start the stack (PostgreSQL + Redis + Superset)
+make up
+
+# 3. First-time Superset initialization
+make bootstrap
+
+# 4. Open the dashboard
+open http://localhost:8088  # login with credentials from .env
 ```
 
 ---
 
-## Overview
+## Listeners
 
-`robotframework-chat` is an **infrastructure-first** testing platform designed for:
+Two Robot Framework listeners handle test result collection:
 
-- **Deterministic LLM evaluation** - Machine-verifiable test results
-- **Containerized code execution** - Safe, isolated testing environments
-- **Multi-model comparison** - Test multiple LLMs simultaneously
-- **CI/CD integration** - Automated regression detection
-- **Scalable test organization** - IQ-tagged difficulty levels
+| Listener | Purpose |
+|----------|---------|
+| `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
+| `rfc.ci_metadata_listener.CiMetadataListener` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
 
-### Core Philosophy
+Both listeners are always active in the Makefile targets and in CI. Use them together:
 
-- **LLMs are software** → they should be tested like software
-- **Judging must be constrained** → graders return structured data only
-- **Determinism first, intelligence later**
-- **Robot Framework as the orchestration layer**
-- **CI-native, regression-focused**
+```bash
+uv run robot -d results/math \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/
+```
+
+The `DbListener` reads `DATABASE_URL` from the environment to decide where to store results:
+
+| `DATABASE_URL` | Backend | Notes |
+|----------------|---------|-------|
+| Not set | SQLite | Stores to `data/test_history.db` |
+| `postgresql://...` | PostgreSQL | Requires `uv sync --extra superset` |
 
 ---
 
-## Key Capabilities
+## CI/CD Pipeline
 
-### Current Features
+The GitLab CI pipeline uses a five-stage architecture:
 
-✅ **LLM Testing**
-- Prompt LLMs from Robot Framework
-- Grade responses using LLM-based judges
-- Binary (0/1) and rubric-based scoring
-- JSON-only grading contracts
-- Local (Ollama) and remote model support
+```
+sync → lint → test → report → deploy
+```
 
-✅ **Docker-Based Code Execution**
-- Run Python, Node.js, and shell code in isolated containers
-- Configurable CPU, memory, and network constraints
-- Read-only filesystems for security
-- No subprocess calls - pure Docker SDK
+### Pipeline Data Flow
 
-✅ **LLM-in-Docker**
-- Run Ollama in containers with resource limits
-- Multi-model comparison testing
-- Suite-level container lifecycle management
+```
+test stage:  math ─────────┐   docker ────────┐   safety ────────┐
+             listener→DB   │   listener→DB    │   listener→DB   │
+             (per-suite)   │   (per-suite)    │   (per-suite)   │
+                           ▼                  ▼                 ▼
+report stage:          rebot merges output.xml files
+                           │
+                           ├── results/combined/report.html  (one unified report)
+                           ├── results/combined/log.html
+                           └── import → DB  (pipeline-level combined run)
+```
 
-✅ **Safety Testing**
-- Prompt injection resistance testing
-- System prompt extraction detection
-- Jailbreak attempt validation
-- Regex-based pattern detection with confidence scoring
+During the **test stage**, each suite runs with both listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
 
-✅ **Test Organization**
-- IQ levels (100-160) for difficulty progression
-- Tag-based filtering and execution
-- Reusable resource files for environments
-- Multi-session dashboard UI for concurrent test runs
+During the **report stage**, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a pipeline-level run.
 
-✅ **CI/CD Integration**
-- GitLab CI pipeline with pre-run model filtering
-- Automatic CI metadata collection
-- SQLite database for test history tracking
-- Import/export utilities for test results
-
-### Planned Features
-
-See [ROADMAP.md](ROADMAP.md) for detailed planning.
+During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
 
 ---
 
@@ -129,17 +146,94 @@ Robot Framework Test
 │   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
 │   ├─ Data Models (models.py) ── GradeResult, SafetyResult
 │   ├─ CI Metadata (ci_metadata.py) ── GitLab CI env collection
-│   └─ Test Database (test_database.py) ── SQLite results storage
+│   ├─ CI Metadata Listener (ci_metadata_listener.py) ── attaches CI metadata to output
+│   ├─ DB Listener (db_listener.py) ── archives results to SQL database
+│   └─ Test Database (test_database.py) ── SQLite + PostgreSQL backends
+│
+├─> Listeners (auto-attached to every test run)
+│   ├─ DbListener ── archives runs/results to SQL (SQLite or PostgreSQL)
+│   └─ CiMetadataListener ── adds CI context to Robot Framework output
 │
 ├─> Docker Containers
 │   ├─ Code Execution (Python, Node, Shell)
 │   └─ LLM Services (Ollama)
 │
-├─> Dashboard (dashboard/)
-│   └─ Multi-session test runner UI (Dash)
+├─> Superset Stack (docker-compose.yml)
+│   ├─ PostgreSQL 16 ── test result storage
+│   ├─ Redis 7 ── Superset cache
+│   └─ Apache Superset 4.1.1 ── dashboards & visualization
 │
 └─> Test Results & Reports
+    ├─ Robot Framework HTML reports
+    ├─ SQL database (queryable history)
+    └─ Superset dashboards (visualization)
 ```
+
+---
+
+## Database
+
+Test results are stored in a SQL database with dual-backend support:
+
+- **SQLite** (default) — zero-config, stores in `data/test_history.db`
+- **PostgreSQL** — for production use with Superset visualization
+
+Set `DATABASE_URL` in your environment or `.env` to switch backends:
+
+```bash
+# PostgreSQL (for Superset)
+DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
+
+# SQLite (default when DATABASE_URL is unset)
+```
+
+See [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) for schema details, queries, and maintenance.
+
+---
+
+## Makefile Targets
+
+```bash
+make help          # Show all targets
+make install       # Install dependencies (dev + superset)
+make up            # Start PostgreSQL + Redis + Superset
+make down          # Stop all services
+make restart       # Restart all services
+make logs          # Tail service logs
+make bootstrap     # First-time Superset setup
+make test          # Run all test suites (math, docker, safety)
+make test-math     # Run math tests
+make test-docker   # Run Docker tests
+make test-safety   # Run safety tests
+make import        # Import output.xml files: make import PATH=results/
+make lint          # Run ruff linter
+make format        # Auto-format code
+make typecheck     # Run mypy type checker
+make check         # Run all code quality checks
+make version       # Print current version
+```
+
+---
+
+## Overview
+
+`robotframework-chat` is an **infrastructure-first** testing platform designed for:
+
+- **Deterministic LLM evaluation** - Machine-verifiable test results
+- **Containerized code execution** - Safe, isolated testing environments
+- **Multi-model comparison** - Test multiple LLMs simultaneously
+- **CI/CD integration** - Automated regression detection with database archiving
+- **Superset dashboards** - Visual trend analysis and model comparison
+- **Scalable test organization** - IQ-tagged difficulty levels
+
+### Core Philosophy
+
+- **LLMs are software** → they should be tested like software
+- **Judging must be constrained** → graders return structured data only
+- **Determinism first, intelligence later**
+- **Robot Framework as the orchestration layer**
+- **CI-native, regression-focused**
+- **Every test run is archived** → listeners always active
 
 ---
 
@@ -172,71 +266,28 @@ LLM Generates Working Code (IQ:120)
     Should Contain    ${result}[stdout]    120
 ```
 
-### Multi-Model Comparison
-
-```robot
-*** Settings ***
-Resource          resources/llm_containers.resource
-
-Suite Setup       Start LLM Container    OLLAMA_CPU    pull_models=llama3,codellama
-Suite Teardown    Stop LLM Container
-
-*** Test Cases ***
-Compare Models (IQ:130)
-    ${responses}=    Ask Multiple LLMs    Write a sort function    llama3,codellama
-    ${comparison}=    Run Multi-Model Comparison    Write a sort function
-    Log    Best model: ${comparison}[best_model]
-```
-
----
-
-## Docker Configuration
-
-### Container Profiles
-
-Pre-defined resource profiles in `robot/resources/container_profiles.resource`:
-
-| Profile | CPU | Memory | Network | Use Case |
-|---------|-----|--------|---------|----------|
-| `MINIMAL` | 0.25 cores | 128 MB | None | Simple scripts |
-| `STANDARD` | 0.5 cores | 512 MB | None | General testing |
-| `PERFORMANCE` | 1.0 cores | 1 GB | None | Heavy computation |
-| `NETWORKED` | 0.5 cores | 512 MB | Bridge | Network access needed |
-| `OLLAMA_CPU` | 2.0 cores | 4 GB | Bridge | LLM inference |
-
-### Custom Container Configuration
-
-```robot
-*** Variables ***
-${custom_config}=    Create Dictionary
-...    image=python:3.11-slim
-...    cpu_cores=0.25
-...    memory_mb=256
-...    network_mode=none
-...    read_only=True
-
-*** Test Cases ***
-Custom Resources (IQ:120)
-    ${container}=    Docker.Create Configurable Container    ${custom_config}
-    ${result}=    Docker.Execute In Container    ${container}    python3 -c "print('Hello')"
-    Docker.Stop Container    ${container}
-```
-
 ---
 
 ## Repository Structure
 
 ```
 robotframework-chat/
-├── README.md                   # This file
+├── readme.md                   # This file
 ├── ROADMAP.md                  # Project roadmap
 ├── AGENTS.md                   # Agent instructions
 ├── DEV.md                      # Development guidelines
-├── pyproject.toml              # Python dependencies
-├── src/rfc/                    # Python keyword library (canonical source)
-│   ├── ollama.py               # Ollama API client (generation + model discovery)
-│   ├── models.py               # Shared data classes (GradeResult, SafetyResult)
-│   ├── ci_metadata.py          # Shared CI metadata collection
+├── Makefile                    # Build, test, deploy targets
+├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
+├── .env.example                # Environment variable template
+├── pyproject.toml              # Python dependencies + optional extras
+├── src/rfc/                    # Python keyword library
+│   ├── __init__.py             # Package version (__version__)
+│   ├── ollama.py               # Ollama API client
+│   ├── models.py               # Shared data classes
+│   ├── ci_metadata.py          # CI metadata collection
+│   ├── ci_metadata_listener.py # Listener: CI metadata → Robot output
+│   ├── db_listener.py          # Listener: test results → SQL database
+│   ├── test_database.py        # SQLite + PostgreSQL database backends
 │   ├── keywords.py             # Core LLM keywords
 │   ├── grader.py               # LLM answer grading
 │   ├── safety_keywords.py      # Safety testing keywords
@@ -244,9 +295,7 @@ robotframework-chat/
 │   ├── docker_config.py        # Container configuration models
 │   ├── container_manager.py    # Docker lifecycle management
 │   ├── docker_keywords.py      # Docker container keywords
-│   ├── test_database.py        # SQLite test results database
-│   ├── pre_run_modifier.py     # Dynamic model configuration
-│   └── ci_metadata_listener.py # GitLab CI metadata listener
+│   └── pre_run_modifier.py     # Dynamic model configuration
 ├── robot/                      # Robot Framework tests
 │   ├── math/tests/             # Math reasoning tests
 │   ├── docker/                 # Docker-based tests
@@ -255,13 +304,16 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
-│       ├── container_profiles.resource
-│       ├── environments.resource
-│       └── llm_containers.resource
-├── dashboard/                  # Dash-based test runner UI
-│   └── core/                   # Session management, runner, model discovery
+├── superset/                   # Superset configuration
+│   ├── superset_config.py      # Superset settings
+│   └── bootstrap_dashboards.py # Pre-configured charts & dashboard
 ├── scripts/                    # Import/query/CI utilities
+│   ├── import_test_results.py  # Import output.xml → database
+│   └── generate_ci_metadata.py # Generate CI metadata JSON
 ├── docs/                       # Additional documentation
+│   ├── TEST_DATABASE.md        # Database schema & usage
+│   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
+├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks
 ```
@@ -273,45 +325,23 @@ robotframework-chat/
 ### Code Quality
 
 ```bash
-# Run linting
-uv run ruff check .
+make lint          # ruff check .
+make format        # ruff format .
+make typecheck     # mypy src/
+make check         # lint + typecheck
 
-# Run formatting
-uv run ruff format .
-
-# Run type checking
-uv run mypy src/
-
-# Run pre-commit hooks
+# Or run manually
 pre-commit run --all-files
 ```
 
-### Running Tests
+### Running Tests with Debug Output
 
 ```bash
-# Run specific test file
-uv run robot -d results robot/docker/python/tests/code_generation.robot
-
-# Run with specific tag
-uv run robot -d results -i IQ:130 robot/docker/python
-
-# Run with timeout
-uv run robot -d results --variable DEFAULT_TIMEOUT:60 robot/docker/llm
-
-# Dry run
-uv run robot -d results --dryrun robot/docker/python
+uv run robot -d results -L DEBUG \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/
 ```
-
----
-
-## Why Robot Framework?
-
-- **Proven** in hardware, embedded, and systems testing
-- **Clear separation** of intent (test cases) and implementation (keywords)
-- **Excellent logs** and reports with built-in screenshots/logs
-- **CI-native** with JUnit XML and other output formats
-- **Familiar** to QA and systems engineers
-- **Extensible** via Python libraries
 
 ---
 
@@ -323,7 +353,6 @@ uv run robot -d results --dryrun robot/docker/python
 4. Run pre-commit hooks before committing
 
 ---
-
 
 ## Support
 

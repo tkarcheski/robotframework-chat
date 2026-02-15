@@ -1,7 +1,9 @@
-"""Import Robot Framework test results into SQLite database.
+"""Import Robot Framework test results into the database.
 
-Parses output.xml files and inserts test run data and individual
-results into the test history database.
+Parses output.xml files (including combined rebot output) and inserts
+test run data and individual results into the test history database.
+
+Respects DATABASE_URL for PostgreSQL; defaults to SQLite.
 """
 
 import argparse
@@ -15,11 +17,33 @@ from xml.etree import ElementTree as ET
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from rfc import __version__
 from rfc.test_database import TestDatabase, TestResult, TestRun
+
+
+def _parse_rf_timestamp(ts: str) -> Optional[datetime]:
+    """Parse a Robot Framework timestamp.
+
+    RF 7.x uses ISO-like format (2024-02-13T12:34:56.789000).
+    Older versions use 20240213 12:34:56.789.
+    """
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(ts.split(".")[0], "%Y%m%d %H:%M:%S")
+    except ValueError:
+        return None
 
 
 def parse_output_xml(xml_path: str) -> dict:
     """Parse Robot Framework output.xml file.
+
+    Handles both single-suite output and combined rebot output
+    (which nests sub-suites).
 
     Args:
         xml_path: Path to output.xml file
@@ -30,50 +54,42 @@ def parse_output_xml(xml_path: str) -> dict:
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
-    # Get suite info
+    # Get top-level suite info
     suite = root.find("suite")
     suite_name = suite.get("name") if suite is not None else "unknown"
 
     # Get statistics
     statistics = root.find("statistics")
     total_stats = statistics.find("total") if statistics is not None else None
-    stat = total_stats.find("stat") if total_stats is not None else None
 
-    if stat is not None:
-        total_tests = int(stat.get("pass", 0)) + int(stat.get("fail", 0))
-        passed = int(stat.get("pass", 0))
-        failed = int(stat.get("fail", 0))
-        skipped = int(stat.get("skip", 0))
-    else:
-        total_tests = passed = failed = skipped = 0
+    passed = failed = skipped = 0
+    if total_stats is not None:
+        for stat in total_stats.findall("stat"):
+            passed += int(stat.get("pass", 0))
+            failed += int(stat.get("fail", 0))
+            skipped += int(stat.get("skip", 0))
+    total_tests = passed + failed
 
     # Calculate duration from suite start/end times
+    duration = 0.0
     status = suite.find("status") if suite is not None else None
     if status is not None:
-        start_time = status.get("starttime", "")
-        end_time = status.get("endtime", "")
-        if start_time and end_time:
-            try:
-                # Parse format: 20240213 12:34:56.789
-                start = datetime.strptime(start_time.split(".")[0], "%Y%m%d %H:%M:%S")
-                end = datetime.strptime(end_time.split(".")[0], "%Y%m%d %H:%M:%S")
-                duration = (end - start).total_seconds()
-            except ValueError:
-                duration = 0.0
-        else:
-            duration = 0.0
-    else:
-        duration = 0.0
+        start_str = status.get("start", "") or status.get("starttime", "")
+        end_str = status.get("end", "") or status.get("endtime", "")
+        start_dt = _parse_rf_timestamp(start_str)
+        end_dt = _parse_rf_timestamp(end_str)
+        if start_dt and end_dt:
+            duration = (end_dt - start_dt).total_seconds()
 
-    # Extract metadata from suite
-    metadata = {}
+    # Extract metadata from suite (may be on top-level or nested)
+    metadata: dict[str, str] = {}
     if suite is not None:
-        for meta in suite.findall("metadata/item"):
+        for meta in suite.findall(".//metadata/item"):
             name = meta.get("name", "")
             value = meta.text or ""
             metadata[name] = value
 
-    # Extract individual test results
+    # Extract individual test results (recursive -- handles nested suites)
     test_results = []
     if suite is not None:
         for test in suite.findall(".//test"):
@@ -85,11 +101,9 @@ def parse_output_xml(xml_path: str) -> dict:
                 else "UNKNOWN"
             )
 
-            # Try to extract question/answer from test doc or messages
             doc = test.find("doc")
             question = doc.text if doc is not None else None
 
-            # Look for score in test tags or messages
             score = None
             grading_reason = None
             for tag in test.findall("tags/tag"):
@@ -99,7 +113,6 @@ def parse_output_xml(xml_path: str) -> dict:
                     except (ValueError, IndexError):
                         pass
 
-            # Get actual answer from last message
             actual_answer = None
             expected_answer = None
             for msg in test.findall(".//msg"):
@@ -149,22 +162,18 @@ def import_results(
     data = parse_output_xml(xml_path)
     metadata = data["metadata"]
 
-    # Determine model name from metadata or parameter
     if model_name is None:
         model_name = metadata.get("Model", os.getenv("DEFAULT_MODEL", "unknown"))
 
-    # Get model info from metadata
     model_release_date = metadata.get("Model_Release_Date")
     model_parameters = metadata.get("Model_Parameters")
 
-    # Get CI info from metadata or environment
     gitlab_commit = metadata.get("GitLab Commit", os.getenv("CI_COMMIT_SHA", ""))
     gitlab_branch = metadata.get("GitLab Branch", os.getenv("CI_COMMIT_REF_NAME", ""))
     gitlab_pipeline = metadata.get("GitLab Pipeline", os.getenv("CI_PIPELINE_URL", ""))
     runner_id = metadata.get("Runner ID", os.getenv("CI_RUNNER_ID", ""))
     runner_tags = metadata.get("Runner Tags", os.getenv("CI_RUNNER_TAGS", ""))
 
-    # Parse timestamp from metadata or use now
     timestamp_str = metadata.get("Timestamp")
     if timestamp_str:
         try:
@@ -174,7 +183,6 @@ def import_results(
     else:
         timestamp = datetime.now()
 
-    # Create test run
     run = TestRun(
         timestamp=timestamp,
         model_name=model_name or "unknown",
@@ -191,26 +199,24 @@ def import_results(
         failed=data["failed"],
         skipped=data["skipped"],
         duration_seconds=data["duration"],
+        rfc_version=__version__,
     )
 
-    # Insert test run
     run_id = db.add_test_run(run)
 
-    # Insert individual test results
-    test_results = []
-    for test_data in data["test_results"]:
-        test_results.append(
-            TestResult(
-                run_id=run_id,
-                test_name=test_data["name"],
-                test_status=test_data["status"],
-                score=test_data["score"],
-                question=test_data["question"],
-                expected_answer=test_data["expected_answer"],
-                actual_answer=test_data["actual_answer"],
-                grading_reason=test_data["grading_reason"],
-            )
+    test_results = [
+        TestResult(
+            run_id=run_id,
+            test_name=td["name"],
+            test_status=td["status"],
+            score=td["score"],
+            question=td["question"],
+            expected_answer=td["expected_answer"],
+            actual_answer=td["actual_answer"],
+            grading_reason=td["grading_reason"],
         )
+        for td in data["test_results"]
+    ]
 
     db.add_test_results(test_results)
 
@@ -240,16 +246,19 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize database
-    db = TestDatabase(args.db)
+    # Initialize database (respects DATABASE_URL env var for PostgreSQL)
+    if args.db:
+        db = TestDatabase(db_path=args.db)
+    else:
+        db = TestDatabase()
 
     # Find output.xml files
-    xml_files = []
+    xml_files: list[str] = []
     if os.path.isfile(args.output_xml):
         xml_files.append(args.output_xml)
     elif os.path.isdir(args.output_xml):
         if args.recursive:
-            for root, dirs, files in os.walk(args.output_xml):
+            for root, _dirs, files in os.walk(args.output_xml):
                 for f in files:
                     if f == "output.xml":
                         xml_files.append(os.path.join(root, f))
@@ -262,17 +271,16 @@ def main():
         print(f"No output.xml files found in: {args.output_xml}")
         sys.exit(1)
 
-    # Import each file
     imported_count = 0
     for xml_file in xml_files:
         try:
             run_id = import_results(xml_file, db, args.model)
-            print(f"✓ Imported {xml_file} (Run ID: {run_id})")
+            print(f"Imported {xml_file} (run_id={run_id})")
             imported_count += 1
         except Exception as e:
-            print(f"✗ Failed to import {xml_file}: {e}")
+            print(f"Failed to import {xml_file}: {e}")
 
-    print(f"\nImported {imported_count} test run(s) into database")
+    print(f"\nImported {imported_count} test run(s) into database at {db.db_path}")
 
 
 if __name__ == "__main__":

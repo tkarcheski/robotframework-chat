@@ -7,6 +7,7 @@ stages:
   - lint
   - test
   - report
+  - deploy
 
 variables:
   # Ollama configuration
@@ -15,6 +16,11 @@ variables:
 
   # Test configuration
   ROBOT_OPTIONS: "--metadata CI:true --metadata GitLab_URL:$CI_PROJECT_URL --metadata Commit_SHA:$CI_COMMIT_SHA"
+
+  # Database for test result archiving
+  # Set DATABASE_URL in GitLab CI/CD variables to archive to PostgreSQL.
+  # When unset the DbListener archives to local SQLite automatically.
+  # DATABASE_URL: "postgresql://rfc:rfc@postgres:5432/rfc"
 
 
 ## =============================================================================
@@ -72,30 +78,35 @@ mypy-check:
 
 # =============================================================================
 # TEST STAGE - Requires runner with 'ollama' tag
+#
+# Every robot run attaches both listeners:
+#   - DbListener: archives per-suite results to PostgreSQL or SQLite
+#   - CiMetadataListener: adds CI context to Robot Framework output
 # =============================================================================
 
 .robot_template: &robot_template
   tags:
     - ollama
   before_script:
-    - uv sync --extra dev
+    - uv sync --extra dev --extra superset
     - |
       echo "Checking Ollama at $OLLAMA_ENDPOINT..."
       if curl -s "$OLLAMA_ENDPOINT/api/tags" > /dev/null; then
         echo "Ollama is available"
       else
-        echo "⚠️  Warning: Ollama not available - tests may fail"
+        echo "Warning: Ollama not available - tests may fail"
       fi
 
 robot-math-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/math -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
+    - uv run robot -d results/math --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
   artifacts:
     when: always
     paths:
       - results/math/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -108,11 +119,12 @@ robot-docker-tests:
     - ollama
     - docker
   script:
-    - uv run robot -d results/docker -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+    - uv run robot -d results/docker --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
   artifacts:
     when: always
     paths:
       - results/docker/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -122,11 +134,12 @@ robot-safety-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/safety -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
+    - uv run robot -d results/safety --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
   artifacts:
     when: always
     paths:
       - results/safety/
+      - data/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -134,6 +147,9 @@ robot-safety-tests:
 
 # =============================================================================
 # REPORT STAGE
+#
+# 1. rebot merges all per-suite output.xml files into a single combined report
+# 2. The combined report is imported into the database as a pipeline-level run
 # =============================================================================
 
 aggregate-results:
@@ -149,14 +165,64 @@ aggregate-results:
       artifacts: true
       optional: true
   before_script:
-    - uv sync --extra dev
+    - uv sync --extra dev --extra superset
   script:
-    - mkdir -p results/aggregated
+    - mkdir -p results/combined
+
+    # ── Collect output.xml files from all test jobs ──
+    - |
+      OUTPUT_FILES=""
+      for f in results/math/output.xml results/docker/output.xml results/safety/output.xml; do
+        if [ -f "$f" ]; then
+          OUTPUT_FILES="$OUTPUT_FILES $f"
+        fi
+      done
+
+    # ── Merge with rebot ──
+    - |
+      if [ -z "$OUTPUT_FILES" ]; then
+        echo "No output.xml files found - nothing to aggregate"
+        exit 0
+      fi
+      echo "Combining:$OUTPUT_FILES"
+      uv run rebot \
+        --name "Combined Results" \
+        --outputdir results/combined \
+        --output output.xml \
+        --log log.html \
+        --report report.html \
+        --nostatusrc \
+        $OUTPUT_FILES
+      echo "Combined report: results/combined/report.html"
+
+    # ── Import combined results into the database ──
+    - uv run python scripts/import_test_results.py results/combined/output.xml --model "$DEFAULT_MODEL"
+
+    # ── CI metadata ──
     - uv run python scripts/generate_ci_metadata.py || echo "Metadata generation skipped"
+
   artifacts:
     when: always
     paths:
-      - results/aggregated/
+      - results/combined/
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# =============================================================================
+# DEPLOY STAGE - Deploy / update Superset stack
+#
+# Runs only on the default branch when SUPERSET_DEPLOY_HOST is configured.
+# Requires a runner with SSH access to the deploy target.
+# =============================================================================
+
+deploy-superset:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
+  script:
+    - |
+      echo "Deploying Superset stack to $SUPERSET_DEPLOY_HOST ..."
+      ssh "$SUPERSET_DEPLOY_USER@$SUPERSET_DEPLOY_HOST" \
+        "cd $SUPERSET_DEPLOY_PATH && git pull && docker compose -f docker-compose.yml up -d --pull always"
+  allow_failure: true

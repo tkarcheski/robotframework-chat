@@ -13,6 +13,19 @@ This document defines how humans and agents develop in this repository.
 
 ---
 
+## Setup
+
+```bash
+# Install all dependencies
+make install
+# or: uv sync --extra dev --extra superset
+
+# Install pre-commit hooks
+pre-commit install
+```
+
+---
+
 ## Test-Driven Development
 
 All behavior changes MUST follow TDD:
@@ -82,13 +95,39 @@ Do not commit if hooks fail. Fix the issues first.
 
 ## Commands
 
+### Makefile Targets (preferred)
+
 ```bash
-# Run all tests
-uv run pytest
-uv run robot -d results robot/math
+make test          # Run all test suites (math, docker, safety)
+make test-math     # Run math tests
+make test-docker   # Run Docker tests
+make test-safety   # Run safety tests
+make lint          # Run ruff linter
+make format        # Auto-format code
+make typecheck     # Run mypy type checker
+make check         # Run all code quality checks (lint + typecheck)
+make import        # Import output.xml results: make import PATH=results/
+make version       # Print current version
+```
+
+All `make test-*` targets attach both listeners automatically:
+- `rfc.db_listener.DbListener` — archives results to database
+- `rfc.ci_metadata_listener.CiMetadataListener` — collects CI metadata
+
+### Manual Robot Framework Commands
+
+```bash
+# Run with both listeners
+uv run robot -d results/math \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/
 
 # Run specific test
-uv run robot -d results -t "Test Name" robot/path/tests/file.robot
+uv run robot -d results -t "Test Name" \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/path/tests/file.robot
 
 # Run pre-commit
 pre-commit run --all-files
@@ -96,6 +135,15 @@ pre-commit run --all-files
 # Check git status
 git status
 git diff
+```
+
+### Docker / Superset
+
+```bash
+make up            # Start PostgreSQL + Redis + Superset
+make down          # Stop all services
+make bootstrap     # First-time Superset setup
+make logs          # Tail service logs
 ```
 
 ---
@@ -117,10 +165,16 @@ git diff
 ### Debugging Tips
 ```bash
 # Run with debug output
-uv run robot -d results -L DEBUG robot/
+uv run robot -d results -L DEBUG \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/
 
 # Run single test with verbose output
-uv run robot -d results -t "Test Name" -L TRACE robot/path/tests/file.robot
+uv run robot -d results -t "Test Name" -L TRACE \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/path/tests/file.robot
 
 # Check container logs
 docker logs ${CONTAINER_ID}
