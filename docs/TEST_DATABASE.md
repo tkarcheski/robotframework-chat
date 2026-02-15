@@ -1,6 +1,6 @@
 # Test Results Database
 
-This document describes the SQLite database for storing and analyzing test results with Git LFS support.
+This document describes the SQL database for storing and analyzing Robot Framework test results, with support for SQLite and PostgreSQL backends.
 
 ## Overview
 
@@ -8,63 +8,45 @@ The test database provides persistent storage for Robot Framework test results, 
 - Historical tracking of model performance
 - Comparison between models over time
 - Analysis of test trends and patterns
+- Visualization in Apache Superset dashboards
 - Export for external analysis
 
-## Database Location
+## Backends
 
-**File**: `data/test_history.db` (tracked with Git LFS)
+| Backend | When Used | Install |
+|---------|-----------|---------|
+| **SQLite** | Default when `DATABASE_URL` is not set | Built-in (no extra deps) |
+| **PostgreSQL** | When `DATABASE_URL` is set to a `postgresql://` URL | `uv sync --extra superset` |
 
-## Schema
-
-### Tables
-
-#### `test_runs`
-One row per pipeline execution:
-- `id`: Primary key
-- `timestamp`: When the test ran
-- `model_name`: LLM model used (e.g., llama3, mistral)
-- `model_release_date`: Model release date from metadata
-- `model_parameters`: Model size (e.g., 8B, 70B)
-- `test_suite`: Test suite name (math, docker, safety)
-- `gitlab_commit`: Git commit SHA
-- `gitlab_branch`: Git branch name
-- `gitlab_pipeline_url`: Link to CI pipeline
-- `runner_id`: CI runner identifier
-- `runner_tags`: Runner capabilities
-- `total_tests`, `passed`, `failed`, `skipped`: Test counts
-- `duration_seconds`: Test execution time
-
-#### `test_results`
-Individual test case results:
-- `run_id`: Foreign key to test_runs
-- `test_name`: Test case name
-- `test_status`: PASS, FAIL, or SKIP
-- `score`: Graded score (0 or 1) if applicable
-- `question`: Test question/prompt
-- `expected_answer`: Expected correct answer
-- `actual_answer`: Model's response
-- `grading_reason`: Explanation from grader
-
-#### `models`
-Model metadata:
-- `name`: Model identifier
-- `full_name`: Human-readable name
-- `organization`: Model creator
-- `release_date`: Model release date
-- `parameters`: Model size
-- `last_tested`: Timestamp of last test
-
-## Usage
-
-### Initialize Database
+Backend selection is automatic based on the `DATABASE_URL` environment variable:
 
 ```bash
-uv run python -m rfc.test_database init
+# PostgreSQL (used with Superset)
+export DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
+
+# SQLite (default - no configuration needed)
+# Stores to data/test_history.db
 ```
 
-### Import Test Results
+## How Results Get Into the Database
 
-After running tests, import the results:
+Results are archived automatically via the `DbListener` Robot Framework listener:
+
+```bash
+uv run robot -d results/math \
+  --listener rfc.db_listener.DbListener \
+  --listener rfc.ci_metadata_listener.CiMetadataListener \
+  robot/math/tests/
+```
+
+The `DbListener` hooks into Robot Framework's lifecycle:
+1. `start_suite` — records start time, collects CI metadata
+2. `end_test` — accumulates per-test results (name, status, score)
+3. `end_suite` — at the top-level suite, writes a `TestRun` and all `TestResult` rows to the database
+
+The `Makefile` targets and CI pipeline always attach both listeners.
+
+You can also import results after the fact from `output.xml` files:
 
 ```bash
 # Import single output.xml
@@ -77,54 +59,91 @@ uv run python scripts/import_test_results.py results/ --recursive
 uv run python scripts/import_test_results.py results/math/output.xml --model llama3.1
 ```
 
-### Query Results
+## Schema
 
-#### View Performance Summary
+### Tables
+
+#### `test_runs`
+One row per test suite execution (or per pipeline-level combined run):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-incrementing primary key |
+| `timestamp` | DATETIME | When the test ran |
+| `model_name` | TEXT | LLM model used (e.g., llama3, mistral) |
+| `model_release_date` | TEXT | Model release date from metadata |
+| `model_parameters` | TEXT | Model size (e.g., 8B, 70B) |
+| `test_suite` | TEXT | Test suite name (math, docker, safety) |
+| `gitlab_commit` | TEXT | Git commit SHA |
+| `gitlab_branch` | TEXT | Git branch name |
+| `gitlab_pipeline_url` | TEXT | Link to CI pipeline |
+| `runner_id` | TEXT | CI runner identifier |
+| `runner_tags` | TEXT | Runner capabilities |
+| `total_tests` | INTEGER | Total test count |
+| `passed` | INTEGER | Passed test count |
+| `failed` | INTEGER | Failed test count |
+| `skipped` | INTEGER | Skipped test count |
+| `duration_seconds` | REAL | Test execution time in seconds |
+| `rfc_version` | TEXT | Version of robotframework-chat |
+
+#### `test_results`
+Individual test case results:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK | Auto-incrementing primary key |
+| `run_id` | INTEGER FK | Foreign key to `test_runs.id` |
+| `test_name` | TEXT | Test case name |
+| `test_status` | TEXT | PASS, FAIL, or SKIP |
+| `score` | INTEGER | Graded score (0 or 1) if applicable |
+| `question` | TEXT | Test question/prompt |
+| `expected_answer` | TEXT | Expected correct answer |
+| `actual_answer` | TEXT | Model's response |
+| `grading_reason` | TEXT | Explanation from grader |
+
+#### `models`
+Model metadata:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `name` | TEXT PK | Model identifier |
+| `full_name` | TEXT | Human-readable name |
+| `organization` | TEXT | Model creator |
+| `release_date` | TEXT | Model release date |
+| `parameters` | TEXT | Model size |
+| `last_tested` | DATETIME | Timestamp of last test |
+
+## Querying Results
+
+### CLI
 
 ```bash
+# Initialize database (creates tables if needed)
+uv run python -m rfc.test_database init
+
+# View performance stats
+uv run python -m rfc.test_database stats
+
+# Export to JSON
+uv run python -m rfc.test_database export [output.json]
+```
+
+### Script Queries
+
+```bash
+# View performance summary
 uv run python scripts/query_results.py performance
-```
 
-Output:
-```
-Model Performance Summary
-================================================================================
-Model                | Runs | Pass Rate | Passed  | Failed | Avg Duration
-llama3               | 15   | 87.5%     | 131     | 19     | 45.2s
-mistral              | 12   | 84.2%     | 101     | 19     | 42.8s
-codellama            | 8    | 91.3%     | 63      | 6      | 38.5s
-```
-
-#### View Recent Runs
-
-```bash
-# Show last 10 runs
-uv run python scripts/query_results.py recent
-
-# Show last 20 runs
+# Show recent runs
 uv run python scripts/query_results.py recent --limit 20
-```
 
-#### View Test History
-
-```bash
-# Show history for specific test
+# View test history
 uv run python scripts/query_results.py history "IQ 100 Basic Addition"
-```
 
-#### Compare Models
-
-```bash
+# Compare models
 uv run python scripts/query_results.py compare
-```
 
-#### Export to JSON
-
-```bash
-# Export full database
-uv run python scripts/query_results.py export
-
-# Export to specific file
+# Export to JSON
 uv run python scripts/query_results.py export --output my_export.json
 ```
 
@@ -133,8 +152,11 @@ uv run python scripts/query_results.py export --output my_export.json
 ```python
 from rfc.test_database import TestDatabase
 
-# Initialize
+# SQLite (default)
 db = TestDatabase()
+
+# PostgreSQL
+db = TestDatabase(database_url="postgresql://rfc:changeme@localhost:5432/rfc")
 
 # Get performance stats
 stats = db.get_model_performance()
@@ -151,165 +173,109 @@ history = db.get_test_history("IQ 100 Basic Addition")
 db.export_to_json("export.json")
 ```
 
+## Superset Visualization
+
+When using PostgreSQL, results can be visualized in Apache Superset dashboards.
+
+### Setup
+
+```bash
+cp .env.example .env          # edit credentials
+make up                       # start PostgreSQL + Redis + Superset
+make bootstrap                # first-time init (creates admin, charts, dashboard)
+open http://localhost:8088     # login with credentials from .env
+```
+
+### Pre-configured Charts
+
+The bootstrap script creates these charts in Superset:
+
+| Chart | Type | Description |
+|-------|------|-------------|
+| Pass Rate Over Time | Line | Test pass rate trend by model |
+| Model Comparison | Bar | Side-by-side model pass rates |
+| Test Results Breakdown | Pie | Pass/fail/skip distribution |
+| Test Suite Duration Trend | Line | Execution time trends |
+| Recent Test Runs | Table | Latest test run details |
+| Failures by Test Name | Bar | Most common failing tests |
+
+All charts are assembled into a "Robot Framework Test Results" dashboard.
+
 ## CI/CD Integration
 
-The GitLab CI pipeline automatically imports test results after each run:
-
-1. Tests execute and produce `output.xml`
-2. `import-test-results` job parses and imports into database
-3. Database artifact is saved with each pipeline
-4. Database is committed back to repository (main branch only)
-
-### Automatic Import
-
-The pipeline runs:
-```bash
-uv run python scripts/import_test_results.py results/math/output.xml
-uv run python scripts/import_test_results.py results/docker/output.xml
-uv run python scripts/import_test_results.py results/safety/output.xml
-```
-
-## Git LFS Configuration
-
-The database is tracked with Git LFS:
+The GitLab CI pipeline archives results at two levels:
 
 ```
-# .gitattributes
-data/*.db filter=lfs diff=lfs merge=lfs -text
+test stage:  math ─────────┐   docker ────────┐   safety ────────┐
+             listener→DB   │   listener→DB    │   listener→DB   │
+             (per-suite)   │   (per-suite)    │   (per-suite)   │
+                           ▼                  ▼                 ▼
+report stage:          rebot merges output.xml files
+                           │
+                           ├── results/combined/report.html  (one unified report)
+                           ├── results/combined/log.html
+                           └── import → DB  (pipeline-level combined run)
 ```
 
-### Working with LFS
+1. **Per-suite archiving** (test stage): The `DbListener` on each test job archives results as each suite completes
+2. **Combined archiving** (report stage): `rebot` merges all `output.xml` files, then `import_test_results.py` imports the combined result
 
-```bash
-# Pull LFS files
-git lfs pull
-
-# Check LFS status
-git lfs status
-
-# View LFS tracked files
-git lfs ls-files
-```
+Set `DATABASE_URL` in GitLab CI/CD variables to archive to PostgreSQL. When unset, archiving falls back to local SQLite.
 
 ## Database Maintenance
 
-### Size Management
-
-The database grows with each test run. Expected sizes:
-- 100 test runs: ~1-2 MB
-- 1,000 test runs: ~10-15 MB
-- 10,000 test runs: ~100-150 MB
-
-### Cleanup Old Data
-
-To archive old data:
+### SQLite
 
 ```bash
-# Export old data
-uv run python scripts/query_results.py export --output archive_2024.json
-
-# Vacuum database to reclaim space
+# Vacuum to reclaim space
 sqlite3 data/test_history.db "VACUUM;"
-```
 
-### Backup
-
-The database is backed up via Git LFS. For additional backup:
-
-```bash
-# Create timestamped backup
+# Create backup
 cp data/test_history.db "data/test_history_$(date +%Y%m%d).db"
 ```
 
-## Analysis Examples
+### PostgreSQL
 
-### Pass Rate Trend
+```bash
+# Connect to database
+psql $DATABASE_URL
 
-```python
-from rfc.test_database import TestDatabase
-import matplotlib.pyplot as plt
+# Check table sizes
+psql $DATABASE_URL -c "SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC;"
 
-db = TestDatabase()
-
-# Get runs for a specific model
-runs = db.get_recent_runs(limit=100)
-llama3_runs = [r for r in runs if r['model_name'] == 'llama3']
-
-# Extract dates and pass rates
-dates = [r['timestamp'] for r in llama3_runs]
-pass_rates = [r['passed'] / r['total_tests'] * 100 for r in llama3_runs]
-
-plt.plot(dates, pass_rates)
-plt.title('Llama 3 Pass Rate Over Time')
-plt.xlabel('Date')
-plt.ylabel('Pass Rate (%)')
-plt.show()
-```
-
-### Model Comparison
-
-```python
-from rfc.test_database import TestDatabase
-
-db = TestDatabase()
-stats = db.get_model_performance()
-
-print("Model Ranking by Pass Rate:")
-for i, stat in enumerate(sorted(stats, key=lambda x: x['avg_pass_rate'], reverse=True), 1):
-    print(f"{i}. {stat['model_name']}: {stat['avg_pass_rate']:.1f}%")
+# Vacuum
+psql $DATABASE_URL -c "VACUUM ANALYZE;"
 ```
 
 ## Troubleshooting
 
-### Database Locked
+### Database Locked (SQLite)
 
-If you get "database is locked" errors:
 ```bash
 # Check for other processes
 lsof data/test_history.db
 
 # Wait and retry, or copy database
 cp data/test_history.db data/test_history_temp.db
-# Use temp database
 ```
 
-### Corrupted Database
+### PostgreSQL Connection Issues
 
-If the database becomes corrupted:
 ```bash
-# Try to recover
-sqlite3 data/test_history.db ".recover" > recover.sql
-rm data/test_history.db
-sqlite3 data/test_history.db < recover.sql
+# Check if PostgreSQL is running
+make logs
+
+# Test connection
+psql $DATABASE_URL -c "SELECT 1;"
+
+# Check if tables exist
+psql $DATABASE_URL -c "\dt"
 ```
 
-### LFS Issues
+### Missing SQLAlchemy
 
-If Git LFS is not working:
+If you see `ImportError: sqlalchemy and psycopg2-binary are required`:
+
 ```bash
-# Install Git LFS
-git lfs install
-
-# Pull LFS files
-git lfs pull
-
-# Track database
-git lfs track "data/*.db"
+uv sync --extra superset
 ```
-
-## Best Practices
-
-1. **Import regularly**: Import test results after each local test run
-2. **Commit database**: Push database changes with test code changes
-3. **Query before running**: Check historical performance before re-running tests
-4. **Export for sharing**: Use JSON export to share results with team
-5. **Monitor size**: Watch database size and archive old data if needed
-
-## Future Enhancements
-
-Potential improvements:
-- Web dashboard for viewing results
-- Automated trend analysis
-- Performance regression detection
-- Integration with model comparison tools
-- Export to cloud storage (S3, GCS)

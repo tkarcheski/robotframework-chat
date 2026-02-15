@@ -77,9 +77,9 @@ mypy-check:
 # =============================================================================
 # TEST STAGE - Requires runner with 'ollama' tag
 #
-# Every robot run attaches the DbListener which archives per-suite results to:
-#   - PostgreSQL when DATABASE_URL is set (Superset reads from here)
-#   - SQLite (data/test_history.db) otherwise
+# Every robot run attaches both listeners:
+#   - DbListener: archives per-suite results to PostgreSQL or SQLite
+#   - CiMetadataListener: adds CI context to Robot Framework output
 # =============================================================================
 
 .robot_template: &robot_template
@@ -99,7 +99,7 @@ robot-math-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/math --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
+    - uv run robot -d results/math --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/math/tests/
   artifacts:
     when: always
     paths:
@@ -114,7 +114,7 @@ robot-docker-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/docker --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
+    - uv run robot -d results/docker --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/docker/
   artifacts:
     when: always
     paths:
@@ -129,7 +129,7 @@ robot-safety-tests:
   stage: test
   <<: *robot_template
   script:
-    - uv run robot -d results/safety --listener rfc.db_listener.DbListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
+    - uv run robot -d results/safety --listener rfc.db_listener.DbListener --listener rfc.ci_metadata_listener.CiMetadataListener -v OLLAMA_ENDPOINT:$OLLAMA_ENDPOINT -v DEFAULT_MODEL:$DEFAULT_MODEL robot/safety/
   artifacts:
     when: always
     paths:
