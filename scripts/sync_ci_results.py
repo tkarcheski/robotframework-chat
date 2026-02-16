@@ -236,11 +236,24 @@ class GitLabArtifactFetcher:
         return out_path
 
 
+# Known artifact paths where output.xml may be stored in CI jobs.
+# The generated pipeline stores results under results/<suite>/.
+# We try each path in order until one succeeds.
+_ARTIFACT_PATHS = [
+    "output.xml",
+    "results/math/output.xml",
+    "results/docker/output.xml",
+    "results/safety/output.xml",
+    "results/dashboard/output.xml",
+]
+
+
 def sync_ci_results(
     fetcher: GitLabArtifactFetcher,
     db: TestDatabase,
     pipeline_limit: int = 5,
     ref: Optional[str] = None,
+    artifact_paths: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Fetch recent CI pipeline artifacts and import into database.
 
@@ -249,10 +262,13 @@ def sync_ci_results(
         db: Database instance.
         pipeline_limit: Number of recent pipelines to process.
         ref: Optional branch filter.
+        artifact_paths: Artifact paths to try per job (default: _ARTIFACT_PATHS).
 
     Returns:
         Dictionary with sync results.
     """
+    paths_to_try = artifact_paths if artifact_paths is not None else _ARTIFACT_PATHS
+
     result: dict[str, Any] = {
         "pipelines_checked": 0,
         "artifacts_downloaded": 0,
@@ -282,9 +298,21 @@ def sync_ci_results(
 
             for job in jobs:
                 job_id = job["id"]
-                xml_path = fetcher.download_job_artifact(
-                    job_id=job_id, output_dir=tmpdir
-                )
+
+                # Try each known artifact path until one succeeds
+                xml_path = None
+                for artifact_path in paths_to_try:
+                    xml_path = fetcher.download_job_artifact(
+                        job_id=job_id,
+                        output_dir=tmpdir,
+                        artifact_path=artifact_path,
+                    )
+                    if xml_path is not None:
+                        _log.debug(
+                            "Found artifact for job %d at %s", job_id, artifact_path
+                        )
+                        break
+
                 if xml_path is None:
                     continue
 

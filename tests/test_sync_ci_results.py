@@ -431,7 +431,7 @@ class TestSyncCiResults:
 
     @patch("scripts.sync_ci_results.import_results")
     def test_sync_handles_download_failure(self, mock_import):
-        """Continues when artifact download fails for a job."""
+        """Continues when artifact download fails for all paths in a job."""
         fetcher = MagicMock()
         fetcher.fetch_recent_pipelines.return_value = [
             {"id": 500, "web_url": "https://gl.test/p/500"},
@@ -439,6 +439,7 @@ class TestSyncCiResults:
         fetcher.fetch_pipeline_jobs.return_value = [
             {"id": 1001, "name": "test-math", "status": "success"},
         ]
+        # None for every artifact path tried
         fetcher.download_job_artifact.return_value = None
 
         db = MagicMock()
@@ -543,14 +544,45 @@ class TestSyncCiResults:
             {"id": 1001, "name": "has-artifact", "status": "success"},
             {"id": 1002, "name": "no-artifact", "status": "success"},
         ]
+        # Use a single path list so each job gets exactly one try
+        # Job 1001 succeeds on first path, job 1002 fails
         fetcher.download_job_artifact.side_effect = ["/tmp/output.xml", None]
 
         db = MagicMock()
         db.get_recent_runs.return_value = []
 
-        result = sync_ci_results(fetcher, db)
+        result = sync_ci_results(
+            fetcher, db, artifact_paths=["output.xml"]
+        )
         assert result["artifacts_downloaded"] == 1
         assert result["runs_imported"] == 1
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_sync_tries_multiple_artifact_paths(self, mock_import):
+        """Falls back to alternative artifact paths when first path fails."""
+        mock_import.return_value = 1
+
+        fetcher = MagicMock()
+        fetcher.fetch_recent_pipelines.return_value = [
+            {"id": 500, "web_url": "https://gl.test/p/500"},
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "test-math", "status": "success"},
+        ]
+        # First path fails (output.xml), second succeeds (results/math/output.xml)
+        fetcher.download_job_artifact.side_effect = [None, "/tmp/output.xml"]
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = sync_ci_results(
+            fetcher,
+            db,
+            artifact_paths=["output.xml", "results/math/output.xml"],
+        )
+        assert result["artifacts_downloaded"] == 1
+        assert result["runs_imported"] == 1
+        assert fetcher.download_job_artifact.call_count == 2
 
 
 # ── verify_sync including threshold, null timestamp (5 tests) ────────
