@@ -1,0 +1,46 @@
+name: Mirror claude-code-staging to GitLab
+
+on:
+  push:
+    branches:
+      - claude-code-staging
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: self-hosted
+    environment: robotframework
+    steps:
+      - name: Checkout claude-code-staging (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: claude-code-staging
+          fetch-depth: 0
+
+      - name: Push to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "::add-mask::${GITLAB_TOKEN}"
+
+          if [ -z "${GITLAB_TOKEN:-}" ]; then
+            echo "::error::GITLAB_TOKEN secret must be configured."
+            echo "Create a GitLab personal access token with write_repository scope"
+            echo "and add it as a repository secret named GITLAB_TOKEN."
+            exit 1
+          fi
+
+          AUTH_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/space-nomads/robotframework-chat.git"
+
+          if git remote get-url gitlab >/dev/null 2>&1; then
+            git remote set-url gitlab "${AUTH_URL}"
+          else
+            git remote add gitlab "${AUTH_URL}"
+          fi
+
+          echo "Mirroring claude-code-staging to GitLab"
+          git push gitlab refs/heads/claude-code-staging:refs/heads/claude-code-staging --force
+
+          echo "Mirror complete."
