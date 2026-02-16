@@ -18,6 +18,7 @@
     paths:
       - results/
       - data/
+      - ollama_timestamps.json
   allow_failure: true
 
 .dashboard-setup:
