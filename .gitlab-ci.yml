@@ -30,7 +30,7 @@ variables:
 
 # ── Sync ─────────────────────────────────────────────────────────────
 
-mirror-to-github:
+.mirror-to-github:
   stage: sync
   script: [bash ci/sync.sh]
   rules:
