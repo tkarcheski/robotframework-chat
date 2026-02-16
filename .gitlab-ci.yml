@@ -30,9 +30,9 @@ variables:
 
 # ── Sync ─────────────────────────────────────────────────────────────
 
-mirror-to-github:
+sync-push:
   stage: sync
-  script: [bash ci/sync.sh]
+  script: [make sync-push]
   rules:
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "schedule"
