@@ -24,6 +24,7 @@ from dashboard.layout import (
 from dashboard.monitoring import (
     OllamaMonitor,
     PipelineMonitor,
+    build_job_table,
     build_ollama_cards,
     build_pipeline_table,
 )
@@ -403,16 +404,18 @@ def switch_top_tab(active_tab):
 
 @app.callback(
     Output("pipelines-table", "children"),
+    Output("jobs-table", "children"),
     Output("pipelines-last-updated", "children"),
     Input("monitoring-interval", "n_intervals"),
 )
 def update_pipelines(n_intervals):
-    """Fetch and render the GitLab pipelines table."""
+    """Fetch and render the GitLab pipelines and jobs tables."""
     monitor = PipelineMonitor.get()
     monitor.poll_if_due()
-    table = build_pipeline_table(monitor.pipelines, monitor=monitor)
+    pipeline_table = build_pipeline_table(monitor.pipelines, monitor=monitor)
+    job_table = build_job_table(monitor.jobs, monitor=monitor)
     ts = datetime.now().strftime("Updated %H:%M")
-    return table, ts
+    return pipeline_table, job_table, ts
 
 
 # -- Callback 9: update Ollama host cards -------------------------------------

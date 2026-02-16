@@ -445,6 +445,7 @@ class _SQLAlchemyBackend(_Backend):
                     rfc_version=run.rfc_version,
                 )
             )
+            assert result.inserted_primary_key is not None
             run_id = result.inserted_primary_key[0]
 
             # Upsert model last_tested

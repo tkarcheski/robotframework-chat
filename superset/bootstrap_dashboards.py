@@ -22,7 +22,7 @@ def bootstrap() -> None:
     app = create_app()
 
     with app.app_context():
-        from superset import db  # type: ignore[import-untyped]
+        from superset import db  # type: ignore[import-untyped,attr-defined]
         from superset.connectors.sqla.models import (  # type: ignore[import-untyped]
             SqlaTable,
         )

@@ -388,7 +388,7 @@ def create_app_layout() -> html.Div:
                         children=[
                             dbc.Tab(label="Sessions", tab_id="top-sessions"),
                             dbc.Tab(label="Ollama Hosts", tab_id="top-ollama"),
-                            dbc.Tab(label="GitLab Pipelines", tab_id="top-pipelines"),
+                            dbc.Tab(label="GitLab CI", tab_id="top-pipelines"),
                         ],
                         className="mb-3",
                     ),

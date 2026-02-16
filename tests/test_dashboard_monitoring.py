@@ -4,10 +4,13 @@ import os
 from unittest.mock import MagicMock, patch
 
 from dashboard.monitoring import (
+    JobInfo,
     OllamaMonitor,
     PipelineInfo,
     PipelineMonitor,
     _detect_gitlab_from_git_remote,
+    _format_duration,
+    build_job_table,
     build_ollama_cards,
     build_pipeline_table,
 )
@@ -320,4 +323,279 @@ class TestBuildPipelineTable:
             )
         ]
         result = build_pipeline_table(pipes)
+        assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# JobInfo dataclass
+# ---------------------------------------------------------------------------
+
+
+class TestJobInfo:
+    """Tests for the JobInfo dataclass."""
+
+    def test_job_info_fields(self):
+        job = JobInfo(
+            id=1001,
+            name="test-math",
+            status="success",
+            duration=123.4,
+            pipeline_id=500,
+            pipeline_ref="main",
+            pipeline_sha="abcdef12",
+            web_url="https://gl.test/-/jobs/1001",
+            created_at="2025-01-01T00:00:00Z",
+            finished_at="2025-01-01T00:02:03Z",
+        )
+        assert job.id == 1001
+        assert job.name == "test-math"
+        assert job.status == "success"
+        assert job.duration == 123.4
+        assert job.pipeline_id == 500
+        assert job.artifacts_uploaded is False
+
+    def test_job_info_artifacts_uploaded(self):
+        job = JobInfo(
+            id=1002,
+            name="test-docker",
+            status="failed",
+            duration=None,
+            pipeline_id=501,
+            pipeline_ref="feature",
+            pipeline_sha="deadbeef",
+            web_url="",
+            created_at="",
+            finished_at="",
+            artifacts_uploaded=True,
+        )
+        assert job.artifacts_uploaded is True
+        assert job.duration is None
+
+
+# ---------------------------------------------------------------------------
+# _format_duration helper
+# ---------------------------------------------------------------------------
+
+
+class TestFormatDuration:
+    """Tests for the _format_duration helper."""
+
+    def test_none_returns_dash(self):
+        assert _format_duration(None) == "-"
+
+    def test_zero_returns_zero_s(self):
+        assert _format_duration(0) == "0s"
+
+    def test_seconds_only(self):
+        assert _format_duration(45.7) == "45s"
+
+    def test_minutes_and_seconds(self):
+        assert _format_duration(95.2) == "1m 35s"
+
+    def test_hours_minutes_seconds(self):
+        assert _format_duration(3661.0) == "1h 1m 1s"
+
+    def test_exact_minutes(self):
+        assert _format_duration(120.0) == "2m"
+
+    def test_exact_hours(self):
+        assert _format_duration(7200.0) == "2h"
+
+
+# ---------------------------------------------------------------------------
+# Job fetching in PipelineMonitor
+# ---------------------------------------------------------------------------
+
+
+class TestJobFetching:
+    """Tests for PipelineMonitor._fetch_jobs()."""
+
+    def setup_method(self):
+        PipelineMonitor._instance = None
+
+    @patch("dashboard.monitoring.requests.get")
+    @patch("dashboard.monitoring._detect_gitlab_from_git_remote")
+    def test_fetch_jobs_populates_list(self, mock_detect, mock_get):
+        mock_detect.return_value = ("", "")
+        with patch.dict(
+            os.environ,
+            {
+                "GITLAB_API_URL": "https://gl.test",
+                "GITLAB_PROJECT_ID": "10",
+                "CI_API_V4_URL": "",
+                "CI_PROJECT_ID": "",
+            },
+            clear=False,
+        ):
+            # First call is for pipelines, second for jobs
+            pipelines_resp = MagicMock()
+            pipelines_resp.status_code = 200
+            pipelines_resp.json.return_value = []
+            pipelines_resp.raise_for_status = MagicMock()
+
+            jobs_resp = MagicMock()
+            jobs_resp.status_code = 200
+            jobs_resp.json.return_value = [
+                {
+                    "id": 1001,
+                    "name": "test-math",
+                    "status": "success",
+                    "duration": 95.2,
+                    "pipeline": {
+                        "id": 500,
+                        "ref": "main",
+                        "sha": "abcdef1234567890",
+                        "status": "success",
+                    },
+                    "web_url": "https://gl.test/-/jobs/1001",
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "finished_at": "2025-01-01T00:01:35Z",
+                },
+                {
+                    "id": 1002,
+                    "name": "test-docker",
+                    "status": "failed",
+                    "duration": 210.5,
+                    "pipeline": {
+                        "id": 500,
+                        "ref": "main",
+                        "sha": "abcdef1234567890",
+                        "status": "failed",
+                    },
+                    "web_url": "https://gl.test/-/jobs/1002",
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "finished_at": "2025-01-01T00:03:30Z",
+                },
+            ]
+            jobs_resp.raise_for_status = MagicMock()
+            mock_get.return_value = jobs_resp
+
+            monitor = PipelineMonitor()
+            monitor._fetch_jobs()
+
+            assert len(monitor.jobs) == 2
+            assert monitor.jobs[0].id == 1001
+            assert monitor.jobs[0].name == "test-math"
+            assert monitor.jobs[0].duration == 95.2
+            assert monitor.jobs[0].pipeline_id == 500
+            assert monitor.jobs[1].status == "failed"
+
+    @patch("dashboard.monitoring.requests.get")
+    @patch("dashboard.monitoring._detect_gitlab_from_git_remote")
+    def test_fetch_jobs_handles_null_duration(self, mock_detect, mock_get):
+        mock_detect.return_value = ("", "")
+        with patch.dict(
+            os.environ,
+            {
+                "GITLAB_API_URL": "https://gl.test",
+                "GITLAB_PROJECT_ID": "10",
+                "CI_API_V4_URL": "",
+                "CI_PROJECT_ID": "",
+            },
+            clear=False,
+        ):
+            jobs_resp = MagicMock()
+            jobs_resp.status_code = 200
+            jobs_resp.json.return_value = [
+                {
+                    "id": 2001,
+                    "name": "pending-job",
+                    "status": "pending",
+                    "duration": None,
+                    "pipeline": {
+                        "id": 600,
+                        "ref": "dev",
+                        "sha": "1234567890abcdef",
+                        "status": "running",
+                    },
+                    "web_url": "",
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "finished_at": "",
+                },
+            ]
+            jobs_resp.raise_for_status = MagicMock()
+            mock_get.return_value = jobs_resp
+
+            monitor = PipelineMonitor()
+            monitor._fetch_jobs()
+
+            assert len(monitor.jobs) == 1
+            assert monitor.jobs[0].duration is None
+
+
+# ---------------------------------------------------------------------------
+# Artifact upload detection
+# ---------------------------------------------------------------------------
+
+
+class TestArtifactDetection:
+    """Tests for PipelineMonitor._is_uploaded()."""
+
+    def test_matches_pipeline_id_suffix(self):
+        monitor = PipelineMonitor.__new__(PipelineMonitor)
+        monitor._uploaded_pipeline_urls = {
+            "https://gitlab.example.com/group/project/-/pipelines/500",
+            "https://gitlab.example.com/group/project/-/pipelines/600",
+        }
+        assert monitor._is_uploaded(500) is True
+        assert monitor._is_uploaded(600) is True
+        assert monitor._is_uploaded(999) is False
+
+    def test_empty_set_returns_false(self):
+        monitor = PipelineMonitor.__new__(PipelineMonitor)
+        monitor._uploaded_pipeline_urls = set()
+        assert monitor._is_uploaded(500) is False
+
+    def test_partial_id_no_false_positive(self):
+        monitor = PipelineMonitor.__new__(PipelineMonitor)
+        monitor._uploaded_pipeline_urls = {
+            "https://gitlab.example.com/group/project/-/pipelines/1500",
+        }
+        # 500 should NOT match 1500
+        assert monitor._is_uploaded(500) is False
+        assert monitor._is_uploaded(1500) is True
+
+
+# ---------------------------------------------------------------------------
+# Jobs table layout builder
+# ---------------------------------------------------------------------------
+
+
+class TestBuildJobTable:
+    """Tests for the build_job_table layout builder."""
+
+    def test_empty_jobs_shows_placeholder(self):
+        result = build_job_table([])
+        assert result is not None
+
+    def test_with_jobs_shows_table(self):
+        jobs = [
+            JobInfo(
+                id=1001,
+                name="test-math",
+                status="success",
+                duration=95.2,
+                pipeline_id=500,
+                pipeline_ref="main",
+                pipeline_sha="abcdef12",
+                web_url="https://example.com/-/jobs/1001",
+                created_at="2025-01-01T00:00:00Z",
+                finished_at="2025-01-01T00:01:35Z",
+                artifacts_uploaded=True,
+            ),
+            JobInfo(
+                id=1002,
+                name="test-docker",
+                status="failed",
+                duration=210.5,
+                pipeline_id=500,
+                pipeline_ref="main",
+                pipeline_sha="abcdef12",
+                web_url="https://example.com/-/jobs/1002",
+                created_at="2025-01-01T00:00:00Z",
+                finished_at="2025-01-01T00:03:30Z",
+                artifacts_uploaded=False,
+            ),
+        ]
+        result = build_job_table(jobs)
         assert result is not None

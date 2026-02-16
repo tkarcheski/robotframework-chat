@@ -29,8 +29,12 @@ if platform == "github":
         "commit_sha": sha,
         "commit_short_sha": sha[:8] if sha else "",
         "branch": os.getenv("GITHUB_REF_NAME", ""),
-        "pipeline_url": f"{project_url}/actions/runs/{run_id}" if project_url and run_id else "",
-        "job_url": f"{project_url}/actions/runs/{run_id}" if project_url and run_id else "",
+        "pipeline_url": f"{project_url}/actions/runs/{run_id}"
+        if project_url and run_id
+        else "",
+        "job_url": f"{project_url}/actions/runs/{run_id}"
+        if project_url and run_id
+        else "",
         "job_id": os.getenv("GITHUB_RUN_NUMBER", ""),
     }
     runner_data = {

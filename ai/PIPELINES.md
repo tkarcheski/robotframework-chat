@@ -95,7 +95,7 @@ sync → lint → generate → test → report → deploy → review
 | `test` | `run-regular-tests`, `run-dynamic-tests` | (child pipelines) | Execute generated child pipelines |
 | `report` | `repo-metrics` | `ci/report.sh` | Repo metrics, MR comments |
 | `deploy` | `deploy-superset` | `ci/deploy.sh` | Update Superset stack on default branch |
-| `review` | `claude-code-review` | `ci/review.sh` | AI code review + fix via Claude Code Opus 4.6 |
+| `review` | `opencode-review` | `ci/review.sh` | AI code review + fix via OpenCode + Kimi K2.5 on OpenRouter |
 
 ---
 
@@ -109,7 +109,7 @@ sync → lint → generate → test → report → deploy → review
 | `ci/report.sh` | `bash ci/report.sh [--post-mr]` | Post metrics as MR comment |
 | `ci/sync.sh` | `bash ci/sync.sh` | Requires GITHUB_USER, GITHUB_TOKEN |
 | `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
-| `ci/review.sh` | `bash ci/review.sh` | Requires ANTHROPIC_API_KEY |
+| `ci/review.sh` | `bash ci/review.sh` | Requires OPENROUTER_API_KEY |
 
 All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`, etc.
 

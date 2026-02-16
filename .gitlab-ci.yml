@@ -191,23 +191,23 @@ deploy-superset:
 
 # ── Review ───────────────────────────────────────────────────────────
 
-claude-code-review:
+opencode-review:
   stage: review
   tags: [nodejs]
   variables:
-    CLAUDE_MODEL: "claude-opus-4-6"
+    REVIEW_MODEL: "openrouter/moonshotai/kimi-k2.5"
   before_script:
-    - npm install -g @anthropic-ai/claude-code
+    - npm install -g opencode-ai
   script: [bash ci/review.sh]
   artifacts:
     paths:
-      - claude-review.md
-      - claude-fix-attempt.md
-      - claude-patch-*.diff
+      - review-result.md
+      - review-fix-attempt.md
+      - review-patch-*.diff
     expire_in: 30 days
     when: always
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /claude-code-review/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /opencode-review/
     - when: manual
       allow_failure: true
   allow_failure: true
