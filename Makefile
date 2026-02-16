@@ -12,8 +12,9 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-sync ci-sync-db ci-deploy ci-review ci-test-dashboard \
-        ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
+        ci-lint ci-test ci-generate ci-report ci-sync-db ci-deploy ci-review ci-test-dashboard \
+        ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
+        sync-push sync-pull
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -95,8 +96,11 @@ ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
 
-ci-sync: ## Mirror repo to GitHub
+sync-push: ## Mirror repo from GitLab to GitHub
 	bash ci/sync.sh
+
+sync-pull: ## Pull repo from GitHub to GitLab
+	bash ci/sync_pull.sh
 
 ci-status: ## Check GitLab API connectivity
 	uv run python scripts/sync_ci_results.py status
