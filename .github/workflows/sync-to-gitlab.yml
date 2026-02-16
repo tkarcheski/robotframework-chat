@@ -29,6 +29,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.merged == true
     runs-on: self-hosted
+    timeout-minutes: 5
     environment: robotframework
     steps:
       - name: Checkout (full history)
@@ -78,3 +79,61 @@ jobs:
           fi
 
           echo "Sync complete."
+
+  sync-cloud:
+    if: >-
+      always() &&
+      needs.sync.result != 'success' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.merged == true)
+    needs: sync
+    runs-on: ubuntu-latest
+    environment: robotframework
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitLab (cloud fallback)
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          GITLAB_URL="https://gitlab.com/space-nomads/robotframework-chat.git"
+
+          echo "::add-mask::${GITLAB_TOKEN}"
+          echo "::add-mask::${GITLAB_URL}"
+
+          if [ -z "${GITLAB_TOKEN:-}" ]; then
+            echo "::error::GITLAB_TOKEN secret must be configured."
+            echo "Create a GitLab personal access token with write_repository scope"
+            echo "and add it as a repository secret named GITLAB_TOKEN."
+            exit 1
+          fi
+
+          AUTH_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/space-nomads/robotframework-chat.git"
+
+          if git remote get-url gitlab >/dev/null 2>&1; then
+            git remote set-url gitlab "${AUTH_URL}"
+          else
+            git remote add gitlab "${AUTH_URL}"
+          fi
+
+          BRANCH="${{ github.event.inputs.branch }}"
+
+          if [ -n "${BRANCH}" ]; then
+            echo "Syncing branch: ${BRANCH}"
+            git push gitlab "refs/heads/${BRANCH}:refs/heads/${BRANCH}" --force
+          else
+            echo "Syncing all branches"
+            git push gitlab --all --force
+          fi
+
+          if [ "${{ github.event.inputs.sync_tags }}" = "true" ]; then
+            echo "Syncing tags"
+            git push gitlab --tags --force
+          fi
+
+          echo "Sync complete (cloud fallback)."
