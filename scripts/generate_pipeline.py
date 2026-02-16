@@ -115,7 +115,7 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
             "script": [robot_cmd],
             "artifacts": {
                 "when": "always",
-                "paths": [f"{output_dir}/", "data/"],
+                "paths": [f"{output_dir}/", "data/", "ollama_timestamps.json"],
             },
             "allow_failure": True,
         }
@@ -212,7 +212,7 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                     "script": [robot_cmd],
                     "artifacts": {
                         "when": "always",
-                        "paths": [f"{output_dir}/", "data/"],
+                        "paths": [f"{output_dir}/", "data/", "ollama_timestamps.json"],
                     },
                     "allow_failure": True,
                 }
