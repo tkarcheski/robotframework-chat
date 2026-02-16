@@ -66,13 +66,13 @@ if [ -n "${SYNC_REF:-}" ]; then
     ARGS="$ARGS --ref $SYNC_REF"
 fi
 
-# Run sync
+# Run sync (uses the 'sync' subcommand which includes auto-verify)
 # shellcheck disable=SC2086
-uv run python scripts/sync_ci_results.py $ARGS
+uv run python scripts/sync_ci_results.py sync $ARGS
 
 echo ""
 echo "=== Verifying sync ==="
-uv run python scripts/sync_ci_results.py --verify-only
+uv run python scripts/sync_ci_results.py verify
 
 echo ""
 echo "=== Sync complete ==="
