@@ -12,7 +12,8 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-review ci-test-dashboard
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-review ci-test-dashboard \
+        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -102,6 +103,29 @@ ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard
 
 ci-review: ## Run Claude Code review
 	bash ci/review.sh
+
+# ── GitLab Sync ──────────────────────────────────────────────────────
+
+ci-sync: ## Mirror repo to GitHub
+	bash ci/sync.sh
+
+ci-status: ## Check GitLab API connectivity
+	uv run python scripts/sync_ci_results.py status
+
+ci-list-pipelines: ## List recent CI pipelines
+	uv run python scripts/sync_ci_results.py list-pipelines
+
+ci-list-jobs: ## List jobs in a pipeline: make ci-list-jobs PIPELINE=<id>
+	uv run python scripts/sync_ci_results.py list-jobs $(PIPELINE)
+
+ci-fetch-artifact: ## Download a single job artifact: make ci-fetch-artifact JOB=<id>
+	uv run python scripts/sync_ci_results.py fetch-artifact $(JOB)
+
+ci-sync-db: ## Sync CI pipeline results to database
+	uv run python scripts/sync_ci_results.py sync
+
+ci-verify-db: ## Verify database contents after sync
+	uv run python scripts/sync_ci_results.py verify
 
 # ── Versioning ────────────────────────────────────────────────────────
 
