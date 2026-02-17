@@ -157,8 +157,7 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
             },
         }
 
-    pipeline: dict[str, Any] = {"stages": ["test", "report"]}
-    job_names: list[str] = []
+    pipeline: dict[str, Any] = {"stages": ["test"]}
 
     for node in nodes:
         endpoint = node["endpoint"]
@@ -216,15 +215,6 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                     },
                     "allow_failure": True,
                 }
-                job_names.append(job_id)
-
-    # Report job aggregates all dynamic results
-    pipeline["aggregate-dynamic-results"] = _report_job(
-        job_names,
-        model="dynamic",
-        output_pattern="results/dynamic/**/output.xml",
-        combined_dir="results/dynamic/combined",
-    )
 
     return pipeline
 

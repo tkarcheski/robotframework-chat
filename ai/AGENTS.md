@@ -71,13 +71,6 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 7. Update PR description if scope changes
 8. Only merge after approval and all checks pass
 
-**CI / GitHub Sync Warning:**
-Running the GitLab CI pipeline resets the GitHub mirror. This means:
-- Feature branches pushed to GitHub may be removed after a pipeline run
-- Always push your branch **after** the pipeline completes if you need it on GitHub
-- Do not assume a previously pushed branch still exists on GitHub — verify first
-- Keep local branches until your PR is merged
-
 ---
 
 ## Commands
@@ -146,8 +139,6 @@ make ci-generate             # Generate regular child pipeline
 make ci-generate MODE=dynamic # Generate dynamic child pipeline
 make ci-report               # Generate repo metrics
 make ci-report POST_MR=1     # Generate and post to MR
-make ci-sync                 # Mirror to GitHub
-make ci-sync-db              # Sync CI pipeline results to database
 make ci-deploy               # Deploy Superset
 make ci-review               # Run Claude Code review
 ```
@@ -268,8 +259,6 @@ robotframework-chat/
 │   ├── test.sh                 # Test runner with health checks
 │   ├── generate.sh             # Child pipeline generation
 │   ├── report.sh               # Metrics and MR comments
-│   ├── sync.sh                 # GitHub mirror
-│   ├── sync_db.sh              # Pipeline artifact sync (sources .env)
 │   ├── deploy.sh               # Superset deployment
 │   └── review.sh               # Claude Code review
 ├── Makefile                    # Build, test, deploy, ci-* targets
@@ -349,11 +338,11 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 ## CI/CD Pipeline
 
-The GitLab CI pipeline uses a seven-stage architecture with all logic
+The GitLab CI pipeline uses a six-stage architecture with all logic
 delegated to bash scripts in `ci/` and Makefile targets:
 
 ```
-sync → lint → generate → test → report → deploy → review
+lint → generate → test → report → deploy → review
 ```
 
 ### Architecture: Minimal YAML, Modular Scripts
@@ -363,7 +352,7 @@ variables, rules, and artifacts — nothing else. All executable logic lives in:
 
 | Layer | Location | Role |
 |-------|----------|------|
-| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review, sync |
+| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review |
 | **Templates** | `ci/common.yml` | Shared YAML templates (`.uv-setup`, `.robot-test`) |
 | **Makefile** | `Makefile` | `ci-*` targets wrap scripts for local and CI use |
 | **Python** | `scripts/generate_pipeline.py` | Generates child-pipeline YAML from `config/test_suites.yaml` |
@@ -378,8 +367,6 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 | `ci/test.sh` | Ollama health check + run test suites via Makefile | `make ci-test` |
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
-| `ci/sync.sh` | Mirror repo to GitHub | `make ci-sync` |
-| `ci/sync_db.sh` | Fetch CI pipeline artifacts + import to database | `make ci-sync-db` |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
 | `ci/review.sh` | Claude Code review + pipeline fix | `make ci-review` |
 

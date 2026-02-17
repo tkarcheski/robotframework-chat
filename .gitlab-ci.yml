@@ -28,7 +28,7 @@ variables:
   DEFAULT_MODEL: "llama3"
   ROBOT_OPTIONS: "--metadata CI:true"
 
-# ── Sync ─────────────────────────────────────────────────────────────
+# ── Sync ──────────────────────────────────────────────────────────────
 
 .mirror-to-github:
   stage: sync

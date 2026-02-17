@@ -12,8 +12,8 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-sync ci-sync-db ci-deploy ci-review ci-test-dashboard \
-        ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-review ci-test-dashboard \
+        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -95,6 +95,17 @@ ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
 
+ci-deploy: ## Deploy Superset to remote host
+	bash ci/deploy.sh
+
+ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
+	bash ci/test_dashboard.sh $(or $(MODE),all)
+
+ci-review: ## Run Claude Code review
+	bash ci/review.sh
+
+# ── GitLab Sync ──────────────────────────────────────────────────────
+
 ci-sync: ## Mirror repo to GitHub
 	bash ci/sync.sh
 
@@ -115,15 +126,6 @@ ci-sync-db: ## Sync CI pipeline results to database
 
 ci-verify-db: ## Verify database contents after sync
 	uv run python scripts/sync_ci_results.py verify
-
-ci-deploy: ## Deploy Superset to remote host
-	bash ci/deploy.sh
-
-ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
-	bash ci/test_dashboard.sh $(or $(MODE),all)
-
-ci-review: ## Run Claude Code review
-	bash ci/review.sh
 
 # ── Versioning ────────────────────────────────────────────────────────
 

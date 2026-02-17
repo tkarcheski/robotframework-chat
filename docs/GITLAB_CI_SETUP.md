@@ -4,15 +4,14 @@ This guide explains how to set up GitLab CI/CD for running the Robot Framework t
 
 ## Overview
 
-The pipeline has five stages:
+The pipeline has four stages:
 
 ```
-sync → lint → test → report → deploy
+lint → test → report → deploy
 ```
 
 | Stage | Jobs | Purpose |
 |-------|------|---------|
-| **sync** | `mirror-to-github` | Mirrors repository to GitHub |
 | **lint** | `pre-commit`, `ruff-check`, `mypy-check` | Code quality checks |
 | **test** | `robot-math-tests`, `robot-docker-tests`, `robot-safety-tests` | Robot Framework test execution with database archiving |
 | **report** | `aggregate-results` | Merge reports with `rebot`, import combined results to database |
@@ -97,8 +96,6 @@ Configure in GitLab (Settings > CI/CD > Variables):
 | `OLLAMA_ENDPOINT` | Ollama API endpoint | `http://localhost:11434` | No |
 | `DEFAULT_MODEL` | Default LLM model | `llama3` | No |
 | `DATABASE_URL` | PostgreSQL connection string | (unset → SQLite) | No |
-| `GITHUB_USER` | GitHub username for mirroring | — | For sync stage |
-| `GITHUB_TOKEN` | GitHub token for mirroring | — | For sync stage |
 | `SUPERSET_DEPLOY_HOST` | Superset deploy target host | — | For deploy stage |
 | `SUPERSET_DEPLOY_USER` | SSH user for deploy | — | For deploy stage |
 | `SUPERSET_DEPLOY_PATH` | Path on deploy host | — | For deploy stage |
