@@ -65,7 +65,7 @@ data = {
     "runner": runner_data,
     "ollama": {
         "endpoint": os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "llama3"),
+        "default_model": os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
     },
     "timestamp": datetime.utcnow().isoformat() + "Z",
 }

@@ -9,7 +9,7 @@
 # See scripts/generate_pipeline.py for CI pipeline generation.
 
 defaults:
-  model: "llama3"
+  model: "gpt-oss:20b"
   iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
   profile: "STANDARD"
   timeout_seconds: 120

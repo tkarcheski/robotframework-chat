@@ -22,7 +22,7 @@ ${DEFAULT_LLM_TIMEOUT}  120
 *** Keywords ***
 Start LLM Container
     [Documentation]    Start Ollama container with specified resources on an available port
-    [Arguments]    ${profile}=OLLAMA_CPU    ${container_name}=rfc-ollama    ${pull_models}=llama3
+    [Arguments]    ${profile}=OLLAMA_CPU    ${container_name}=rfc-ollama    ${pull_models}=%{DEFAULT_MODEL=gpt-oss:20b}
 
     # Find an available port to avoid conflicts with local Ollama
     ${available_port}=    Docker.Find Available Port    11434    11500
@@ -103,7 +103,7 @@ Switch LLM Model
 
 Ask Multiple LLMs
     [Documentation]    Send same prompt to multiple models and collect responses
-    [Arguments]    ${prompt}    ${models}=llama3    ${timeout}=60
+    [Arguments]    ${prompt}    ${models}=%{DEFAULT_MODEL=gpt-oss:20b}    ${timeout}=60
 
     ${model_list}=    Split String    ${models}    ,
     ${responses}=    Create Dictionary
@@ -119,7 +119,7 @@ Ask Multiple LLMs
 
 Run Multi-Model Comparison
     [Documentation]    Run same prompt across models and compare results
-    [Arguments]    ${prompt}    ${models}=llama3,codellama    ${timeout}=60
+    [Arguments]    ${prompt}    ${models}=%{DEFAULT_MODEL=gpt-oss:20b}    ${timeout}=60
 
     # Get responses from all models
     ${responses}=    Ask Multiple LLMs    ${prompt}    ${models}    ${timeout}

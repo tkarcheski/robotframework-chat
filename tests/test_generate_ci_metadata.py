@@ -150,7 +150,7 @@ class TestDefaults:
             (tmp_path / "results" / "combined" / "ci_metadata.json").read_text()
         )
         assert data["ollama"]["endpoint"] == "http://localhost:11434"
-        assert data["ollama"]["default_model"] == "llama3"
+        assert data["ollama"]["default_model"] == "gpt-oss:20b"
 
     def test_creates_output_directory(self, tmp_path):
         env = _clean_env()
