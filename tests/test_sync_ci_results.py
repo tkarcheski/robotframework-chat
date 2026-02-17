@@ -1,8 +1,8 @@
 """Tests for CI pipeline results sync to database.
 
-Expanded coverage: 51 tests across GitLabArtifactFetcher init/properties,
-check_connection, pipeline/job/artifact fetching, end-to-end sync workflow,
-verify_sync, and all 6 CLI subcommand handlers.
+Coverage includes GitLabArtifactFetcher init/properties, check_connection,
+pipeline/job/artifact fetching, end-to-end sync workflow, verify_sync,
+CLI subcommand handlers, backfill, and pipeline metadata storage.
 """
 
 import argparse
@@ -16,14 +16,17 @@ import requests
 
 from scripts.sync_ci_results import (
     GitLabArtifactFetcher,
+    _cmd_backfill,
     _cmd_fetch_artifact,
     _cmd_list_jobs,
+    _cmd_list_pipeline_results,
     _cmd_list_pipelines,
     _cmd_status,
     _cmd_sync,
     _cmd_verify,
     _make_db,
     _make_fetcher,
+    backfill_pipelines,
     sync_ci_results,
     verify_sync,
 )
@@ -931,3 +934,394 @@ class TestMakeDb:
         args = argparse.Namespace(db=None)
         db = _make_db(args)
         assert db.db_path is not None
+
+
+# ── fetch_all_pipelines (3 tests) ────────────────────────────────────
+
+
+class TestFetchAllPipelines:
+    """Tests for paginated pipeline fetching."""
+
+    def setup_method(self):
+        self.fetcher = GitLabArtifactFetcher(
+            api_url="https://gl.test", project_id="42", token="tok"
+        )
+
+    @patch("scripts.sync_ci_results.requests.get")
+    def test_single_page(self, mock_get):
+        """Returns all pipelines from a single page."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {"id": 1, "status": "success", "ref": "main", "web_url": "u1"},
+            {"id": 2, "status": "success", "ref": "main", "web_url": "u2"},
+        ]
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = self.fetcher.fetch_all_pipelines(per_page=100)
+        assert len(result) == 2
+
+    @patch("scripts.sync_ci_results.requests.get")
+    def test_multiple_pages(self, mock_get):
+        """Paginates through multiple pages."""
+        page1 = MagicMock()
+        page1.status_code = 200
+        page1.json.return_value = [{"id": i} for i in range(100)]
+        page1.raise_for_status = MagicMock()
+
+        page2 = MagicMock()
+        page2.status_code = 200
+        page2.json.return_value = [{"id": 100 + i} for i in range(50)]
+        page2.raise_for_status = MagicMock()
+
+        mock_get.side_effect = [page1, page2]
+
+        result = self.fetcher.fetch_all_pipelines(per_page=100, max_pages=5)
+        assert len(result) == 150
+
+    @patch("scripts.sync_ci_results.requests.get")
+    def test_stops_on_error(self, mock_get):
+        """Stops pagination on API error."""
+        mock_get.side_effect = requests.exceptions.ConnectionError("fail")
+
+        result = self.fetcher.fetch_all_pipelines()
+        assert result == []
+
+
+# ── backfill_pipelines (7 tests) ─────────────────────────────────────
+
+
+class TestBackfillPipelines:
+    """Tests for the backfill_pipelines function."""
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_backfill_stores_pipeline_metadata(self, mock_import):
+        """Stores each pipeline as a pipeline_result row."""
+        mock_import.return_value = 1
+
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = [
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "sha": "abc123",
+                "web_url": "https://gl.test/p/500",
+                "created_at": "2025-06-15T10:00:00Z",
+                "source": "push",
+            },
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "test-math", "status": "success"},
+        ]
+        fetcher.download_job_artifact.return_value = "/tmp/output.xml"
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = backfill_pipelines(fetcher, db)
+        assert result["pipelines_found"] == 1
+        assert result["pipelines_stored"] == 1
+        db.add_pipeline_result.assert_called_once()
+
+        pr = db.add_pipeline_result.call_args[0][0]
+        assert pr.pipeline_id == 500
+        assert pr.status == "success"
+        assert pr.ref == "main"
+
+    def test_backfill_metadata_only(self):
+        """Stores metadata without downloading artifacts."""
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = [
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "sha": "abc",
+                "web_url": "https://gl.test/p/500",
+            },
+            {
+                "id": 501,
+                "status": "failed",
+                "ref": "dev",
+                "sha": "def",
+                "web_url": "https://gl.test/p/501",
+            },
+        ]
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = backfill_pipelines(fetcher, db, import_artifacts=False)
+        assert result["pipelines_found"] == 2
+        assert result["pipelines_stored"] == 2
+        assert result["artifacts_downloaded"] == 0
+        fetcher.fetch_pipeline_jobs.assert_not_called()
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_backfill_skips_already_imported_artifacts(self, mock_import):
+        """Skips artifact download for already-imported pipelines."""
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = [
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "sha": "abc",
+                "web_url": "https://gl.test/p/500",
+            },
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "test", "status": "success"},
+        ]
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = [
+            {"pipeline_url": "https://gl.test/p/500"},
+        ]
+
+        result = backfill_pipelines(fetcher, db)
+        assert result["runs_imported"] == 0
+        # Still stores pipeline metadata
+        assert result["pipelines_stored"] == 1
+        mock_import.assert_not_called()
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_backfill_records_errors(self, mock_import):
+        """Records import errors without stopping."""
+        mock_import.side_effect = RuntimeError("bad xml")
+
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = [
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "sha": "abc",
+                "web_url": "https://gl.test/p/500",
+            },
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "test", "status": "success"},
+        ]
+        fetcher.download_job_artifact.return_value = "/tmp/output.xml"
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = backfill_pipelines(fetcher, db)
+        assert result["runs_imported"] == 0
+        assert len(result["errors"]) == 1
+        assert "1001" in result["errors"][0]
+
+    def test_backfill_no_pipelines(self):
+        """Returns zeros when no pipelines exist."""
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = []
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = backfill_pipelines(fetcher, db)
+        assert result["pipelines_found"] == 0
+        assert result["pipelines_stored"] == 0
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_backfill_tracks_artifacts_per_pipeline(self, mock_import):
+        """Counts artifacts found per pipeline in the metadata."""
+        mock_import.return_value = 1
+
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = [
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "sha": "abc",
+                "web_url": "https://gl.test/p/500",
+            },
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "math", "status": "success"},
+            {"id": 1002, "name": "docker", "status": "success"},
+        ]
+        fetcher.download_job_artifact.return_value = "/tmp/output.xml"
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        result = backfill_pipelines(
+            fetcher, db, artifact_paths=["output.xml"]
+        )
+        assert result["artifacts_downloaded"] == 2
+
+        pr = db.add_pipeline_result.call_args[0][0]
+        assert pr.artifacts_found == 2
+        assert pr.jobs_fetched == 2
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_backfill_with_status_filter(self, mock_import):
+        """Passes status filter to fetch_all_pipelines."""
+        fetcher = MagicMock()
+        fetcher.fetch_all_pipelines.return_value = []
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        backfill_pipelines(fetcher, db, status="success")
+        fetcher.fetch_all_pipelines.assert_called_once_with(
+            ref=None, status="success"
+        )
+
+
+# ── sync_ci_results pipeline metadata storage (2 tests) ─────────────
+
+
+class TestSyncPipelineMetadata:
+    """Tests that sync_ci_results stores pipeline metadata."""
+
+    @patch("scripts.sync_ci_results.import_results")
+    def test_sync_stores_pipeline_metadata(self, mock_import):
+        """Stores pipeline metadata during regular sync."""
+        mock_import.return_value = 1
+
+        fetcher = MagicMock()
+        fetcher.fetch_recent_pipelines.return_value = [
+            {
+                "id": 500,
+                "ref": "main",
+                "sha": "abc",
+                "status": "success",
+                "web_url": "https://gl.test/p/500",
+                "created_at": "2025-06-15T10:00:00Z",
+            },
+        ]
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1001, "name": "test", "status": "success"},
+        ]
+        fetcher.download_job_artifact.return_value = "/tmp/output.xml"
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = []
+
+        sync_ci_results(fetcher, db)
+        db.add_pipeline_result.assert_called_once()
+
+        pr = db.add_pipeline_result.call_args[0][0]
+        assert pr.pipeline_id == 500
+
+    def test_sync_stores_metadata_for_skipped_pipelines(self):
+        """Stores metadata even for already-imported pipelines."""
+        fetcher = MagicMock()
+        fetcher.fetch_recent_pipelines.return_value = [
+            {
+                "id": 500,
+                "ref": "main",
+                "sha": "abc",
+                "status": "success",
+                "web_url": "https://gl.test/p/500",
+            },
+        ]
+
+        db = MagicMock()
+        db.get_recent_runs.return_value = [
+            {"pipeline_url": "https://gl.test/p/500"},
+        ]
+
+        sync_ci_results(fetcher, db)
+        db.add_pipeline_result.assert_called_once()
+
+
+# ── CLI backfill + list-pipeline-results handlers (4 tests) ──────────
+
+
+class TestCmdBackfill:
+    """Tests for the backfill subcommand handler."""
+
+    @patch("scripts.sync_ci_results.backfill_pipelines")
+    @patch("scripts.sync_ci_results._make_db")
+    @patch("scripts.sync_ci_results._make_fetcher")
+    def test_backfill_success(self, mock_mf, mock_mdb, mock_bf, capsys):
+        """Prints backfill summary."""
+        mock_mf.return_value = MagicMock()
+        mock_mdb.return_value = MagicMock()
+        mock_bf.return_value = {
+            "pipelines_found": 50,
+            "pipelines_stored": 50,
+            "artifacts_downloaded": 10,
+            "runs_imported": 10,
+            "errors": [],
+        }
+
+        args = argparse.Namespace(
+            ref=None, status="all", db=None, metadata_only=False
+        )
+        _cmd_backfill(args)
+
+        out = capsys.readouterr().out
+        assert "Backfill complete" in out
+        assert "DEPRECATED" in out
+        assert "50" in out
+
+    @patch("scripts.sync_ci_results.backfill_pipelines")
+    @patch("scripts.sync_ci_results._make_db")
+    @patch("scripts.sync_ci_results._make_fetcher")
+    def test_backfill_with_errors_exits_1(self, mock_mf, mock_mdb, mock_bf):
+        """Exits 1 when backfill has errors."""
+        mock_mf.return_value = MagicMock()
+        mock_mdb.return_value = MagicMock()
+        mock_bf.return_value = {
+            "pipelines_found": 1,
+            "pipelines_stored": 1,
+            "artifacts_downloaded": 1,
+            "runs_imported": 0,
+            "errors": ["Failed to import job 1001: bad xml"],
+        }
+
+        args = argparse.Namespace(
+            ref=None, status="all", db=None, metadata_only=False
+        )
+        with pytest.raises(SystemExit) as exc:
+            _cmd_backfill(args)
+        assert exc.value.code == 1
+
+
+class TestCmdListPipelineResults:
+    """Tests for the list-pipeline-results subcommand handler."""
+
+    @patch("scripts.sync_ci_results._make_db")
+    def test_list_pipeline_results_output(self, mock_mdb, capsys):
+        """Prints pipeline results table."""
+        db = MagicMock()
+        db.get_pipeline_results.return_value = [
+            {
+                "pipeline_id": 500,
+                "status": "success",
+                "ref": "main",
+                "web_url": "https://gl/500",
+                "jobs_fetched": 3,
+                "artifacts_found": 2,
+            },
+        ]
+        mock_mdb.return_value = db
+
+        args = argparse.Namespace(limit=50, db=None)
+        _cmd_list_pipeline_results(args)
+
+        out = capsys.readouterr().out
+        assert "500" in out
+        assert "success" in out
+
+    @patch("scripts.sync_ci_results._make_db")
+    def test_list_pipeline_results_empty(self, mock_mdb, capsys):
+        """Prints message when no pipeline results found."""
+        db = MagicMock()
+        db.get_pipeline_results.return_value = []
+        mock_mdb.return_value = db
+
+        args = argparse.Namespace(limit=50, db=None)
+        _cmd_list_pipeline_results(args)
+
+        out = capsys.readouterr().out
+        assert "No pipeline results" in out
