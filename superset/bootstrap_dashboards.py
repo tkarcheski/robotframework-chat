@@ -76,6 +76,13 @@ def bootstrap() -> None:
                 db.session.add(ds)
                 db.session.flush()
                 log.info("Created dataset: %s", table_name)
+            # Sync column metadata so Superset knows the schema
+            try:
+                ds.fetch_metadata()
+                db.session.flush()
+                log.info("Synced columns for: %s", table_name)
+            except Exception as e:
+                log.warning("Could not sync columns for %s: %s", table_name, e)
             datasets[table_name] = ds
 
         # ── 3. Charts (Slices) ─────────────────────────────────────
