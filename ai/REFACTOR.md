@@ -117,7 +117,7 @@ uv lock --upgrade-package <package-name>
 
 # Verify nothing broke
 make check
-make test
+make robot
 ```
 
 ### Dependency Hygiene Rules
@@ -231,7 +231,7 @@ When reviewing code (whether as a human or an AI agent):
 
 ### Review Checklist for PRs
 
-- [ ] Tests pass (`make test`)
+- [ ] Tests pass (`make robot`)
 - [ ] Pre-commit passes (`pre-commit run --all-files`)
 - [ ] Types check (`make typecheck`)
 - [ ] No unrelated changes bundled in

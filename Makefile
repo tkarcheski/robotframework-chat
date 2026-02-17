@@ -10,7 +10,7 @@ LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_li
 export
 
 .PHONY: help install up down restart logs bootstrap \
-        test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
+        robot robot-math robot-docker robot-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
         ci-lint ci-test ci-generate ci-report ci-deploy ci-ai-review ci-test-dashboard \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
@@ -46,17 +46,17 @@ logs: ## Tail service logs
 bootstrap: ## First-time Superset setup (run after 'make up')
 	$(COMPOSE) run --rm superset-init
 
-# ── Tests ─────────────────────────────────────────────────────────────
+# ── Robot Framework Tests ─────────────────────────────────────────────
 
-test: test-math test-docker test-safety ## Run all test suites
+robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
 
-test-math: ## Run math tests
+robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
 
-test-docker: ## Run Docker tests
+robot-docker: ## Run Docker tests (Robot Framework)
 	$(ROBOT) -d results/docker $(LISTENER) robot/docker/
 
-test-safety: ## Run safety tests
+robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
 
 test-dashboard: ## Run dashboard pytest unit tests

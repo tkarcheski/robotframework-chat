@@ -23,10 +23,10 @@ ollama pull llama3          # Pull default LLM model (optional)
 ### Running Tests
 
 ```bash
-make test                   # Run all test suites (math, docker, safety)
-make test-math              # Run math tests
-make test-docker            # Run Docker tests
-make test-safety            # Run safety tests
+make robot                  # Run all Robot Framework test suites
+make robot-math             # Run math tests
+make robot-docker           # Run Docker tests
+make robot-safety           # Run safety tests
 ```
 
 ### Superset Dashboard

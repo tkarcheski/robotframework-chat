@@ -119,10 +119,10 @@ make down          # Stop all services
 make restart       # Restart all services
 make logs          # Tail service logs
 make bootstrap     # First-time Superset setup
-make test          # Run all test suites (math, docker, safety)
-make test-math     # Run math tests
-make test-docker   # Run Docker tests
-make test-safety   # Run safety tests
+make robot         # Run all Robot Framework test suites
+make robot-math    # Run math tests
+make robot-docker  # Run Docker tests
+make robot-safety  # Run safety tests
 make import        # Import output.xml files: make import PATH=results/
 make lint          # Run ruff linter
 make format        # Auto-format code
