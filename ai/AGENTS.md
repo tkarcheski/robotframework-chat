@@ -43,15 +43,20 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 1. Write failing test first (red)
 2. Implement minimal code (green)
 3. Refactor if needed
-4. Run `pre-commit run --all-files`
+4. Run code quality checks before committing:
+   - `make code-format` — auto-format code with ruff
+   - `make code-check` — run all quality checks (lint + typecheck)
+   - `make code-coverage` — run pytest with coverage report
+   - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
 
 **Prohibited:**
 - Skip tests
 - Commit failing code
+- Commit code that fails `make code-check`
 - Bundle unrelated changes
 - Mix formatting + logic
-- Bypass pre-commit
+- Bypass pre-commit or Makefile quality checks
 
 **Commit Types:**
 - `test:` - Add/update tests
@@ -99,13 +104,15 @@ uv run robot -d results -i IQ:120 robot/docker/python
 uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
-# Lint & format
-uv run ruff check .
-uv run ruff check --fix .
-uv run ruff format .
-uv run mypy src/
+# Code quality (prefer Makefile targets)
+make code-format                # Auto-format with ruff
+make code-lint                  # Run ruff linter
+make code-typecheck             # Run mypy type checker
+make code-check                 # Run all checks (lint + typecheck)
+make code-coverage              # Run pytest with coverage
+make code-audit                 # Audit dependencies for vulnerabilities
 
-# Pre-commit
+# Pre-commit (final gate)
 pre-commit run --all-files
 ```
 
