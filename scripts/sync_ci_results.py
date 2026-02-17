@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from import_test_results import import_results
-from rfc.test_database import TestDatabase
+from rfc.test_database import PipelineResult, TestDatabase
 
 _log = logging.getLogger(__name__)
 
@@ -200,6 +200,51 @@ class GitLabArtifactFetcher:
             _log.warning("Failed to fetch jobs for pipeline %d: %s", pipeline_id, exc)
             return []
 
+    def fetch_all_pipelines(
+        self,
+        ref: Optional[str] = None,
+        status: Optional[str] = None,
+        per_page: int = 100,
+        max_pages: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Fetch all pipelines via pagination.
+
+        Args:
+            ref: Optional branch filter.
+            status: Optional pipeline status filter (e.g. "success").
+            per_page: Results per page (max 100).
+            max_pages: Safety limit on number of pages to fetch.
+
+        Returns:
+            List of all pipeline dictionaries across pages.
+        """
+        all_pipelines: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            url = (
+                f"{self._api_url}/api/v4/projects/{self._project_id}"
+                f"/pipelines?per_page={per_page}&page={page}"
+                f"&order_by=updated_at&sort=desc"
+            )
+            if status:
+                url += f"&status={status}"
+            if ref:
+                url += f"&ref={ref}"
+
+            try:
+                resp = requests.get(url, headers=self._headers(), timeout=30)
+                resp.raise_for_status()
+                batch = resp.json()
+                if not batch:
+                    break
+                all_pipelines.extend(batch)
+                if len(batch) < per_page:
+                    break
+            except requests.exceptions.RequestException as exc:
+                _log.warning("Failed to fetch pipelines page %d: %s", page, exc)
+                break
+
+        return all_pipelines
+
     def download_job_artifact(
         self,
         job_id: int,
@@ -288,13 +333,29 @@ def sync_ci_results(
         for pipeline in pipelines:
             result["pipelines_checked"] += 1
             pipeline_url = pipeline.get("web_url", "")
+            pipeline_id = pipeline["id"]
 
             # Skip already-imported pipelines
             if pipeline_url and pipeline_url in existing_urls:
+                # Still store pipeline metadata
+                pr = PipelineResult(
+                    pipeline_id=pipeline_id,
+                    status=pipeline.get("status", "unknown"),
+                    ref=pipeline.get("ref", ""),
+                    sha=pipeline.get("sha", ""),
+                    web_url=pipeline_url,
+                    created_at=pipeline.get("created_at"),
+                    updated_at=pipeline.get("updated_at"),
+                    source=pipeline.get("source"),
+                )
+                try:
+                    db.add_pipeline_result(pr)
+                except Exception:
+                    pass  # Best-effort metadata storage
                 continue
 
-            pipeline_id = pipeline["id"]
             jobs = fetcher.fetch_pipeline_jobs(pipeline_id)
+            artifacts_for_pipeline = 0
 
             for job in jobs:
                 job_id = job["id"]
@@ -316,6 +377,7 @@ def sync_ci_results(
                 if xml_path is None:
                     continue
 
+                artifacts_for_pipeline += 1
                 result["artifacts_downloaded"] += 1
 
                 try:
@@ -323,6 +385,24 @@ def sync_ci_results(
                     result["runs_imported"] += 1
                 except Exception as e:
                     result["errors"].append(f"Failed to import job {job_id}: {e}")
+
+            # Store pipeline metadata
+            pr = PipelineResult(
+                pipeline_id=pipeline_id,
+                status=pipeline.get("status", "unknown"),
+                ref=pipeline.get("ref", ""),
+                sha=pipeline.get("sha", ""),
+                web_url=pipeline_url,
+                created_at=pipeline.get("created_at"),
+                updated_at=pipeline.get("updated_at"),
+                source=pipeline.get("source"),
+                jobs_fetched=len(jobs),
+                artifacts_found=artifacts_for_pipeline,
+            )
+            try:
+                db.add_pipeline_result(pr)
+            except Exception:
+                pass  # Best-effort metadata storage
 
     return result
 
@@ -347,6 +427,122 @@ def verify_sync(db: TestDatabase, min_runs: int = 1) -> dict[str, Any]:
         "latest_timestamp": str(latest_ts) if latest_ts else None,
         "models_found": models_found,
     }
+
+
+def backfill_pipelines(
+    fetcher: GitLabArtifactFetcher,
+    db: TestDatabase,
+    ref: Optional[str] = None,
+    status: Optional[str] = None,
+    import_artifacts: bool = True,
+    artifact_paths: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Backfill all GitLab pipelines into the database.
+
+    Deprecated: prefer the DbListener for real-time archiving.
+    This command exists to pull historical pipeline data from before
+    the listener was configured.
+
+    Fetches all pipelines (paginated), stores each as a pipeline_result
+    row with GitLab metadata, and optionally imports test artifacts.
+
+    Args:
+        fetcher: Configured GitLab API client.
+        db: Database instance.
+        ref: Optional branch filter.
+        status: Optional status filter (e.g. "success").
+        import_artifacts: Whether to download and import output.xml.
+        artifact_paths: Artifact paths to try per job.
+
+    Returns:
+        Dictionary with backfill results.
+    """
+    paths_to_try = artifact_paths if artifact_paths is not None else _ARTIFACT_PATHS
+
+    result: dict[str, Any] = {
+        "pipelines_found": 0,
+        "pipelines_stored": 0,
+        "artifacts_downloaded": 0,
+        "runs_imported": 0,
+        "errors": [],
+    }
+
+    pipelines = fetcher.fetch_all_pipelines(ref=ref, status=status)
+    result["pipelines_found"] = len(pipelines)
+
+    # Get existing pipeline URLs for dedup of artifact imports
+    recent_runs = db.get_recent_runs(limit=1000)
+    existing_urls = {run.get("pipeline_url", "") for run in recent_runs if run}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for pipeline in pipelines:
+            pipeline_id = pipeline["id"]
+            pipeline_url = pipeline.get("web_url", "")
+
+            # Always store pipeline metadata
+            pr = PipelineResult(
+                pipeline_id=pipeline_id,
+                status=pipeline.get("status", "unknown"),
+                ref=pipeline.get("ref", ""),
+                sha=pipeline.get("sha", ""),
+                web_url=pipeline_url,
+                created_at=pipeline.get("created_at"),
+                updated_at=pipeline.get("updated_at"),
+                source=pipeline.get("source"),
+            )
+
+            if not import_artifacts:
+                db.add_pipeline_result(pr)
+                result["pipelines_stored"] += 1
+                continue
+
+            # Fetch jobs and try to download artifacts
+            jobs = fetcher.fetch_pipeline_jobs(pipeline_id)
+            pr.jobs_fetched = len(jobs)
+            artifacts_for_pipeline = 0
+
+            # Skip artifact import if already in test_runs
+            already_imported = pipeline_url and pipeline_url in existing_urls
+
+            for job in jobs:
+                if already_imported:
+                    break
+                job_id = job["id"]
+
+                xml_path = None
+                for artifact_path in paths_to_try:
+                    xml_path = fetcher.download_job_artifact(
+                        job_id=job_id,
+                        output_dir=tmpdir,
+                        artifact_path=artifact_path,
+                    )
+                    if xml_path is not None:
+                        _log.debug(
+                            "Found artifact for job %d at %s",
+                            job_id,
+                            artifact_path,
+                        )
+                        break
+
+                if xml_path is None:
+                    continue
+
+                artifacts_for_pipeline += 1
+                result["artifacts_downloaded"] += 1
+
+                try:
+                    import_results(xml_path, db)
+                    result["runs_imported"] += 1
+                except Exception as e:
+                    result["errors"].append(
+                        f"Failed to import job {job_id}: {e}"
+                    )
+
+            pr.artifacts_found = artifacts_for_pipeline
+            db.add_pipeline_result(pr)
+            result["pipelines_stored"] += 1
+
+    return result
 
 
 # ── CLI subcommand handlers ──────────────────────────────────────────
@@ -440,6 +636,58 @@ def _cmd_verify(args: argparse.Namespace) -> None:
     sys.exit(0 if result["success"] else 1)
 
 
+def _cmd_backfill(args: argparse.Namespace) -> None:
+    """Backfill all pipeline data (deprecated)."""
+    import warnings
+
+    warnings.warn(
+        "backfill is deprecated — prefer the DbListener for real-time archiving. "
+        "Use backfill only to import historical pipelines.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+
+    fetcher = _make_fetcher()
+    db = _make_db(args)
+
+    status_filter = args.status if args.status != "all" else None
+    result = backfill_pipelines(
+        fetcher,
+        db,
+        ref=args.ref,
+        status=status_filter,
+        import_artifacts=not args.metadata_only,
+    )
+
+    print("Backfill complete (DEPRECATED — use DbListener for new pipelines):")
+    print(f"  Pipelines found: {result['pipelines_found']}")
+    print(f"  Pipelines stored: {result['pipelines_stored']}")
+    print(f"  Artifacts downloaded: {result['artifacts_downloaded']}")
+    print(f"  Runs imported: {result['runs_imported']}")
+    if result["errors"]:
+        print(f"  Errors ({len(result['errors'])}):")
+        for err in result["errors"]:
+            print(f"    - {err}")
+        sys.exit(1)
+
+
+def _cmd_list_pipeline_results(args: argparse.Namespace) -> None:
+    """List pipeline_results from database."""
+    db = _make_db(args)
+    pipelines = db.get_pipeline_results(limit=args.limit)
+    if not pipelines:
+        print("No pipeline results in database.")
+        return
+    for p in pipelines:
+        print(
+            f"  #{p['pipeline_id']:>10}  {p.get('status', '?'):>10}  "
+            f"{p.get('ref', '?'):<20}  "
+            f"jobs={p.get('jobs_fetched', 0)}  "
+            f"artifacts={p.get('artifacts_found', 0)}  "
+            f"{p.get('web_url', '')}"
+        )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -499,6 +747,32 @@ def main() -> None:
     vp.add_argument("--db", help="Database path")
     vp.add_argument("--min-runs", type=int, default=1)
 
+    # backfill (deprecated)
+    bp = sub.add_parser(
+        "backfill",
+        help="[DEPRECATED] Backfill all pipelines from GitLab",
+    )
+    bp.add_argument("--ref", help="Filter by branch")
+    bp.add_argument(
+        "--status",
+        default="all",
+        help="Pipeline status filter (default: all). Use 'success' for only successful.",
+    )
+    bp.add_argument("--db", help="Database path")
+    bp.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Only store pipeline metadata, skip artifact download",
+    )
+
+    # list-pipeline-results
+    lpr = sub.add_parser(
+        "list-pipeline-results",
+        help="List pipeline_results from the database",
+    )
+    lpr.add_argument("-n", "--limit", type=int, default=50)
+    lpr.add_argument("--db", help="Database path")
+
     args = parser.parse_args()
 
     # Set up logging
@@ -514,6 +788,8 @@ def main() -> None:
         "fetch-artifact": _cmd_fetch_artifact,
         "sync": _cmd_sync,
         "verify": _cmd_verify,
+        "backfill": _cmd_backfill,
+        "list-pipeline-results": _cmd_list_pipeline_results,
     }
 
     if args.command in dispatch:

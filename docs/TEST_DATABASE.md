@@ -181,7 +181,7 @@ When using PostgreSQL, results can be visualized in Apache Superset dashboards.
 
 ```bash
 cp .env.example .env          # edit credentials
-make up                       # start PostgreSQL + Redis + Superset
+make docker-up                # start PostgreSQL + Redis + Superset
 make bootstrap                # first-time init (creates admin, charts, dashboard)
 open http://localhost:8088     # login with credentials from .env
 ```
@@ -263,7 +263,7 @@ cp data/test_history.db data/test_history_temp.db
 
 ```bash
 # Check if PostgreSQL is running
-make logs
+make docker-logs
 
 # Test connection
 psql $DATABASE_URL -c "SELECT 1;"

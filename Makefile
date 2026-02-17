@@ -3,21 +3,24 @@
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
 # Load .env if present
 -include .env
 export
 
-.PHONY: help install up down restart logs bootstrap \
-        test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
-        import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-review ci-test-dashboard \
+.PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
+        robot robot-math robot-docker robot-safety robot-dryrun \
+        test-dashboard test-dashboard-playwright \
+        import code-lint code-format code-typecheck code-check version \
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
+        opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}'
 
 # ── Setup ─────────────────────────────────────────────────────────────
 
@@ -30,33 +33,38 @@ install: ## Install Python dependencies
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-up: .env ## Start PostgreSQL + Redis + Superset + Dashboard
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Dashboard
 	$(COMPOSE) up -d
 
-down: ## Stop all services
+docker-down: ## Stop all services
 	$(COMPOSE) down
 
-restart: ## Restart all services
+docker-restart: ## Restart all services
 	$(COMPOSE) restart
 
-logs: ## Tail service logs
+docker-logs: ## Tail service logs
 	$(COMPOSE) logs -f
 
-bootstrap: ## First-time Superset setup (run after 'make up')
+bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
 
-# ── Tests ─────────────────────────────────────────────────────────────
+# ── Robot Framework Tests ─────────────────────────────────────────────
 
-test: test-math test-docker test-safety ## Run all test suites
+robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
 
-test-math: ## Run math tests
+robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
 
-test-docker: ## Run Docker tests
+robot-docker: ## Run Docker tests (Robot Framework)
 	$(ROBOT) -d results/docker $(LISTENER) robot/docker/
 
-test-safety: ## Run safety tests
+robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+
+robot-dryrun: ## Validate all Robot tests (dry run, no execution)
+	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
+
+# ── Dashboard Tests ──────────────────────────────────────────────────
 
 test-dashboard: ## Run dashboard pytest unit tests
 	uv run pytest tests/test_dashboard_layout.py tests/test_dashboard_monitoring.py -v
@@ -69,16 +77,16 @@ import: ## Import results from output.xml files: make import PATH=results/
 
 # ── Code quality ──────────────────────────────────────────────────────
 
-lint: ## Run ruff linter
+code-lint: ## Run ruff linter
 	uv run ruff check .
 
-format: ## Auto-format code
+code-format: ## Auto-format code
 	uv run ruff format .
 
-typecheck: ## Run mypy type checker
+code-typecheck: ## Run mypy type checker
 	uv run mypy src/
 
-check: lint typecheck ## Run all code quality checks
+code-check: code-lint code-typecheck ## Run all code quality checks
 
 # ── CI Scripts ────────────────────────────────────────────────────────
 # Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
@@ -101,8 +109,13 @@ ci-deploy: ## Deploy Superset to remote host
 ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
 	bash ci/test_dashboard.sh $(or $(MODE),all)
 
-ci-review: ## Run Claude Code review
+# ── AI Review ────────────────────────────────────────────────────────
+
+opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
 	bash ci/review.sh
+
+opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
+	bash ci/local_review.sh
 
 # ── GitLab Sync ──────────────────────────────────────────────────────
 
@@ -126,6 +139,15 @@ ci-sync-db: ## Sync CI pipeline results to database
 
 ci-verify-db: ## Verify database contents after sync
 	uv run python scripts/sync_ci_results.py verify
+
+ci-backfill: ## [DEPRECATED] Backfill all GitLab pipeline data to database
+	uv run python scripts/sync_ci_results.py backfill
+
+ci-backfill-metadata: ## [DEPRECATED] Store pipeline metadata only (no artifact download)
+	uv run python scripts/sync_ci_results.py backfill --metadata-only
+
+ci-list-pipeline-results: ## List pipeline_results stored in database
+	uv run python scripts/sync_ci_results.py list-pipeline-results
 
 # ── Versioning ────────────────────────────────────────────────────────
 

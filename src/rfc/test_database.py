@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     from sqlalchemy import (  # type: ignore[import-not-found]
+        BigInteger,
         Column,
         DateTime,
         Float,
@@ -78,6 +79,45 @@ class TestResult:
 
 
 @dataclass
+class PipelineResult:
+    """Represents a GitLab CI pipeline and its metadata."""
+
+    pipeline_id: int
+    status: str
+    ref: str
+    sha: str
+    web_url: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    source: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    queued_duration_seconds: Optional[float] = None
+    tag: Optional[bool] = None
+    jobs_fetched: int = 0
+    artifacts_found: int = 0
+    synced_at: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass
+class DryRunResult:
+    """Represents a Robot Framework dry-run validation result."""
+
+    timestamp: datetime
+    test_suite: str
+    total_tests: int
+    passed: int
+    failed: int
+    skipped: int
+    duration_seconds: float
+    git_commit: str = ""
+    git_branch: str = ""
+    rfc_version: Optional[str] = None
+    errors: Optional[str] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -114,6 +154,21 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def export_to_json(self, output_path: str) -> None: ...
+
+    @abc.abstractmethod
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int: ...
+
+    @abc.abstractmethod
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_dry_run_result(self, result: DryRunResult) -> int: ...
+
+    @abc.abstractmethod
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
 
 class _SQLiteBackend(_Backend):
@@ -162,10 +217,48 @@ class _SQLiteBackend(_Backend):
         last_tested DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS pipeline_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pipeline_id INTEGER NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        web_url TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        source TEXT,
+        duration_seconds REAL,
+        queued_duration_seconds REAL,
+        tag BOOLEAN,
+        jobs_fetched INTEGER DEFAULT 0,
+        artifacts_found INTEGER DEFAULT 0,
+        synced_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS robot_dry_run_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME NOT NULL,
+        test_suite TEXT NOT NULL,
+        total_tests INTEGER DEFAULT 0,
+        passed INTEGER DEFAULT 0,
+        failed INTEGER DEFAULT 0,
+        skipped INTEGER DEFAULT 0,
+        duration_seconds REAL,
+        git_commit TEXT,
+        git_branch TEXT,
+        rfc_version TEXT,
+        errors TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id ON pipeline_results(pipeline_id);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
+    CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp ON robot_dry_run_results(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite ON robot_dry_run_results(test_suite);
     """
 
     # Idempotent migrations for renaming gitlab_* columns.
@@ -355,15 +448,125 @@ class _SQLiteBackend(_Backend):
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO pipeline_results
+                (pipeline_id, status, ref, sha, web_url, created_at,
+                 updated_at, source, duration_seconds,
+                 queued_duration_seconds, tag, jobs_fetched,
+                 artifacts_found, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(pipeline_id) DO UPDATE SET
+                    status=excluded.status,
+                    updated_at=excluded.updated_at,
+                    duration_seconds=excluded.duration_seconds,
+                    queued_duration_seconds=excluded.queued_duration_seconds,
+                    jobs_fetched=excluded.jobs_fetched,
+                    artifacts_found=excluded.artifacts_found,
+                    synced_at=excluded.synced_at
+                """,
+                (
+                    pipeline.pipeline_id,
+                    pipeline.status,
+                    pipeline.ref,
+                    pipeline.sha,
+                    pipeline.web_url,
+                    pipeline.created_at,
+                    pipeline.updated_at,
+                    pipeline.source,
+                    pipeline.duration_seconds,
+                    pipeline.queued_duration_seconds,
+                    pipeline.tag,
+                    pipeline.jobs_fetched,
+                    pipeline.artifacts_found,
+                    (
+                        pipeline.synced_at.isoformat()
+                        if pipeline.synced_at
+                        else datetime.now().isoformat()
+                    ),
+                ),
+            )
+            return cursor.lastrowid if cursor.lastrowid else 0
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pipeline_results ORDER BY pipeline_id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pipeline_results WHERE pipeline_id = ?",
+                (pipeline_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO robot_dry_run_results
+                (timestamp, test_suite, total_tests, passed, failed, skipped,
+                 duration_seconds, git_commit, git_branch, rfc_version, errors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.timestamp.isoformat(),
+                    result.test_suite,
+                    result.total_tests,
+                    result.passed,
+                    result.failed,
+                    result.skipped,
+                    result.duration_seconds,
+                    result.git_commit,
+                    result.git_branch,
+                    result.rfc_version,
+                    result.errors,
+                ),
+            )
+            return cursor.lastrowid if cursor.lastrowid else 0
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM robot_dry_run_results ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
+
+    # Idempotent migrations for the PostgreSQL/SQLAlchemy backend.
+    _PG_MIGRATIONS = [
+        # pipeline_id exceeded INTEGER range (~2.1B); widen to BIGINT.
+        "ALTER TABLE pipeline_results ALTER COLUMN pipeline_id TYPE BIGINT",
+    ]
 
     def __init__(self, database_url: str):
         self.engine: Engine = create_engine(database_url)
         self.metadata = MetaData()
         self._define_tables()
         self.metadata.create_all(self.engine)
+        self._run_migrations()
+
+    def _run_migrations(self) -> None:
+        with self.engine.begin() as conn:
+            for sql in self._PG_MIGRATIONS:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass  # Column already BIGINT or table doesn't exist yet
 
     def _define_tables(self) -> None:
         self.test_runs = Table(
@@ -418,10 +621,52 @@ class _SQLAlchemyBackend(_Backend):
             Column("last_tested", DateTime),
         )
 
+        self.pipeline_results = Table(
+            "pipeline_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("pipeline_id", BigInteger, nullable=False, unique=True),
+            Column("status", String(50), nullable=False),
+            Column("ref", String(255), nullable=False),
+            Column("sha", String(255), nullable=False),
+            Column("web_url", Text, nullable=False),
+            Column("created_at", String(255)),
+            Column("updated_at", String(255)),
+            Column("source", String(255)),
+            Column("duration_seconds", Float),
+            Column("queued_duration_seconds", Float),
+            Column("tag", Integer),
+            Column("jobs_fetched", Integer, default=0),
+            Column("artifacts_found", Integer, default=0),
+            Column("synced_at", DateTime),
+        )
+
         Index("idx_test_runs_model", self.test_runs.c.model_name)
         Index("idx_test_runs_timestamp", self.test_runs.c.timestamp)
         Index("idx_test_runs_suite", self.test_runs.c.test_suite)
         Index("idx_test_results_run_id", self.test_results.c.run_id)
+        self.dry_run_results = Table(
+            "robot_dry_run_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("timestamp", DateTime, nullable=False),
+            Column("test_suite", String(255), nullable=False),
+            Column("total_tests", Integer, default=0),
+            Column("passed", Integer, default=0),
+            Column("failed", Integer, default=0),
+            Column("skipped", Integer, default=0),
+            Column("duration_seconds", Float),
+            Column("git_commit", String(255)),
+            Column("git_branch", String(255)),
+            Column("rfc_version", String(50)),
+            Column("errors", Text),
+        )
+
+        Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
+        Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
+        Index("idx_pipeline_results_status", self.pipeline_results.c.status)
+        Index("idx_dry_run_results_timestamp", self.dry_run_results.c.timestamp)
+        Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -589,6 +834,106 @@ class _SQLAlchemyBackend(_Backend):
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO pipeline_results
+                    (pipeline_id, status, ref, sha, web_url, created_at,
+                     updated_at, source, duration_seconds,
+                     queued_duration_seconds, tag, jobs_fetched,
+                     artifacts_found, synced_at)
+                    VALUES (:pipeline_id, :status, :ref, :sha, :web_url,
+                            :created_at, :updated_at, :source,
+                            :duration_seconds, :queued_duration_seconds,
+                            :tag, :jobs_fetched, :artifacts_found, :synced_at)
+                    ON CONFLICT(pipeline_id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        updated_at = EXCLUDED.updated_at,
+                        duration_seconds = EXCLUDED.duration_seconds,
+                        queued_duration_seconds = EXCLUDED.queued_duration_seconds,
+                        jobs_fetched = EXCLUDED.jobs_fetched,
+                        artifacts_found = EXCLUDED.artifacts_found,
+                        synced_at = EXCLUDED.synced_at
+                    RETURNING id
+                    """
+                ),
+                {
+                    "pipeline_id": pipeline.pipeline_id,
+                    "status": pipeline.status,
+                    "ref": pipeline.ref,
+                    "sha": pipeline.sha,
+                    "web_url": pipeline.web_url,
+                    "created_at": pipeline.created_at,
+                    "updated_at": pipeline.updated_at,
+                    "source": pipeline.source,
+                    "duration_seconds": pipeline.duration_seconds,
+                    "queued_duration_seconds": pipeline.queued_duration_seconds,
+                    "tag": pipeline.tag,
+                    "jobs_fetched": pipeline.jobs_fetched,
+                    "artifacts_found": pipeline.artifacts_found,
+                    "synced_at": (
+                        pipeline.synced_at if pipeline.synced_at else datetime.now()
+                    ),
+                },
+            )
+            row = result.fetchone()
+            return int(row[0]) if row else 0
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM pipeline_results "
+                    "ORDER BY pipeline_id DESC LIMIT :lim"
+                ),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM pipeline_results WHERE pipeline_id = :pid"
+                ),
+                {"pid": pipeline_id},
+            )
+            row = result.fetchone()
+            return dict(row._mapping) if row else None
+
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        with self.engine.begin() as conn:
+            res = conn.execute(
+                self.dry_run_results.insert().values(
+                    timestamp=result.timestamp,
+                    test_suite=result.test_suite,
+                    total_tests=result.total_tests,
+                    passed=result.passed,
+                    failed=result.failed,
+                    skipped=result.skipped,
+                    duration_seconds=result.duration_seconds,
+                    git_commit=result.git_commit,
+                    git_branch=result.git_branch,
+                    rfc_version=result.rfc_version,
+                    errors=result.errors,
+                )
+            )
+            pk = res.inserted_primary_key
+            return int(pk[0]) if pk else 0
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM robot_dry_run_results "
+                    "ORDER BY id DESC LIMIT :lim"
+                ),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -666,6 +1011,21 @@ class TestDatabase:
 
     def export_to_json(self, output_path: str) -> None:
         self._backend.export_to_json(output_path)
+
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        return self._backend.add_pipeline_result(pipeline)
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_pipeline_results(limit)
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        return self._backend.get_pipeline_by_id(pipeline_id)
+
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        return self._backend.add_dry_run_result(result)
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_dry_run_results(limit)
 
 
 def main():
