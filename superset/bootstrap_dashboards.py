@@ -1,18 +1,181 @@
 """Bootstrap Superset with Robot Framework test result dashboards.
 
 Run inside the Superset container after `superset init` to create:
+  - The actual PostgreSQL tables (test_runs, test_results, etc.)
   - A database connection to the RFC PostgreSQL tables
   - Datasets for test_runs, test_results, and models
   - Charts for pass rates, model comparison, trend lines, etc.
   - A "Robot Framework Results" dashboard
 """
 
+import json
 import logging
 import os
 import sys
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
+# SQL DDL for the Robot Framework result tables.
+# Mirrors the schema from src/rfc/test_database.py so tables exist
+# before Superset tries to fetch_metadata() on them.
+_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS test_runs (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    model_release_date VARCHAR(255),
+    model_parameters VARCHAR(255),
+    test_suite VARCHAR(255) NOT NULL,
+    git_commit VARCHAR(255),
+    git_branch VARCHAR(255),
+    pipeline_url TEXT,
+    runner_id VARCHAR(255),
+    runner_tags TEXT,
+    total_tests INTEGER DEFAULT 0,
+    passed INTEGER DEFAULT 0,
+    failed INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    duration_seconds DOUBLE PRECISION,
+    rfc_version VARCHAR(50)
+);
+
+CREATE TABLE IF NOT EXISTS test_results (
+    id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
+    test_name VARCHAR(255) NOT NULL,
+    test_status VARCHAR(50) NOT NULL,
+    score INTEGER,
+    question TEXT,
+    expected_answer TEXT,
+    actual_answer TEXT,
+    grading_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS models (
+    name VARCHAR(255) PRIMARY KEY,
+    full_name VARCHAR(255),
+    organization VARCHAR(255),
+    release_date VARCHAR(255),
+    parameters VARCHAR(255),
+    last_tested TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS pipeline_results (
+    id SERIAL PRIMARY KEY,
+    pipeline_id BIGINT NOT NULL UNIQUE,
+    status VARCHAR(50) NOT NULL,
+    ref VARCHAR(255) NOT NULL,
+    sha VARCHAR(255) NOT NULL,
+    web_url TEXT NOT NULL,
+    created_at VARCHAR(255),
+    updated_at VARCHAR(255),
+    source VARCHAR(255),
+    duration_seconds DOUBLE PRECISION,
+    queued_duration_seconds DOUBLE PRECISION,
+    tag INTEGER,
+    jobs_fetched INTEGER DEFAULT 0,
+    artifacts_found INTEGER DEFAULT 0,
+    synced_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS robot_dry_run_results (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    test_suite VARCHAR(255) NOT NULL,
+    total_tests INTEGER DEFAULT 0,
+    passed INTEGER DEFAULT 0,
+    failed INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    duration_seconds DOUBLE PRECISION,
+    git_commit VARCHAR(255),
+    git_branch VARCHAR(255),
+    rfc_version VARCHAR(50),
+    errors TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
+CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
+CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id
+    ON pipeline_results(pipeline_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
+CREATE INDEX IF NOT EXISTS idx_pipeline_results_status
+    ON pipeline_results(status);
+CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp
+    ON robot_dry_run_results(timestamp);
+CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite
+    ON robot_dry_run_results(test_suite);
+"""
+
+
+def _ensure_tables(pg_uri: str) -> None:
+    """Create the RFC result tables in PostgreSQL if they don't exist."""
+    from sqlalchemy import create_engine, text  # type: ignore[import-untyped]
+
+    engine = create_engine(pg_uri)
+    with engine.begin() as conn:
+        conn.execute(text(_TABLE_DDL))
+    engine.dispose()
+    log.info("Ensured RFC result tables exist in PostgreSQL")
+
+
+def _build_position_json(slices: list) -> str:
+    """Build a valid Superset dashboard position_json.
+
+    Superset requires ROOT_ID, GRID_ID, HEADER_ID, and ROW wrappers
+    around CHART components.  Charts are arranged in rows of 2.
+    """
+    position: dict = {
+        "ROOT_ID": {
+            "type": "ROOT",
+            "id": "ROOT_ID",
+            "children": ["GRID_ID"],
+        },
+        "GRID_ID": {
+            "type": "GRID",
+            "id": "GRID_ID",
+            "children": [],
+        },
+        "HEADER_ID": {
+            "type": "HEADER",
+            "id": "HEADER_ID",
+            "meta": {"text": "Robot Framework Test Results"},
+        },
+    }
+
+    # Arrange charts in rows of 2
+    row_idx = 0
+    for i in range(0, len(slices), 2):
+        row_id = f"ROW-{row_idx}"
+        row_children = []
+
+        for slc in slices[i : i + 2]:
+            chart_id = f"CHART-{slc.id}"
+            position[chart_id] = {
+                "type": "CHART",
+                "id": chart_id,
+                "children": [],
+                "meta": {
+                    "width": 6,
+                    "height": 50,
+                    "chartId": slc.id,
+                    "sliceName": slc.slice_name,
+                },
+            }
+            row_children.append(chart_id)
+
+        position[row_id] = {
+            "type": "ROW",
+            "id": row_id,
+            "children": row_children,
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+        }
+        position["GRID_ID"]["children"].append(row_id)
+        row_idx += 1
+
+    return json.dumps(position)
 
 
 def bootstrap() -> None:
@@ -38,6 +201,9 @@ def bootstrap() -> None:
         pg_db = os.getenv("POSTGRES_DB", "rfc")
         pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:5432/{pg_db}"
 
+        # ── 0. Create RFC tables in PostgreSQL ────────────────────────
+        _ensure_tables(pg_uri)
+
         # ── 1. Database connection ──────────────────────────────────
         db_name = "Robot Framework Results"
         database = db.session.query(Database).filter_by(database_name=db_name).first()
@@ -55,7 +221,13 @@ def bootstrap() -> None:
 
         # ── 2. Datasets ────────────────────────────────────────────
         datasets = {}
-        for table_name in ("test_runs", "test_results", "models"):
+        for table_name in (
+            "test_runs",
+            "test_results",
+            "models",
+            "pipeline_results",
+            "robot_dry_run_results",
+        ):
             ds = (
                 db.session.query(SqlaTable)
                 .filter_by(table_name=table_name, database_id=database.id)
@@ -70,6 +242,13 @@ def bootstrap() -> None:
                 db.session.add(ds)
                 db.session.flush()
                 log.info("Created dataset: %s", table_name)
+            # Sync column metadata so Superset knows the schema
+            try:
+                ds.fetch_metadata()
+                db.session.flush()
+                log.info("Synced columns for: %s", table_name)
+            except Exception as e:
+                log.warning("Could not sync columns for %s: %s", table_name, e)
             datasets[table_name] = ds
 
         # ── 3. Charts (Slices) ─────────────────────────────────────
@@ -216,8 +395,6 @@ def bootstrap() -> None:
             },
         ]
 
-        import json
-
         slices = []
         for cdef in chart_defs:
             slc = db.session.query(Slice).filter_by(slice_name=cdef["name"]).first()
@@ -241,26 +418,10 @@ def bootstrap() -> None:
             db.session.query(Dashboard).filter_by(dashboard_title=dash_title).first()
         )
         if dashboard is None:
-            # Build a simple grid layout: 2 columns
-            position_json = {}
-            for i, slc in enumerate(slices):
-                comp_id = f"CHART-{slc.id}"
-                position_json[comp_id] = {
-                    "type": "CHART",
-                    "id": comp_id,
-                    "children": [],
-                    "meta": {
-                        "width": 6,
-                        "height": 50,
-                        "chartId": slc.id,
-                        "sliceName": slc.slice_name,
-                    },
-                }
-
             dashboard = Dashboard(
                 dashboard_title=dash_title,
                 slug="rfc-results",
-                position_json=json.dumps(position_json),
+                position_json=_build_position_json(slices),
                 published=True,
             )
             dashboard.slices = slices

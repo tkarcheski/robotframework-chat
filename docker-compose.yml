@@ -2,13 +2,13 @@
 #
 # Quick start:
 #   cp .env.example .env        # edit credentials
-#   make up                     # start the stack
+#   make docker-up               # start the stack
 #   make bootstrap              # first-time Superset setup
 #   open http://localhost:8050   # Dashboard control panel
 #   open http://localhost:8088   # Superset analytics
 #
 # Run tests with archiving to PostgreSQL:
-#   make test-math
+#   make robot-math
 #
 # See Makefile for all available targets.
 
@@ -118,6 +118,7 @@ services:
     build:
       context: .
       dockerfile: dashboard/Dockerfile
+      network: host
     restart: unless-stopped
     depends_on:
       postgres:
