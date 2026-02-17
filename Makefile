@@ -13,7 +13,7 @@ export
 .PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
         robot robot-math robot-docker robot-safety robot-dryrun \
         test-dashboard test-dashboard-playwright \
-        import code-lint code-format code-typecheck code-check version \
+        import code-lint code-format code-typecheck code-check code-coverage code-audit version \
         ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
         opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
@@ -88,6 +88,12 @@ code-typecheck: ## Run mypy type checker
 
 code-check: code-lint code-typecheck ## Run all code quality checks
 
+code-coverage: ## Run pytest with coverage report
+	uv run pytest --cov --cov-report=term-missing --cov-report=html:htmlcov
+
+code-audit: ## Audit dependencies for known vulnerabilities
+	uv run pip-audit
+
 # ── CI Scripts ────────────────────────────────────────────────────────
 # Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
 
@@ -152,4 +158,4 @@ ci-list-pipeline-results: ## List pipeline_results stored in database
 # ── Versioning ────────────────────────────────────────────────────────
 
 version: ## Print current version
-	@python -c "from src.rfc import __version__; print(__version__)"
+	@uv run python -c "from rfc import __version__; print(__version__)"

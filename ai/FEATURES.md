@@ -254,13 +254,16 @@ successfully end-to-end in a properly configured environment.
 | `make ci-list-pipeline-results` | Working | GitLab Sync | Lists pipeline_results from database |
 | `make ci-backfill` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
 | `make ci-backfill-metadata` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
-| `make version` | Not Complete | Versioning | Prints current version |
+| `make version` | Working | Versioning | Prints current version (fixed: uses `uv run python`) |
+| `make code-coverage` | Working | Code Quality | Runs pytest with coverage report (new) |
+| `make code-audit` | Working | Code Quality | Audits dependencies for vulnerabilities (new) |
 
 ### Summary
 
-- **Working (8):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
-  `import`, `code-lint`, `ci-list-pipeline-results`
-- **Not Complete (27):** Remaining targets need environment setup, testing,
+- **Working (11):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
+  `import`, `code-lint`, `ci-list-pipeline-results`, `version`,
+  `code-coverage`, `code-audit`
+- **Not Complete (24):** Remaining targets need environment setup, testing,
   or implementation work
 - **Deprecated (2):** `ci-backfill`, `ci-backfill-metadata`
 
