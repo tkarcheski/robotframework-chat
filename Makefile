@@ -134,10 +134,7 @@ opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + M
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
 
-# ── GitLab Sync ──────────────────────────────────────────────────────
-
-ci-sync: ## Mirror repo to GitHub
-	bash ci/sync.sh
+# ── GitLab CI ────────────────────────────────────────────────────────
 
 ci-status: ## Check GitLab API connectivity
 	uv run python scripts/sync_ci_results.py status
@@ -157,10 +154,10 @@ ci-sync-db: ## Sync CI pipeline results to database
 ci-verify-db: ## Verify database contents after sync
 	uv run python scripts/sync_ci_results.py verify
 
-ci-backfill: ## [DEPRECATED] Backfill all GitLab pipeline data to database
+ci-backfill: ## Backfill all GitLab pipeline data to database
 	uv run python scripts/sync_ci_results.py backfill
 
-ci-backfill-metadata: ## [DEPRECATED] Store pipeline metadata only (no artifact download)
+ci-backfill-metadata: ## Store pipeline metadata only (no artifact download)
 	uv run python scripts/sync_ci_results.py backfill --metadata-only
 
 ci-list-pipeline-results: ## List pipeline_results stored in database

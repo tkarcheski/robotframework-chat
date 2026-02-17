@@ -15,7 +15,6 @@ include:
   - local: ci/common.yml
 
 stages:
-  - sync
   - lint
   - generate
   - test
@@ -27,16 +26,6 @@ variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "llama3"
   ROBOT_OPTIONS: "--metadata CI:true"
-
-# ── Sync ──────────────────────────────────────────────────────────────
-
-mirror-to-github:
-  stage: sync
-  script: [bash ci/sync.sh]
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
 
 # ── Lint ─────────────────────────────────────────────────────────────
 
