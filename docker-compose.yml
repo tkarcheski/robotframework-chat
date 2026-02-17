@@ -118,6 +118,7 @@ services:
     build:
       context: .
       dockerfile: dashboard/Dockerfile
+      network: host
     restart: unless-stopped
     depends_on:
       postgres:
