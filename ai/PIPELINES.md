@@ -84,12 +84,11 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 ## Pipeline Stages
 
 ```
-sync → lint → generate → test → report → deploy → review
+lint → generate → test → report → deploy → review
 ```
 
 | Stage | Job(s) | Script | Notes |
 |-------|--------|--------|-------|
-| `sync` | `mirror-to-github` | `ci/sync.sh` | Push mirror to GitHub |
 | `lint` | `lint` | `ci/lint.sh` | Runs pre-commit, ruff, mypy (allow_failure) |
 | `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `ci/generate.sh` | Produce child-pipeline YAML from `test_suites.yaml` |
 | `test` | `run-regular-tests`, `run-dynamic-tests` | (child pipelines) | Execute generated child pipelines |
@@ -107,7 +106,6 @@ sync → lint → generate → test → report → deploy → review
 | `ci/test.sh` | `bash ci/test.sh [all\|math\|docker\|safety]` | Suite to run (default: all) |
 | `ci/generate.sh` | `bash ci/generate.sh [regular\|dynamic\|discover]` | Pipeline mode |
 | `ci/report.sh` | `bash ci/report.sh [--post-mr]` | Post metrics as MR comment |
-| `ci/sync.sh` | `bash ci/sync.sh` | Requires GITHUB_USER, GITHUB_TOKEN |
 | `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
 | `ci/review.sh` | `bash ci/review.sh` | Requires OPENROUTER_API_KEY |
 
