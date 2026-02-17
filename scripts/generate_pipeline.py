@@ -35,10 +35,6 @@ from typing import Any
 
 import yaml
 
-# GitLab CI limits the ``needs`` keyword to 50 entries per job.
-# https://docs.gitlab.com/ee/ci/yaml/#needs
-MAX_DYNAMIC_JOBS = 50
-
 # Ensure project root is on sys.path so we can import rfc / scripts
 _project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_project_root / "src"))
@@ -161,9 +157,7 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
             },
         }
 
-    pipeline: dict[str, Any] = {"stages": ["test", "report"]}
-    job_names: list[str] = []
-    truncated = False
+    pipeline: dict[str, Any] = {"stages": ["test"]}
 
     for node in nodes:
         endpoint = node["endpoint"]
@@ -173,10 +167,6 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
             model_slug = _slug(model_name)
 
             for group_name, group_def in job_groups.items():
-                if len(job_names) >= MAX_DYNAMIC_JOBS:
-                    truncated = True
-                    break
-
                 path = group_def["path"]
                 tags = group_def.get("tags", ["ollama"])
                 group_slug = _slug(group_name)
@@ -225,32 +215,6 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                     },
                     "allow_failure": True,
                 }
-                job_names.append(job_id)
-
-            if truncated:
-                break
-        if truncated:
-            break
-
-    if truncated:
-        # Count what the full matrix would have produced
-        total = sum(
-            len(node["models"]) * len(job_groups) for node in nodes
-        )
-        print(
-            f"WARNING: Dynamic matrix has {total} combinations but GitLab "
-            f"limits needs to {MAX_DYNAMIC_JOBS} jobs. Only the first "
-            f"{MAX_DYNAMIC_JOBS} jobs were generated.",
-            file=sys.stderr,
-        )
-
-    # Report job aggregates all dynamic results
-    pipeline["aggregate-dynamic-results"] = _report_job(
-        job_names,
-        model="dynamic",
-        output_pattern="results/dynamic/**/output.xml",
-        combined_dir="results/dynamic/combined",
-    )
 
     return pipeline
 
