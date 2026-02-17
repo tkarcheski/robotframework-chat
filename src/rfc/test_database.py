@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 try:
     from sqlalchemy import (  # type: ignore[import-not-found]
+        BigInteger,
         Column,
         DateTime,
         Float,
@@ -471,11 +472,26 @@ class _SQLiteBackend(_Backend):
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
 
+    # Idempotent migrations for the PostgreSQL/SQLAlchemy backend.
+    _PG_MIGRATIONS = [
+        # pipeline_id exceeded INTEGER range (~2.1B); widen to BIGINT.
+        "ALTER TABLE pipeline_results ALTER COLUMN pipeline_id TYPE BIGINT",
+    ]
+
     def __init__(self, database_url: str):
         self.engine: Engine = create_engine(database_url)
         self.metadata = MetaData()
         self._define_tables()
         self.metadata.create_all(self.engine)
+        self._run_migrations()
+
+    def _run_migrations(self) -> None:
+        with self.engine.begin() as conn:
+            for sql in self._PG_MIGRATIONS:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass  # Column already BIGINT or table doesn't exist yet
 
     def _define_tables(self) -> None:
         self.test_runs = Table(
@@ -534,7 +550,7 @@ class _SQLAlchemyBackend(_Backend):
             "pipeline_results",
             self.metadata,
             Column("id", Integer, primary_key=True, autoincrement=True),
-            Column("pipeline_id", Integer, nullable=False, unique=True),
+            Column("pipeline_id", BigInteger, nullable=False, unique=True),
             Column("status", String(50), nullable=False),
             Column("ref", String(255), nullable=False),
             Column("sha", String(255), nullable=False),
