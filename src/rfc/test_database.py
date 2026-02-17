@@ -100,6 +100,24 @@ class PipelineResult:
 
 
 @dataclass
+class DryRunResult:
+    """Represents a Robot Framework dry-run validation result."""
+
+    timestamp: datetime
+    test_suite: str
+    total_tests: int
+    passed: int
+    failed: int
+    skipped: int
+    duration_seconds: float
+    git_commit: str = ""
+    git_branch: str = ""
+    rfc_version: Optional[str] = None
+    errors: Optional[str] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -145,6 +163,12 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_dry_run_result(self, result: DryRunResult) -> int: ...
+
+    @abc.abstractmethod
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
 
 class _SQLiteBackend(_Backend):
@@ -211,6 +235,21 @@ class _SQLiteBackend(_Backend):
         synced_at DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS robot_dry_run_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME NOT NULL,
+        test_suite TEXT NOT NULL,
+        total_tests INTEGER DEFAULT 0,
+        passed INTEGER DEFAULT 0,
+        failed INTEGER DEFAULT 0,
+        skipped INTEGER DEFAULT 0,
+        duration_seconds REAL,
+        git_commit TEXT,
+        git_branch TEXT,
+        rfc_version TEXT,
+        errors TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
@@ -218,6 +257,8 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id ON pipeline_results(pipeline_id);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
+    CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp ON robot_dry_run_results(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite ON robot_dry_run_results(test_suite);
     """
 
     # Idempotent migrations for renaming gitlab_* columns.
@@ -468,6 +509,40 @@ class _SQLiteBackend(_Backend):
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO robot_dry_run_results
+                (timestamp, test_suite, total_tests, passed, failed, skipped,
+                 duration_seconds, git_commit, git_branch, rfc_version, errors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    result.timestamp.isoformat(),
+                    result.test_suite,
+                    result.total_tests,
+                    result.passed,
+                    result.failed,
+                    result.skipped,
+                    result.duration_seconds,
+                    result.git_commit,
+                    result.git_branch,
+                    result.rfc_version,
+                    result.errors,
+                ),
+            )
+            return cursor.lastrowid if cursor.lastrowid else 0
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM robot_dry_run_results ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
@@ -570,9 +645,28 @@ class _SQLAlchemyBackend(_Backend):
         Index("idx_test_runs_timestamp", self.test_runs.c.timestamp)
         Index("idx_test_runs_suite", self.test_runs.c.test_suite)
         Index("idx_test_results_run_id", self.test_results.c.run_id)
+        self.dry_run_results = Table(
+            "robot_dry_run_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("timestamp", DateTime, nullable=False),
+            Column("test_suite", String(255), nullable=False),
+            Column("total_tests", Integer, default=0),
+            Column("passed", Integer, default=0),
+            Column("failed", Integer, default=0),
+            Column("skipped", Integer, default=0),
+            Column("duration_seconds", Float),
+            Column("git_commit", String(255)),
+            Column("git_branch", String(255)),
+            Column("rfc_version", String(50)),
+            Column("errors", Text),
+        )
+
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
         Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
         Index("idx_pipeline_results_status", self.pipeline_results.c.status)
+        Index("idx_dry_run_results_timestamp", self.dry_run_results.c.timestamp)
+        Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -809,6 +903,37 @@ class _SQLAlchemyBackend(_Backend):
             row = result.fetchone()
             return dict(row._mapping) if row else None
 
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        with self.engine.begin() as conn:
+            res = conn.execute(
+                self.dry_run_results.insert().values(
+                    timestamp=result.timestamp,
+                    test_suite=result.test_suite,
+                    total_tests=result.total_tests,
+                    passed=result.passed,
+                    failed=result.failed,
+                    skipped=result.skipped,
+                    duration_seconds=result.duration_seconds,
+                    git_commit=result.git_commit,
+                    git_branch=result.git_branch,
+                    rfc_version=result.rfc_version,
+                    errors=result.errors,
+                )
+            )
+            pk = res.inserted_primary_key
+            return int(pk[0]) if pk else 0
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM robot_dry_run_results "
+                    "ORDER BY id DESC LIMIT :lim"
+                ),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -895,6 +1020,12 @@ class TestDatabase:
 
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
         return self._backend.get_pipeline_by_id(pipeline_id)
+
+    def add_dry_run_result(self, result: DryRunResult) -> int:
+        return self._backend.add_dry_run_result(result)
+
+    def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_dry_run_results(limit)
 
 
 def main():
