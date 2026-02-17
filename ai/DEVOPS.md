@@ -60,11 +60,11 @@ Updated as of 2026-02-17.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Unit tests (pytest) | Adopted | 28 test files, ~629 test functions |
+| Unit tests (pytest) | Adopted | 33 test files, ~714 test functions |
 | Robot Framework integration tests | Adopted | Math, Docker, safety test suites |
 | Browser/E2E tests (Playwright) | Adopted | Dashboard Playwright tests via Robot Framework |
 | Test result archival | Adopted | DbListener writes to SQLite/PostgreSQL |
-| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-coverage` target, 70% overall |
+| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-coverage` target, 85% overall |
 | Coverage thresholds/gates | Not Started | No minimum coverage enforcement in CI |
 | Mutation testing | Not Started | No mutation testing framework |
 | Load/performance testing | Not Started | No load tests for dashboard or API |
@@ -75,22 +75,20 @@ Updated as of 2026-02-17.
 
 | Source Area | Modules Tested | Total Modules | Coverage % | Test Count |
 |-------------|---------------|---------------|------------|------------|
-| `src/rfc/` | 20 | 20 | 100% | ~370 |
+| `src/rfc/` | 20 | 20 | 100% | ~461 |
 | `dashboard/core/` | 6 | 6 | 100% | ~127 |
 | `dashboard/` | 3 | 5 | 60% | ~28 |
-| `scripts/` | 3 | 8 | 37% | ~135 |
-| **Total** | **32** | **39** | **82%** | **~629** |
+| `scripts/` | 8 | 8 | 100% | ~207 |
+| **Total** | **37** | **39** | **95%** | **~714** |
 
-Line coverage (via `pytest-cov`): **70%** overall.
+Line coverage (via `pytest-cov`): **85%** overall.
 
 #### Modules Without Tests
 
-- `scripts/discover_nodes.py` — Ollama node discovery
-- `scripts/discover_ollama.py` — Ollama service discovery
-- `scripts/generate_ci_metadata.py` — CI metadata generation
-- `scripts/generate_pipeline.py` — Pipeline YAML generation
-- `scripts/query_results.py` — Result querying
-- `scripts/repo_metrics.py` — Repository metrics
+- `scripts/generate_ci_metadata.py` — Top-level script (runs at import,
+  not easily unit-testable without refactoring)
+- `dashboard/monitoring.py` — Complex Dash callbacks (72% line coverage
+  from integration tests)
 
 ---
 
