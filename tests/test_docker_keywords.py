@@ -189,3 +189,140 @@ class TestExecutePythonInContainer:
 
         assert result["stdout"] == "42\n"
         mock_mgr.stop_container.assert_not_called()
+
+
+class TestStopContainerByName:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_stop_by_name(self, MockMgr):
+        mock_mgr = MagicMock()
+        mock_container = MagicMock()
+        mock_container.id = "resolved-id"
+        mock_mgr.client.containers.get.return_value = mock_container
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.stop_container_by_name("my-container")
+        mock_mgr.stop_container.assert_called_once_with("resolved-id", 10)
+
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_stop_by_name_not_found(self, MockMgr):
+        from docker.errors import NotFound
+
+        mock_mgr = MagicMock()
+        mock_mgr.client.containers.get.side_effect = NotFound("gone")
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.stop_container_by_name("missing")  # should not raise
+
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_stop_by_name_error(self, MockMgr):
+        mock_mgr = MagicMock()
+        mock_mgr.client.containers.get.side_effect = Exception("unexpected")
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.stop_container_by_name("broken")  # should not raise
+
+
+class TestWaitForContainerPort:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_wait_delegates(self, MockMgr):
+        mock_mgr = MagicMock()
+        mock_mgr.wait_for_port.return_value = True
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        assert kw.wait_for_container_port("cid", 8080) is True
+        mock_mgr.wait_for_port.assert_called_once_with("cid", 8080, 30)
+
+
+class TestCopyKeywords:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_copy_to_delegates(self, MockMgr):
+        mock_mgr = MagicMock()
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.copy_to_container("cid", "/host/path", "/container/path")
+        mock_mgr.copy_to_container.assert_called_once_with(
+            "cid", "/host/path", "/container/path"
+        )
+
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_copy_from_delegates(self, MockMgr):
+        mock_mgr = MagicMock()
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.copy_from_container("cid", "/container/path", "/host/path")
+        mock_mgr.copy_from_container.assert_called_once_with(
+            "cid", "/container/path", "/host/path"
+        )
+
+
+class TestGetContainerMetrics:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_metrics_delegates(self, MockMgr):
+        mock_mgr = MagicMock()
+        mock_mgr.get_metrics.return_value = {"cpu_percent": 5.0}
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        result = kw.get_container_metrics("cid")
+        assert result["cpu_percent"] == 5.0
+
+
+class TestUpdateContainerResources:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_update_delegates(self, MockMgr):
+        mock_mgr = MagicMock()
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.update_container_resources("cid", {"cpu_cores": 2.0, "memory_mb": 1024})
+        mock_mgr.update_resources.assert_called_once()
+
+        resources = mock_mgr.update_resources.call_args[0][1]
+        assert resources.cpu_quota == 200000
+        assert resources.memory_mb == 1024
+
+
+class TestCreateWithAllOptions:
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_all_resource_options(self, MockMgr):
+        mock_mgr = MagicMock()
+        mock_mgr.create_container.return_value = "cid"
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        config = {
+            "image": "python:3.11-slim",
+            "cpu_cores": 1.0,
+            "cpu_shares": 512,
+            "memory_mb": 256,
+            "memory_swap_mb": 512,
+            "scratch_mb": 100,
+            "shm_size_mb": 64,
+            "network_mode": "bridge",
+            "ports": {"8080": "8080"},
+            "dns": ["8.8.8.8"],
+            "command": "sleep 10",
+            "volumes": {"/host": "/container"},
+            "env": {"FOO": "bar"},
+            "labels": {"app": "test"},
+            "user": "root",
+            "working_dir": "/app",
+        }
+        kw.create_configurable_container(config)
+
+        call_config = mock_mgr.create_container.call_args[0][0]
+        assert call_config.resources.cpu_quota == 100000
+        assert call_config.resources.cpu_shares == 512
+        assert call_config.resources.memory_swap_mb == 512
+        assert call_config.resources.scratch_mb == 100
+        assert call_config.resources.shm_size_mb == 64
+        assert call_config.network.ports == {"8080": "8080"}
+        assert call_config.network.dns == ["8.8.8.8"]
+        assert call_config.command == "sleep 10"
+        assert call_config.user == "root"

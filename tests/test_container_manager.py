@@ -272,3 +272,216 @@ class TestContainerManagerMetrics:
         mgr = ContainerManager()
         metrics = mgr.get_metrics("abc123")
         assert metrics == {}
+
+    @patch("rfc.container_manager.docker")
+    def test_get_metrics_zero_system_delta(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_container.stats.return_value = {
+            "cpu_stats": {
+                "cpu_usage": {"total_usage": 100},
+                "system_cpu_usage": 500,
+            },
+            "precpu_stats": {
+                "cpu_usage": {"total_usage": 100},
+                "system_cpu_usage": 500,
+            },
+            "memory_stats": {"usage": 0, "limit": 1},
+        }
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        metrics = mgr.get_metrics("abc123")
+        assert metrics["cpu_percent"] == 0.0
+
+
+class TestContainerManagerWaitForPort:
+    @patch("rfc.container_manager.time")
+    @patch("rfc.container_manager.docker")
+    def test_port_ready_immediately(self, mock_docker, mock_time):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_result = MagicMock()
+        mock_result.exit_code = 0
+        mock_container.exec_run.return_value = mock_result
+        mock_client.containers.get.return_value = mock_container
+        mock_time.time.side_effect = [0, 0.1]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        assert mgr.wait_for_port("abc123", 8080) is True
+
+    @patch("rfc.container_manager.time")
+    @patch("rfc.container_manager.docker")
+    def test_port_timeout(self, mock_docker, mock_time):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_result = MagicMock()
+        mock_result.exit_code = 1
+        mock_container.exec_run.return_value = mock_result
+        mock_client.containers.get.return_value = mock_container
+        # First call returns 0, second returns 31 (past timeout of 30)
+        mock_time.time.side_effect = [0, 31]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        assert mgr.wait_for_port("abc123", 8080, timeout=30) is False
+
+
+class TestContainerManagerCopy:
+    @patch("rfc.container_manager.docker")
+    def test_copy_to_container(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_client.containers.get.return_value = mock_container
+
+        # Create a temp file to copy
+        src = tmp_path / "test.txt"
+        src.write_text("hello")
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        mgr.copy_to_container("abc123", str(src), "/workspace")
+        mock_container.put_archive.assert_called_once()
+
+    @patch("rfc.container_manager.docker")
+    def test_copy_to_container_directory(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_client.containers.get.return_value = mock_container
+
+        src_dir = tmp_path / "mydir"
+        src_dir.mkdir()
+        (src_dir / "file.txt").write_text("content")
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        mgr.copy_to_container("abc123", str(src_dir), "/workspace")
+        mock_container.put_archive.assert_called_once()
+
+    @patch("rfc.container_manager.docker")
+    def test_copy_to_container_error(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_client.containers.get.side_effect = NotFound("gone")
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        with pytest.raises(RuntimeError, match="Failed to copy to container"):
+            mgr.copy_to_container("abc123", str(tmp_path), "/workspace")
+
+    @patch("rfc.container_manager.docker")
+    def test_copy_from_container(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+
+        # Create a minimal tar stream
+        import io
+        import tarfile
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            data = b"file content"
+            info = tarfile.TarInfo(name="test.txt")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+        buf.seek(0)
+
+        mock_container.get_archive.return_value = (iter([buf.read()]), {})
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        dest = tmp_path / "output"
+        mgr.copy_from_container("abc123", "/workspace/test.txt", str(dest))
+
+    @patch("rfc.container_manager.docker")
+    def test_copy_from_container_error(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_client.containers.get.side_effect = NotFound("gone")
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        with pytest.raises(RuntimeError, match="Failed to copy from container"):
+            mgr.copy_from_container("abc123", "/src", str(tmp_path / "out"))
+
+
+class TestContainerManagerUpdateResources:
+    @patch("rfc.container_manager.docker")
+    def test_update_resources(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+        from rfc.docker_config import ContainerResources
+
+        mgr = ContainerManager()
+        resources = ContainerResources(memory_mb=1024)
+        mgr.update_resources("abc123", resources)
+        mock_container.update.assert_called_once()
+
+    @patch("rfc.container_manager.docker")
+    def test_update_resources_error(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_container.update.side_effect = DockerException("update failed")
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+        from rfc.docker_config import ContainerResources
+
+        mgr = ContainerManager()
+        with pytest.raises(RuntimeError, match="Failed to update resources"):
+            mgr.update_resources("abc123", ContainerResources())
+
+
+class TestContainerManagerExecuteError:
+    @patch("rfc.container_manager.docker")
+    def test_execute_docker_exception(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_container.exec_run.side_effect = DockerException("exec failed")
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        with pytest.raises(RuntimeError, match="Command execution failed"):
+            mgr.execute_command("abc123", "bad_command")
+
+
+class TestContainerManagerStopDockerError:
+    @patch("rfc.container_manager.docker")
+    def test_stop_docker_exception(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_container.stop.side_effect = DockerException("stop failed")
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        mgr._active_containers["abc123"] = mock_container
+        mgr.stop_container("abc123")  # should not raise
+        assert "abc123" not in mgr._active_containers
