@@ -65,7 +65,7 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
     defs = config.get("defaults", {})
     listeners = ci.get("listeners", [])
     job_groups = ci.get("job_groups", {})
-    model = defs.get("model", "llama3")
+    model = defs.get("model", "gpt-oss:20b")
     endpoint = defs.get("ollama_endpoint", "http://localhost:11434")
 
     pipeline: dict[str, Any] = {
@@ -226,7 +226,7 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
 
 def _report_job(
     upstream_jobs: list[str],
-    model: str = "llama3",
+    model: str = "gpt-oss:20b",
     output_pattern: str | None = None,
     combined_dir: str = "results/combined",
 ) -> dict[str, Any]:

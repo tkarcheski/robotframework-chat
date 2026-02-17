@@ -27,12 +27,12 @@ class TestSessionConfig:
         return_value={"math": {"path": "robot/math/tests"}},
     )
     @patch("dashboard.core.session_manager.default_iq_levels", return_value=["100"])
-    @patch("dashboard.core.session_manager.default_model", return_value="llama3")
+    @patch("dashboard.core.session_manager.default_model", return_value="gpt-oss:20b")
     @patch("dashboard.core.session_manager.default_profile", return_value="STANDARD")
     def test_default_values(self, _prof, _model, _iq, _suites):
         cfg = SessionConfig()
         assert cfg.suite == "robot/math/tests"
-        assert cfg.model == "llama3"
+        assert cfg.model == "gpt-oss:20b"
         assert cfg.log_level == "INFO"
         assert cfg.auto_recover is False
         assert cfg.dry_run is False
@@ -164,7 +164,7 @@ class TestSessionManager:
         return_value={"math": {"path": "robot/math/tests"}},
     )
     @patch("dashboard.core.session_manager.default_iq_levels", return_value=["100"])
-    @patch("dashboard.core.session_manager.default_model", return_value="llama3")
+    @patch("dashboard.core.session_manager.default_model", return_value="gpt-oss:20b")
     @patch("dashboard.core.session_manager.default_profile", return_value="STANDARD")
     def _make_manager(self, _prof, _model, _iq, _suites):
         return SessionManager()
