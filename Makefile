@@ -72,8 +72,8 @@ test-dashboard: ## Run dashboard pytest unit tests
 test-dashboard-playwright: ## Run dashboard Playwright browser self-tests
 	bash ci/test_dashboard.sh playwright
 
-import: ## Import results from output.xml files: make import PATH=results/
-	uv run python scripts/import_test_results.py $(or $(PATH),results/) -r
+import: ## Import results from output.xml files: make import RESULTS_DIR=results/
+	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
 
 # ── Code quality ──────────────────────────────────────────────────────
 
