@@ -78,6 +78,27 @@ class TestResult:
 
 
 @dataclass
+class PipelineResult:
+    """Represents a GitLab CI pipeline and its metadata."""
+
+    pipeline_id: int
+    status: str
+    ref: str
+    sha: str
+    web_url: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    source: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    queued_duration_seconds: Optional[float] = None
+    tag: Optional[bool] = None
+    jobs_fetched: int = 0
+    artifacts_found: int = 0
+    synced_at: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -114,6 +135,15 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def export_to_json(self, output_path: str) -> None: ...
+
+    @abc.abstractmethod
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int: ...
+
+    @abc.abstractmethod
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]: ...
 
 
 class _SQLiteBackend(_Backend):
@@ -162,10 +192,31 @@ class _SQLiteBackend(_Backend):
         last_tested DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS pipeline_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pipeline_id INTEGER NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        web_url TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        source TEXT,
+        duration_seconds REAL,
+        queued_duration_seconds REAL,
+        tag BOOLEAN,
+        jobs_fetched INTEGER DEFAULT 0,
+        artifacts_found INTEGER DEFAULT 0,
+        synced_at DATETIME
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id ON pipeline_results(pipeline_id);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
+    CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
     """
 
     # Idempotent migrations for renaming gitlab_* columns.
@@ -355,6 +406,67 @@ class _SQLiteBackend(_Backend):
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO pipeline_results
+                (pipeline_id, status, ref, sha, web_url, created_at,
+                 updated_at, source, duration_seconds,
+                 queued_duration_seconds, tag, jobs_fetched,
+                 artifacts_found, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(pipeline_id) DO UPDATE SET
+                    status=excluded.status,
+                    updated_at=excluded.updated_at,
+                    duration_seconds=excluded.duration_seconds,
+                    queued_duration_seconds=excluded.queued_duration_seconds,
+                    jobs_fetched=excluded.jobs_fetched,
+                    artifacts_found=excluded.artifacts_found,
+                    synced_at=excluded.synced_at
+                """,
+                (
+                    pipeline.pipeline_id,
+                    pipeline.status,
+                    pipeline.ref,
+                    pipeline.sha,
+                    pipeline.web_url,
+                    pipeline.created_at,
+                    pipeline.updated_at,
+                    pipeline.source,
+                    pipeline.duration_seconds,
+                    pipeline.queued_duration_seconds,
+                    pipeline.tag,
+                    pipeline.jobs_fetched,
+                    pipeline.artifacts_found,
+                    (
+                        pipeline.synced_at.isoformat()
+                        if pipeline.synced_at
+                        else datetime.now().isoformat()
+                    ),
+                ),
+            )
+            return cursor.lastrowid if cursor.lastrowid else 0
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pipeline_results ORDER BY pipeline_id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM pipeline_results WHERE pipeline_id = ?",
+                (pipeline_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
@@ -418,10 +530,33 @@ class _SQLAlchemyBackend(_Backend):
             Column("last_tested", DateTime),
         )
 
+        self.pipeline_results = Table(
+            "pipeline_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("pipeline_id", Integer, nullable=False, unique=True),
+            Column("status", String(50), nullable=False),
+            Column("ref", String(255), nullable=False),
+            Column("sha", String(255), nullable=False),
+            Column("web_url", Text, nullable=False),
+            Column("created_at", String(255)),
+            Column("updated_at", String(255)),
+            Column("source", String(255)),
+            Column("duration_seconds", Float),
+            Column("queued_duration_seconds", Float),
+            Column("tag", Integer),
+            Column("jobs_fetched", Integer, default=0),
+            Column("artifacts_found", Integer, default=0),
+            Column("synced_at", DateTime),
+        )
+
         Index("idx_test_runs_model", self.test_runs.c.model_name)
         Index("idx_test_runs_timestamp", self.test_runs.c.timestamp)
         Index("idx_test_runs_suite", self.test_runs.c.test_suite)
         Index("idx_test_results_run_id", self.test_results.c.run_id)
+        Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
+        Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
+        Index("idx_pipeline_results_status", self.pipeline_results.c.status)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -589,6 +724,74 @@ class _SQLAlchemyBackend(_Backend):
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2, default=str)
 
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO pipeline_results
+                    (pipeline_id, status, ref, sha, web_url, created_at,
+                     updated_at, source, duration_seconds,
+                     queued_duration_seconds, tag, jobs_fetched,
+                     artifacts_found, synced_at)
+                    VALUES (:pipeline_id, :status, :ref, :sha, :web_url,
+                            :created_at, :updated_at, :source,
+                            :duration_seconds, :queued_duration_seconds,
+                            :tag, :jobs_fetched, :artifacts_found, :synced_at)
+                    ON CONFLICT(pipeline_id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        updated_at = EXCLUDED.updated_at,
+                        duration_seconds = EXCLUDED.duration_seconds,
+                        queued_duration_seconds = EXCLUDED.queued_duration_seconds,
+                        jobs_fetched = EXCLUDED.jobs_fetched,
+                        artifacts_found = EXCLUDED.artifacts_found,
+                        synced_at = EXCLUDED.synced_at
+                    """
+                ),
+                {
+                    "pipeline_id": pipeline.pipeline_id,
+                    "status": pipeline.status,
+                    "ref": pipeline.ref,
+                    "sha": pipeline.sha,
+                    "web_url": pipeline.web_url,
+                    "created_at": pipeline.created_at,
+                    "updated_at": pipeline.updated_at,
+                    "source": pipeline.source,
+                    "duration_seconds": pipeline.duration_seconds,
+                    "queued_duration_seconds": pipeline.queued_duration_seconds,
+                    "tag": pipeline.tag,
+                    "jobs_fetched": pipeline.jobs_fetched,
+                    "artifacts_found": pipeline.artifacts_found,
+                    "synced_at": (
+                        pipeline.synced_at if pipeline.synced_at else datetime.now()
+                    ),
+                },
+            )
+            pk = getattr(result, "inserted_primary_key", None)
+            return int(pk[0]) if pk else 0
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM pipeline_results "
+                    "ORDER BY pipeline_id DESC LIMIT :lim"
+                ),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM pipeline_results WHERE pipeline_id = :pid"
+                ),
+                {"pid": pipeline_id},
+            )
+            row = result.fetchone()
+            return dict(row._mapping) if row else None
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -666,6 +869,15 @@ class TestDatabase:
 
     def export_to_json(self, output_path: str) -> None:
         self._backend.export_to_json(output_path)
+
+    def add_pipeline_result(self, pipeline: PipelineResult) -> int:
+        return self._backend.add_pipeline_result(pipeline)
+
+    def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_pipeline_results(limit)
+
+    def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
+        return self._backend.get_pipeline_by_id(pipeline_id)
 
 
 def main():
