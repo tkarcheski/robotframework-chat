@@ -116,6 +116,10 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
             "artifacts": {
                 "when": "always",
                 "paths": [f"{output_dir}/", "data/"],
+                "reports": {
+                    "junit": f"{output_dir}/output.xml",
+                },
+                "expire_in": "30 days",
             },
             "allow_failure": True,
         }
@@ -157,7 +161,8 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
             },
         }
 
-    pipeline: dict[str, Any] = {"stages": ["test"]}
+    pipeline: dict[str, Any] = {"stages": ["test", "report"]}
+    job_names: list[str] = []
 
     for node in nodes:
         endpoint = node["endpoint"]
@@ -212,9 +217,21 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                     "artifacts": {
                         "when": "always",
                         "paths": [f"{output_dir}/", "data/"],
+                        "reports": {
+                            "junit": f"{output_dir}/output.xml",
+                        },
+                        "expire_in": "30 days",
                     },
                     "allow_failure": True,
                 }
+                job_names.append(job_id)
+
+    # Aggregate results from all dynamic jobs
+    pipeline["aggregate-results"] = _report_job(
+        job_names,
+        output_pattern="results/dynamic/**/output.xml",
+        combined_dir="results/combined-dynamic",
+    )
 
     return pipeline
 
@@ -277,6 +294,10 @@ def _report_job(
         "artifacts": {
             "when": "always",
             "paths": [f"{combined_dir}/"],
+            "reports": {
+                "junit": f"{combined_dir}/output.xml",
+            },
+            "expire_in": "30 days",
         },
     }
 

@@ -46,6 +46,7 @@ generate-regular-pipeline:
   script: [bash ci/generate.sh regular]
   artifacts:
     paths: [generated-pipeline.yml]
+    expire_in: 7 days
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -73,6 +74,7 @@ generate-dynamic-pipeline:
   script: [bash ci/generate.sh dynamic]
   artifacts:
     paths: [generated-dynamic-pipeline.yml]
+    expire_in: 7 days
   timeout: 60 minutes
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -118,6 +120,8 @@ dashboard-playwright:
     when: always
     paths:
       - results/dashboard/
+    reports:
+      junit: results/dashboard/playwright/output.xml
     expire_in: 7 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
