@@ -953,12 +953,23 @@ class TestDatabase:
         """Initialize database connection.
 
         Args:
-            db_path: Path to SQLite database file (legacy parameter).
-            database_url: SQLAlchemy database URL. Overrides db_path.
-                          Also read from DATABASE_URL env var.
+            db_path: Path to SQLite database file.  When provided
+                     explicitly this **always** creates a SQLite backend,
+                     even if DATABASE_URL is set in the environment.
+            database_url: SQLAlchemy database URL.  Takes precedence over
+                          the DATABASE_URL env var but **not** over an
+                          explicit *db_path*.
         """
-        url = database_url or os.getenv("DATABASE_URL")
         self._backend: _Backend
+
+        # Explicit db_path always means SQLite (callers that pass a file
+        # path expect a local database – e.g. tests with tmp_path).
+        if db_path is not None:
+            self._backend = _SQLiteBackend(db_path)
+            self.db_path = db_path
+            return
+
+        url = database_url or os.getenv("DATABASE_URL")
 
         if url and not url.startswith("sqlite"):
             if not HAS_SQLALCHEMY:
@@ -971,14 +982,15 @@ class TestDatabase:
             self.db_path = url
         else:
             # SQLite path
-            if db_path is None and url and url.startswith("sqlite"):
+            sqlite_path: Optional[str] = None
+            if url and url.startswith("sqlite"):
                 # Extract path from sqlite:///path URL
-                db_path = url.replace("sqlite:///", "")
-            if db_path is None:
+                sqlite_path = url.replace("sqlite:///", "")
+            if sqlite_path is None:
                 project_root = self._find_project_root()
-                db_path = os.path.join(project_root, "data", "test_history.db")
-            self._backend = _SQLiteBackend(db_path)
-            self.db_path = db_path
+                sqlite_path = os.path.join(project_root, "data", "test_history.db")
+            self._backend = _SQLiteBackend(sqlite_path)
+            self.db_path = sqlite_path
 
     @staticmethod
     def _find_project_root() -> str:

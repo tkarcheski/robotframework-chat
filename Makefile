@@ -12,6 +12,7 @@ export
 
 .PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
         robot robot-math robot-docker robot-safety robot-dryrun \
+        robot-math-import robot-import \
         test-dashboard test-dashboard-playwright \
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
         ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
@@ -60,6 +61,16 @@ robot-docker: ## Run Docker tests (Robot Framework)
 
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+
+robot-math-import: ## Run math tests then import results (continues on test failures)
+	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+	$(MAKE) import
+
+robot-import: ## Run all tests then import results (continues on test failures)
+	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+	-$(ROBOT) -d results/docker $(LISTENER) robot/docker/
+	-$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+	$(MAKE) import
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
