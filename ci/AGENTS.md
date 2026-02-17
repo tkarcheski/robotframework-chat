@@ -44,3 +44,24 @@ The `.env` file is loaded by `ci/sync_db.sh` and the Makefile before invoking th
 | `rfc.db_listener.DbListener` | Write test results to database |
 | `rfc.git_metadata_listener.GitMetaData` | Attach git commit/branch metadata to results |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamp Ollama API calls during tests |
+
+## Pipeline Simplicity
+
+Keep CI pipelines minimal. GitLab CI has hard limits (e.g. a job can
+only `needs` 50 others) and debugging generated YAML is painful. Prefer
+pushing logic into developer tools that work the same locally and in CI:
+
+- **Makefile** — entry points for every CI operation (`make ci-lint`,
+  `make ci-test`, etc.). A developer should be able to reproduce any CI
+  job by running the corresponding `make` target.
+- **Bash scripts** (`ci/*.sh`) — thin wrappers that set up the
+  environment and call Python or other tools. Keep them short and
+  linear.
+- **Python scripts** (`scripts/`) — for anything that needs real logic
+  (discovery, result import, report generation). These are testable and
+  debuggable outside CI.
+
+The `.gitlab-ci.yml` and generated child pipelines should do as little
+as possible: pick a runner, call a script, collect artifacts. Avoid
+`needs` chains, multi-stage fan-in/fan-out, and any CI-specific feature
+that cannot be exercised locally.
