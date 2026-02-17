@@ -55,7 +55,13 @@ def bootstrap() -> None:
 
         # ── 2. Datasets ────────────────────────────────────────────
         datasets = {}
-        for table_name in ("test_runs", "test_results", "models"):
+        for table_name in (
+            "test_runs",
+            "test_results",
+            "models",
+            "pipeline_results",
+            "robot_dry_run_results",
+        ):
             ds = (
                 db.session.query(SqlaTable)
                 .filter_by(table_name=table_name, database_id=database.id)
