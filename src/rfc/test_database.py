@@ -762,6 +762,7 @@ class _SQLAlchemyBackend(_Backend):
                         jobs_fetched = EXCLUDED.jobs_fetched,
                         artifacts_found = EXCLUDED.artifacts_found,
                         synced_at = EXCLUDED.synced_at
+                    RETURNING id
                     """
                 ),
                 {
@@ -783,8 +784,8 @@ class _SQLAlchemyBackend(_Backend):
                     ),
                 },
             )
-            pk = getattr(result, "inserted_primary_key", None)
-            return int(pk[0]) if pk else 0
+            row = result.fetchone()
+            return int(row[0]) if row else 0
 
     def get_pipeline_results(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self.engine.connect() as conn:

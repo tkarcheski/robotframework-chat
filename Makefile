@@ -12,8 +12,9 @@ export
 .PHONY: help install up down restart logs bootstrap \
         test test-math test-docker test-safety test-dashboard test-dashboard-playwright \
         import lint format typecheck check version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-review ci-test-dashboard \
-        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-ai-review ci-test-dashboard \
+        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
+        local-ai-review
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -101,8 +102,11 @@ ci-deploy: ## Deploy Superset to remote host
 ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
 	bash ci/test_dashboard.sh $(or $(MODE),all)
 
-ci-review: ## Run Claude Code review
+ci-ai-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
 	bash ci/review.sh
+
+local-ai-review: ## Run OpenCode AI review on local uncommitted/branch changes
+	bash ci/local_review.sh
 
 # ── GitLab Sync ──────────────────────────────────────────────────────
 

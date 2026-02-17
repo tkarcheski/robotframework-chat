@@ -140,7 +140,8 @@ make ci-generate MODE=dynamic # Generate dynamic child pipeline
 make ci-report               # Generate repo metrics
 make ci-report POST_MR=1     # Generate and post to MR
 make ci-deploy               # Deploy Superset
-make ci-review               # Run Claude Code review
+make ci-ai-review            # Run OpenCode AI review in CI
+make local-ai-review         # Run OpenCode AI review on local changes
 ```
 
 ---
@@ -368,7 +369,8 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
-| `ci/review.sh` | Claude Code review + pipeline fix | `make ci-review` |
+| `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make ci-ai-review` |
+| `ci/local_review.sh` | OpenCode AI review on local changes | `make local-ai-review` |
 
 All scripts follow these conventions:
 - `set -euo pipefail` (fail fast)
