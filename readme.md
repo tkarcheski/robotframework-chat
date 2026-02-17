@@ -33,7 +33,7 @@ make robot-safety           # Run safety tests
 
 ```bash
 cp .env.example .env        # Configure environment
-make up                     # Start PostgreSQL + Redis + Superset
+make docker-up              # Start PostgreSQL + Redis + Superset
 make bootstrap              # First-time Superset initialization
 open http://localhost:8088   # Open the dashboard
 ```

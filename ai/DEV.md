@@ -130,10 +130,10 @@ make robot         # Run all Robot Framework test suites
 make robot-math    # Run math tests
 make robot-docker  # Run Docker tests
 make robot-safety  # Run safety tests
-make lint          # Run ruff linter
-make format        # Auto-format code
-make typecheck     # Run mypy type checker
-make check         # Run all code quality checks (lint + typecheck)
+make code-lint     # Run ruff linter
+make code-format   # Auto-format code
+make code-typecheck # Run mypy type checker
+make code-check    # Run all code quality checks (lint + typecheck)
 make import        # Import output.xml results: make import PATH=results/
 make version       # Print current version
 ```
@@ -168,10 +168,10 @@ git diff
 ### Docker / Superset
 
 ```bash
-make up            # Start PostgreSQL + Redis + Superset
-make down          # Stop all services
+make docker-up     # Start PostgreSQL + Redis + Superset
+make docker-down   # Stop all services
 make bootstrap     # First-time Superset setup
-make logs          # Tail service logs
+make docker-logs   # Tail service logs
 ```
 
 ---

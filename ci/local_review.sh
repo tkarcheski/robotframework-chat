@@ -11,8 +11,8 @@
 #   BASE_BRANCH   - Branch to diff against (default: auto-detect main/master)
 #
 # Usage:
-#   make local-ai-review
-#   REVIEW_MODEL=openrouter/anthropic/claude-sonnet-4 make local-ai-review
+#   make opencode-local-review
+#   REVIEW_MODEL=openrouter/anthropic/claude-sonnet-4 make opencode-local-review
 
 set -uo pipefail
 

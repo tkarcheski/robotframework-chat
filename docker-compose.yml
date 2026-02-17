@@ -2,7 +2,7 @@
 #
 # Quick start:
 #   cp .env.example .env        # edit credentials
-#   make up                     # start the stack
+#   make docker-up               # start the stack
 #   make bootstrap              # first-time Superset setup
 #   open http://localhost:8050   # Dashboard control panel
 #   open http://localhost:8088   # Superset analytics

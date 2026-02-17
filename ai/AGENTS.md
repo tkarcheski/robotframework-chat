@@ -114,20 +114,20 @@ pre-commit run --all-files
 ```bash
 make help          # Show all targets
 make install       # Install dependencies (dev + superset)
-make up            # Start PostgreSQL + Redis + Superset
-make down          # Stop all services
-make restart       # Restart all services
-make logs          # Tail service logs
+make docker-up     # Start PostgreSQL + Redis + Superset
+make docker-down   # Stop all services
+make docker-restart # Restart all services
+make docker-logs   # Tail service logs
 make bootstrap     # First-time Superset setup
 make robot         # Run all Robot Framework test suites
 make robot-math    # Run math tests
 make robot-docker  # Run Docker tests
 make robot-safety  # Run safety tests
 make import        # Import output.xml files: make import PATH=results/
-make lint          # Run ruff linter
-make format        # Auto-format code
-make typecheck     # Run mypy type checker
-make check         # Run all code quality checks
+make code-lint     # Run ruff linter
+make code-format   # Auto-format code
+make code-typecheck # Run mypy type checker
+make code-check    # Run all code quality checks
 make version       # Print current version
 
 # CI targets (wrappers around ci/*.sh scripts)
@@ -140,8 +140,8 @@ make ci-generate MODE=dynamic # Generate dynamic child pipeline
 make ci-report               # Generate repo metrics
 make ci-report POST_MR=1     # Generate and post to MR
 make ci-deploy               # Deploy Superset
-make ci-ai-review            # Run OpenCode AI review in CI
-make local-ai-review         # Run OpenCode AI review on local changes
+make opencode-pipeline-review # Run OpenCode AI review in CI
+make opencode-local-review   # Run OpenCode AI review on local changes
 ```
 
 ---
@@ -369,8 +369,8 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
-| `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make ci-ai-review` |
-| `ci/local_review.sh` | OpenCode AI review on local changes | `make local-ai-review` |
+| `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make opencode-pipeline-review` |
+| `ci/local_review.sh` | OpenCode AI review on local changes | `make opencode-local-review` |
 
 All scripts follow these conventions:
 - `set -euo pipefail` (fail fast)
