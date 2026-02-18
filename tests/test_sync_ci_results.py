@@ -407,8 +407,12 @@ class TestSyncCiResults:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -445,8 +449,12 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         # None for every artifact path tried
@@ -470,8 +478,12 @@ class TestSyncCiResults:
             {"id": 501, "web_url": "https://gl.test/p/501"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -494,8 +506,12 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -518,12 +534,24 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
-            {"id": 1002, "name": "test-docker", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
-            {"id": 1003, "name": "test-safety", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "test-docker",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1003,
+                "name": "test-safety",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -559,10 +587,18 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "has-artifact", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
-            {"id": 1002, "name": "no-artifact", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "has-artifact",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "no-artifact",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         # Use a single path list so each job gets exactly one try
@@ -572,9 +608,7 @@ class TestSyncCiResults:
         db = MagicMock()
         db.get_recent_runs.return_value = []
 
-        result = sync_ci_results(
-            fetcher, db, artifact_paths=["output.xml"]
-        )
+        result = sync_ci_results(fetcher, db, artifact_paths=["output.xml"])
         assert result["artifacts_downloaded"] == 1
         assert result["runs_imported"] == 1
 
@@ -588,8 +622,12 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         # First path fails (output.xml), second succeeds (results/math/output.xml)
@@ -736,7 +774,12 @@ class TestCmdListPipelines:
         """Prints pipeline table."""
         fetcher = MagicMock()
         fetcher.fetch_recent_pipelines.return_value = [
-            {"id": 500, "status": "success", "ref": "main", "web_url": "https://gl/500"},
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "web_url": "https://gl/500",
+            },
         ]
         mock_mf.return_value = fetcher
 
@@ -819,9 +862,7 @@ class TestCmdFetchArtifact:
         fetcher.download_job_artifact.return_value = None
         mock_mf.return_value = fetcher
 
-        args = argparse.Namespace(
-            job_id=1001, artifact_path="output.xml", output=None
-        )
+        args = argparse.Namespace(job_id=1001, artifact_path="output.xml", output=None)
         with pytest.raises(SystemExit) as exc:
             _cmd_fetch_artifact(args)
         assert exc.value.code == 1
@@ -1021,7 +1062,10 @@ class TestJobHasArtifacts:
 
     def test_job_with_artifacts_file(self):
         """Returns True when job has artifacts_file."""
-        assert _job_has_artifacts({"artifacts_file": {"filename": "artifacts.zip"}}) is True
+        assert (
+            _job_has_artifacts({"artifacts_file": {"filename": "artifacts.zip"}})
+            is True
+        )
 
     def test_job_without_artifacts(self):
         """Returns False when job has no artifact metadata."""
@@ -1100,8 +1144,12 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -1162,8 +1210,12 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
 
@@ -1194,8 +1246,12 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -1236,10 +1292,18 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "math", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
-            {"id": 1002, "name": "docker", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "docker",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
@@ -1247,9 +1311,7 @@ class TestBackfillPipelines:
         db = MagicMock()
         db.get_recent_runs.return_value = []
 
-        result = backfill_pipelines(
-            fetcher, db, artifact_paths=["output.xml"]
-        )
+        result = backfill_pipelines(fetcher, db, artifact_paths=["output.xml"])
         assert result["artifacts_downloaded"] == 2
 
         pr = db.add_pipeline_result.call_args[0][0]
@@ -1266,9 +1328,7 @@ class TestBackfillPipelines:
         db.get_recent_runs.return_value = []
 
         backfill_pipelines(fetcher, db, status="success")
-        fetcher.fetch_all_pipelines.assert_called_once_with(
-            ref=None, status="success"
-        )
+        fetcher.fetch_all_pipelines.assert_called_once_with(ref=None, status="success")
 
 
 # ── CLI backfill handler (2 tests) ───────────────────────────────────
@@ -1296,9 +1356,7 @@ class TestCmdBackfill:
             "errors": [],
         }
 
-        args = argparse.Namespace(
-            ref=None, status="all", db=None, metadata_only=False
-        )
+        args = argparse.Namespace(ref=None, status="all", db=None, metadata_only=False)
         _cmd_backfill(args)
 
         out = capsys.readouterr().out
@@ -1324,9 +1382,7 @@ class TestCmdBackfill:
             "errors": ["Failed to import job 1001: bad xml"],
         }
 
-        args = argparse.Namespace(
-            ref=None, status="all", db=None, metadata_only=False
-        )
+        args = argparse.Namespace(ref=None, status="all", db=None, metadata_only=False)
         with pytest.raises(SystemExit) as exc:
             _cmd_backfill(args)
         assert exc.value.code == 1
@@ -1355,8 +1411,12 @@ class TestSyncPipelineMetadata:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success",
-             "artifacts": [{"file_type": "archive"}]},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
         fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"

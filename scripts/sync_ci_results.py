@@ -237,7 +237,9 @@ class GitLabArtifactFetcher:
                 if not batch:
                     break
                 all_pipelines.extend(batch)
-                print(f"    Fetched page {page}: {len(batch)} pipelines (total: {len(all_pipelines)})")
+                print(
+                    f"    Fetched page {page}: {len(batch)} pipelines (total: {len(all_pipelines)})"
+                )
                 if len(batch) < per_page:
                     break
             except requests.exceptions.RequestException as exc:
@@ -264,9 +266,7 @@ class GitLabArtifactFetcher:
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as exc:
-            _log.debug(
-                "Failed to fetch bridges for pipeline %d: %s", pipeline_id, exc
-            )
+            _log.debug("Failed to fetch bridges for pipeline %d: %s", pipeline_id, exc)
             return []
 
     def download_job_artifact(
@@ -489,10 +489,7 @@ def sync_ci_results(
                 db.add_pipeline_result(pr)
             except Exception:
                 pass  # Best-effort metadata storage
-            print(
-                f"    Stored: jobs={pr.jobs_fetched}, "
-                f"artifacts={pr.artifacts_found}"
-            )
+            print(f"    Stored: jobs={pr.jobs_fetched}, artifacts={pr.artifacts_found}")
 
     return result
 
@@ -590,7 +587,7 @@ def backfill_pipelines(
             if not import_artifacts:
                 db.add_pipeline_result(pr)
                 result["pipelines_stored"] += 1
-                print(f"    Stored metadata (--metadata-only).")
+                print("    Stored metadata (--metadata-only).")
                 continue
 
             # Collect jobs from pipeline + child pipelines
@@ -607,7 +604,7 @@ def backfill_pipelines(
             # Skip artifact import if already in test_runs
             already_imported = pipeline_url and pipeline_url in existing_urls
             if already_imported:
-                print(f"    Skipping artifact download (already imported).")
+                print("    Skipping artifact download (already imported).")
 
             for job in jobs_with_artifacts:
                 if already_imported:
@@ -641,18 +638,13 @@ def backfill_pipelines(
                     result["runs_imported"] += 1
                     print(f"    Imported test results from job #{job_id}")
                 except Exception as e:
-                    result["errors"].append(
-                        f"Failed to import job {job_id}: {e}"
-                    )
+                    result["errors"].append(f"Failed to import job {job_id}: {e}")
                     print(f"    ERROR importing job #{job_id}: {e}")
 
             pr.artifacts_found = artifacts_for_pipeline
             db.add_pipeline_result(pr)
             result["pipelines_stored"] += 1
-            print(
-                f"    Stored: jobs={pr.jobs_fetched}, "
-                f"artifacts={pr.artifacts_found}"
-            )
+            print(f"    Stored: jobs={pr.jobs_fetched}, artifacts={pr.artifacts_found}")
 
     return result
 
@@ -801,7 +793,9 @@ def _cmd_backfill(args: argparse.Namespace) -> None:
     print(f"  Token:   {'set' if fetcher.has_token else 'NOT set'}")
     print(f"  Ref:     {args.ref or '(all branches)'}")
     print(f"  Status:  {args.status}")
-    print(f"  Mode:    {'metadata-only' if args.metadata_only else 'full (metadata + artifacts)'}")
+    print(
+        f"  Mode:    {'metadata-only' if args.metadata_only else 'full (metadata + artifacts)'}"
+    )
     print("=" * 60)
 
     status_filter = args.status if args.status != "all" else None

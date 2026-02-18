@@ -895,9 +895,7 @@ class _SQLAlchemyBackend(_Backend):
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
         with self.engine.connect() as conn:
             result = conn.execute(
-                text(
-                    "SELECT * FROM pipeline_results WHERE pipeline_id = :pid"
-                ),
+                text("SELECT * FROM pipeline_results WHERE pipeline_id = :pid"),
                 {"pid": pipeline_id},
             )
             row = result.fetchone()
@@ -926,10 +924,7 @@ class _SQLAlchemyBackend(_Backend):
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self.engine.connect() as conn:
             result = conn.execute(
-                text(
-                    "SELECT * FROM robot_dry_run_results "
-                    "ORDER BY id DESC LIMIT :lim"
-                ),
+                text("SELECT * FROM robot_dry_run_results ORDER BY id DESC LIMIT :lim"),
                 {"lim": limit},
             )
             return [dict(row._mapping) for row in result.fetchall()]

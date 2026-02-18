@@ -29,7 +29,9 @@ class TestPreRunModifierInit:
         assert mod.config_path == "/custom/models.yaml"
         assert mod.default_model == "mistral"
 
-    @patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://env:11434", "DEFAULT_MODEL": "phi3"})
+    @patch.dict(
+        os.environ, {"OLLAMA_ENDPOINT": "http://env:11434", "DEFAULT_MODEL": "phi3"}
+    )
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_env_vars(self, MockClient):
         mod = ModelAwarePreRunModifier()

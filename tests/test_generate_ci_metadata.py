@@ -17,8 +17,11 @@ _SCRIPT = os.path.join(_PROJECT_ROOT, "scripts", "generate_ci_metadata.py")
 
 def _clean_env(**overrides) -> dict:
     """Return a copy of os.environ with CI vars stripped, then overrides applied."""
-    env = {k: v for k, v in os.environ.items()
-           if not k.startswith(("CI_", "GITLAB_", "GITHUB_", "RUNNER_"))}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("CI_", "GITLAB_", "GITHUB_", "RUNNER_"))
+    }
     env.update(overrides)
     return env
 
