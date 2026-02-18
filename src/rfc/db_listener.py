@@ -4,6 +4,9 @@ Automatically stores test run summaries and individual test results
 into the configured database (SQLite or PostgreSQL) after each
 top-level suite completes.
 
+Captures LLM answer and grading data via structured log messages
+emitted by keywords using the ``RFC_DATA:`` prefix convention.
+
 Usage:
     robot --listener rfc.db_listener.DbListener results/
     robot --listener rfc.db_listener.DbListener:database_url=postgresql://... results/
@@ -22,9 +25,19 @@ from . import __version__
 from .git_metadata import collect_ci_metadata
 from .test_database import TestDatabase, TestResult, TestRun
 
+# Prefix used by keywords to emit structured data for the listener.
+RFC_DATA_PREFIX = "RFC_DATA:"
+
 
 class DbListener:
     """Listener that archives Robot Framework results to a SQL database.
+
+    Captures structured data emitted by keywords via log messages with
+    the ``RFC_DATA:`` prefix. Recognised keys:
+
+    - ``RFC_DATA:actual_answer:<text>``
+    - ``RFC_DATA:expected_answer:<text>``
+    - ``RFC_DATA:grading_reason:<text>``
 
     Usage:
         robot --listener rfc.db_listener.DbListener tests/
@@ -40,6 +53,8 @@ class DbListener:
         self._ci_info: Dict[str, str] = {}
         self._test_cases: List[Dict[str, Any]] = []
         self._suite_depth = 0
+        # Per-test structured data captured from RFC_DATA: log messages.
+        self._current_test_data: Dict[str, str] = {}
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -55,6 +70,20 @@ class DbListener:
             self._start_time = datetime.utcnow()
             self._ci_info = collect_ci_metadata()
             self._test_cases = []
+
+    def start_test(self, name: str, attributes: Dict[str, Any]) -> None:
+        """Reset per-test structured data at the start of each test."""
+        self._current_test_data = {}
+
+    def log_message(self, message: Dict[str, Any]) -> None:
+        """Capture structured data from ``RFC_DATA:`` log messages."""
+        text = message.get("message", "")
+        if not isinstance(text, str) or not text.startswith(RFC_DATA_PREFIX):
+            return
+        payload = text[len(RFC_DATA_PREFIX) :]
+        key, _, value = payload.partition(":")
+        if key:
+            self._current_test_data[key] = value
 
     def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
         doc = attributes.get("doc", "")
@@ -75,8 +104,12 @@ class DbListener:
                 "score": score,
                 "question": doc if doc else None,
                 "message": attributes.get("message", ""),
+                "actual_answer": self._current_test_data.get("actual_answer"),
+                "expected_answer": self._current_test_data.get("expected_answer"),
+                "grading_reason": self._current_test_data.get("grading_reason"),
             }
         )
+        self._current_test_data = {}
 
     def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
         self._suite_depth -= 1
@@ -136,9 +169,9 @@ class DbListener:
                     test_status=tc["status"],
                     score=tc["score"],
                     question=tc["question"],
-                    expected_answer=None,
-                    actual_answer=None,
-                    grading_reason=None,
+                    expected_answer=tc.get("expected_answer"),
+                    actual_answer=tc.get("actual_answer"),
+                    grading_reason=tc.get("grading_reason"),
                 )
                 for tc in self._test_cases
             ]

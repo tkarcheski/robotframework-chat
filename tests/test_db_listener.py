@@ -245,6 +245,123 @@ class TestDbListenerEndSuiteArchival:
         listener.end_suite("Suite", _suite_attrs())
 
 
+class TestDbListenerLogMessage:
+    """Tests for RFC_DATA: structured log message capture."""
+
+    def test_captures_actual_answer(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:The answer is 4"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] == "The answer is 4"
+
+    def test_captures_expected_answer(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["expected_answer"] == "4"
+
+    def test_captures_grading_reason(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message(
+            {"message": "RFC_DATA:grading_reason:Correct numeric answer"}
+        )
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["grading_reason"] == "Correct numeric answer"
+
+    def test_captures_multiple_fields(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:42"})
+        listener.log_message({"message": "RFC_DATA:expected_answer:42"})
+        listener.log_message({"message": "RFC_DATA:grading_reason:Exact match"})
+        listener.end_test("T", _test_attrs())
+        tc = listener._test_cases[0]
+        assert tc["actual_answer"] == "42"
+        assert tc["expected_answer"] == "42"
+        assert tc["grading_reason"] == "Exact match"
+
+    def test_ignores_non_rfc_data_messages(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "Just a normal log message"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_ignores_empty_message(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": ""})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_ignores_non_string_message(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": 12345})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_resets_between_tests(self):
+        listener = DbListener()
+        listener.start_test("T1", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:first"})
+        listener.end_test("T1", _test_attrs())
+
+        listener.start_test("T2", {})
+        listener.end_test("T2", _test_attrs())
+
+        assert listener._test_cases[0]["actual_answer"] == "first"
+        assert listener._test_cases[1]["actual_answer"] is None
+
+    def test_handles_value_with_colons(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message(
+            {"message": "RFC_DATA:grading_reason:Score: 1/1, reason: correct"}
+        )
+        listener.end_test("T", _test_attrs())
+        assert (
+            listener._test_cases[0]["grading_reason"] == "Score: 1/1, reason: correct"
+        )
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_captured_data_archived_to_database(self, _mock_ci, tmp_path):
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Math Test", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:4"})
+        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
+        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
+        listener.end_test("Math Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        import sqlite3
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["actual_answer"] == "4"
+            assert row["expected_answer"] == "4"
+            assert row["grading_reason"] == "Correct"
+
+
+class TestDbListenerStartTest:
+    def test_resets_current_test_data(self):
+        listener = DbListener()
+        listener._current_test_data = {"stale": "data"}
+        listener.start_test("T", {})
+        assert listener._current_test_data == {}
+
+    def test_initial_current_test_data_is_empty(self):
+        listener = DbListener()
+        assert listener._current_test_data == {}
+
+
 class TestDbListenerGetDb:
     def test_lazy_creates_database(self, tmp_path):
         db_path = str(tmp_path / "test.db")
