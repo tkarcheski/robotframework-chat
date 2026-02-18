@@ -1,4 +1,4 @@
-# Production Docker Compose for robotframework-chat + Superset + Dashboard
+# Production Docker Compose for robotframework-chat + Superset + Grafana + Dashboard
 #
 # Quick start:
 #   cp .env.example .env        # edit credentials
@@ -6,6 +6,7 @@
 #   make bootstrap              # first-time Superset setup
 #   open http://localhost:8050   # Dashboard control panel
 #   open http://localhost:8088   # Superset analytics
+#   open http://localhost:3000   # Grafana dashboards
 #
 # Run tests with archiving to PostgreSQL:
 #   make robot-math
@@ -113,6 +114,31 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Grafana ────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    networks:
+      - rfc-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
   # ── Dashboard (Dash control panel) ──────────────────────────────────
   dashboard:
     build:
@@ -159,4 +185,5 @@ networks:
 
 volumes:
   pgdata:
+  grafana-data:
   dashboard-results:

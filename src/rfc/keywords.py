@@ -35,11 +35,14 @@ class LLMKeywords:
         logger.info(prompt)
         response = self.client.generate(prompt)
         logger.info(response)
+        logger.debug(f"RFC_DATA:actual_answer:{response}")
         return response
 
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
         result = self.grader.grade(question, expected, actual)
+        logger.debug(f"RFC_DATA:expected_answer:{expected}")
+        logger.debug(f"RFC_DATA:grading_reason:{result.reason}")
         return result.score, result.reason
 
     @keyword("Wait For LLM")

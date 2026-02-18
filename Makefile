@@ -17,7 +17,8 @@ export
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
         ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
         opencode-pipeline-review opencode-local-review \
-        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
+        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
+        grafana-up grafana-down grafana-logs grafana-restart
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -34,7 +35,7 @@ install: ## Install Python dependencies
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Dashboard
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana + Dashboard
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
@@ -48,6 +49,20 @@ docker-logs: ## Tail service logs
 
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
+
+# ── Grafana ──────────────────────────────────────────────────────────
+
+grafana-up: .env ## Start Grafana (+ PostgreSQL dependency)
+	$(COMPOSE) up -d grafana
+
+grafana-down: ## Stop Grafana
+	$(COMPOSE) stop grafana
+
+grafana-logs: ## Tail Grafana logs
+	$(COMPOSE) logs -f grafana
+
+grafana-restart: ## Restart Grafana (picks up provisioning changes)
+	$(COMPOSE) restart grafana
 
 # ── Robot Framework Tests ─────────────────────────────────────────────
 

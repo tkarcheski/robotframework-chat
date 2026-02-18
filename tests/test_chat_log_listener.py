@@ -49,9 +49,7 @@ class TestChatLogListener:
 
     def test_set_llm_endpoint_logs_config(self):
         listener = ChatLogListener()
-        listener.start_keyword(
-            "Set LLM Endpoint", {"args": ["http://ai1:11434"]}
-        )
+        listener.start_keyword("Set LLM Endpoint", {"args": ["http://ai1:11434"]})
         assert len(listener._entries) == 1
         _, _, ptype, msg = listener._entries[0]
         assert ptype == "config"
@@ -106,9 +104,7 @@ class TestChatLogListener:
 
     def test_grade_answer_logs_grading(self):
         listener = ChatLogListener()
-        listener.start_keyword(
-            "Grade Answer", {"args": ["What is 2+2?", "4", "4"]}
-        )
+        listener.start_keyword("Grade Answer", {"args": ["What is 2+2?", "4", "4"]})
         assert len(listener._entries) == 1
         _, _, ptype, msg = listener._entries[0]
         assert ptype == "grading"
@@ -116,13 +112,13 @@ class TestChatLogListener:
 
     def test_grade_answer_captures_output(self):
         listener = ChatLogListener()
-        listener.start_keyword(
-            "Grade Answer", {"args": ["What is 2+2?", "4", "4"]}
+        listener.start_keyword("Grade Answer", {"args": ["What is 2+2?", "4", "4"]})
+        listener.log_message(
+            {
+                "message": 'llama3 >> {"score": 1, "reason": "correct"}',
+                "level": "INFO",
+            }
         )
-        listener.log_message({
-            "message": 'llama3 >> {"score": 1, "reason": "correct"}',
-            "level": "INFO",
-        })
         assert len(listener._entries) == 2
         _, _, ptype, msg = listener._entries[1]
         assert ptype == "output"
@@ -304,10 +300,12 @@ class TestChatLogListener:
 
         # Grade the answer
         listener.start_keyword("Grade Answer", {"args": ["What is 2+2?", "4", "4"]})
-        listener.log_message({
-            "message": 'llama3 >> {"score": 1, "reason": "correct"}',
-            "level": "INFO",
-        })
+        listener.log_message(
+            {
+                "message": 'llama3 >> {"score": 1, "reason": "correct"}',
+                "level": "INFO",
+            }
+        )
         listener.end_keyword("Grade Answer", {})
 
         assert len(listener._entries) == 5

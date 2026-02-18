@@ -94,7 +94,9 @@ class TestDryRunListenerEndTest:
 
 
 class TestDryRunListenerEndSuite:
-    @patch("rfc.dry_run_listener.collect_ci_metadata", return_value={"Commit_SHA": "abc"})
+    @patch(
+        "rfc.dry_run_listener.collect_ci_metadata", return_value={"Commit_SHA": "abc"}
+    )
     def test_end_suite_archives_at_top_level(self, mock_ci):
         listener = DryRunListener()
         mock_db = MagicMock()

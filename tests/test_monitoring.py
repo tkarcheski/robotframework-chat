@@ -236,17 +236,29 @@ class TestNodeList:
 class TestDataclasses:
     def test_pipeline_info(self):
         p = PipelineInfo(
-            id=1, status="success", ref="main", sha="abc12345",
-            created_at="2024-01-01", updated_at="2024-01-02", web_url="https://x"
+            id=1,
+            status="success",
+            ref="main",
+            sha="abc12345",
+            created_at="2024-01-01",
+            updated_at="2024-01-02",
+            web_url="https://x",
         )
         assert p.id == 1
         assert p.source == ""  # default
 
     def test_job_info(self):
         j = JobInfo(
-            id=10, name="test", status="success", duration=120.0,
-            pipeline_id=1, pipeline_ref="main", pipeline_sha="abc",
-            web_url="https://x", created_at="2024-01-01", finished_at="2024-01-02"
+            id=10,
+            name="test",
+            status="success",
+            duration=120.0,
+            pipeline_id=1,
+            pipeline_ref="main",
+            pipeline_sha="abc",
+            web_url="https://x",
+            created_at="2024-01-01",
+            finished_at="2024-01-02",
         )
         assert j.artifacts_uploaded is False  # default
 
@@ -266,16 +278,12 @@ class TestDataclasses:
 class TestPipelineMonitorIsUploaded:
     def test_match(self):
         monitor = MagicMock(spec=PipelineMonitor)
-        monitor._uploaded_pipeline_urls = {
-            "https://gitlab.example.com/pipelines/42"
-        }
+        monitor._uploaded_pipeline_urls = {"https://gitlab.example.com/pipelines/42"}
         assert PipelineMonitor._is_uploaded(monitor, 42) is True
 
     def test_no_match(self):
         monitor = MagicMock(spec=PipelineMonitor)
-        monitor._uploaded_pipeline_urls = {
-            "https://gitlab.example.com/pipelines/99"
-        }
+        monitor._uploaded_pipeline_urls = {"https://gitlab.example.com/pipelines/99"}
         assert PipelineMonitor._is_uploaded(monitor, 42) is False
 
     def test_empty(self):
@@ -323,8 +331,12 @@ class TestResolveGitlabSettings:
 
     @patch.dict(
         "os.environ",
-        {"CI_API_V4_URL": "", "CI_PROJECT_ID": "",
-         "GITLAB_API_URL": "", "GITLAB_PROJECT_ID": ""},
+        {
+            "CI_API_V4_URL": "",
+            "CI_PROJECT_ID": "",
+            "GITLAB_API_URL": "",
+            "GITLAB_PROJECT_ID": "",
+        },
         clear=False,
     )
     @patch("dashboard.monitoring._detect_gitlab_from_git_remote", return_value=("", ""))
@@ -406,7 +418,10 @@ class TestBuildPipelineTable:
     def test_with_pipelines(self):
         pipelines = [
             PipelineInfo(
-                id=1, status="success", ref="main", sha="abcdef12",
+                id=1,
+                status="success",
+                ref="main",
+                sha="abcdef12",
                 created_at="2024-01-01T12:00:00Z",
                 updated_at="2024-01-01T13:00:00Z",
                 web_url="https://example.com/pipelines/1",
@@ -439,16 +454,26 @@ class TestBuildJobTable:
     def test_with_jobs(self):
         jobs = [
             JobInfo(
-                id=10, name="test-suite", status="success", duration=90.5,
-                pipeline_id=1, pipeline_ref="main", pipeline_sha="abc12345",
+                id=10,
+                name="test-suite",
+                status="success",
+                duration=90.5,
+                pipeline_id=1,
+                pipeline_ref="main",
+                pipeline_sha="abc12345",
                 web_url="https://example.com/jobs/10",
                 created_at="2024-01-01T12:00:00Z",
                 finished_at="2024-01-01T12:05:00Z",
                 artifacts_uploaded=True,
             ),
             JobInfo(
-                id=11, name="lint", status="failed", duration=None,
-                pipeline_id=1, pipeline_ref="main", pipeline_sha="abc12345",
+                id=11,
+                name="lint",
+                status="failed",
+                duration=None,
+                pipeline_id=1,
+                pipeline_ref="main",
+                pipeline_sha="abc12345",
                 web_url="",
                 created_at="2024-01-01T12:00:00Z",
                 finished_at="",

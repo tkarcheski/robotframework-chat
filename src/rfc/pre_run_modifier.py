@@ -39,7 +39,9 @@ class ModelAwarePreRunModifier:
             ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
         self.config_path = config_path or "robot/ci/models.yaml"
-        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or "gpt-oss:20b"
+        self.default_model = (
+            default_model or os.getenv("DEFAULT_MODEL") or "gpt-oss:20b"
+        )
 
         self._client = OllamaClient(
             base_url=self.ollama_endpoint, model=self.default_model
