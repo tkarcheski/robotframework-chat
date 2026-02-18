@@ -5,7 +5,7 @@ Run inside the Superset container after ``superset init`` to create:
   - SQL views for cross-table analysis
   - A database connection to the RFC PostgreSQL tables
   - Datasets for all tables and virtual datasets for JOINed views
-  - Charts covering test results, pipelines, models, dry runs
+  - Charts covering test results, pipelines, models, dry runs, keyword timing
   - Three dashboards: Test Results, Pipeline Health, Model Analytics
 """
 
@@ -98,10 +98,25 @@ CREATE TABLE IF NOT EXISTS robot_dry_run_results (
     errors TEXT
 );
 
+CREATE TABLE IF NOT EXISTS keyword_results (
+    id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
+    test_name VARCHAR(255) NOT NULL,
+    keyword_name VARCHAR(255) NOT NULL,
+    library_name VARCHAR(255),
+    status VARCHAR(50) NOT NULL,
+    start_time VARCHAR(255),
+    end_time VARCHAR(255),
+    duration_seconds DOUBLE PRECISION,
+    args TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
 CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
 CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_keyword_results_run_id ON keyword_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_keyword_results_name ON keyword_results(keyword_name);
 CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id
     ON pipeline_results(pipeline_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
@@ -152,6 +167,24 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
         FROM test_runs
         WHERE total_tests > 0
         GROUP BY model_name, test_suite
+    """,
+    "keyword_timing": """
+        SELECT
+            kw.id AS kw_id,
+            kw.keyword_name,
+            kw.library_name,
+            kw.test_name,
+            kw.status AS kw_status,
+            kw.duration_seconds AS kw_duration,
+            kw.args,
+            kw.start_time,
+            kw.end_time,
+            runs.timestamp,
+            runs.model_name,
+            runs.test_suite,
+            runs.git_branch
+        FROM keyword_results kw
+        JOIN test_runs runs ON kw.run_id = runs.id
     """,
 }
 
@@ -655,6 +688,106 @@ def _model_analytics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "order_by_cols": '["timestamp"]',
             },
         },
+        # ── Keyword timing charts ────────────────────────────────────
+        {
+            "name": "Avg Keyword Duration by Model",
+            "viz_type": "bar",
+            "datasource": datasets["keyword_timing"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_kw_duration",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(kw_duration)",
+                    }
+                ],
+                "adhoc_filters": [
+                    {
+                        "clause": "WHERE",
+                        "expressionType": "SIMPLE",
+                        "subject": "keyword_name",
+                        "operator": "==",
+                        "comparator": "Ask LLM",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Ask LLM Duration (s)",
+            },
+        },
+        {
+            "name": "Keyword Execution Count",
+            "viz_type": "bar",
+            "datasource": datasets["keyword_timing"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "count",
+                        "expressionType": "SQL",
+                        "sqlExpression": "COUNT(*)",
+                    }
+                ],
+                "groupby": ["keyword_name"],
+                "row_limit": 30,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Execution Count",
+            },
+        },
+        {
+            "name": "Keyword Timing Detail",
+            "viz_type": "table",
+            "datasource": datasets["keyword_timing"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "timestamp",
+                    "model_name",
+                    "test_suite",
+                    "test_name",
+                    "keyword_name",
+                    "kw_status",
+                    "kw_duration",
+                    "args",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["timestamp"]',
+            },
+        },
+        {
+            "name": "LLM Response Time Trend",
+            "viz_type": "line",
+            "datasource": datasets["keyword_timing"],
+            "params": {
+                "viz_type": "line",
+                "granularity_sqla": "timestamp",
+                "time_grain_sqla": "P1D",
+                "metrics": [
+                    {
+                        "label": "avg_duration",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(kw_duration)",
+                    }
+                ],
+                "adhoc_filters": [
+                    {
+                        "clause": "WHERE",
+                        "expressionType": "SIMPLE",
+                        "subject": "keyword_name",
+                        "operator": "==",
+                        "comparator": "Ask LLM",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 10000,
+                "color_scheme": "supersetColors",
+                "show_legend": True,
+                "y_axis_label": "Avg LLM Response Time (s)",
+            },
+        },
     ]
 
 
@@ -821,6 +954,7 @@ def bootstrap() -> None:
             "models",
             "pipeline_results",
             "robot_dry_run_results",
+            "keyword_results",
         ):
             ds = (
                 db.session.query(SqlaTable)
