@@ -118,6 +118,22 @@ class DryRunResult:
 
 
 @dataclass
+class KeywordResult:
+    """Represents a tracked keyword execution within a test run."""
+
+    run_id: int
+    test_name: str
+    keyword_name: str
+    library_name: str
+    status: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    args: Optional[str] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -163,6 +179,9 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_keyword_results(self, results: List[KeywordResult]) -> None: ...
 
     @abc.abstractmethod
     def add_dry_run_result(self, result: DryRunResult) -> int: ...
@@ -250,10 +269,26 @@ class _SQLiteBackend(_Backend):
         errors TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS keyword_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        test_name TEXT NOT NULL,
+        keyword_name TEXT NOT NULL,
+        library_name TEXT,
+        status TEXT NOT NULL,
+        start_time TEXT,
+        end_time TEXT,
+        duration_seconds REAL,
+        args TEXT,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_keyword_results_run_id ON keyword_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_keyword_results_name ON keyword_results(keyword_name);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id ON pipeline_results(pipeline_id);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
@@ -342,6 +377,33 @@ class _SQLiteBackend(_Backend):
                         r.expected_answer,
                         r.actual_answer,
                         r.grading_reason,
+                    )
+                    for r in results
+                ],
+            )
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        if not results:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO keyword_results
+                (run_id, test_name, keyword_name, library_name,
+                 status, start_time, end_time, duration_seconds, args)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.run_id,
+                        r.test_name,
+                        r.keyword_name,
+                        r.library_name,
+                        r.status,
+                        r.start_time,
+                        r.end_time,
+                        r.duration_seconds,
+                        r.args,
                     )
                     for r in results
                 ],
@@ -662,11 +724,33 @@ class _SQLAlchemyBackend(_Backend):
             Column("errors", Text),
         )
 
+        self.keyword_results = Table(
+            "keyword_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column(
+                "run_id",
+                Integer,
+                ForeignKey("test_runs.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            Column("test_name", String(255), nullable=False),
+            Column("keyword_name", String(255), nullable=False),
+            Column("library_name", String(255)),
+            Column("status", String(50), nullable=False),
+            Column("start_time", String(255)),
+            Column("end_time", String(255)),
+            Column("duration_seconds", Float),
+            Column("args", Text),
+        )
+
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
         Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
         Index("idx_pipeline_results_status", self.pipeline_results.c.status)
         Index("idx_dry_run_results_timestamp", self.dry_run_results.c.timestamp)
         Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
+        Index("idx_keyword_results_run_id", self.keyword_results.c.run_id)
+        Index("idx_keyword_results_name", self.keyword_results.c.keyword_name)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -723,6 +807,28 @@ class _SQLAlchemyBackend(_Backend):
                         "expected_answer": r.expected_answer,
                         "actual_answer": r.actual_answer,
                         "grading_reason": r.grading_reason,
+                    }
+                    for r in results
+                ],
+            )
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        if not results:
+            return
+        with self.engine.begin() as conn:
+            conn.execute(
+                self.keyword_results.insert(),
+                [
+                    {
+                        "run_id": r.run_id,
+                        "test_name": r.test_name,
+                        "keyword_name": r.keyword_name,
+                        "library_name": r.library_name,
+                        "status": r.status,
+                        "start_time": r.start_time,
+                        "end_time": r.end_time,
+                        "duration_seconds": r.duration_seconds,
+                        "args": r.args,
                     }
                     for r in results
                 ],
@@ -1001,6 +1107,9 @@ class TestDatabase:
 
     def add_test_results(self, results: List[TestResult]) -> None:
         self._backend.add_test_results(results)
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        self._backend.add_keyword_results(results)
 
     def add_or_update_model(self, model: ModelInfo) -> None:
         self._backend.add_or_update_model(model)
