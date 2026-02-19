@@ -22,7 +22,7 @@ Backend selection is automatic based on the `DATABASE_URL` environment variable:
 
 ```bash
 # PostgreSQL (used with Superset)
-export DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
+export DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 # SQLite (default - no configuration needed)
 # Stores to data/test_history.db
@@ -156,7 +156,7 @@ from rfc.test_database import TestDatabase
 db = TestDatabase()
 
 # PostgreSQL
-db = TestDatabase(database_url="postgresql://rfc:changeme@localhost:5432/rfc")
+db = TestDatabase(database_url="postgresql://rfc:changeme@localhost:5433/rfc")
 
 # Get performance stats
 stats = db.get_model_performance()
