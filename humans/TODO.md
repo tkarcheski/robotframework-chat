@@ -106,4 +106,57 @@ These require human decisions, manual setup, or external work.
 
 ---
 
-*Last updated: 2026-02-19 — from spec review session*
+## Packaging & Distribution
+
+- [ ] **Publish `rfc` as a PyPI package.** Owner wants RFC to work both as a forkable template and an importable library (`pip install rfc`). This requires: proper `pyproject.toml` entry points, namespace cleanup, README with install instructions, versioning strategy (already at 0.2.0). Consider publishing to PyPI or at minimum making `pip install git+https://...` work cleanly.
+- [ ] **Template documentation.** Write a "How to use RFC as a template" guide — what to fork, what to customize, how to add your own test suites while keeping the CI/listener/database infrastructure.
+
+---
+
+## AI-Powered Code Review in CI
+
+- [ ] **AI agent PR review pipeline.** The `ci/review.sh` stage should use an AI agent to:
+  1. Review code changes (diff)
+  2. Review pipeline results (pass/fail, regressions)
+  3. Approve or deny the pull request (pass/fail)
+  4. Grade the code quality (letter grade)
+  5. Generate a full report (posted as PR comment)
+- [ ] **Makefile parity with pipeline.** Every CI stage must have a corresponding `make` target so the full pipeline can run locally. Audit and fix the 24 "Not Complete" targets.
+- [ ] **Robot Framework tasks for AI review (investigate).** Owner thinks this might be too complex for CI, but worth exploring. A `robot/ci/review.robot` task file that drives the AI review workflow could be a powerful showcase of Robot tasks.
+
+---
+
+## Agentic Workflows & Playwright
+
+- [ ] **Playwright-based agentic workflows.** Use Robot Framework + Browser library (Playwright) for agentic web automation. Examples:
+  - Navigate to Ollama web UI and collect model info visually
+  - Interact with Grafana dashboards programmatically
+  - Scrape model leaderboards from external sites
+  - Automated Superset/Grafana dashboard validation
+- [ ] **Robot Framework Tasks (not tests).** Explore RF's `*** Tasks ***` syntax for non-test automation (RPA-style). Could be used for: model metadata collection, dashboard provisioning, node health checks, report generation.
+
+---
+
+## Branching & Workflow
+
+- [ ] **Document the branching strategy.** Current workflow:
+  - `main` — human-reviewed, tested, stable
+  - `claude-code-staging` — AI agent working branch
+  - `claude/*` — per-session feature branches (merged via PR)
+  - GitLab CI runs on both `main` and staging to catch regressions
+  - GitHub mirrors for code checks only
+  - Owner syncs staging → main after review and testing
+
+---
+
+## Dash Dashboard Deprecation
+
+- [ ] **Dashboard is confirmed as prototype.** Migration path:
+  1. Identify what Grafana needs to replicate (node monitoring, test triggering)
+  2. Test triggering will move to CLI (`make`) and CI (GitLab pipelines) only
+  3. Once Grafana dashboards cover visualization needs, remove `dashboard/` entirely
+  4. Remove: `dashboard/` dir, Docker service, `[dashboard]` extra, `make test-dashboard*` targets
+
+---
+
+*Last updated: 2026-02-19 — from spec review session (round 3)*
