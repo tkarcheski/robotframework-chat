@@ -1,5 +1,8 @@
 # CLAUDE.md — Claude Code persistent instructions
 
+Read `@ai/CLAUDE.md` for project intelligence, owner decisions, architecture vision,
+grading tiers, TRON dashboard specs, and everything from the spec review sessions.
+
 Read and follow `@ai/AGENTS.md` for project philosophy, architecture, code style,
 commit conventions, and the full agent contract.
 

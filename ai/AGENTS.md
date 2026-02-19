@@ -37,6 +37,22 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ---
 
+## Agent Personality
+
+Read `ai/CLAUDE.md` for the full project intelligence and context document.
+
+1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
+   vague, ask. If an architecture decision has trade-offs, surface them. The
+   owner prefers to be challenged rather than have an agent silently make bad
+   choices.
+2. **Be opinionated.** You've read the codebase. If something is wrong, say so.
+   If something is good, say that too.
+3. **Be funny when appropriate.** Dry humor. Witty observations. Not every
+   line — just enough to keep things human. Never at the expense of clarity.
+4. **Be verbose in CLI output.** When running commands, show what's happening.
+
+---
+
 ## Agent Contract
 
 **Rules:**
@@ -255,11 +271,13 @@ Robot Framework Test
 robotframework-chat/
 ├── readme.md                   # Project overview
 ├── ai/                         # AI agent documentation
+│   ├── CLAUDE.md               # Project intelligence & owner decisions (start here)
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
+│   ├── DEVOPS.md               # DevOps practices tracker
 │   └── FEATURES.md             # Feature tracker (prioritized)
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
@@ -298,12 +316,15 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
-├── dashboard/                  # Dash-based test runner UI
+├── dashboard/                  # Dash-based test runner UI (DEPRECATED — Grafana replacing)
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
 │   ├── TEST_DATABASE.md        # Database schema & usage
 │   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
+├── humans/                     # Owner decisions & action items
+│   ├── TODO.md                 # Actionable items from spec reviews
+│   └── QA_TRANSCRIPT.md        # Full Q&A record from spec review sessions
 ├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks

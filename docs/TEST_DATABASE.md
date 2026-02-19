@@ -113,6 +113,55 @@ Model metadata:
 | `parameters` | TEXT | Model size |
 | `last_tested` | DATETIME | Timestamp of last test |
 
+### Planned Schema Changes (Owner-Confirmed 2026-02-19)
+
+> See `humans/TODO.md` § Database & Schema Changes for the full list.
+
+The following additions are planned for the database schema:
+
+**`test_runs` — new columns:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `temperature` | REAL | Inference temperature used |
+| `seed` | INTEGER | Random seed for reproducibility |
+| `top_p` | REAL | Top-p sampling parameter |
+| `top_k` | INTEGER | Top-k sampling parameter |
+| `cost_seconds` | REAL | Wall-clock time (local cost) |
+| `cost_dollars` | REAL NULL | Dollar cost (cloud/OpenRouter) |
+| `suite_version` | TEXT | Git SHA of the `.robot` file |
+| `node_hostname` | TEXT | Which hardware node ran this |
+| `hardware_gpu` | TEXT | GPU/TPU model (e.g., "RTX 4090") |
+| `hardware_vram_gb` | REAL | VRAM in GB |
+
+**`models` — new columns:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `sha256_digest` | TEXT | Model weights SHA256 from `/api/show` |
+| `size_gb` | REAL | Model size in gigabytes |
+| `quantization` | TEXT | e.g., Q4_K_M, Q8_0, FP16 |
+| `architecture` | TEXT | e.g., llama, mistral, gemma |
+| `context_length` | INTEGER | Max context window |
+| `family` | TEXT | Model family |
+| `license` | TEXT | Model license |
+
+**`llm_performance` — new table (or columns on `test_results`):**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `eval_count` | INTEGER | Tokens generated |
+| `eval_duration` | INTEGER | Time to generate (nanoseconds) |
+| `prompt_eval_count` | INTEGER | Prompt tokens processed |
+| `prompt_eval_duration` | INTEGER | Time to process prompt (ns) |
+| `load_duration` | INTEGER | Time to load model (ns) |
+| `total_duration` | INTEGER | Total request time (ns) |
+| `tokens_per_second` | REAL | Computed: eval_count / (eval_duration / 1e9) |
+
+**Data retention:** 90-day rolling window. Older data archived to compressed exports.
+
+---
+
 ## Querying Results
 
 ### CLI

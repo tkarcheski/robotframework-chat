@@ -1,5 +1,9 @@
 # CI Agent Inventory
 
+> **Note:** The canonical documentation for CI/CD lives in `ai/PIPELINES.md`
+> and `ai/FEATURES.md`. This file contains CI-specific script details that
+> supplement those documents.
+
 Scripts and automation agents used in the GitLab CI pipeline.
 
 ## Pipeline Agents
