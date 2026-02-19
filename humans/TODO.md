@@ -183,6 +183,68 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
   3. Once Grafana dashboards cover visualization needs, remove `dashboard/` entirely
   4. Remove: `dashboard/` dir, Docker service, `[dashboard]` extra, `make test-dashboard*` targets
 
+## Reproducibility & Inference Parameters
+
+- [ ] **Store inference parameters per test run.** Every call to Ollama must record: `temperature`, `seed`, `top_p`, `top_k`. For benchmarking, default to `temperature: 0` + fixed `seed` for deterministic output. Make these configurable per test suite via Robot variables or YAML config.
+- [ ] **Add inference parameter columns to database.** New fields on `keyword_results` or `llm_performance`: `temperature REAL`, `seed INTEGER`, `top_p REAL`, `top_k INTEGER`. Enables filtering "show me results at temp=0 only."
+
 ---
 
-*Last updated: 2026-02-19 — from spec review session (round 3)*
+## Versioning & Changelog
+
+- [ ] **Track test suite version in the database.** When a prompt changes, old results become incomparable. Store a `suite_version` (or git SHA of the `.robot` file) alongside results. Enables "only compare results from same suite version."
+- [ ] **Auto-bump project version on merge to main.** Pipeline rule: when a PR merges to `main`, auto-increment the version in `pyproject.toml` using semver. Patch for fixes, minor for features, major for breaking changes (derive from conventional commit prefixes).
+- [ ] **Auto-generate CHANGELOG.rst from commits.** Use conventional commits (`feat:`, `fix:`, `refactor:`, etc.) to generate a structured changelog. Tools: `git-cliff`, `conventional-changelog`, or a custom script. Output format: reStructuredText (`.rst`).
+- [ ] **Track model digests (SHA256) in database.** Use `/api/show` to get the model's SHA256 digest. Store it alongside the human-readable slug name. This catches when `llama3:latest` silently changes upstream. Display: slug name everywhere, digest for exact reproducibility.
+
+---
+
+## Data Retention & Access
+
+- [ ] **Implement 90-day rolling window.** Default retention: 90 days. Older data archived to compressed SQLite files or flat CSV exports. Grafana queries filter to last 90 days by default. Archive job runs weekly via cron or CI scheduled pipeline.
+- [ ] **Public Grafana dashboards.** TRON-themed dashboards should be publicly viewable (no login required for read-only access). Grafana supports anonymous access with a viewer role. Internal tools (triggering tests, managing models) require authentication.
+- [ ] **Internal vs. public separation.** Public: Grafana dashboards (read-only, TRON theme). Internal: make targets, GitLab CI, model management, database admin. No public write access to anything.
+
+---
+
+## Alerting & Notifications
+
+- [ ] **GitLab pipeline failure is the primary alert.** No additional alerting infrastructure needed initially.
+- [ ] **Add Discord notifications (future).** When a pipeline fails or a model regresses, post to a Discord webhook. Low priority — add after the database and Grafana are stable.
+
+---
+
+## Secrets Management
+
+- [ ] **All secrets in `.env` files.** No vault, no external secrets manager. `.env` is gitignored. CI uses GitLab CI/CD variables. Document all required env vars in `ai/DEV.md` and `.env.example`.
+
+---
+
+## Test Content Strategy
+
+- [ ] **Extend test categories beyond short prompts.** Current: short Q&A prompts (math, safety, general). Planned expansions:
+  - **Tool calls** — test the model's ability to generate structured function calls
+  - **Long-form chat** — multi-turn conversations testing context retention
+  - **Humor** — can the model tell jokes? (subjective, Tier 2-3 grading)
+  - **Storytelling** — narrative generation with coherence checks
+  - **Role-play** — character consistency across turns
+  - Each category gets its own test suite under `robot/` with appropriate tier tags
+- [ ] **Prompt engineering guidelines.** Write a guide for contributors: how to write good test prompts, expected answer format, tagging conventions, tier assignment.
+
+---
+
+## Resilience & Error Handling
+
+- [ ] **Robot retries for infrastructure failures.** When a service is down (Ollama unreachable, DB unavailable), Robot should retry with backoff, not fail immediately. Use Robot's `[Retry]` or implement retry logic in Python keywords. Emit WARNING for transient failures, FAIL only for persistent ones.
+- [ ] **Distinguish infra failures from LLM failures.** Robot should clearly separate: (a) "the model gave a bad answer" (test failure) from (b) "the node was offline" (infra warning). Infra failures should not count against model scores.
+- [ ] **Graceful degradation.** If DB is unreachable, buffer results locally and sync later. If a node goes offline mid-suite, skip remaining tests for that node and continue with others.
+
+---
+
+## Reminders (Owner-Requested)
+
+- [ ] **TPU integration is next after database.** The Tenstorrent TPU on `ai1` is idle. Database schema is priority #1. Once stable, spike on TPU integration. Expected to be "just another endpoint" but research needed on Tenstorrent's serving stack.
+
+---
+
+*Last updated: 2026-02-19 — from spec review session (rounds 1-9)*
