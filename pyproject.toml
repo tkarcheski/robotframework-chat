@@ -64,6 +64,8 @@ dev = [
     "types-docker",
     "pytest-cov",
     "pip-audit",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
