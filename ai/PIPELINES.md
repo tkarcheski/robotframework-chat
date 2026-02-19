@@ -133,3 +133,52 @@ propagate automatically — no manual YAML editing in `.gitlab-ci.yml` for
 test jobs.
 
 See [AGENTS.md](AGENTS.md) for the full project architecture.
+
+---
+
+## Node Auto-Discovery (Planned)
+
+> **Owner decision (2026-02-19):** Pipelines should discover which nodes are
+> online before scheduling jobs. See `humans/TODO.md` § Pipeline node auto-discovery.
+
+Proposed flow:
+1. Ping each node's Ollama `/api/tags` endpoint
+2. Build a live inventory of online nodes + available models
+3. Schedule jobs only to reachable nodes
+
+This replaces hardcoded node lists in `config/test_suites.yaml`.
+
+---
+
+## Model-to-Node Assignment (Planned)
+
+> **Owner decision (2026-02-19):** Owner wants to control which models are
+> loaded on which hosts. See `humans/TODO.md` § Model-to-node assignment config.
+
+Short-term: a `config/model_assignments.yaml` file.
+Long-term: web UI to manage assignments.
+
+---
+
+## Branching Model
+
+> **Owner decision (2026-02-19):** See `ai/CLAUDE.md` § Branching Model.
+
+- `main` — human-reviewed, tested, stable
+- `claude-code-staging` — AI agent working branch (long-lived)
+- `claude/*` — per-session feature branches -> PR into staging
+- GitLab CI runs on both `main` and staging (regression detection)
+- GitHub mirrors for code checks only
+- Owner syncs staging -> main after review and testing
+
+---
+
+## AI-Powered Code Review Stage (Planned)
+
+> **Owner decision (2026-02-19):** The AI review stage should approve/deny PRs,
+> grade code quality, and generate full reports. See `humans/TODO.md` § AI-Powered
+> Code Review in CI.
+
+Current: `ci/review.sh` uses OpenCode + Kimi K2.5 via OpenRouter.
+Planned: AI agent reviews both code diff AND pipeline results, posts structured
+report with pass/fail + letter grade.

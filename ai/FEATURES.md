@@ -4,17 +4,34 @@ Status of every major feature, ordered by priority.
 Updated from code audit and git history as of 2026-02-17.
 Updated listener review as of 2026-02-15.
 Updated Superset dashboard and Makefile completeness as of 2026-02-17.
+Updated with owner decisions from spec review as of 2026-02-19.
 
-**Legend:** Done / In Progress / Not Started
+> **Cross-references:** For owner-confirmed architecture decisions see `ai/CLAUDE.md`.
+> For actionable items see `humans/TODO.md`. For full Q&A record see `humans/QA_TRANSCRIPT.md`.
+
+**Legend:** Done / In Progress / Not Started / Deprecated
 
 ---
 
-## Priority 1 — Superset Database & Reporting (In Progress)
+## Priority 1 — Database & Reporting (In Progress — Migrating to Grafana)
+
+> **Owner decision (2026-02-19):** Database schema is the #1 priority.
+> Grafana (TRON-themed) replaces Superset for visualization. Superset may
+> stay for ad-hoc SQL queries or be removed entirely. See `ai/CLAUDE.md`.
 
 The Superset stack is partially functional. The **charts view** is working
 (all 6 charts render correctly) and **Recent Test Runs** table displays
 data. The remaining dashboard features (cross-filtering, alerts, per-model
 dashboards, retention, scheduled exports) are not yet complete.
+
+**New schema requirements (from spec review):**
+- Model metadata (quantization, architecture, context length) via `/api/show`
+- Performance metrics (tokens/sec, eval_count, eval_duration)
+- Hardware context per test run (node, GPU/TPU, VRAM)
+- Inference parameters (temperature, seed, top_p, top_k)
+- Model size in GB, model SHA256 digest
+- Cost tracking (seconds for local, dollars for cloud)
+- 90-day rolling data retention
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -69,10 +86,13 @@ have been reviewed, bugs fixed, and comprehensive unit tests added.
 
 ---
 
-## Priority 2 — Dashboard Control Panel (Functional)
+## Priority 2 — Dashboard Control Panel (Deprecated — Grafana Replacing)
 
-The Dash-based UI is feature-rich and production-grade. Remaining work is
-incremental polish.
+> **Owner decision (2026-02-19):** The Dash dashboard is a prototype. Grafana
+> with TRON theming replaces it. Do not invest further. Remove once Grafana
+> dashboards cover visualization needs. See `humans/TODO.md` § Dash Dashboard Deprecation.
+
+The Dash-based UI is feature-rich but being replaced by Grafana.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -92,6 +112,10 @@ incremental polish.
 ---
 
 ## Priority 3 — Structured Evaluation (In Progress)
+
+> **Owner decision (2026-02-19):** Grading uses a 6-tier model (Tier 0-6).
+> All tests must have Robot or Python checks. See `ai/CLAUDE.md` § Grading
+> Tiers and `humans/TODO.md` § Grading System for the full tier definitions.
 
 Binary pass/fail grading is solid. Multi-score rubrics are the main gap
 blocking richer evaluation workflows.
@@ -266,6 +290,39 @@ successfully end-to-end in a properly configured environment.
 - **Not Complete (24):** Remaining targets need environment setup, testing,
   or implementation work
 - **Deprecated (2):** `ci-backfill`, `ci-backfill-metadata`
+
+---
+
+## Future — Agentic Workflows & Playwright (Not Started)
+
+> **Owner decision (2026-02-19):** RFC should grow toward agentic workflows
+> using Robot Framework Tasks and Playwright. This is the horizon, not the sprint.
+
+| Feature | Status |
+|---------|--------|
+| Playwright-based web automation | Not Started |
+| Robot Framework Tasks (RPA-style `*** Tasks ***`) | Not Started |
+| Tool-call testing (structured function generation) | Not Started |
+| Multi-turn conversation testing | Not Started |
+| Humor evaluation (joke quality) | Not Started |
+| Storytelling evaluation (narrative coherence) | Not Started |
+| Role-play evaluation (character consistency) | Not Started |
+
+---
+
+## Future — TRON-Themed Grafana Dashboards (Not Started)
+
+> **Owner decision (2026-02-19):** "TRON - 10000 percent TRON." See
+> `ai/CLAUDE.md` § The TRON Aesthetic for full color palette and dashboard names.
+
+| Feature | Status |
+|---------|--------|
+| TRON color palette and theme | Not Started |
+| "The Grid" — node health matrix | Not Started |
+| "Light Cycle Arena" — A/B comparison | Not Started |
+| "Identity Disc" — per-model radar chart | Not Started |
+| "MCP Dashboard" — master overview | Not Started |
+| Public read-only anonymous access | Not Started |
 
 ---
 

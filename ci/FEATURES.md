@@ -1,5 +1,8 @@
 # CI Features Matrix
 
+> **Note:** The canonical feature tracker is `ai/FEATURES.md`. This file
+> tracks CI-specific features and test coverage only.
+
 Feature inventory with implementation status and test coverage.
 
 ## Pipeline Features

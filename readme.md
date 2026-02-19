@@ -70,13 +70,17 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 | Document | Description |
 |----------|-------------|
-| [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, architecture, and detailed reference |
+| [ai/CLAUDE.md](ai/CLAUDE.md) | Project intelligence, owner decisions, architecture vision |
+| [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, code style, and commands |
 | [ai/DEV.md](ai/DEV.md) | Development guidelines and TDD workflow |
-| [ai/SKILLS.md](ai/SKILLS.md) | Agent capabilities and tools |
+| [ai/FEATURES.md](ai/FEATURES.md) | Feature tracker (prioritized, with status) |
 | [ai/PIPELINES.md](ai/PIPELINES.md) | Pipeline strategy and model selection |
-| [ai/roadmap.md](ai/roadmap.md) | Project roadmap |
+| [ai/DEVOPS.md](ai/DEVOPS.md) | DevOps practices tracker |
+| [ai/REFACTOR.md](ai/REFACTOR.md) | Refactoring and maintenance guide |
 | [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
+| [humans/TODO.md](humans/TODO.md) | Owner action items and decisions |
+| [humans/QA_TRANSCRIPT.md](humans/QA_TRANSCRIPT.md) | Full Q&A from spec review sessions |
 
 ---
 

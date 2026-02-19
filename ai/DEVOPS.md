@@ -3,7 +3,11 @@
 Comprehensive list of DevOps practices applicable to robotframework-chat,
 with current adoption status.
 
-Updated as of 2026-02-17.
+Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
+
+> **Cross-references:** See `ai/CLAUDE.md` for architecture decisions,
+> `humans/TODO.md` for actionable items, `humans/QA_TRANSCRIPT.md` for
+> the full Q&A record.
 
 **Legend:** Adopted / Partial / Not Started
 
@@ -256,3 +260,21 @@ Line coverage (via `pytest-cov`): **85%** overall.
    releases for traceability.
 7. **Script test coverage** — Add tests for the 6 remaining untested scripts
    in `scripts/` (discovery, pipeline generation, metrics).
+
+---
+
+## Owner Decisions Affecting DevOps (2026-02-19 Spec Review)
+
+These decisions from the spec review session impact DevOps practices:
+
+| Decision | Impact | See |
+|----------|--------|-----|
+| 90-day data retention | Need cleanup cron/CI job | `humans/TODO.md` § Data Retention |
+| Semver auto-bump on merge to main | Need CI pipeline rule + version script | `humans/TODO.md` § Versioning |
+| CHANGELOG.rst from conventional commits | Need `git-cliff` or similar in CI | `humans/TODO.md` § Versioning |
+| Discord notifications (future) | New CI integration after DB/Grafana stable | `humans/TODO.md` § Alerting |
+| `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
+| Makefile parity with pipeline | Fix 24 broken targets | `ai/FEATURES.md` § Makefile |
+| Secrets stay in `.env` | No vault needed | `ai/CLAUDE.md` § Secrets |
+| Public Grafana + internal tools | RBAC: anonymous viewer for Grafana | `ai/CLAUDE.md` § Access Model |
+| Branching: main / staging / claude/* | Document and enforce | `ai/CLAUDE.md` § Branching Model |
