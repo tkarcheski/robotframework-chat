@@ -421,7 +421,7 @@ Set `DATABASE_URL` in your environment or `.env` to switch backends:
 
 ```bash
 # PostgreSQL (for Superset)
-DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
+DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 # SQLite (default when DATABASE_URL is unset)
 ```
