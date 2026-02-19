@@ -5,6 +5,112 @@ review session. This exists because the owner does not have chat history enabled
 
 ---
 
+## TL;DR
+
+RFC is a **Robot Framework test harness for evaluating local LLMs**. It sends
+prompts, captures responses, grades them with a 7-tier system (Tier 0-6), stores
+everything in PostgreSQL, and visualizes it in TRON-themed Grafana dashboards.
+
+**Key decisions from this session:**
+
+| Decision | Answer |
+|----------|--------|
+| Primary visualization | Grafana (TRON-themed), not Superset |
+| Dash dashboard | Deprecated prototype — remove after Grafana |
+| #1 priority | Database schema |
+| Grading model | 7 tiers (0-6), all backed by Robot Framework |
+| Model identity | Slug names + SHA256 digest in DB |
+| Inference params | temperature, seed, top_p, top_k — stored per run |
+| Cost tracking | `cost_seconds` (local), `cost_dollars` (cloud) |
+| Data retention | 90-day rolling window |
+| Versioning | Semver, auto-bump on merge, CHANGELOG.rst |
+| Distribution | **PyPI as `robotframework-chat`** (name confirmed available) |
+| License | Apache 2.0 (matches Robot Framework) |
+| Secrets | `.env` files, no vault |
+| Alerting | GitLab pipeline failure + Discord (future) |
+| Theme | TRON. 10000% TRON. |
+| Agent personality | Funny, opinionated, asks lots of questions |
+| dev2 RAM | 32 GB (confirmed) |
+
+---
+
+## FAQ
+
+### What is RFC?
+A Robot Framework test harness that treats LLMs like software under test. It
+sends prompts, captures responses, grades them, and stores everything in a
+database for analysis. Think "pytest for language models" with Robot Framework's
+readability.
+
+### How does grading work?
+Seven tiers (0-6). Tier 0 is pure Robot Framework asserts (`Should Be Equal`).
+Tier 1 adds Python logic. Tier 2 uses a single LLM grader. Tier 3 uses 3+
+graders with majority vote. Tier 4 sandboxes LLM output in Docker. Tier 5 is
+external/human grading. Tier 6 is data collection only (no pass/fail). All
+tiers require Robot or Python checks — no test exists without verification.
+
+### What hardware does RFC run on?
+Five nodes on a home network:
+
+| Node | Compute | RAM | Role |
+|------|---------|-----|------|
+| `ai1` | Tenstorrent TPU | 256 GB | Future TPU testing |
+| `mini1` | Apple M4 | 16 GB | Light inference |
+| `mini2` | Apple M4 | 64 GB | Heavier inference |
+| `dev1` | NVIDIA RTX 4090 (24 GB VRAM) | 64 GB | Primary GPU node |
+| `dev2` | NVIDIA RTX 5070 Mobile | 32 GB | Laptop |
+
+### Where do results go?
+PostgreSQL (primary) or SQLite (fallback). The `DbListener` archives results
+automatically during test runs. Grafana reads from PostgreSQL for visualization.
+
+### What's the TRON theme?
+Owner wants all dashboards themed after TRON (the movie). Black backgrounds,
+cyan (#00FFFF) accents, glowing grid lines, monospace fonts. Dashboard names:
+"The Grid" (node health), "Light Cycle Arena" (A/B comparison), "Identity Disc"
+(per-model radar chart), "MCP Dashboard" (master overview).
+
+### How do I install it?
+```bash
+pip install robotframework-chat    # PyPI (coming soon)
+# or
+pip install git+https://...        # From source (works now)
+```
+
+### What's the branching model?
+- `main` — human-reviewed, stable
+- `claude-code-staging` — AI agent working branch
+- `claude/*` — per-session feature branches
+- GitLab CI runs on both main and staging
+
+### Is there security?
+No network segmentation. Ollama endpoints are unprotected on the home network.
+Secrets live in `.env` files (gitignored). CI uses GitLab CI/CD variables.
+Grafana dashboards are publicly readable, everything else is internal.
+
+### What about the Dash dashboard?
+It's deprecated. It was a working prototype with multi-session management, live
+output, auto-recovery, and model selection. But Grafana replaces it for
+visualization, and `make` + GitLab CI replace it for test triggering.
+
+### What's next after the database?
+1. Database schema (highest priority)
+2. Grafana dashboards (TRON theme)
+3. Tenstorrent TPU integration on `ai1`
+4. Fix 24 broken Makefile targets
+5. PyPI publishing
+
+### Can RFC test more than short prompts?
+Currently: short Q&A (math, safety, general knowledge). Planned: tool calls,
+multi-turn conversations, humor, storytelling, and role-play evaluation.
+
+### What's OpenRouter for?
+Cloud-hosted grading. When local models aren't accurate enough to grade
+responses, use OpenRouter to call cloud models as graders. Configured via
+`GRADER_ENDPOINT` and `GRADER_MODEL` env vars.
+
+---
+
 ## Round 1: Initial Questions (Claude -> Owner)
 
 ### Q1: Model tag `gpt-oss:20b` — what is this?
@@ -142,7 +248,7 @@ also use the TPU."
 **A:** "What other options besides PYPI are there?" (Agent researched and
 provided 7 options including git+https, Docker, conda, GitHub Releases, etc.)
 
-### Q8: What questions did the owner miss?
+### Q6: What questions did the owner miss?
 **A:** "What questions did I miss?" (Agent identified 12 missing questions —
 see Round 9.)
 
@@ -199,7 +305,7 @@ but is out of scope for this repo right now."
 
 ---
 
-## Post-Round 9: Personality & Documentation
+## Round 10: Final Decisions
 
 ### Q: Agent personality?
 **A:** "I want claude to be funny, but also ask me lots of questions, make the
@@ -208,6 +314,17 @@ ai/AGENT.md capture this too."
 ### Q: Chat history?
 **A:** "I don't have chat history on so everything we talked about needs to be
 in the repo."
+
+### Q: dev2 RAM?
+**A:** 32 GB confirmed.
+
+### Q: PyPI package name?
+**A:** Owner confirmed `robotframework-chat` is available on PyPI
+(https://pypi.org/project/robotframework-chat/) and wants to publish there.
+
+### Q: License?
+**A:** Apache 2.0. Matches Robot Framework's own license. Permissive with
+patent grant.
 
 ---
 
@@ -231,8 +348,13 @@ These were identified during the review but not yet discussed with the owner:
    cost ceiling?
 8. **Role-play evaluation criteria** — what does "good role-play" look like?
    Character consistency? Creativity? Staying in character under pressure?
+9. **PyPI publishing workflow** — trusted publishing (OIDC) or API token?
+   Auto-publish on tag or manual?
+10. **pyproject.toml package name** — currently `rfc`, needs to become
+    `robotframework-chat` for PyPI.
 
 ---
 
 *This transcript ensures no context is lost between sessions. All decisions
-captured here are also reflected in `ai/CLAUDE.md` and `humans/TODO.md`.*
+captured here are also reflected in `ai/CLAUDE.md` and `humans/TODO.md`.
+Last updated: 2026-02-19 — from spec review session (rounds 1-10).*

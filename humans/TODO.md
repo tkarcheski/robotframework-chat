@@ -13,7 +13,7 @@ These require human decisions, manual setup, or external work.
   - `mini1`: Mac Mini M4, 16GB
   - `mini2`: Mac Mini M4, 64GB
   - `dev1`: NVIDIA RTX 4090
-  - `dev2`: Laptop, NVIDIA RTX 5070 Mobile
+  - `dev2`: Laptop, NVIDIA RTX 5070 Mobile, 32GB RAM
 - [ ] **Tenstorrent TPU support.** `ai1` has a Tenstorrent TPU that isn't currently used. Research Tenstorrent's inference stack (tt-metal / tt-buda) and whether Ollama or another serving layer can target it. This is future work but should be tracked.
 - [ ] **Remove the custom Dash dashboard.** Owner confirmed Grafana will replace it. Plan the deprecation: remove `dashboard/` directory, remove `make test-dashboard*` targets, remove dashboard Docker service from `docker-compose.yml`, remove `[dashboard]` optional dependency from `pyproject.toml`.
 
@@ -125,17 +125,23 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 ---
 
-## Packaging & Distribution
+## Packaging & Distribution (Decided — PyPI)
 
-- [ ] **Decide distribution method.** Options researched:
-  - **PyPI** — `pip install rfc`. Widest reach, standard Python ecosystem. Requires unique package name (rfc is likely taken — may need `robotframework-chat` or `rf-chat`).
-  - **GitLab/GitHub Package Registry** — `pip install` from private registry. Good for internal use, no name conflicts. Free for public repos.
-  - **`pip install git+https://...`** — Zero infrastructure. Just point at the repo. Works today with no changes.
-  - **Conda / conda-forge** — If targeting data science users who prefer conda environments. More packaging effort.
-  - **Docker image** — `docker run rfc ...`. Bundles everything (Python, Robot, Ollama client). Best for CI and reproducibility.
-  - **GitHub Releases / `.whl` artifacts** — Attach wheel files to GitHub releases. Manual but simple.
-  - **Just a forkable template** — No packaging at all. Users fork and customize. Simplest, but no upstream updates.
-- [ ] **Template documentation.** Write a "How to use RFC as a template" guide — what to fork, what to customize, how to add your own test suites while keeping the CI/listener/database infrastructure.
+- [x] **Distribution method: PyPI as `robotframework-chat`.** Owner confirmed the name
+  is available at https://pypi.org/project/robotframework-chat/. Primary distribution:
+  ```bash
+  pip install robotframework-chat
+  ```
+- [ ] **Set up PyPI publishing.** Configure `pyproject.toml` for PyPI (project name,
+  classifiers, entry points, description). Set up trusted publishing via GitHub Actions
+  or manual `twine upload`. Create a `publish` make target.
+- [ ] **First PyPI release.** Tag `v0.2.0` (or current version), build wheel, publish
+  to PyPI. Verify `pip install robotframework-chat` works in a clean venv.
+- [ ] **CI auto-publish on tag.** Add a pipeline stage that publishes to PyPI when a
+  version tag (`v*`) is pushed. Use trusted publishing (OIDC) or API token.
+- [ ] **Template documentation.** Write a "How to use RFC as a template" guide — what
+  to fork, what to customize, how to add your own test suites while keeping the
+  CI/listener/database infrastructure.
 
 ---
 

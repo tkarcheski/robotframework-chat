@@ -97,7 +97,7 @@ Implement Tier 0-1 first. They're the foundation. Everything else builds on top.
 | `mini1` | macOS | Apple M4 | 16 GB | ~10-12 GB usable for model weights |
 | `mini2` | macOS | Apple M4 | 64 GB | |
 | `dev1` | Linux | NVIDIA RTX 4090 (24 GB VRAM) | 64 GB | Primary GPU node |
-| `dev2` | Linux | NVIDIA RTX 5070 Mobile | ? | Laptop |
+| `dev2` | Linux | NVIDIA RTX 5070 Mobile | 32 GB | Laptop |
 
 ---
 
@@ -199,16 +199,21 @@ textures, data flowing like light cycles.
 
 ---
 
-## Distribution (Undecided)
+## Distribution (Decided — PyPI)
 
-Options on the table:
-1. `pip install git+https://...` (works today, zero effort) — recommended start
-2. Docker image (best for CI and reproducibility)
-3. PyPI (needs unique name — `rfc` is likely taken)
-4. GitLab/GitHub Package Registry (good for private/internal use)
-5. Conda / conda-forge (if targeting data science users)
-6. GitHub Releases with `.whl` artifacts (manual but simple)
-7. Forkable template (simplest, no upstream sync)
+**Owner confirmed (2026-02-19):** Publish to PyPI as `robotframework-chat`.
+The name is available at https://pypi.org/project/robotframework-chat/.
+
+```bash
+pip install robotframework-chat
+```
+
+Additional distribution channels (secondary):
+- Docker image (for CI and reproducibility)
+- `pip install git+https://...` (works today, zero effort)
+- Forkable template (users clone and customize)
+
+**License:** Apache 2.0 (matches Robot Framework's own license).
 
 ---
 
