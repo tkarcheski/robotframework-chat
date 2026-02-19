@@ -25,19 +25,31 @@ These require human decisions, manual setup, or external work.
 - [ ] **Add tokens/sec performance tracking.** Ollama's `/api/generate` response includes `eval_count`, `eval_duration`, `prompt_eval_count`, `prompt_eval_duration`, `load_duration`. Capture these in `keyword_results` or a new `llm_performance` table. This is critical for the "fastest model" comparison.
 - [ ] **Add hardware context to test runs.** Each test run should record which node (and therefore which hardware) executed it. Currently `runner_id` and `runner_tags` capture CI runner info, but for local runs there's no hardware fingerprint.
 - [ ] **Track quantization in the database.** Parse the model tag (e.g., `llama3:8b-q4_K_M`) or use `/api/show` to get quantization details. Store in model metadata so you can compare Q4 vs Q8 vs FP16 performance.
+- [ ] **Add model size in GB.** Model size should be stored in gigabytes (disk size of the GGUF/safetensors), not just parameter count. This can be researched from web sources or pulled from `/api/show`. Enables "best model that fits in X GB VRAM" queries.
 - [ ] **Add model size categories.** Define size buckets (8B, 16B, 64B, 128B, 256B+) so Superset/Grafana can group comparisons by weight class. Models should only be compared within their size category.
+- [ ] **Add cost tracking placeholder.** For local models, cost = wall-clock time (seconds). Schema: `cost_seconds REAL`, `cost_dollars REAL NULL`. Local runs populate seconds only. Future OpenRouter runs populate dollars. Enables "best model per dollar" and "best model per second" leaderboards.
 
 ---
 
-## Grading System Evolution
+## Grading System — Tier Model (Owner-Confirmed)
 
-- [ ] **Design the grading keyword ecosystem.** Three grading modes, all tagged:
-  - `Pass/Fail` (current) — binary, for deterministic answers (math, safety)
-  - `Letter Grade` (A/B/C/D/F) — rubric-based, for subjective quality
-  - `A/B Comparison` — model-vs-model, relative ranking
-  - IQ scoring should be a Robot Framework **tag** on tests, not a grading mode
-- [ ] **Decide: deterministic grading first, LLM grading only when needed.** For math: use Robot asserts (`Should Be Equal`). For code: execute and check exit code. For safety: regex + heuristics. Only use LLM grader for fuzzy evaluation (explanation quality, writing quality). This reduces dependency on grader accuracy.
-- [ ] **External grader endpoint support.** Make the grading LLM configurable to run on a different Ollama instance or via OpenRouter API. Short-term: add `GRADER_ENDPOINT` and `GRADER_MODEL` env vars. Long-term: OpenRouter integration for cloud-hosted grading.
+All tests are verified by Robot Framework. Every test must have Robot or Python checks.
+
+| Tier | Name | Description |
+|------|------|-------------|
+| **Tier 0** | Pure Robot | Deterministic Robot Framework asserts only (`Should Be Equal`, regex, etc.) |
+| **Tier 1** | Robot + Python | Robot keywords backed by Python logic (custom libraries, data parsing) |
+| **Tier 2** | Robot + LLM | Single LLM grader evaluates the response |
+| **Tier 3** | Robot + LLMs (consensus) | 3+ LLM models grade the response; Robot warns on disagreement |
+| **Tier 4** | Robot + LLMs + Docker | LLM output executed in sandboxed Docker container (code gen, scripts) |
+| **Tier 5** | Other | External grading services, human-in-the-loop, hybrid approaches |
+| **Tier 6** | None | Ungraded — data collection only, no pass/fail |
+
+- [ ] **Implement Tier 0–1 first.** These are the foundation — pure Robot asserts and Python-backed keywords. All existing tests should map to these tiers.
+- [ ] **Implement Tier 2.** Single LLM grader with configurable endpoint (`GRADER_ENDPOINT`, `GRADER_MODEL` env vars).
+- [ ] **Implement Tier 3 — LLM consensus grading.** Run 3+ grader models on the same response. Robot keyword emits a **WARNING** (Robot Framework `Log  message  WARN`) when graders disagree. Majority vote determines grade. Log all individual grades for analysis. The LLM "console" (grading panel) should surface disagreements prominently in Grafana.
+- [ ] **Implement Tier 4 — Docker sandbox.** For code generation tests: execute LLM output in a disposable Docker container, check exit code and stdout. Robot keyword wraps Docker execution.
+- [ ] **Tag all tests with their tier.** Use Robot tags: `tier:0`, `tier:1`, etc. This enables filtering by tier in CI and Grafana.
 - [ ] **Grader validation strategy.** Build a "grader test suite" — known question/answer/expected-grade triples. Run this suite to validate that the grading model itself is accurate before trusting its grades on real tests.
 
 ---
@@ -59,14 +71,18 @@ These require human decisions, manual setup, or external work.
 
 ## Visualization
 
-- [ ] **Design sci-fi Grafana dashboards.** Ideas:
-  - Dark theme with cyan/magenta/electric-blue neon accents
-  - "Mission control" layout: model status gauges, real-time tokens/sec streaming, node health matrix
-  - Hexagonal grid for model comparison (like a radar/spider chart per model)
-  - Animated time-series with glow effects (Grafana supports CSS overrides)
-  - Terminal/HUD-style stat panels with monospace fonts
-  - "Model duel" view: side-by-side A/B comparison with live scoring
-  - Heatmap: model x test-suite matrix showing pass rates by color intensity
+- [ ] **Design TRON-themed Grafana dashboards.** Owner confirmed: TRON aesthetic, 10000%.
+  - **Color palette:** Black background, cyan (#00FFFF) primary, electric blue (#0080FF), white (#FFFFFF) text, orange (#FF6600) for warnings, red for failures
+  - **Grid lines:** Glowing cyan grid on dark background (the iconic TRON grid)
+  - **Panels:** Beveled edges, subtle glow effects, circuit-board styling
+  - **Fonts:** Monospace, geometric sans-serif (like TRON: Legacy titles)
+  - **Animations:** Data flowing like light cycles along grid lines
+  - Specific views:
+    - "The Grid" — node health matrix, glowing when active
+    - "Light Cycle Arena" — model-vs-model A/B comparison
+    - "Identity Disc" — radar/spider chart per model (accuracy, speed, safety, cost)
+    - "MCP Dashboard" (fitting name!) — Master Control Program overview of all test runs
+    - Heatmap: model x test-suite matrix, cyan-to-orange intensity
   - Consider Grafana plugins: Flowcharting, Treemap, Candlestick (for score distributions)
 - [ ] **Deprecate Superset or define its role.** With Grafana taking over visualization, decide: keep Superset for SQL exploration / ad-hoc queries only? Or remove it entirely? Running both is maintenance overhead.
 
@@ -75,6 +91,9 @@ These require human decisions, manual setup, or external work.
 ## CI/CD & Pipeline
 
 - [ ] **Fix "Not Complete" Makefile targets.** 24 of 37 targets are marked "Not Complete" in FEATURES.md. Triage: which are actually broken vs. which just need environment setup?
+- [ ] **Add `make test-make` target.** A meta-target that runs a dry-run or smoke test of every other make target to verify they at least parse and start correctly. Could use `make -n` (dry-run) for dangerous targets and actual execution for safe ones.
+- [ ] **Pipeline node auto-discovery.** Pipelines should discover which nodes are online before scheduling jobs. Proposed flow: (1) ping each node's Ollama `/api/tags` endpoint, (2) build a live inventory of online nodes + available models, (3) schedule jobs only to reachable nodes. This replaces hardcoded node lists.
+- [ ] **Model-to-node assignment config.** Owner wants to control which models are loaded on which hosts. Short-term: a `config/model_assignments.yaml` file. Long-term: web UI to manage assignments. The pipeline reads this config and calls `ollama pull` / `ollama rm` to enforce the desired state.
 - [ ] **Node-to-GitLab-tag mapping.** Update `config/test_suites.yaml` nodes to include a `gitlab_tag` field. Update `scripts/generate_pipeline.py` to use these tags when generating child pipeline jobs. Example:
   ```yaml
   nodes:
@@ -108,7 +127,14 @@ These require human decisions, manual setup, or external work.
 
 ## Packaging & Distribution
 
-- [ ] **Publish `rfc` as a PyPI package.** Owner wants RFC to work both as a forkable template and an importable library (`pip install rfc`). This requires: proper `pyproject.toml` entry points, namespace cleanup, README with install instructions, versioning strategy (already at 0.2.0). Consider publishing to PyPI or at minimum making `pip install git+https://...` work cleanly.
+- [ ] **Decide distribution method.** Options researched:
+  - **PyPI** — `pip install rfc`. Widest reach, standard Python ecosystem. Requires unique package name (rfc is likely taken — may need `robotframework-chat` or `rf-chat`).
+  - **GitLab/GitHub Package Registry** — `pip install` from private registry. Good for internal use, no name conflicts. Free for public repos.
+  - **`pip install git+https://...`** — Zero infrastructure. Just point at the repo. Works today with no changes.
+  - **Conda / conda-forge** — If targeting data science users who prefer conda environments. More packaging effort.
+  - **Docker image** — `docker run rfc ...`. Bundles everything (Python, Robot, Ollama client). Best for CI and reproducibility.
+  - **GitHub Releases / `.whl` artifacts** — Attach wheel files to GitHub releases. Manual but simple.
+  - **Just a forkable template** — No packaging at all. Users fork and customize. Simplest, but no upstream updates.
 - [ ] **Template documentation.** Write a "How to use RFC as a template" guide — what to fork, what to customize, how to add your own test suites while keeping the CI/listener/database infrastructure.
 
 ---
