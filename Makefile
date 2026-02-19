@@ -41,8 +41,8 @@ docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana + Dashboard
 docker-down: ## Stop all services
 	$(COMPOSE) down
 
-docker-restart: ## Restart all services
-	$(COMPOSE) restart
+docker-restart: ## Rebuild images and restart all services
+	$(COMPOSE) up -d --build
 
 docker-logs: ## Tail service logs
 	$(COMPOSE) logs -f
