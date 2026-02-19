@@ -613,6 +613,10 @@ class _SQLAlchemyBackend(_Backend):
     _PG_MIGRATIONS = [
         # pipeline_id exceeded INTEGER range (~2.1B); widen to BIGINT.
         "ALTER TABLE pipeline_results ALTER COLUMN pipeline_id TYPE BIGINT",
+        # Rename GitLab-specific columns to platform-agnostic names.
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
     ]
 
     def __init__(self, database_url: str):
