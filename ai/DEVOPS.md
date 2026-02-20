@@ -185,10 +185,10 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Practice | Status | Notes |
 |----------|--------|-------|
 | Semantic versioning | Adopted | `v0.2.0` in `pyproject.toml` |
-| Version command | Partial | `make version` exists but marked not complete |
-| Git tags for releases | Not Started | No release tags |
+| Version command | Adopted | `make version` prints current version |
+| Git tags for releases | Adopted | `v*` tags trigger release pipeline |
 | Automated release notes | Not Started | No changelog generation |
-| Package publishing (PyPI) | Not Started | Build system configured but not published |
+| Package publishing (PyPI) | Adopted | `publish-pypi` job in GitLab CI, `ci/release.sh` builds + uploads |
 | GitHub Releases | Not Started | No release workflow |
 
 ---
@@ -238,12 +238,12 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Containerization & Infrastructure | 5 | 1 | 2 | 8 |
 | Monitoring & Observability | 3 | 2 | 7 | 12 |
 | Documentation | 6 | 0 | 4 | 10 |
-| Release Management | 1 | 1 | 4 | 6 |
+| Release Management | 4 | 0 | 2 | 6 |
 | MLOps | 3 | 2 | 5 | 10 |
 | Security | 2 | 2 | 4 | 8 |
-| **Total** | **55** | **11** | **43** | **109** |
+| **Total** | **58** | **10** | **41** | **109** |
 
-**Overall adoption: 55/109 practices adopted (50%), 11 partial (10%), 43 not started (39%)**
+**Overall adoption: 58/109 practices adopted (53%), 10 partial (9%), 41 not started (38%)**
 
 ### Top Priorities for DevOps Improvement
 

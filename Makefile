@@ -15,7 +15,7 @@ export
         robot-math-import robot-import \
         test-dashboard test-dashboard-playwright \
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard ci-release \
         opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
         grafana-up grafana-down grafana-logs grafana-restart
@@ -140,6 +140,9 @@ ci-deploy: ## Deploy Superset to remote host
 
 ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
 	bash ci/test_dashboard.sh $(or $(MODE),all)
+
+ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
+	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
 
 # ── AI Review ────────────────────────────────────────────────────────
 

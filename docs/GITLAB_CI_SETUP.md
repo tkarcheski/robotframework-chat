@@ -4,18 +4,21 @@ This guide explains how to set up GitLab CI/CD for running the Robot Framework t
 
 ## Overview
 
-The pipeline has four stages:
+The pipeline has seven stages:
 
 ```
-lint → test → report → deploy
+lint → generate → test → report → deploy → release → review
 ```
 
 | Stage | Jobs | Purpose |
 |-------|------|---------|
-| **lint** | `pre-commit`, `ruff-check`, `mypy-check` | Code quality checks |
-| **test** | `robot-math-tests`, `robot-docker-tests`, `robot-safety-tests` | Robot Framework test execution with database archiving |
-| **report** | `aggregate-results` | Merge reports with `rebot`, import combined results to database |
+| **lint** | `lint` | Code quality checks (pre-commit, ruff, mypy) |
+| **generate** | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | Produce child-pipeline YAML from config |
+| **test** | `dashboard-pytest`, `dashboard-playwright`, `run-regular-tests`, `run-dynamic-tests` | Test execution with database archiving |
+| **report** | `repo-metrics` | Repo metrics, MR comments |
 | **deploy** | `deploy-superset` | Deploy/update Superset stack on target host |
+| **release** | `publish-pypi` | Build and publish package to PyPI on version tags |
+| **review** | `opencode-review` | AI code review via OpenCode |
 
 ### Pipeline Data Flow
 
@@ -99,6 +102,9 @@ Configure in GitLab (Settings > CI/CD > Variables):
 | `SUPERSET_DEPLOY_HOST` | Superset deploy target host | — | For deploy stage |
 | `SUPERSET_DEPLOY_USER` | SSH user for deploy | — | For deploy stage |
 | `SUPERSET_DEPLOY_PATH` | Path on deploy host | — | For deploy stage |
+| `PYPI_TOKEN` | PyPI API token for publishing | — | For release stage |
+| `TWINE_USERNAME` | PyPI username (if not using token) | — | For release stage |
+| `TWINE_PASSWORD` | PyPI password (if not using token) | — | For release stage |
 
 ### Database Configuration
 
@@ -141,6 +147,53 @@ Requirements:
 - Runner must have SSH access to `$SUPERSET_DEPLOY_HOST`
 - Target host must have Docker and `docker compose` installed
 - Repository must be cloned on the target host at `$SUPERSET_DEPLOY_PATH`
+
+## Release Stage (PyPI Publishing)
+
+The `publish-pypi` job builds and publishes the package to PyPI. It runs
+automatically when a version tag matching `v*` is pushed (e.g., `v0.2.0`).
+
+### How It Works
+
+1. **Trigger:** Push a tag matching `v*` (e.g., `git tag v0.3.0 && git push origin v0.3.0`)
+2. **Prerequisites:** `lint` and `dashboard-pytest` jobs must pass first
+3. **Validation:** The script verifies the tag version matches `pyproject.toml`
+4. **Build:** Creates sdist and wheel using `python -m build`
+5. **Verify:** Runs `twine check` to validate distributions
+6. **Upload:** Publishes to PyPI using `twine upload`
+
+### Release Workflow
+
+```bash
+# 1. Update version in pyproject.toml and src/rfc/__init__.py
+# 2. Commit the version bump
+git add pyproject.toml src/rfc/__init__.py
+git commit -m "chore: bump version to 0.3.0"
+
+# 3. Create and push the tag
+git tag v0.3.0
+git push origin main --tags
+
+# 4. GitLab CI automatically runs the publish-pypi job
+```
+
+### Local Testing
+
+Test the build process locally without uploading:
+
+```bash
+make ci-release                # Dry run: build + verify only
+make ci-release UPLOAD=1       # Full release: build + upload to PyPI
+```
+
+### PyPI Configuration
+
+Set credentials in GitLab CI/CD variables (Settings > CI/CD > Variables):
+
+- **Option A (recommended):** Set `PYPI_TOKEN` to a PyPI API token
+- **Option B:** Set `TWINE_USERNAME` and `TWINE_PASSWORD`
+
+Mark these variables as **Protected** and **Masked** in GitLab.
 
 ## Artifacts
 

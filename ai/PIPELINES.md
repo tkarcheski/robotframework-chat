@@ -34,14 +34,17 @@ behavior, edit `ci/*.sh` scripts or `Makefile` targets — not the YAML.
 
 ## Pipeline Modes
 
-There are three pipeline modes, all generated from
-`config/test_suites.yaml` via `scripts/generate_pipeline.py`:
+There are four pipeline modes:
 
 | Mode | Trigger | Purpose |
 |------|---------|---------|
 | **Regular** | Every push / MR | Smoke-test the system works with the smallest viable model |
 | **Dynamic** | Manual play-button | Discover Ollama nodes on the network, enumerate models, run every (node, model, suite) combination |
 | **Scheduled** | Hourly cron | Run the dynamic pipeline automatically for continuous coverage |
+| **Release** | Tag push (`v*`) | Build and publish package to PyPI |
+
+Regular, Dynamic, and Scheduled modes are generated from
+`config/test_suites.yaml` via `scripts/generate_pipeline.py`.
 
 ---
 
@@ -84,16 +87,17 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 ## Pipeline Stages
 
 ```
-lint → generate → test → report → deploy → review
+lint → generate → test → report → deploy → release → review
 ```
 
 | Stage | Job(s) | Script | Notes |
 |-------|--------|--------|-------|
 | `lint` | `lint` | `ci/lint.sh` | Runs pre-commit, ruff, mypy (allow_failure) |
 | `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `ci/generate.sh` | Produce child-pipeline YAML from `test_suites.yaml` |
-| `test` | `run-regular-tests`, `run-dynamic-tests` | (child pipelines) | Execute generated child pipelines |
+| `test` | `run-regular-tests`, `run-dynamic-tests`, `dashboard-pytest`, `dashboard-playwright` | (child pipelines + scripts) | Execute generated child pipelines and dashboard tests |
 | `report` | `repo-metrics` | `ci/report.sh` | Repo metrics, MR comments |
 | `deploy` | `deploy-superset` | `ci/deploy.sh` | Update Superset stack on default branch |
+| `release` | `publish-pypi` | `ci/release.sh` | Build + publish to PyPI on version tags (`v*`) |
 | `review` | `opencode-review` | `ci/review.sh` | AI code review + fix via OpenCode + Kimi K2.5 on OpenRouter |
 
 ---
@@ -107,9 +111,11 @@ lint → generate → test → report → deploy → review
 | `ci/generate.sh` | `bash ci/generate.sh [regular\|dynamic\|discover]` | Pipeline mode |
 | `ci/report.sh` | `bash ci/report.sh [--post-mr]` | Post metrics as MR comment |
 | `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
+| `ci/release.sh` | `bash ci/release.sh [--dry-run]` | Requires PYPI_TOKEN or TWINE_USERNAME+PASSWORD |
 | `ci/review.sh` | `bash ci/review.sh` | Requires OPENROUTER_API_KEY |
 
-All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`, etc.
+All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`,
+`make ci-release`, etc.
 
 ---
 
