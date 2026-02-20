@@ -8,7 +8,8 @@
 #   1. Regular  - every push/MR, smoke-test with default model
 #   2. Dynamic  - manual or scheduled, full node/model matrix
 #   3. Schedule - hourly cron triggers dynamic pipeline
-#   4. Release  - tag push (v*), build + publish to PyPI
+#   4. Release  - clean semver tag (v1.2.3), build + publish to PyPI
+#   5. Test Release - pre-release tag (v1.2.3-rc1), build + verify only
 #
 # See: ai/PIPELINES.md
 
@@ -190,6 +191,26 @@ deploy-superset:
 
 # ── Release ──────────────────────────────────────────────────────────
 
+# Test release: any semver tag with a pre-release suffix (v1.2.3-*)
+# Builds and verifies the package but does NOT upload to PyPI.
+test-release:
+  extends: .uv-setup
+  stage: release
+  needs:
+    - job: lint
+      artifacts: false
+    - job: dashboard-pytest
+      artifacts: false
+  script: [bash ci/release.sh --dry-run]
+  artifacts:
+    paths: [dist/]
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-.+/
+  allow_failure: false
+
+# Real release: clean semver tag only (v1.2.3)
+# Builds, verifies, and uploads to PyPI.
 publish-pypi:
   extends: .uv-setup
   stage: release
@@ -200,7 +221,7 @@ publish-pypi:
       artifacts: false
   script: [bash ci/release.sh]
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   allow_failure: false
 
 # ── Review ───────────────────────────────────────────────────────────
