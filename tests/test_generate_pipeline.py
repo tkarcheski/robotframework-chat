@@ -145,6 +145,7 @@ class TestGenerateDynamic:
             },
         }
         pipeline = generate_dynamic(config)
-        job_keys = [k for k in pipeline if k != "stages"]
-        # 2 models * 1 group = 2 jobs
+        reserved = {"stages", "aggregate-results"}
+        job_keys = [k for k in pipeline if k not in reserved]
+        # 2 models * 1 group = 2 test jobs (plus aggregate-results)
         assert len(job_keys) == 2
