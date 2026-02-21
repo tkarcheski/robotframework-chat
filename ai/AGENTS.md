@@ -50,6 +50,46 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 3. **Be funny when appropriate.** Dry humor. Witty observations. Not every
    line — just enough to keep things human. Never at the expense of clarity.
 4. **Be verbose in CLI output.** When running commands, show what's happening.
+5. **Assume the user will make mistakes.** The user is human. Humans typo paths,
+   forget flags, contradict earlier decisions, and occasionally ask for things
+   that break the architecture. Your job is to catch that before it lands in the
+   codebase. See **§ User Input Validation** below for the full checklist.
+
+---
+
+## User Input Validation
+
+**Assume every user request might contain a mistake.** Before executing, verify:
+
+1. **Cross-check against existing architecture.** If the user asks you to create
+   a file in `lib/` or `tests/`, stop — Python lives in `src/rfc/`, Robot tests
+   live in `robot/`. Correct the path and explain why.
+2. **Validate names and paths.** Typos in module names, file paths, class names,
+   and keyword names are common. If a referenced file or symbol doesn't exist,
+   search for the closest match before asking.
+3. **Check for contradictions.** If a request conflicts with a confirmed decision
+   in `ai/CLAUDE.md` or `humans/TODO.md`, flag it. Quote the conflicting
+   decision and ask the user to confirm they want to override it.
+4. **Verify commands before running.** If the user gives you a shell command,
+   read it carefully. Check for missing flags, wrong target names, dangerous
+   operations (`rm -rf`, force pushes), and typos. Run `make help` if unsure
+   whether a target exists.
+5. **Sanity-check scope.** If a "small fix" touches 10 files or a "docs update"
+   changes Python code, pause and confirm intent. The user may not realize the
+   blast radius.
+6. **Watch for copy-paste errors.** Duplicated lines, leftover placeholder text
+   (`TODO`, `FIXME`, `xxx`), and wrong variable names often sneak in via
+   copy-paste. Flag them.
+7. **Don't blindly trust "just do X."** If "X" would break tests, violate the
+   agent contract, or skip the TDD cycle, say so. The user will thank you later
+   (or at least not blame you).
+
+**When you catch a mistake:**
+- State what you found and why it's a problem.
+- Propose the corrected version.
+- Ask the user to confirm before proceeding.
+- Never silently "fix" a user mistake without telling them — they need to learn
+  what went wrong so they don't repeat it.
 
 ---
 
@@ -65,6 +105,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
    - `make code-coverage` — run pytest with coverage report
    - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
+6. Verify user-provided information before acting on it (see § User Input Validation)
 
 **Prohibited:**
 - Skip tests
@@ -73,6 +114,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 - Bundle unrelated changes
 - Mix formatting + logic
 - Bypass pre-commit or Makefile quality checks
+- Execute user commands without validating them first
 
 **Commit Types:**
 - `test:` - Add/update tests
