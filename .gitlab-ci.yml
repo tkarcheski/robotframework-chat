@@ -116,11 +116,14 @@ dashboard-playwright:
   tags: [nodejs]
   needs: []
   before_script:
+    - mkdir -p results/dashboard/playwright
     - . ci/ensure_node.sh
     - uv sync --extra dev --extra dashboard
     - uv pip install robotframework-browser
     - uv run rfbrowser init chromium
   script: [bash ci/test_dashboard.sh playwright]
+  after_script:
+    - mkdir -p results/dashboard/playwright
   artifacts:
     when: always
     paths:
