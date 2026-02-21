@@ -131,7 +131,7 @@ class TestDiscoverNodes:
     )
     @patch("scripts.discover_ollama._query_models")
     def test_uses_env_nodes(self, mock_query, mock_env):
-        mock_query.side_effect = lambda ep: (["llama3"] if "host1" in ep else [])
+        mock_query.side_effect = lambda ep: ["llama3"] if "host1" in ep else []
         result = discover_nodes()
         assert len(result) == 1
         assert result[0]["endpoint"] == "http://host1:11434"
