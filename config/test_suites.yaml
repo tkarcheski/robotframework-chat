@@ -29,9 +29,9 @@ defaults:
 nodes:
   - hostname: localhost
     port: 11434
-  - hostname: mini1
+  - hostname: mini1s-Mac-mini
     port: 11434
-  - hostname: mini2
+  - hostname: Mini2s-Mac-mini
     port: 11434
   - hostname: ai1
     port: 11434
