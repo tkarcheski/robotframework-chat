@@ -8,6 +8,8 @@
 #   1. Regular  - every push/MR, smoke-test with default model
 #   2. Dynamic  - manual or scheduled, full node/model matrix
 #   3. Schedule - hourly cron triggers dynamic pipeline
+#   4. Release  - clean semver tag (v1.2.3), build + publish to PyPI
+#   5. Test Release - pre-release tag (v1.2.3-rc1), build + verify only
 #
 # See: ai/PIPELINES.md
 
@@ -15,28 +17,18 @@ include:
   - local: ci/common.yml
 
 stages:
-  - sync
   - lint
   - generate
   - test
   - report
   - deploy
+  - release
   - review
 
 variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "llama3"
   ROBOT_OPTIONS: "--metadata CI:true"
-
-# ── Sync ──────────────────────────────────────────────────────────────
-
-mirror-to-github:
-  stage: sync
-  script: [bash ci/sync.sh]
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
 
 # ── Lint ─────────────────────────────────────────────────────────────
 
@@ -46,6 +38,7 @@ lint:
   script: [bash ci/lint.sh]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG =~ /^v/
     - if: $CI_COMMIT_BRANCH
   allow_failure: true
 
@@ -57,6 +50,7 @@ generate-regular-pipeline:
   script: [bash ci/generate.sh regular]
   artifacts:
     paths: [generated-pipeline.yml]
+    expire_in: 7 days
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -84,6 +78,7 @@ generate-dynamic-pipeline:
   script: [bash ci/generate.sh dynamic]
   artifacts:
     paths: [generated-dynamic-pipeline.yml]
+    expire_in: 7 days
   timeout: 60 minutes
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -110,6 +105,7 @@ dashboard-pytest:
       junit: results/dashboard/pytest-results.xml
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG =~ /^v/
     - if: $CI_COMMIT_BRANCH
   allow_failure: false
 
@@ -120,15 +116,20 @@ dashboard-playwright:
   tags: [nodejs]
   needs: []
   before_script:
+    - mkdir -p results/dashboard/playwright
     - . ci/ensure_node.sh
     - uv sync --extra dev --extra dashboard
     - uv pip install robotframework-browser
     - uv run rfbrowser init chromium
   script: [bash ci/test_dashboard.sh playwright]
+  after_script:
+    - mkdir -p results/dashboard/playwright
   artifacts:
     when: always
     paths:
       - results/dashboard/
+    reports:
+      junit: results/dashboard/playwright/output.xml
     expire_in: 7 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -190,6 +191,41 @@ deploy-superset:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
   allow_failure: true
+
+# ── Release ──────────────────────────────────────────────────────────
+
+# Test release: any semver tag with a pre-release suffix (v1.2.3-*)
+# Builds and verifies the package but does NOT upload to PyPI.
+test-release:
+  extends: .uv-setup
+  stage: release
+  needs:
+    - job: lint
+      artifacts: false
+    - job: dashboard-pytest
+      artifacts: false
+  script: [bash ci/release.sh --dry-run]
+  artifacts:
+    paths: [dist/]
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-.+/
+  allow_failure: false
+
+# Real release: clean semver tag only (v1.2.3)
+# Builds, verifies, and uploads to PyPI.
+publish-pypi:
+  extends: .uv-setup
+  stage: release
+  needs:
+    - job: lint
+      artifacts: false
+    - job: dashboard-pytest
+      artifacts: false
+  script: [bash ci/release.sh]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  allow_failure: false
 
 # ── Review ───────────────────────────────────────────────────────────
 

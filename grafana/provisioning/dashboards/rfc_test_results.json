@@ -1,0 +1,419 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Test Runs",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Total Runs\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Total Tests Executed",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT SUM(total_tests) AS \"Total Tests\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Overall Pass Rate",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Total Failures",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT SUM(failed) AS \"Total Failures\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Models Tested",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(DISTINCT model_name) AS \"Models\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Avg Duration",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 1) AS \"Avg Seconds\" FROM robot_test_runs;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pass / Fail Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT timestamp AS time, passed AS \"Passed\", failed AS \"Failed\", skipped AS \"Skipped\" FROM robot_test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": { "mode": "normal" },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Passed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Failed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Skipped" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Suite Duration Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT timestamp AS time, duration_seconds AS \"Duration (s)\", test_suite AS \"Suite\" FROM robot_test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Pass Rate by Model",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT model_name AS \"Model\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs GROUP BY model_name ORDER BY \"Pass Rate %\" DESC;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Pass Rate by Suite",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT test_suite AS \"Suite\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs GROUP BY test_suite ORDER BY \"Pass Rate %\" DESC;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent Test Runs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT timestamp, model_name AS \"Model\", test_suite AS \"Suite\", total_tests AS \"Total\", passed AS \"Pass\", failed AS \"Fail\", skipped AS \"Skip\", ROUND(duration_seconds::numeric, 1) AS \"Duration (s)\", git_branch AS \"Branch\", SUBSTRING(git_commit, 1, 8) AS \"Commit\" FROM robot_test_runs ORDER BY timestamp DESC LIMIT 25;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Individual Test Results (Latest Run)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT tr.test_name AS \"Test\", tr.test_status AS \"Status\", tr.score AS \"Score\", tr.question AS \"Question\", SUBSTRING(tr.actual_answer, 1, 100) AS \"Actual Answer\", SUBSTRING(tr.expected_answer, 1, 100) AS \"Expected Answer\", tr.grading_reason AS \"Grading Reason\" FROM robot_test_results tr JOIN robot_test_runs r ON tr.run_id = r.id WHERE r.id = (SELECT MAX(id) FROM robot_test_runs) ORDER BY tr.test_name;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "PASS": { "color": "green", "text": "PASS" }, "FAIL": { "color": "red", "text": "FAIL" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Score Distribution Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT r.timestamp AS time, AVG(tr.score) AS \"Avg Score\" FROM robot_test_results tr JOIN robot_test_runs r ON tr.run_id = r.id WHERE tr.score IS NOT NULL AND $__timeFilter(r.timestamp) GROUP BY r.timestamp ORDER BY r.timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "piechart",
+      "title": "Test Status Distribution",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT test_status AS \"Status\", COUNT(*) AS \"Count\" FROM robot_test_results GROUP BY test_status;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "PASS" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "FAIL" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["robotframework", "rfc", "testing"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+        "definition": "SELECT DISTINCT model_name FROM robot_test_runs ORDER BY model_name;",
+        "includeAll": true,
+        "multi": true,
+        "name": "model",
+        "query": "SELECT DISTINCT model_name FROM robot_test_runs ORDER BY model_name;",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+        "definition": "SELECT DISTINCT test_suite FROM robot_test_runs ORDER BY test_suite;",
+        "includeAll": true,
+        "multi": true,
+        "name": "suite",
+        "query": "SELECT DISTINCT test_suite FROM robot_test_runs ORDER BY test_suite;",
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "RFC Test Results",
+  "uid": "rfc-test-results"
+}

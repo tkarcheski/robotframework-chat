@@ -237,13 +237,37 @@ class GitLabArtifactFetcher:
                 if not batch:
                     break
                 all_pipelines.extend(batch)
+                print(
+                    f"    Fetched page {page}: {len(batch)} pipelines (total: {len(all_pipelines)})"
+                )
                 if len(batch) < per_page:
                     break
             except requests.exceptions.RequestException as exc:
                 _log.warning("Failed to fetch pipelines page %d: %s", page, exc)
+                print(f"    ERROR fetching page {page}: {exc}")
                 break
 
         return all_pipelines
+
+    def fetch_pipeline_bridges(
+        self,
+        pipeline_id: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch bridge (child pipeline trigger) jobs from a pipeline.
+
+        Returns bridge job dicts that include downstream_pipeline info.
+        """
+        url = (
+            f"{self._api_url}/api/v4/projects/{self._project_id}"
+            f"/pipelines/{pipeline_id}/bridges?per_page=100"
+        )
+        try:
+            resp = requests.get(url, headers=self._headers(), timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as exc:
+            _log.debug("Failed to fetch bridges for pipeline %d: %s", pipeline_id, exc)
+            return []
 
     def download_job_artifact(
         self,
@@ -267,7 +291,7 @@ class GitLabArtifactFetcher:
         )
 
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=60)
+            resp = requests.get(url, headers=self._headers(), timeout=(5, 15))
             resp.raise_for_status()
         except requests.exceptions.RequestException as exc:
             _log.debug("Artifact download failed for job %d: %s", job_id, exc)
@@ -291,6 +315,46 @@ _ARTIFACT_PATHS = [
     "results/safety/output.xml",
     "results/dashboard/output.xml",
 ]
+
+
+def _job_has_artifacts(job: dict[str, Any]) -> bool:
+    """Check if a GitLab job has artifacts based on API metadata."""
+    if job.get("artifacts"):
+        return True
+    if job.get("artifacts_file"):
+        return True
+    return False
+
+
+def _collect_jobs(
+    fetcher: GitLabArtifactFetcher,
+    pipeline_id: int,
+) -> list[dict[str, Any]]:
+    """Collect all jobs for a pipeline, including child pipeline jobs.
+
+    Parent pipelines use bridge jobs to trigger child pipelines.
+    The actual test artifacts live in the child pipeline jobs, not
+    the parent.  This function follows bridge -> downstream_pipeline
+    links so the caller sees every job that might have artifacts.
+    """
+    jobs = fetcher.fetch_pipeline_jobs(pipeline_id)
+    print(f"    Direct jobs: {len(jobs)}")
+
+    # Follow bridge jobs to child pipelines
+    bridges = fetcher.fetch_pipeline_bridges(pipeline_id)
+    for bridge in bridges:
+        downstream = bridge.get("downstream_pipeline")
+        if downstream and downstream.get("id"):
+            child_id = downstream["id"]
+            bridge_name = bridge.get("name", "?")
+            child_jobs = fetcher.fetch_pipeline_jobs(child_id)
+            print(
+                f"    Child pipeline #{child_id} "
+                f"(via bridge '{bridge_name}'): {len(child_jobs)} jobs"
+            )
+            jobs.extend(child_jobs)
+
+    return jobs
 
 
 def sync_ci_results(
@@ -321,13 +385,16 @@ def sync_ci_results(
         "errors": [],
     }
 
+    print(f"  Fetching up to {pipeline_limit} successful pipelines...")
     pipelines = fetcher.fetch_recent_pipelines(
         ref=ref, status="success", limit=pipeline_limit
     )
+    print(f"  Found {len(pipelines)} pipelines to check.")
 
     # Get existing pipeline URLs to avoid duplicates
     recent_runs = db.get_recent_runs(limit=100)
     existing_urls = {run.get("pipeline_url", "") for run in recent_runs if run}
+    print(f"  {len(existing_urls)} pipeline URLs already in database.")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for pipeline in pipelines:
@@ -337,6 +404,10 @@ def sync_ci_results(
 
             # Skip already-imported pipelines
             if pipeline_url and pipeline_url in existing_urls:
+                print(
+                    f"  Pipeline #{pipeline_id} ({pipeline.get('ref', '?')}): "
+                    f"already imported, skipping."
+                )
                 # Still store pipeline metadata
                 pr = PipelineResult(
                     pipeline_id=pipeline_id,
@@ -354,11 +425,22 @@ def sync_ci_results(
                     pass  # Best-effort metadata storage
                 continue
 
-            jobs = fetcher.fetch_pipeline_jobs(pipeline_id)
+            print(
+                f"\n  Pipeline #{pipeline_id}  "
+                f"ref={pipeline.get('ref', '?')}  "
+                f"source={pipeline.get('source', '?')}"
+            )
+            jobs = _collect_jobs(fetcher, pipeline_id)
+            jobs_with_artifacts = [j for j in jobs if _job_has_artifacts(j)]
+            print(
+                f"    Total jobs: {len(jobs)}, "
+                f"with artifacts: {len(jobs_with_artifacts)}"
+            )
             artifacts_for_pipeline = 0
 
-            for job in jobs:
+            for job in jobs_with_artifacts:
                 job_id = job["id"]
+                job_name = job.get("name", "?")
 
                 # Try each known artifact path until one succeeds
                 xml_path = None
@@ -369,12 +451,14 @@ def sync_ci_results(
                         artifact_path=artifact_path,
                     )
                     if xml_path is not None:
-                        _log.debug(
-                            "Found artifact for job %d at %s", job_id, artifact_path
+                        print(
+                            f"    Downloaded {artifact_path} "
+                            f"from job #{job_id} ({job_name})"
                         )
                         break
 
                 if xml_path is None:
+                    print(f"    No output.xml found in job #{job_id} ({job_name})")
                     continue
 
                 artifacts_for_pipeline += 1
@@ -383,8 +467,10 @@ def sync_ci_results(
                 try:
                     import_results(xml_path, db)
                     result["runs_imported"] += 1
+                    print(f"    Imported test results from job #{job_id}")
                 except Exception as e:
                     result["errors"].append(f"Failed to import job {job_id}: {e}")
+                    print(f"    ERROR importing job #{job_id}: {e}")
 
             # Store pipeline metadata
             pr = PipelineResult(
@@ -403,6 +489,7 @@ def sync_ci_results(
                 db.add_pipeline_result(pr)
             except Exception:
                 pass  # Best-effort metadata storage
+            print(f"    Stored: jobs={pr.jobs_fetched}, artifacts={pr.artifacts_found}")
 
     return result
 
@@ -439,10 +526,6 @@ def backfill_pipelines(
 ) -> dict[str, Any]:
     """Backfill all GitLab pipelines into the database.
 
-    Deprecated: prefer the DbListener for real-time archiving.
-    This command exists to pull historical pipeline data from before
-    the listener was configured.
-
     Fetches all pipelines (paginated), stores each as a pipeline_result
     row with GitLab metadata, and optionally imports test artifacts.
 
@@ -467,17 +550,27 @@ def backfill_pipelines(
         "errors": [],
     }
 
+    print(f"  Fetching all pipelines (ref={ref or 'any'}, status={status or 'any'})...")
     pipelines = fetcher.fetch_all_pipelines(ref=ref, status=status)
     result["pipelines_found"] = len(pipelines)
+    print(f"  Found {len(pipelines)} pipelines total.")
 
     # Get existing pipeline URLs for dedup of artifact imports
     recent_runs = db.get_recent_runs(limit=1000)
     existing_urls = {run.get("pipeline_url", "") for run in recent_runs if run}
+    print(f"  {len(existing_urls)} existing pipeline URLs in database (for dedup).")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        for pipeline in pipelines:
+        for i, pipeline in enumerate(pipelines, 1):
             pipeline_id = pipeline["id"]
             pipeline_url = pipeline.get("web_url", "")
+            pipeline_ref = pipeline.get("ref", "?")
+            pipeline_status = pipeline.get("status", "?")
+
+            print(
+                f"\n  [{i}/{len(pipelines)}] Pipeline #{pipeline_id}  "
+                f"status={pipeline_status}  ref={pipeline_ref}"
+            )
 
             # Always store pipeline metadata
             pr = PipelineResult(
@@ -494,20 +587,30 @@ def backfill_pipelines(
             if not import_artifacts:
                 db.add_pipeline_result(pr)
                 result["pipelines_stored"] += 1
+                print("    Stored metadata (--metadata-only).")
                 continue
 
-            # Fetch jobs and try to download artifacts
-            jobs = fetcher.fetch_pipeline_jobs(pipeline_id)
+            # Collect jobs from pipeline + child pipelines
+            jobs = _collect_jobs(fetcher, pipeline_id)
             pr.jobs_fetched = len(jobs)
             artifacts_for_pipeline = 0
 
+            jobs_with_artifacts = [j for j in jobs if _job_has_artifacts(j)]
+            print(
+                f"    Jobs: {len(jobs)} total, "
+                f"{len(jobs_with_artifacts)} with artifacts"
+            )
+
             # Skip artifact import if already in test_runs
             already_imported = pipeline_url and pipeline_url in existing_urls
+            if already_imported:
+                print("    Skipping artifact download (already imported).")
 
-            for job in jobs:
+            for job in jobs_with_artifacts:
                 if already_imported:
                     break
                 job_id = job["id"]
+                job_name = job.get("name", "?")
 
                 xml_path = None
                 for artifact_path in paths_to_try:
@@ -517,14 +620,14 @@ def backfill_pipelines(
                         artifact_path=artifact_path,
                     )
                     if xml_path is not None:
-                        _log.debug(
-                            "Found artifact for job %d at %s",
-                            job_id,
-                            artifact_path,
+                        print(
+                            f"    Downloaded {artifact_path} "
+                            f"from job #{job_id} ({job_name})"
                         )
                         break
 
                 if xml_path is None:
+                    print(f"    No output.xml found in job #{job_id} ({job_name})")
                     continue
 
                 artifacts_for_pipeline += 1
@@ -533,14 +636,15 @@ def backfill_pipelines(
                 try:
                     import_results(xml_path, db)
                     result["runs_imported"] += 1
+                    print(f"    Imported test results from job #{job_id}")
                 except Exception as e:
-                    result["errors"].append(
-                        f"Failed to import job {job_id}: {e}"
-                    )
+                    result["errors"].append(f"Failed to import job {job_id}: {e}")
+                    print(f"    ERROR importing job #{job_id}: {e}")
 
             pr.artifacts_found = artifacts_for_pipeline
             db.add_pipeline_result(pr)
             result["pipelines_stored"] += 1
+            print(f"    Stored: jobs={pr.jobs_fetched}, artifacts={pr.artifacts_found}")
 
     return result
 
@@ -562,29 +666,58 @@ def _cmd_status(args: argparse.Namespace) -> None:
 def _cmd_list_pipelines(args: argparse.Namespace) -> None:
     """List recent pipelines."""
     fetcher = _make_fetcher()
+    print(f"Fetching up to {args.limit} pipelines (ref={args.ref or 'any'})...")
     pipelines = fetcher.fetch_recent_pipelines(ref=args.ref, limit=args.limit)
     if not pipelines:
         print("No pipelines found.")
         return
+    print(f"Found {len(pipelines)} pipelines:\n")
     for p in pipelines:
+        source = p.get("source", "?")
+        created = (p.get("created_at") or "")[:19]
         print(
-            f"  #{p['id']:>8}  {p.get('status', '?'):>10}  "
-            f"{p.get('ref', '?'):<20}  {p.get('web_url', '')}"
+            f"  #{p['id']:>10}  {p.get('status', '?'):>10}  "
+            f"{p.get('ref', '?'):<25}  source={source:<16}  "
+            f"{created}  {p.get('web_url', '')}"
         )
 
 
 def _cmd_list_jobs(args: argparse.Namespace) -> None:
     """List jobs in a pipeline."""
     fetcher = _make_fetcher()
+    print(f"Fetching jobs for pipeline {args.pipeline_id} (scope={args.scope})...")
     jobs = fetcher.fetch_pipeline_jobs(args.pipeline_id, scope=args.scope)
-    if not jobs:
+
+    # Also check for child pipelines via bridges
+    bridges = fetcher.fetch_pipeline_bridges(args.pipeline_id)
+    child_ids = []
+    for b in bridges:
+        ds = b.get("downstream_pipeline")
+        if ds and ds.get("id"):
+            child_ids.append(ds["id"])
+
+    if not jobs and not child_ids:
         print(f"No jobs found for pipeline {args.pipeline_id}.")
         return
+
+    print(f"Found {len(jobs)} direct jobs:")
     for j in jobs:
+        has_art = "yes" if _job_has_artifacts(j) else "no"
         print(
-            f"  #{j['id']:>8}  {j.get('status', '?'):>10}  "
-            f"{j.get('name', '?')}"
+            f"  #{j['id']:>10}  {j.get('status', '?'):>10}  "
+            f"artifacts={has_art:<4}  {j.get('name', '?')}"
         )
+
+    if child_ids:
+        for child_id in child_ids:
+            child_jobs = fetcher.fetch_pipeline_jobs(child_id, scope=args.scope)
+            print(f"\nChild pipeline #{child_id}: {len(child_jobs)} jobs:")
+            for j in child_jobs:
+                has_art = "yes" if _job_has_artifacts(j) else "no"
+                print(
+                    f"  #{j['id']:>10}  {j.get('status', '?'):>10}  "
+                    f"artifacts={has_art:<4}  {j.get('name', '?')}"
+                )
 
 
 def _cmd_fetch_artifact(args: argparse.Namespace) -> None:
@@ -608,21 +741,33 @@ def _cmd_sync(args: argparse.Namespace) -> None:
     fetcher = _make_fetcher()
     db = _make_db(args)
 
+    print("=" * 60)
+    print("SYNC: Importing recent pipeline results")
+    print(f"  API:     {fetcher.api_url}")
+    print(f"  Project: {fetcher.project_id}")
+    print(f"  Token:   {'set' if fetcher.has_token else 'NOT set'}")
+    print(f"  Limit:   {args.limit} pipelines")
+    print(f"  Ref:     {args.ref or '(all branches)'}")
+    print("=" * 60)
+
     result = sync_ci_results(fetcher, db, pipeline_limit=args.limit, ref=args.ref)
 
-    print("Sync complete:")
-    print(f"  Pipelines checked: {result['pipelines_checked']}")
-    print(f"  Artifacts downloaded: {result['artifacts_downloaded']}")
-    print(f"  Runs imported: {result['runs_imported']}")
+    print("\n" + "=" * 60)
+    print("SYNC COMPLETE")
+    print(f"  Pipelines checked:     {result['pipelines_checked']}")
+    print(f"  Artifacts downloaded:  {result['artifacts_downloaded']}")
+    print(f"  Runs imported:         {result['runs_imported']}")
     if result["errors"]:
         print(f"  Errors ({len(result['errors'])}):")
         for err in result["errors"]:
             print(f"    - {err}")
+        print("=" * 60)
         sys.exit(1)
 
     # Auto-verify after sync
     vresult = verify_sync(db)
     print(f"  Verify: {'PASS' if vresult['success'] else 'FAIL'}")
+    print("=" * 60)
 
 
 def _cmd_verify(args: argparse.Namespace) -> None:
@@ -637,18 +782,21 @@ def _cmd_verify(args: argparse.Namespace) -> None:
 
 
 def _cmd_backfill(args: argparse.Namespace) -> None:
-    """Backfill all pipeline data (deprecated)."""
-    import warnings
-
-    warnings.warn(
-        "backfill is deprecated — prefer the DbListener for real-time archiving. "
-        "Use backfill only to import historical pipelines.",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-
+    """Backfill all pipeline data."""
     fetcher = _make_fetcher()
     db = _make_db(args)
+
+    print("=" * 60)
+    print("BACKFILL: Importing pipeline data from GitLab")
+    print(f"  API:     {fetcher.api_url}")
+    print(f"  Project: {fetcher.project_id}")
+    print(f"  Token:   {'set' if fetcher.has_token else 'NOT set'}")
+    print(f"  Ref:     {args.ref or '(all branches)'}")
+    print(f"  Status:  {args.status}")
+    print(
+        f"  Mode:    {'metadata-only' if args.metadata_only else 'full (metadata + artifacts)'}"
+    )
+    print("=" * 60)
 
     status_filter = args.status if args.status != "all" else None
     result = backfill_pipelines(
@@ -659,16 +807,19 @@ def _cmd_backfill(args: argparse.Namespace) -> None:
         import_artifacts=not args.metadata_only,
     )
 
-    print("Backfill complete (DEPRECATED — use DbListener for new pipelines):")
-    print(f"  Pipelines found: {result['pipelines_found']}")
-    print(f"  Pipelines stored: {result['pipelines_stored']}")
-    print(f"  Artifacts downloaded: {result['artifacts_downloaded']}")
-    print(f"  Runs imported: {result['runs_imported']}")
+    print("\n" + "=" * 60)
+    print("BACKFILL COMPLETE")
+    print(f"  Pipelines found:       {result['pipelines_found']}")
+    print(f"  Pipelines stored:      {result['pipelines_stored']}")
+    print(f"  Artifacts downloaded:  {result['artifacts_downloaded']}")
+    print(f"  Runs imported:         {result['runs_imported']}")
     if result["errors"]:
         print(f"  Errors ({len(result['errors'])}):")
         for err in result["errors"]:
             print(f"    - {err}")
+        print("=" * 60)
         sys.exit(1)
+    print("=" * 60)
 
 
 def _cmd_list_pipeline_results(args: argparse.Namespace) -> None:
@@ -747,10 +898,10 @@ def main() -> None:
     vp.add_argument("--db", help="Database path")
     vp.add_argument("--min-runs", type=int, default=1)
 
-    # backfill (deprecated)
+    # backfill
     bp = sub.add_parser(
         "backfill",
-        help="[DEPRECATED] Backfill all pipelines from GitLab",
+        help="Backfill all pipelines from GitLab",
     )
     bp.add_argument("--ref", help="Filter by branch")
     bp.add_argument(

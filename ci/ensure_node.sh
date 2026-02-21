@@ -7,7 +7,7 @@
 # Strategy:
 #   1. If current Node.js is already >= 18, do nothing.
 #   2. Try nvm (common on CI shell executors).
-#   3. Fallback: download a Node.js binary to /tmp.
+#   3. Fallback: download a Node.js binary to /tmp (supports Linux & macOS).
 
 set -euo pipefail
 
@@ -16,6 +16,20 @@ NODE_FALLBACK_VER="v20.18.1"
 
 _node_major() {
     node --version 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p'
+}
+
+# Detect platform and architecture for download URL
+_node_platform() {
+    local os arch ext
+    case "$(uname -s)" in
+        Darwin) os="darwin" ; ext="tar.gz"  ;;
+        *)      os="linux"  ; ext="tar.xz"  ;;
+    esac
+    case "$(uname -m)" in
+        arm64|aarch64) arch="arm64" ;;
+        *)             arch="x64"   ;;
+    esac
+    echo "${os}-${arch} ${ext}"
 }
 
 # Already sufficient?
@@ -40,12 +54,17 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
 fi
 
 # --- Fallback: download Node.js binary ------------------------------------
-NODE_DIR="/tmp/node-${NODE_FALLBACK_VER}-linux-x64"
+read -r PLATFORM EXT <<< "$(_node_platform)"
+NODE_DIR="/tmp/node-${NODE_FALLBACK_VER}-${PLATFORM}"
 
 if [ ! -x "$NODE_DIR/bin/node" ]; then
-    echo "Downloading Node.js ${NODE_FALLBACK_VER} ..."
-    curl -fsSL "https://nodejs.org/dist/${NODE_FALLBACK_VER}/node-${NODE_FALLBACK_VER}-linux-x64.tar.xz" \
-        | tar -xJ -C /tmp
+    echo "Downloading Node.js ${NODE_FALLBACK_VER} for ${PLATFORM} ..."
+    URL="https://nodejs.org/dist/${NODE_FALLBACK_VER}/node-${NODE_FALLBACK_VER}-${PLATFORM}.${EXT}"
+    if [ "$EXT" = "tar.gz" ]; then
+        curl -fsSL "$URL" | tar -xz -C /tmp
+    else
+        curl -fsSL "$URL" | tar -xJ -C /tmp
+    fi
 fi
 
 export PATH="$NODE_DIR/bin:$PATH"

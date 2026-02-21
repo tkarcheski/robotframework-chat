@@ -6,7 +6,20 @@ build-backend = "hatchling.build"
 name = "robotframework-chat"
 version = "0.2.0"
 description = "Robot Framework-based test harness for systematically testing LLMs"
+license = "Apache-2.0"
+readme = "readme.md"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Robot Framework",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "certifi==2025.11.12",
     "charset-normalizer==3.4.4",
@@ -49,6 +62,10 @@ dev = [
     "types-requests",
     "types-PyYAML",
     "types-docker",
+    "pytest-cov",
+    "pip-audit",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
@@ -59,6 +76,19 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["src/rfc", "dashboard", "scripts"]
+omit = ["*/conftest.py", "*/test_*.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc", "dashboard"]

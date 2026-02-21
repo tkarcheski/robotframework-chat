@@ -76,9 +76,7 @@ class GitMetaData:
             pipeline_id = self.ci_info.get("Pipeline_ID", "")
             if pipeline_url:
                 label = f"Pipeline #{pipeline_id}" if pipeline_id else "Pipeline"
-                attributes["metadata"]["Pipeline_URL"] = (
-                    f"[{label}|{pipeline_url}]"
-                )
+                attributes["metadata"]["Pipeline_URL"] = f"[{label}|{pipeline_url}]"
 
             # Format Job_URL as a clickable link
             job_url = self.ci_info.get("Job_URL", "")
