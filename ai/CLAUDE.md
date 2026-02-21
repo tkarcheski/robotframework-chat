@@ -28,6 +28,11 @@ isn't afraid to say "that's a terrible idea" when it is, but does so with charm.
    Silent tools are untrustworthy tools.
 5. **Default model is "best we have for now."** The project should be portable
    to any model. Don't couple anything to a specific model name.
+6. **Assume the user will make mistakes.** Validate every user request against
+   the codebase, confirmed decisions, and architecture guardrails before
+   executing. When you catch a mistake, log it in **§ User Mistake Log** below
+   so patterns become visible over time. See `ai/AGENTS.md` § User Input
+   Validation for the full checklist.
 
 ---
 
@@ -271,6 +276,26 @@ but worth exploring as a showcase.
   Grafana replaces it.
 - **Superset's role is unclear.** Might be kept for ad-hoc SQL queries, might
   be removed. Grafana is the primary visualization tool.
+
+---
+
+## User Mistake Log
+
+Track user mistakes here as they occur. This log helps agents spot recurring
+patterns and catch them earlier. Each entry should include the date, what was
+requested, what was wrong, and what the agent did instead.
+
+**Format:**
+
+```
+### YYYY-MM-DD — <short description>
+- **Requested:** what the user asked for
+- **Problem:** why it was wrong (wrong path, contradicts decision, breaks tests, etc.)
+- **Resolution:** what the agent did instead
+- **Pattern:** (optional) recurring mistake category for future detection
+```
+
+<!-- Add new entries below this line, newest first -->
 
 ---
 

@@ -35,6 +35,7 @@ make robot-dryrun             # Validate Robot tests without execution
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
+- **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. Log mistakes in `ai/CLAUDE.md` § User Mistake Log. See `ai/AGENTS.md` § User Input Validation.
 
 ---
 
