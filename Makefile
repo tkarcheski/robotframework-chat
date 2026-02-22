@@ -15,7 +15,7 @@ export
         robot-math-import robot-import \
         test-dashboard test-dashboard-playwright \
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard ci-release \
+        ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-test-dashboard ci-release \
         opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
         grafana-up grafana-down grafana-logs grafana-restart
@@ -134,6 +134,9 @@ ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
+
+ci-pipeline-report: ## Generate pipeline testing summary (add POST_MR=1 to post to MR)
+	bash ci/pipeline_report.sh $(if $(POST_MR),--post-mr,)
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
