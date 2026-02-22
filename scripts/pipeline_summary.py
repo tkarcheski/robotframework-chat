@@ -6,8 +6,6 @@ parses JUnit XML artifacts, and produces a Markdown summary suitable
 for posting as an MR comment.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -15,6 +13,8 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+
+import requests
 
 
 # ── Data models ──────────────────────────────────────────────────────
@@ -146,8 +146,7 @@ def generate_summary(
                 notes = "_optional_"
             job_link = f"[{job.name}]({job.web_url})"
             parts.append(
-                f"| {job_link} | {job.stage} | {status_str} "
-                f"| {dur_str} | {notes} |"
+                f"| {job_link} | {job.stage} | {status_str} | {dur_str} | {notes} |"
             )
         parts.append("")
     else:
@@ -172,9 +171,7 @@ def generate_summary(
         )
 
     # -- Failed required jobs --
-    failed_required = [
-        j for j in jobs if j.status == "failed" and not j.allow_failure
-    ]
+    failed_required = [j for j in jobs if j.status == "failed" and not j.allow_failure]
     if failed_required:
         parts.append("### Failed Jobs (Required)\n")
         for j in failed_required:
@@ -185,14 +182,14 @@ def generate_summary(
     parts.append("### Verdict\n")
     if failed_required:
         names = ", ".join(f"`{j.name}`" for j in failed_required)
-        parts.append(f":x: **FAILED** — {len(failed_required)} required job(s) "
-                      f"failed: {names}")
+        parts.append(
+            f":x: **FAILED** — {len(failed_required)} required job(s) failed: {names}"
+        )
     elif pipeline.status == "success":
         parts.append(":white_check_mark: **PASSED** — all required jobs succeeded")
     else:
         parts.append(
-            f"{format_status_emoji(pipeline.status)} "
-            f"**{pipeline.status.upper()}**"
+            f"{format_status_emoji(pipeline.status)} **{pipeline.status.upper()}**"
         )
     parts.append("")
 
@@ -248,8 +245,6 @@ def fetch_pipeline_info() -> PipelineInfo:
 
 def fetch_pipeline_jobs() -> list[JobInfo]:
     """Fetch jobs for the current pipeline via the GitLab API."""
-    import requests
-
     api_url = os.environ.get("CI_API_V4_URL", "")
     project_id = os.environ.get("CI_PROJECT_ID", "")
     pipeline_id = os.environ.get("CI_PIPELINE_ID", "")
