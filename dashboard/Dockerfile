@@ -6,7 +6,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 # Copy project files
-COPY pyproject.toml ./
+COPY pyproject.toml readme.md ./
 COPY src/ src/
 COPY dashboard/ dashboard/
 COPY config/ config/
