@@ -121,7 +121,6 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
                 },
                 "expire_in": "30 days",
             },
-            "allow_failure": True,
         }
         job_names.append(job_name)
 
@@ -222,7 +221,6 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
                         },
                         "expire_in": "30 days",
                     },
-                    "allow_failure": True,
                 }
                 job_names.append(job_id)
 

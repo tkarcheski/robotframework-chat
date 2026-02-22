@@ -40,7 +40,6 @@ lint:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG =~ /^v/
     - if: $CI_COMMIT_BRANCH
-  allow_failure: true
 
 # ── Generate ─────────────────────────────────────────────────────────
 
@@ -65,8 +64,6 @@ discover-nodes:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: manual
-      allow_failure: true
-  allow_failure: true
 
 generate-dynamic-pipeline:
   extends: .uv-setup
@@ -83,8 +80,6 @@ generate-dynamic-pipeline:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: manual
-      allow_failure: true
-  allow_failure: true
 
 # ── Test ─────────────────────────────────────────────────────────────
 
@@ -159,8 +154,6 @@ run-dynamic-tests:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: manual
-      allow_failure: true
-  allow_failure: true
 
 # ── Report ───────────────────────────────────────────────────────────
 
@@ -201,7 +194,6 @@ deploy-superset:
   script: [bash ci/deploy.sh]
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
-  allow_failure: true
 
 # ── Release ──────────────────────────────────────────────────────────
 
@@ -258,5 +250,3 @@ opencode-review:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /opencode-review/
     - when: manual
-      allow_failure: true
-  allow_failure: true
