@@ -2,7 +2,10 @@
 Documentation     Docker-based testing suite root configuration
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 
-Suite Setup       Verify Docker Infrastructure
+Suite Setup       Run Keywords
+...               Cleanup Docker Infrastructure
+...               AND
+...               Verify Docker Infrastructure
 Suite Teardown    Cleanup Docker Infrastructure
 
 *** Keywords ***

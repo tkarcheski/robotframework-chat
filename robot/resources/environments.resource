@@ -4,6 +4,7 @@ Resource          container_profiles.resource
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 Library           OperatingSystem
 Library           String
+Library           DateTime
 
 *** Variables ***
 ${SHARED_VOLUME_BASE}    /tmp/rfc-environments
@@ -13,53 +14,70 @@ ${DEFAULT_TIMEOUT}       30
 Setup Python Environment
     [Documentation]    Setup Python container with shared workspace for the test suite
     [Arguments]    ${profile}=PYTHON_STANDARD    ${suite_name}=python-suite
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${suite_name}
+
+    # Generate unique container name using timestamp
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+
+    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
     Create Directory    ${volume_path}
 
     ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
     ${container_id}=    Create Container From Profile    ${profile}
-    ...    container_name=rfc-${suite_name}
+    ...    container_name=rfc-${unique_name}
     ...    custom_volumes=${volumes}
 
     Set Global Variable    ${PYTHON_CONTAINER}    ${container_id}
     Set Global Variable    ${PYTHON_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${PYTHON_CONTAINER_NAME}    rfc-${unique_name}
 
-    Log    Python environment ready: ${container_id}
+    Log    Python environment ready: ${container_id} (${PYTHON_CONTAINER_NAME})
     RETURN    ${container_id}
 
 Setup Node Environment
     [Documentation]    Setup Node.js container for JavaScript/TypeScript testing
     [Arguments]    ${profile}=NODE_STANDARD    ${suite_name}=node-suite
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${suite_name}
+
+    # Generate unique container name using timestamp
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+
+    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
     Create Directory    ${volume_path}
 
     ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
     ${container_id}=    Create Container From Profile    ${profile}
-    ...    container_name=rfc-${suite_name}
+    ...    container_name=rfc-${unique_name}
     ...    custom_volumes=${volumes}
 
     Set Global Variable    ${NODE_CONTAINER}    ${container_id}
     Set Global Variable    ${NODE_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${NODE_CONTAINER_NAME}    rfc-${unique_name}
 
-    Log    Node environment ready: ${container_id}
+    Log    Node environment ready: ${container_id} (${NODE_CONTAINER_NAME})
     RETURN    ${container_id}
 
 Setup Shell Environment
     [Documentation]    Setup shell container for terminal/command testing
     [Arguments]    ${profile}=ALPINE_SHELL    ${suite_name}=shell-suite
 
+    # Generate unique container name using timestamp
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+    Set Global Variable    ${SHELL_CONTAINER_NAME}    rfc-${unique_name}
+
     # Create container with a command that keeps it running
     # Use read_only=False and user=root since shell tests need to create files
     ${profile_dict}=    Get Variable Value    ${${profile}}
     ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    read_only=False    user=root
-    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${suite_name}
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    ${SHELL_CONTAINER_NAME}
 
     # Install common tools
     Docker.Execute In Container    ${container_id}    apk add --no-cache bash coreutils
 
     Set Global Variable    ${SHELL_CONTAINER}    ${container_id}
 
-    Log    Shell environment ready: ${container_id}
+    Log    Shell environment ready: ${container_id} (${SHELL_CONTAINER_NAME})
     RETURN    ${container_id}
 
 Teardown Environment
