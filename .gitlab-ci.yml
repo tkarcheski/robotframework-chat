@@ -176,6 +176,24 @@ repo-metrics:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+pipeline-summary:
+  extends: .uv-setup
+  stage: report
+  needs:
+    - job: dashboard-pytest
+      artifacts: true
+      optional: true
+    - job: lint
+      artifacts: false
+      optional: true
+  script: [bash ci/pipeline_report.sh --post-mr]
+  artifacts:
+    paths: [metrics/]
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
 # ── Deploy ───────────────────────────────────────────────────────────
 
 deploy-superset:
