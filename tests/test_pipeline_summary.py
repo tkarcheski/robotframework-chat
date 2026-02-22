@@ -5,8 +5,6 @@ a live GitLab instance. These tests cover the pure formatting and
 aggregation logic.
 """
 
-from __future__ import annotations
-
 from scripts.pipeline_summary import (
     PipelineInfo,
     JobInfo,
@@ -67,9 +65,7 @@ class TestFormatStatusEmoji:
 
 class TestAggregateSuiteCounts:
     def test_single_suite(self) -> None:
-        suites = [
-            JUnitSuite(name="pytest", tests=10, failures=2, errors=1, skipped=1)
-        ]
+        suites = [JUnitSuite(name="pytest", tests=10, failures=2, errors=1, skipped=1)]
         counts = aggregate_test_counts(suites)
         assert counts == SuiteCounts(total=10, passed=6, failed=2, errors=1, skipped=1)
 
@@ -79,9 +75,7 @@ class TestAggregateSuiteCounts:
             JUnitSuite(name="integration", tests=5, failures=0, errors=0, skipped=0),
         ]
         counts = aggregate_test_counts(suites)
-        assert counts == SuiteCounts(
-            total=25, passed=22, failed=1, errors=0, skipped=2
-        )
+        assert counts == SuiteCounts(total=25, passed=22, failed=1, errors=0, skipped=2)
 
     def test_empty(self) -> None:
         counts = aggregate_test_counts([])
