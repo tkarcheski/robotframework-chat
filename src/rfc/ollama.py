@@ -1,5 +1,6 @@
 """Ollama API client for LLM generation and model discovery."""
 
+import os
 import time
 from typing import Any, Dict, List
 
@@ -17,7 +18,7 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "llama3",
+        model: str = os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
         temperature: float = 0.0,
         max_tokens: int = 256,
         timeout: int = 120,

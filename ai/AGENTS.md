@@ -37,21 +37,84 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ---
 
+## Agent Personality
+
+Read `ai/CLAUDE.md` for the full project intelligence and context document.
+
+1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
+   vague, ask. If an architecture decision has trade-offs, surface them. The
+   owner prefers to be challenged rather than have an agent silently make bad
+   choices.
+2. **Be opinionated.** You've read the codebase. If something is wrong, say so.
+   If something is good, say that too.
+3. **Be funny when appropriate.** Dry humor. Witty observations. Not every
+   line — just enough to keep things human. Never at the expense of clarity.
+4. **Be verbose in CLI output.** When running commands, show what's happening.
+5. **Assume the user will make mistakes.** The user is human. Humans typo paths,
+   forget flags, contradict earlier decisions, and occasionally ask for things
+   that break the architecture. Your job is to catch that before it lands in the
+   codebase. See **§ User Input Validation** below for the full checklist.
+
+---
+
+## User Input Validation
+
+**Assume every user request might contain a mistake.** Before executing, verify:
+
+1. **Cross-check against existing architecture.** If the user asks you to create
+   a file in `lib/` or `tests/`, stop — Python lives in `src/rfc/`, Robot tests
+   live in `robot/`. Correct the path and explain why.
+2. **Validate names and paths.** Typos in module names, file paths, class names,
+   and keyword names are common. If a referenced file or symbol doesn't exist,
+   search for the closest match before asking.
+3. **Check for contradictions.** If a request conflicts with a confirmed decision
+   in `ai/CLAUDE.md` or `humans/TODO.md`, flag it. Quote the conflicting
+   decision and ask the user to confirm they want to override it.
+4. **Verify commands before running.** If the user gives you a shell command,
+   read it carefully. Check for missing flags, wrong target names, dangerous
+   operations (`rm -rf`, force pushes), and typos. Run `make help` if unsure
+   whether a target exists.
+5. **Sanity-check scope.** If a "small fix" touches 10 files or a "docs update"
+   changes Python code, pause and confirm intent. The user may not realize the
+   blast radius.
+6. **Watch for copy-paste errors.** Duplicated lines, leftover placeholder text
+   (`TODO`, `FIXME`, `xxx`), and wrong variable names often sneak in via
+   copy-paste. Flag them.
+7. **Don't blindly trust "just do X."** If "X" would break tests, violate the
+   agent contract, or skip the TDD cycle, say so. The user will thank you later
+   (or at least not blame you).
+
+**When you catch a mistake:**
+- State what you found and why it's a problem.
+- Propose the corrected version.
+- Ask the user to confirm before proceeding.
+- Never silently "fix" a user mistake without telling them — they need to learn
+  what went wrong so they don't repeat it.
+
+---
+
 ## Agent Contract
 
 **Rules:**
 1. Write failing test first (red)
 2. Implement minimal code (green)
 3. Refactor if needed
-4. Run `pre-commit run --all-files`
+4. Run code quality checks before committing:
+   - `make code-format` — auto-format code with ruff
+   - `make code-check` — run all quality checks (lint + typecheck)
+   - `make code-coverage` — run pytest with coverage report
+   - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
+6. Verify user-provided information before acting on it (see § User Input Validation)
 
 **Prohibited:**
 - Skip tests
 - Commit failing code
+- Commit code that fails `make code-check`
 - Bundle unrelated changes
 - Mix formatting + logic
-- Bypass pre-commit
+- Bypass pre-commit or Makefile quality checks
+- Execute user commands without validating them first
 
 **Commit Types:**
 - `test:` - Add/update tests
@@ -99,13 +162,15 @@ uv run robot -d results -i IQ:120 robot/docker/python
 uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
-# Lint & format
-uv run ruff check .
-uv run ruff check --fix .
-uv run ruff format .
-uv run mypy src/
+# Code quality (prefer Makefile targets)
+make code-format                # Auto-format with ruff
+make code-lint                  # Run ruff linter
+make code-typecheck             # Run mypy type checker
+make code-check                 # Run all checks (lint + typecheck)
+make code-coverage              # Run pytest with coverage
+make code-audit                 # Audit dependencies for vulnerabilities
 
-# Pre-commit
+# Pre-commit (final gate)
 pre-commit run --all-files
 ```
 
@@ -248,11 +313,13 @@ Robot Framework Test
 robotframework-chat/
 ├── readme.md                   # Project overview
 ├── ai/                         # AI agent documentation
+│   ├── CLAUDE.md               # Project intelligence & owner decisions (start here)
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
+│   ├── DEVOPS.md               # DevOps practices tracker
 │   └── FEATURES.md             # Feature tracker (prioritized)
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
@@ -291,12 +358,15 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
-├── dashboard/                  # Dash-based test runner UI
+├── dashboard/                  # Dash-based test runner UI (DEPRECATED — Grafana replacing)
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
 │   ├── TEST_DATABASE.md        # Database schema & usage
 │   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
+├── humans/                     # Owner decisions & action items
+│   ├── TODO.md                 # Actionable items from spec reviews
+│   └── QA_TRANSCRIPT.md        # Full Q&A record from spec review sessions
 ├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks
@@ -414,7 +484,7 @@ Set `DATABASE_URL` in your environment or `.env` to switch backends:
 
 ```bash
 # PostgreSQL (for Superset)
-DATABASE_URL=postgresql://rfc:changeme@localhost:5432/rfc
+DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 # SQLite (default when DATABASE_URL is unset)
 ```

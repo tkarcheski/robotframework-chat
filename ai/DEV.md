@@ -219,3 +219,38 @@ docker logs ${CONTAINER_ID}
 - [ ] Commit message follows format: `<type>: <summary>`
 - [ ] No TODOs or placeholders remain
 - [ ] Docker containers properly cleaned up (if applicable)
+- [ ] Tests tagged with appropriate grading tier (`tier:0` through `tier:6`)
+
+---
+
+## Inference Parameters (Owner-Confirmed 2026-02-19)
+
+When calling Ollama's `/api/generate`, always specify and record:
+- `temperature` — default `0` for benchmarking (deterministic)
+- `seed` — fixed seed for reproducibility
+- `top_p` — include for completeness
+- `top_k` — include for completeness
+
+These must be stored in the database per test run. See `ai/CLAUDE.md` § Inference Parameters.
+
+---
+
+## Resilience Rules (Owner-Confirmed 2026-02-19)
+
+- **Retry infrastructure failures** with backoff (Ollama down, DB unreachable)
+- **Emit `WARN`** for transient infra failures, **`FAIL`** only for persistent or LLM failures
+- **Distinguish infra failures from model failures** — infra failures don't count against model scores
+- **Buffer results locally** if DB is unreachable, sync later
+- **Skip remaining tests** for a node that goes offline mid-suite, continue with other nodes
+
+See `ai/CLAUDE.md` § Resilience Rules.
+
+---
+
+## Cross-References
+
+- `ai/CLAUDE.md` — Project intelligence, owner decisions, architecture
+- `ai/AGENTS.md` — Agent contract, code style, commands
+- `ai/FEATURES.md` — Feature status tracker
+- `humans/TODO.md` — Owner action items
+- `humans/QA_TRANSCRIPT.md` — Full Q&A record from spec review

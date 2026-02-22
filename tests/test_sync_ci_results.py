@@ -1,8 +1,9 @@
 """Tests for CI pipeline results sync to database.
 
 Coverage includes GitLabArtifactFetcher init/properties, check_connection,
-pipeline/job/artifact fetching, end-to-end sync workflow, verify_sync,
-CLI subcommand handlers, backfill, and pipeline metadata storage.
+pipeline/job/artifact fetching, child pipeline traversal, artifact metadata
+filtering, end-to-end sync workflow, verify_sync, CLI subcommand handlers,
+and pipeline metadata storage.
 """
 
 import argparse
@@ -24,6 +25,8 @@ from scripts.sync_ci_results import (
     _cmd_status,
     _cmd_sync,
     _cmd_verify,
+    _collect_jobs,
+    _job_has_artifacts,
     _make_db,
     _make_fetcher,
     backfill_pipelines,
@@ -404,8 +407,14 @@ class TestSyncCiResults:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -440,8 +449,14 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         # None for every artifact path tried
         fetcher.download_job_artifact.return_value = None
 
@@ -463,8 +478,14 @@ class TestSyncCiResults:
             {"id": 501, "web_url": "https://gl.test/p/501"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -485,8 +506,14 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -507,10 +534,26 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
-            {"id": 1002, "name": "test-docker", "status": "success"},
-            {"id": 1003, "name": "test-safety", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "test-docker",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1003,
+                "name": "test-safety",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -544,9 +587,20 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "has-artifact", "status": "success"},
-            {"id": 1002, "name": "no-artifact", "status": "success"},
+            {
+                "id": 1001,
+                "name": "has-artifact",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "no-artifact",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         # Use a single path list so each job gets exactly one try
         # Job 1001 succeeds on first path, job 1002 fails
         fetcher.download_job_artifact.side_effect = ["/tmp/output.xml", None]
@@ -554,9 +608,7 @@ class TestSyncCiResults:
         db = MagicMock()
         db.get_recent_runs.return_value = []
 
-        result = sync_ci_results(
-            fetcher, db, artifact_paths=["output.xml"]
-        )
+        result = sync_ci_results(fetcher, db, artifact_paths=["output.xml"])
         assert result["artifacts_downloaded"] == 1
         assert result["runs_imported"] == 1
 
@@ -570,8 +622,14 @@ class TestSyncCiResults:
             {"id": 500, "web_url": "https://gl.test/p/500"},
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         # First path fails (output.xml), second succeeds (results/math/output.xml)
         fetcher.download_job_artifact.side_effect = [None, "/tmp/output.xml"]
 
@@ -716,7 +774,12 @@ class TestCmdListPipelines:
         """Prints pipeline table."""
         fetcher = MagicMock()
         fetcher.fetch_recent_pipelines.return_value = [
-            {"id": 500, "status": "success", "ref": "main", "web_url": "https://gl/500"},
+            {
+                "id": 500,
+                "status": "success",
+                "ref": "main",
+                "web_url": "https://gl/500",
+            },
         ]
         mock_mf.return_value = fetcher
 
@@ -799,9 +862,7 @@ class TestCmdFetchArtifact:
         fetcher.download_job_artifact.return_value = None
         mock_mf.return_value = fetcher
 
-        args = argparse.Namespace(
-            job_id=1001, artifact_path="output.xml", output=None
-        )
+        args = argparse.Namespace(job_id=1001, artifact_path="output.xml", output=None)
         with pytest.raises(SystemExit) as exc:
             _cmd_fetch_artifact(args)
         assert exc.value.code == 1
@@ -830,7 +891,7 @@ class TestCmdSync:
         _cmd_sync(args)
 
         out = capsys.readouterr().out
-        assert "Sync complete" in out
+        assert "SYNC COMPLETE" in out
         assert "PASS" in out
 
     @patch("scripts.sync_ci_results.sync_ci_results")
@@ -989,6 +1050,76 @@ class TestFetchAllPipelines:
         assert result == []
 
 
+# ── _job_has_artifacts + _collect_jobs (5 tests) ─────────────────────
+
+
+class TestJobHasArtifacts:
+    """Tests for the _job_has_artifacts helper."""
+
+    def test_job_with_artifacts_list(self):
+        """Returns True when job has non-empty artifacts list."""
+        assert _job_has_artifacts({"artifacts": [{"file_type": "archive"}]}) is True
+
+    def test_job_with_artifacts_file(self):
+        """Returns True when job has artifacts_file."""
+        assert (
+            _job_has_artifacts({"artifacts_file": {"filename": "artifacts.zip"}})
+            is True
+        )
+
+    def test_job_without_artifacts(self):
+        """Returns False when job has no artifact metadata."""
+        assert _job_has_artifacts({"id": 1, "name": "lint"}) is False
+
+    def test_job_with_empty_artifacts(self):
+        """Returns False when artifacts list is empty."""
+        assert _job_has_artifacts({"artifacts": []}) is False
+
+
+class TestCollectJobs:
+    """Tests for _collect_jobs which follows child pipelines."""
+
+    def test_collects_direct_jobs(self):
+        """Returns jobs from the pipeline itself."""
+        fetcher = MagicMock()
+        fetcher.fetch_pipeline_jobs.return_value = [
+            {"id": 1, "name": "lint"},
+        ]
+        fetcher.fetch_pipeline_bridges.return_value = []
+
+        jobs = _collect_jobs(fetcher, pipeline_id=500)
+        assert len(jobs) == 1
+        assert jobs[0]["id"] == 1
+
+    def test_follows_child_pipelines(self):
+        """Follows bridge jobs to collect child pipeline jobs."""
+        fetcher = MagicMock()
+        fetcher.fetch_pipeline_jobs.side_effect = [
+            # Parent pipeline jobs
+            [{"id": 1, "name": "lint"}],
+            # Child pipeline jobs
+            [{"id": 10, "name": "robot-math"}, {"id": 11, "name": "robot-docker"}],
+        ]
+        fetcher.fetch_pipeline_bridges.return_value = [
+            {"name": "run-regular-tests", "downstream_pipeline": {"id": 999}},
+        ]
+
+        jobs = _collect_jobs(fetcher, pipeline_id=500)
+        assert len(jobs) == 3
+        assert {j["id"] for j in jobs} == {1, 10, 11}
+
+    def test_skips_bridges_without_downstream(self):
+        """Skips bridge jobs that have no downstream pipeline."""
+        fetcher = MagicMock()
+        fetcher.fetch_pipeline_jobs.return_value = [{"id": 1, "name": "lint"}]
+        fetcher.fetch_pipeline_bridges.return_value = [
+            {"name": "pending-bridge", "downstream_pipeline": None},
+        ]
+
+        jobs = _collect_jobs(fetcher, pipeline_id=500)
+        assert len(jobs) == 1
+
+
 # ── backfill_pipelines (7 tests) ─────────────────────────────────────
 
 
@@ -1013,8 +1144,14 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test-math", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test-math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -1073,8 +1210,14 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
 
         db = MagicMock()
         db.get_recent_runs.return_value = [
@@ -1103,8 +1246,14 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -1143,17 +1292,26 @@ class TestBackfillPipelines:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "math", "status": "success"},
-            {"id": 1002, "name": "docker", "status": "success"},
+            {
+                "id": 1001,
+                "name": "math",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
+            {
+                "id": 1002,
+                "name": "docker",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
         db.get_recent_runs.return_value = []
 
-        result = backfill_pipelines(
-            fetcher, db, artifact_paths=["output.xml"]
-        )
+        result = backfill_pipelines(fetcher, db, artifact_paths=["output.xml"])
         assert result["artifacts_downloaded"] == 2
 
         pr = db.add_pipeline_result.call_args[0][0]
@@ -1170,9 +1328,64 @@ class TestBackfillPipelines:
         db.get_recent_runs.return_value = []
 
         backfill_pipelines(fetcher, db, status="success")
-        fetcher.fetch_all_pipelines.assert_called_once_with(
-            ref=None, status="success"
-        )
+        fetcher.fetch_all_pipelines.assert_called_once_with(ref=None, status="success")
+
+
+# ── CLI backfill handler (2 tests) ───────────────────────────────────
+
+
+class TestCmdBackfill:
+    """Tests for the backfill subcommand handler."""
+
+    @patch("scripts.sync_ci_results.backfill_pipelines")
+    @patch("scripts.sync_ci_results._make_db")
+    @patch("scripts.sync_ci_results._make_fetcher")
+    def test_backfill_success(self, mock_mf, mock_mdb, mock_bf, capsys):
+        """Prints backfill summary."""
+        fetcher = MagicMock()
+        fetcher.api_url = "https://gl.test"
+        fetcher.project_id = "42"
+        fetcher.has_token = True
+        mock_mf.return_value = fetcher
+        mock_mdb.return_value = MagicMock()
+        mock_bf.return_value = {
+            "pipelines_found": 50,
+            "pipelines_stored": 50,
+            "artifacts_downloaded": 10,
+            "runs_imported": 10,
+            "errors": [],
+        }
+
+        args = argparse.Namespace(ref=None, status="all", db=None, metadata_only=False)
+        _cmd_backfill(args)
+
+        out = capsys.readouterr().out
+        assert "BACKFILL" in out
+        assert "50" in out
+
+    @patch("scripts.sync_ci_results.backfill_pipelines")
+    @patch("scripts.sync_ci_results._make_db")
+    @patch("scripts.sync_ci_results._make_fetcher")
+    def test_backfill_with_errors_exits_1(self, mock_mf, mock_mdb, mock_bf):
+        """Exits 1 when backfill has errors."""
+        fetcher = MagicMock()
+        fetcher.api_url = "https://gl.test"
+        fetcher.project_id = "42"
+        fetcher.has_token = True
+        mock_mf.return_value = fetcher
+        mock_mdb.return_value = MagicMock()
+        mock_bf.return_value = {
+            "pipelines_found": 1,
+            "pipelines_stored": 1,
+            "artifacts_downloaded": 1,
+            "runs_imported": 0,
+            "errors": ["Failed to import job 1001: bad xml"],
+        }
+
+        args = argparse.Namespace(ref=None, status="all", db=None, metadata_only=False)
+        with pytest.raises(SystemExit) as exc:
+            _cmd_backfill(args)
+        assert exc.value.code == 1
 
 
 # ── sync_ci_results pipeline metadata storage (2 tests) ─────────────
@@ -1198,8 +1411,14 @@ class TestSyncPipelineMetadata:
             },
         ]
         fetcher.fetch_pipeline_jobs.return_value = [
-            {"id": 1001, "name": "test", "status": "success"},
+            {
+                "id": 1001,
+                "name": "test",
+                "status": "success",
+                "artifacts": [{"file_type": "archive"}],
+            },
         ]
+        fetcher.fetch_pipeline_bridges.return_value = []
         fetcher.download_job_artifact.return_value = "/tmp/output.xml"
 
         db = MagicMock()
@@ -1233,58 +1452,7 @@ class TestSyncPipelineMetadata:
         db.add_pipeline_result.assert_called_once()
 
 
-# ── CLI backfill + list-pipeline-results handlers (4 tests) ──────────
-
-
-class TestCmdBackfill:
-    """Tests for the backfill subcommand handler."""
-
-    @patch("scripts.sync_ci_results.backfill_pipelines")
-    @patch("scripts.sync_ci_results._make_db")
-    @patch("scripts.sync_ci_results._make_fetcher")
-    def test_backfill_success(self, mock_mf, mock_mdb, mock_bf, capsys):
-        """Prints backfill summary."""
-        mock_mf.return_value = MagicMock()
-        mock_mdb.return_value = MagicMock()
-        mock_bf.return_value = {
-            "pipelines_found": 50,
-            "pipelines_stored": 50,
-            "artifacts_downloaded": 10,
-            "runs_imported": 10,
-            "errors": [],
-        }
-
-        args = argparse.Namespace(
-            ref=None, status="all", db=None, metadata_only=False
-        )
-        _cmd_backfill(args)
-
-        out = capsys.readouterr().out
-        assert "Backfill complete" in out
-        assert "DEPRECATED" in out
-        assert "50" in out
-
-    @patch("scripts.sync_ci_results.backfill_pipelines")
-    @patch("scripts.sync_ci_results._make_db")
-    @patch("scripts.sync_ci_results._make_fetcher")
-    def test_backfill_with_errors_exits_1(self, mock_mf, mock_mdb, mock_bf):
-        """Exits 1 when backfill has errors."""
-        mock_mf.return_value = MagicMock()
-        mock_mdb.return_value = MagicMock()
-        mock_bf.return_value = {
-            "pipelines_found": 1,
-            "pipelines_stored": 1,
-            "artifacts_downloaded": 1,
-            "runs_imported": 0,
-            "errors": ["Failed to import job 1001: bad xml"],
-        }
-
-        args = argparse.Namespace(
-            ref=None, status="all", db=None, metadata_only=False
-        )
-        with pytest.raises(SystemExit) as exc:
-            _cmd_backfill(args)
-        assert exc.value.code == 1
+# ── CLI list-pipeline-results handler (2 tests) ──────────────────────
 
 
 class TestCmdListPipelineResults:

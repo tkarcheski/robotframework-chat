@@ -9,7 +9,7 @@
 # See scripts/generate_pipeline.py for CI pipeline generation.
 
 defaults:
-  model: "llama3"
+  model: "gpt-oss:20b"
   iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
   profile: "STANDARD"
   timeout_seconds: 120
@@ -29,9 +29,9 @@ defaults:
 nodes:
   - hostname: localhost
     port: 11434
-  - hostname: mini1
+  - hostname: Mini1s-Mac-Mini
     port: 11434
-  - hostname: mini2
+  - hostname: Mini2s-Mac-Mini
     port: 11434
   - hostname: ai1
     port: 11434

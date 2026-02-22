@@ -66,7 +66,7 @@ for m in data.get('models', []):
 
 run_suite() {
     local suite="$1"
-    local target="test-$suite"
+    local target="robot-$suite"
 
     echo "=== Running: $suite ==="
     if make "$target"; then

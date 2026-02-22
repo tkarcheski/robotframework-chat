@@ -1,4 +1,9 @@
-# Robot Framework Dashboard
+# Robot Framework Dashboard (Deprecated — Grafana Replacing)
+
+> **DEPRECATION NOTICE (2026-02-19):** This Dash-based dashboard is a prototype.
+> It will be replaced by TRON-themed Grafana dashboards. Do not invest further
+> development effort here. See `humans/TODO.md` § Dash Dashboard Deprecation
+> for the migration plan.
 
 A web-based dashboard for running and managing multiple Robot Framework test sessions concurrently.
 

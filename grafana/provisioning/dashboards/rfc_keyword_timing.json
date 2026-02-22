@@ -1,0 +1,287 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Keywords Tracked",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Keywords\" FROM robot_keyword_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Avg Keyword Duration",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 2) AS \"Avg Duration\" FROM robot_keyword_results WHERE duration_seconds IS NOT NULL;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Unique Keywords",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(DISTINCT keyword_name) AS \"Keywords\" FROM robot_keyword_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Keyword Failure Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS \"Failure %\" FROM robot_keyword_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Avg Duration by Keyword",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT keyword_name AS \"Keyword\", ROUND(AVG(duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM robot_keyword_results WHERE duration_seconds IS NOT NULL GROUP BY keyword_name ORDER BY \"Avg Duration (s)\" DESC LIMIT 20;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Keyword Execution Count",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT keyword_name AS \"Keyword\", COUNT(*) AS \"Executions\", SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS \"Passed\", SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS \"Failed\" FROM robot_keyword_results GROUP BY keyword_name ORDER BY \"Executions\" DESC LIMIT 20;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": { "mode": "normal" },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Passed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Failed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Response Time Trend (Ask LLM)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Ask LLM' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Grade Answer Duration Trend",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Grade Answer' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Avg Keyword Duration by Model",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT r.model_name AS \"Model\", kw.keyword_name AS \"Keyword\", ROUND(AVG(kw.duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.duration_seconds IS NOT NULL AND kw.keyword_name IN ('Ask LLM', 'Grade Answer') GROUP BY r.model_name, kw.keyword_name ORDER BY r.model_name;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Keyword Results Detail",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 30 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT kw.keyword_name AS \"Keyword\", kw.test_name AS \"Test\", kw.library_name AS \"Library\", kw.status AS \"Status\", kw.duration_seconds AS \"Duration (s)\", kw.args AS \"Args\", r.model_name AS \"Model\", r.timestamp AS \"Run Time\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id ORDER BY r.timestamp DESC, kw.id DESC LIMIT 50;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "PASS": { "color": "green", "text": "PASS" }, "FAIL": { "color": "red", "text": "FAIL" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["robotframework", "rfc", "keywords", "timing"],
+  "templating": {
+    "list": []
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "RFC Keyword Timing",
+  "uid": "rfc-keyword-timing"
+}

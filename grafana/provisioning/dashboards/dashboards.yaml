@@ -1,0 +1,15 @@
+# Grafana dashboard provisioning for robotframework-chat.
+# JSON dashboard files in this directory are auto-loaded on startup.
+apiVersion: 1
+
+providers:
+  - name: RFC Dashboards
+    orgId: 1
+    folder: Robot Framework Chat
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

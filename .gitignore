@@ -60,5 +60,9 @@ config/nodes_inventory.yaml
 generated-pipeline.yml
 generated-dynamic-pipeline.yml
 
+# Coverage
+.coverage
+htmlcov/
+
 # Project specific
 *.local

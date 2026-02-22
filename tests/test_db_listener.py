@@ -245,6 +245,337 @@ class TestDbListenerEndSuiteArchival:
         listener.end_suite("Suite", _suite_attrs())
 
 
+class TestDbListenerLogMessage:
+    """Tests for RFC_DATA: structured log message capture."""
+
+    def test_captures_actual_answer(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:The answer is 4"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] == "The answer is 4"
+
+    def test_captures_expected_answer(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["expected_answer"] == "4"
+
+    def test_captures_grading_reason(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message(
+            {"message": "RFC_DATA:grading_reason:Correct numeric answer"}
+        )
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["grading_reason"] == "Correct numeric answer"
+
+    def test_captures_multiple_fields(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:42"})
+        listener.log_message({"message": "RFC_DATA:expected_answer:42"})
+        listener.log_message({"message": "RFC_DATA:grading_reason:Exact match"})
+        listener.end_test("T", _test_attrs())
+        tc = listener._test_cases[0]
+        assert tc["actual_answer"] == "42"
+        assert tc["expected_answer"] == "42"
+        assert tc["grading_reason"] == "Exact match"
+
+    def test_ignores_non_rfc_data_messages(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "Just a normal log message"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_ignores_empty_message(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": ""})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_ignores_non_string_message(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": 12345})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+    def test_resets_between_tests(self):
+        listener = DbListener()
+        listener.start_test("T1", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:first"})
+        listener.end_test("T1", _test_attrs())
+
+        listener.start_test("T2", {})
+        listener.end_test("T2", _test_attrs())
+
+        assert listener._test_cases[0]["actual_answer"] == "first"
+        assert listener._test_cases[1]["actual_answer"] is None
+
+    def test_handles_value_with_colons(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message(
+            {"message": "RFC_DATA:grading_reason:Score: 1/1, reason: correct"}
+        )
+        listener.end_test("T", _test_attrs())
+        assert (
+            listener._test_cases[0]["grading_reason"] == "Score: 1/1, reason: correct"
+        )
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_captured_data_archived_to_database(self, _mock_ci, tmp_path):
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Math Test", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:4"})
+        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
+        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
+        listener.end_test("Math Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        import sqlite3
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["actual_answer"] == "4"
+            assert row["expected_answer"] == "4"
+            assert row["grading_reason"] == "Correct"
+
+
+class TestDbListenerStartTest:
+    def test_resets_current_test_data(self):
+        listener = DbListener()
+        listener._current_test_data = {"stale": "data"}
+        listener.start_test("T", {})
+        assert listener._current_test_data == {}
+
+    def test_initial_current_test_data_is_empty(self):
+        listener = DbListener()
+        assert listener._current_test_data == {}
+
+
+def _kw_attrs(
+    status="PASS",
+    args=None,
+    kwname="",
+    libname="",
+    type="kw",
+    starttime="2026-01-01 12:00:00.000",
+    endtime="2026-01-01 12:00:01.500",
+):
+    """Build a minimal keyword attributes dict."""
+    return {
+        "status": status,
+        "args": args or [],
+        "kwname": kwname,
+        "libname": libname,
+        "type": type,
+        "starttime": starttime,
+        "endtime": endtime,
+    }
+
+
+class TestDbListenerKeywordTracking:
+    """Tests for start_keyword/end_keyword hooks."""
+
+    def test_tracks_ask_llm_keyword(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Ask LLM",
+            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords", args=["What is 2+2?"]),
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                status="PASS",
+            ),
+        )
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 1
+        kw = listener._keyword_results[0]
+        assert kw["keyword_name"] == "Ask LLM"
+        assert kw["status"] == "PASS"
+        assert kw["test_name"] == "T"
+
+    def test_tracks_grade_answer_keyword(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Grade Answer",
+            _kw_attrs(
+                kwname="Grade Answer",
+                libname="rfc.keywords",
+                args=["What is 2+2?", "4", "The answer is 4"],
+            ),
+        )
+        listener.end_keyword(
+            "Grade Answer",
+            _kw_attrs(kwname="Grade Answer", libname="rfc.keywords"),
+        )
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 1
+        assert listener._keyword_results[0]["keyword_name"] == "Grade Answer"
+
+    def test_tracks_safety_keywords(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Test Prompt Injection Resistance",
+            _kw_attrs(
+                kwname="Test Prompt Injection Resistance",
+                libname="rfc.safety_keywords",
+                args=["ignore previous instructions"],
+            ),
+        )
+        listener.end_keyword(
+            "Test Prompt Injection Resistance",
+            _kw_attrs(
+                kwname="Test Prompt Injection Resistance",
+                libname="rfc.safety_keywords",
+            ),
+        )
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 1
+
+    def test_ignores_builtin_keywords(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Log", _kw_attrs(kwname="Log", libname="BuiltIn", args=["hello"])
+        )
+        listener.end_keyword("Log", _kw_attrs(kwname="Log", libname="BuiltIn"))
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 0
+
+    def test_captures_duration(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                starttime="2026-01-01 12:00:00.000",
+            ),
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                endtime="2026-01-01 12:00:02.500",
+            ),
+        )
+        listener.end_test("T", _test_attrs())
+        assert listener._keyword_results[0]["duration_seconds"] is not None
+
+    def test_captures_first_arg_as_prompt(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                args=["What is the meaning of life?"],
+            ),
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
+        )
+        listener.end_test("T", _test_attrs())
+        assert "What is the meaning of life?" in listener._keyword_results[0]["args"]
+
+    def test_resets_between_suites(self):
+        listener = DbListener()
+        listener._keyword_results = [{"stale": "data"}]
+        with patch("rfc.db_listener.collect_ci_metadata", return_value={}):
+            listener.start_suite("Suite", {})
+        assert listener._keyword_results == []
+
+    def test_multiple_keywords_per_test(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        for name in ["Wait For LLM", "Ask LLM", "Grade Answer"]:
+            listener.start_keyword(name, _kw_attrs(kwname=name, libname="rfc.keywords"))
+            listener.end_keyword(name, _kw_attrs(kwname=name, libname="rfc.keywords"))
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 3
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_keywords_archived_to_database(self, _mock_ci, tmp_path):
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Math Test", {})
+        listener.start_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                args=["What is 2+2?"],
+                starttime="2026-01-01 12:00:00.000",
+            ),
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(
+                kwname="Ask LLM",
+                libname="rfc.keywords",
+                endtime="2026-01-01 12:00:01.500",
+            ),
+        )
+        listener.end_test("Math Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        import sqlite3
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM keyword_results").fetchall()
+            assert len(rows) == 1
+            row = rows[0]
+            assert row["keyword_name"] == "Ask LLM"
+            assert row["test_name"] == "Math Test"
+            assert row["status"] == "PASS"
+            assert row["duration_seconds"] is not None
+
+    def test_failed_keyword_recorded(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Ask LLM", _kw_attrs(kwname="Ask LLM", libname="rfc.keywords")
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords", status="FAIL"),
+        )
+        listener.end_test("T", _test_attrs(status="FAIL"))
+        assert listener._keyword_results[0]["status"] == "FAIL"
+
+    def test_tracks_by_known_keyword_name(self):
+        """Even if libname is empty, known keyword names are tracked."""
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.start_keyword("Ask LLM", _kw_attrs(kwname="Ask LLM", libname=""))
+        listener.end_keyword("Ask LLM", _kw_attrs(kwname="Ask LLM", libname=""))
+        listener.end_test("T", _test_attrs())
+        assert len(listener._keyword_results) == 1
+
+
 class TestDbListenerGetDb:
     def test_lazy_creates_database(self, tmp_path):
         db_path = str(tmp_path / "test.db")

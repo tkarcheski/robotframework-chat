@@ -12,11 +12,13 @@ export
 
 .PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
         robot robot-math robot-docker robot-safety robot-dryrun \
+        robot-math-import robot-import \
         test-dashboard test-dashboard-playwright \
-        import code-lint code-format code-typecheck code-check version \
-        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard \
+        import code-lint code-format code-typecheck code-check code-coverage code-audit version \
+        ci-lint ci-test ci-generate ci-report ci-deploy ci-test-dashboard ci-release \
         opencode-pipeline-review opencode-local-review \
-        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db
+        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
+        grafana-up grafana-down grafana-logs grafana-restart
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -33,20 +35,34 @@ install: ## Install Python dependencies
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Dashboard
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana + Dashboard
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
 	$(COMPOSE) down
 
-docker-restart: ## Restart all services
-	$(COMPOSE) restart
+docker-restart: ## Rebuild images and restart all services
+	$(COMPOSE) up -d --build
 
 docker-logs: ## Tail service logs
 	$(COMPOSE) logs -f
 
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
+
+# ── Grafana ──────────────────────────────────────────────────────────
+
+grafana-up: .env ## Start Grafana (+ PostgreSQL dependency)
+	$(COMPOSE) up -d grafana
+
+grafana-down: ## Stop Grafana
+	$(COMPOSE) stop grafana
+
+grafana-logs: ## Tail Grafana logs
+	$(COMPOSE) logs -f grafana
+
+grafana-restart: ## Restart Grafana (picks up provisioning changes)
+	$(COMPOSE) restart grafana
 
 # ── Robot Framework Tests ─────────────────────────────────────────────
 
@@ -60,6 +76,16 @@ robot-docker: ## Run Docker tests (Robot Framework)
 
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+
+robot-math-import: ## Run math tests then import results (continues on test failures)
+	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+	$(MAKE) import
+
+robot-import: ## Run all tests then import results (continues on test failures)
+	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+	-$(ROBOT) -d results/docker $(LISTENER) robot/docker/
+	-$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+	$(MAKE) import
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
@@ -88,6 +114,12 @@ code-typecheck: ## Run mypy type checker
 
 code-check: code-lint code-typecheck ## Run all code quality checks
 
+code-coverage: ## Run pytest with coverage report
+	uv run pytest --cov --cov-report=term-missing --cov-report=html:htmlcov
+
+code-audit: ## Audit dependencies for known vulnerabilities
+	uv run pip-audit
+
 # ── CI Scripts ────────────────────────────────────────────────────────
 # Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
 
@@ -109,6 +141,9 @@ ci-deploy: ## Deploy Superset to remote host
 ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
 	bash ci/test_dashboard.sh $(or $(MODE),all)
 
+ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
+	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
+
 # ── AI Review ────────────────────────────────────────────────────────
 
 opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
@@ -117,10 +152,7 @@ opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + M
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
 
-# ── GitLab Sync ──────────────────────────────────────────────────────
-
-ci-sync: ## Mirror repo to GitHub
-	bash ci/sync.sh
+# ── GitLab CI ────────────────────────────────────────────────────────
 
 ci-status: ## Check GitLab API connectivity
 	uv run python scripts/sync_ci_results.py status
@@ -140,10 +172,10 @@ ci-sync-db: ## Sync CI pipeline results to database
 ci-verify-db: ## Verify database contents after sync
 	uv run python scripts/sync_ci_results.py verify
 
-ci-backfill: ## [DEPRECATED] Backfill all GitLab pipeline data to database
+ci-backfill: ## Backfill all GitLab pipeline data to database
 	uv run python scripts/sync_ci_results.py backfill
 
-ci-backfill-metadata: ## [DEPRECATED] Store pipeline metadata only (no artifact download)
+ci-backfill-metadata: ## Store pipeline metadata only (no artifact download)
 	uv run python scripts/sync_ci_results.py backfill --metadata-only
 
 ci-list-pipeline-results: ## List pipeline_results stored in database
@@ -152,4 +184,4 @@ ci-list-pipeline-results: ## List pipeline_results stored in database
 # ── Versioning ────────────────────────────────────────────────────────
 
 version: ## Print current version
-	@python -c "from src.rfc import __version__; print(__version__)"
+	@uv run python -c "from rfc import __version__; print(__version__)"

@@ -1,5 +1,7 @@
 """Tests for rfc.ollama.OllamaClient."""
 
+import os
+
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -12,7 +14,7 @@ class TestOllamaClientInit:
     def test_defaults(self):
         client = OllamaClient()
         assert client.base_url == "http://localhost:11434"
-        assert client.model == "llama3"
+        assert client.model == os.getenv("DEFAULT_MODEL", "gpt-oss:20b")
         assert client.temperature == 0.0
         assert client.max_tokens == 256
         assert client.timeout == 120

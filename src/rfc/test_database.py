@@ -118,6 +118,22 @@ class DryRunResult:
 
 
 @dataclass
+class KeywordResult:
+    """Represents a tracked keyword execution within a test run."""
+
+    run_id: int
+    test_name: str
+    keyword_name: str
+    library_name: str
+    status: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    args: Optional[str] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -163,6 +179,9 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_keyword_results(self, results: List[KeywordResult]) -> None: ...
 
     @abc.abstractmethod
     def add_dry_run_result(self, result: DryRunResult) -> int: ...
@@ -250,10 +269,26 @@ class _SQLiteBackend(_Backend):
         errors TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS keyword_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        test_name TEXT NOT NULL,
+        keyword_name TEXT NOT NULL,
+        library_name TEXT,
+        status TEXT NOT NULL,
+        start_time TEXT,
+        end_time TEXT,
+        duration_seconds REAL,
+        args TEXT,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_keyword_results_run_id ON keyword_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_keyword_results_name ON keyword_results(keyword_name);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id ON pipeline_results(pipeline_id);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
@@ -342,6 +377,33 @@ class _SQLiteBackend(_Backend):
                         r.expected_answer,
                         r.actual_answer,
                         r.grading_reason,
+                    )
+                    for r in results
+                ],
+            )
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        if not results:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO keyword_results
+                (run_id, test_name, keyword_name, library_name,
+                 status, start_time, end_time, duration_seconds, args)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.run_id,
+                        r.test_name,
+                        r.keyword_name,
+                        r.library_name,
+                        r.status,
+                        r.start_time,
+                        r.end_time,
+                        r.duration_seconds,
+                        r.args,
                     )
                     for r in results
                 ],
@@ -551,6 +613,10 @@ class _SQLAlchemyBackend(_Backend):
     _PG_MIGRATIONS = [
         # pipeline_id exceeded INTEGER range (~2.1B); widen to BIGINT.
         "ALTER TABLE pipeline_results ALTER COLUMN pipeline_id TYPE BIGINT",
+        # Rename GitLab-specific columns to platform-agnostic names.
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
+        "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
     ]
 
     def __init__(self, database_url: str):
@@ -662,11 +728,33 @@ class _SQLAlchemyBackend(_Backend):
             Column("errors", Text),
         )
 
+        self.keyword_results = Table(
+            "keyword_results",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column(
+                "run_id",
+                Integer,
+                ForeignKey("test_runs.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            Column("test_name", String(255), nullable=False),
+            Column("keyword_name", String(255), nullable=False),
+            Column("library_name", String(255)),
+            Column("status", String(50), nullable=False),
+            Column("start_time", String(255)),
+            Column("end_time", String(255)),
+            Column("duration_seconds", Float),
+            Column("args", Text),
+        )
+
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
         Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
         Index("idx_pipeline_results_status", self.pipeline_results.c.status)
         Index("idx_dry_run_results_timestamp", self.dry_run_results.c.timestamp)
         Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
+        Index("idx_keyword_results_run_id", self.keyword_results.c.run_id)
+        Index("idx_keyword_results_name", self.keyword_results.c.keyword_name)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -723,6 +811,28 @@ class _SQLAlchemyBackend(_Backend):
                         "expected_answer": r.expected_answer,
                         "actual_answer": r.actual_answer,
                         "grading_reason": r.grading_reason,
+                    }
+                    for r in results
+                ],
+            )
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        if not results:
+            return
+        with self.engine.begin() as conn:
+            conn.execute(
+                self.keyword_results.insert(),
+                [
+                    {
+                        "run_id": r.run_id,
+                        "test_name": r.test_name,
+                        "keyword_name": r.keyword_name,
+                        "library_name": r.library_name,
+                        "status": r.status,
+                        "start_time": r.start_time,
+                        "end_time": r.end_time,
+                        "duration_seconds": r.duration_seconds,
+                        "args": r.args,
                     }
                     for r in results
                 ],
@@ -895,9 +1005,7 @@ class _SQLAlchemyBackend(_Backend):
     def get_pipeline_by_id(self, pipeline_id: int) -> Optional[Dict[str, Any]]:
         with self.engine.connect() as conn:
             result = conn.execute(
-                text(
-                    "SELECT * FROM pipeline_results WHERE pipeline_id = :pid"
-                ),
+                text("SELECT * FROM pipeline_results WHERE pipeline_id = :pid"),
                 {"pid": pipeline_id},
             )
             row = result.fetchone()
@@ -926,10 +1034,7 @@ class _SQLAlchemyBackend(_Backend):
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self.engine.connect() as conn:
             result = conn.execute(
-                text(
-                    "SELECT * FROM robot_dry_run_results "
-                    "ORDER BY id DESC LIMIT :lim"
-                ),
+                text("SELECT * FROM robot_dry_run_results ORDER BY id DESC LIMIT :lim"),
                 {"lim": limit},
             )
             return [dict(row._mapping) for row in result.fetchall()]
@@ -953,12 +1058,23 @@ class TestDatabase:
         """Initialize database connection.
 
         Args:
-            db_path: Path to SQLite database file (legacy parameter).
-            database_url: SQLAlchemy database URL. Overrides db_path.
-                          Also read from DATABASE_URL env var.
+            db_path: Path to SQLite database file.  When provided
+                     explicitly this **always** creates a SQLite backend,
+                     even if DATABASE_URL is set in the environment.
+            database_url: SQLAlchemy database URL.  Takes precedence over
+                          the DATABASE_URL env var but **not** over an
+                          explicit *db_path*.
         """
-        url = database_url or os.getenv("DATABASE_URL")
         self._backend: _Backend
+
+        # Explicit db_path always means SQLite (callers that pass a file
+        # path expect a local database – e.g. tests with tmp_path).
+        if db_path is not None:
+            self._backend = _SQLiteBackend(db_path)
+            self.db_path = db_path
+            return
+
+        url = database_url or os.getenv("DATABASE_URL")
 
         if url and not url.startswith("sqlite"):
             if not HAS_SQLALCHEMY:
@@ -971,14 +1087,15 @@ class TestDatabase:
             self.db_path = url
         else:
             # SQLite path
-            if db_path is None and url and url.startswith("sqlite"):
+            sqlite_path: Optional[str] = None
+            if url and url.startswith("sqlite"):
                 # Extract path from sqlite:///path URL
-                db_path = url.replace("sqlite:///", "")
-            if db_path is None:
+                sqlite_path = url.replace("sqlite:///", "")
+            if sqlite_path is None:
                 project_root = self._find_project_root()
-                db_path = os.path.join(project_root, "data", "test_history.db")
-            self._backend = _SQLiteBackend(db_path)
-            self.db_path = db_path
+                sqlite_path = os.path.join(project_root, "data", "test_history.db")
+            self._backend = _SQLiteBackend(sqlite_path)
+            self.db_path = sqlite_path
 
     @staticmethod
     def _find_project_root() -> str:
@@ -994,6 +1111,9 @@ class TestDatabase:
 
     def add_test_results(self, results: List[TestResult]) -> None:
         self._backend.add_test_results(results)
+
+    def add_keyword_results(self, results: List[KeywordResult]) -> None:
+        self._backend.add_keyword_results(results)
 
     def add_or_update_model(self, model: ModelInfo) -> None:
         self._backend.add_or_update_model(model)

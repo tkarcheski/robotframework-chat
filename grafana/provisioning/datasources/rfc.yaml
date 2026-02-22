@@ -1,0 +1,22 @@
+# Grafana datasource provisioning for robotframework-chat.
+# Auto-configures the PostgreSQL connection used by all RFC tables.
+apiVersion: 1
+
+datasources:
+  - name: RFC PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: ${POSTGRES_DB:-rfc}
+    user: ${POSTGRES_USER:-rfc}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD:-changeme}
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false
+    isDefault: true
+    editable: true

@@ -19,7 +19,7 @@ Start LLM Suite
     Set Suite Variable    ${OLLAMA_CONTAINER_NAME}    ${unique_name}
 
     # Start fresh container with unique name
-    ${container}=    Start LLM Container    OLLAMA_CPU    ${OLLAMA_CONTAINER_NAME}    llama3
+    ${container}=    Start LLM Container    OLLAMA_CPU    ${OLLAMA_CONTAINER_NAME}    %{DEFAULT_MODEL=gpt-oss:20b}
     Log    LLM suite started with container: ${container} (${OLLAMA_CONTAINER_NAME}) on port ${OLLAMA_PORT}
 
 Cleanup LLM Suite

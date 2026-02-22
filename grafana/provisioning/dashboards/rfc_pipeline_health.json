@@ -1,0 +1,270 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Pipelines",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Pipelines\" FROM pipeline_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pipeline Success Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS \"Success %\" FROM pipeline_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Avg Pipeline Duration",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 0) AS \"Avg Duration\" FROM pipeline_results WHERE duration_seconds IS NOT NULL;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 900 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Dry Run Failures",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT SUM(failed) AS \"Dry Run Failures\" FROM robot_dry_run_results;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pipeline Status Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT created_at AS time, CASE WHEN status = 'success' THEN 1 WHEN status = 'failed' THEN -1 ELSE 0 END AS \"Status\" FROM pipeline_results WHERE $__timeFilter(created_at) ORDER BY created_at;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 10,
+            "showPoints": "always"
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Pipeline Duration Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT created_at AS time, duration_seconds AS \"Duration (s)\" FROM pipeline_results WHERE duration_seconds IS NOT NULL AND $__timeFilter(created_at) ORDER BY created_at;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent Pipelines",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT pipeline_id AS \"Pipeline\", status AS \"Status\", ref AS \"Branch\", SUBSTRING(sha, 1, 8) AS \"Commit\", source AS \"Source\", duration_seconds AS \"Duration (s)\", created_at AS \"Created\" FROM pipeline_results ORDER BY created_at DESC LIMIT 25;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "success": { "color": "green", "text": "success" }, "failed": { "color": "red", "text": "failed" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Dry Run Results Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT timestamp AS time, passed AS \"Passed\", failed AS \"Failed\", skipped AS \"Skipped\" FROM robot_dry_run_results WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": { "mode": "normal" },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Passed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Failed" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Skipped" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent Dry Runs",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
+      "targets": [
+        {
+          "rawSql": "SELECT timestamp, test_suite AS \"Suite\", total_tests AS \"Total\", passed AS \"Pass\", failed AS \"Fail\", skipped AS \"Skip\", ROUND(duration_seconds::numeric, 1) AS \"Duration (s)\", SUBSTRING(git_branch, 1, 30) AS \"Branch\", errors AS \"Errors\" FROM robot_dry_run_results ORDER BY timestamp DESC LIMIT 15;",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["robotframework", "rfc", "pipeline", "dryrun"],
+  "templating": {
+    "list": []
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "RFC Pipeline Health",
+  "uid": "rfc-pipeline-health"
+}

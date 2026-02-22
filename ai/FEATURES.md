@@ -1,17 +1,37 @@
 # Feature Tracker
 
 Status of every major feature, ordered by priority.
-Updated from code audit and git history as of 2026-02-15.
+Updated from code audit and git history as of 2026-02-17.
 Updated listener review as of 2026-02-15.
+Updated Superset dashboard and Makefile completeness as of 2026-02-17.
+Updated with owner decisions from spec review as of 2026-02-19.
 
-**Legend:** Done / In Progress / Not Started
+> **Cross-references:** For owner-confirmed architecture decisions see `ai/CLAUDE.md`.
+> For actionable items see `humans/TODO.md`. For full Q&A record see `humans/QA_TRANSCRIPT.md`.
+
+**Legend:** Done / In Progress / Not Started / Deprecated
 
 ---
 
-## Priority 1 — Superset Database & Reporting (In Progress)
+## Priority 1 — Database & Reporting (In Progress — Migrating to Grafana)
 
-The Superset stack is functional but still in development. Core infrastructure
-works; the gap is data quality, retention, and operational polish.
+> **Owner decision (2026-02-19):** Database schema is the #1 priority.
+> Grafana (TRON-themed) replaces Superset for visualization. Superset may
+> stay for ad-hoc SQL queries or be removed entirely. See `ai/CLAUDE.md`.
+
+The Superset stack is partially functional. The **charts view** is working
+(all 6 charts render correctly) and **Recent Test Runs** table displays
+data. The remaining dashboard features (cross-filtering, alerts, per-model
+dashboards, retention, scheduled exports) are not yet complete.
+
+**New schema requirements (from spec review):**
+- Model metadata (quantization, architecture, context length) via `/api/show`
+- Performance metrics (tokens/sec, eval_count, eval_duration)
+- Hardware context per test run (node, GPU/TPU, VRAM)
+- Inference parameters (temperature, seed, top_p, top_k)
+- Model size in GB, model SHA256 digest
+- Cost tracking (seconds for local, dollars for cloud)
+- 90-day rolling data retention
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -19,15 +39,16 @@ works; the gap is data quality, retention, and operational polish.
 | SQLite fallback (zero-config) | Done | `data/test_history.db` when `DATABASE_URL` unset |
 | Dual-backend TestDatabase | Done | `src/rfc/test_database.py` — auto-selects by URL prefix |
 | Auto-bootstrapped Superset dashboard | Done | `superset/bootstrap_dashboards.py` — 6 charts, 3 datasets |
-| Pass Rate Over Time (line chart) | Done | Daily granularity |
-| Model Comparison — Pass Rate (bar) | Done | |
-| Test Results Breakdown (pie) | Done | |
-| Test Suite Duration Trend (line) | Done | |
-| Recent Test Runs (table) | Done | 50-row limit |
-| Failures by Test Name (bar) | Done | |
+| Pass Rate Over Time (line chart) | Done | Verified working in charts view |
+| Model Comparison — Pass Rate (bar) | Done | Verified working in charts view |
+| Test Results Breakdown (pie) | Done | Verified working in charts view |
+| Test Suite Duration Trend (line) | Done | Verified working in charts view |
+| Recent Test Runs (table) | Done | 50-row limit, verified working |
+| Failures by Test Name (bar) | Done | Verified working in charts view |
 | Remote deploy via CI | Done | `ci/deploy.sh` → `make ci-deploy` |
 | CI pipeline artifact sync | Done | `scripts/sync_ci_results.py` + `ci/sync_db.sh` |
 | `.env` configuration flow | Done | Makefile, CI scripts, pytest, suite_config all load `.env` |
+| Full dashboard layout & navigation | In Progress | Charts view works; overall dashboard needs polish |
 | Cross-filtering and drill-down | Not Started | Superset native capabilities, needs chart updates |
 | Model regression alerts | Not Started | Threshold-based notifications on pass-rate drops |
 | Per-model trend dashboards | Not Started | Auto-generated per discovered model |
@@ -65,10 +86,13 @@ have been reviewed, bugs fixed, and comprehensive unit tests added.
 
 ---
 
-## Priority 2 — Dashboard Control Panel (Functional)
+## Priority 2 — Dashboard Control Panel (Deprecated — Grafana Replacing)
 
-The Dash-based UI is feature-rich and production-grade. Remaining work is
-incremental polish.
+> **Owner decision (2026-02-19):** The Dash dashboard is a prototype. Grafana
+> with TRON theming replaces it. Do not invest further. Remove once Grafana
+> dashboards cover visualization needs. See `humans/TODO.md` § Dash Dashboard Deprecation.
+
+The Dash-based UI is feature-rich but being replaced by Grafana.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -88,6 +112,10 @@ incremental polish.
 ---
 
 ## Priority 3 — Structured Evaluation (In Progress)
+
+> **Owner decision (2026-02-19):** Grading uses a 6-tier model (Tier 0-6).
+> All tests must have Robot or Python checks. See `ai/CLAUDE.md` § Grading
+> Tiers and `humans/TODO.md` § Grading System for the full tier definitions.
 
 Binary pass/fail grading is solid. Multi-score rubrics are the main gap
 blocking richer evaluation workflows.
@@ -203,6 +231,98 @@ rubrics and the LLM Manager.
 | Dataset replay | Not Started |
 | Statistical comparison | Not Started |
 | Regression gating in CI | Not Started |
+
+---
+
+## Makefile Command Completeness
+
+Status of every `make` target. **Working** means the command runs
+successfully end-to-end in a properly configured environment.
+
+| Command | Status | Category | Notes |
+|---------|--------|----------|-------|
+| `make help` | Working | Setup | Lists all targets with descriptions |
+| `make install` | Working | Setup | `uv sync --extra dev --extra dashboard --extra superset` |
+| `make docker-up` | Working | Docker | Starts PostgreSQL + Redis + Superset + Dashboard |
+| `make docker-down` | Not Complete | Docker | Depends on running stack; untested in isolation |
+| `make docker-restart` | Not Complete | Docker | Depends on running stack |
+| `make docker-logs` | Not Complete | Docker | Depends on running stack |
+| `make bootstrap` | Working | Docker | First-time Superset setup after `docker-up` |
+| `make robot` | Working | Robot Tests | Runs all suites (math + docker + safety) |
+| `make robot-math` | Not Complete | Robot Tests | Requires Ollama endpoint |
+| `make robot-docker` | Not Complete | Robot Tests | Requires Docker daemon |
+| `make robot-safety` | Not Complete | Robot Tests | Requires Ollama endpoint |
+| `make robot-dryrun` | Not Complete | Robot Tests | Validates .robot files without execution |
+| `make test-dashboard` | Not Complete | Dashboard | Runs dashboard pytest unit tests |
+| `make test-dashboard-playwright` | Not Complete | Dashboard | Browser self-tests, requires Playwright |
+| `make import` | Working | Data | Imports output.xml results into database |
+| `make code-lint` | Working | Code Quality | Runs ruff linter (`make code` shorthand) |
+| `make code-format` | Not Complete | Code Quality | Auto-formats with ruff |
+| `make code-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
+| `make code-check` | Not Complete | Code Quality | Runs lint + typecheck together |
+| `make ci-lint` | Not Complete | CI | CI lint wrapper |
+| `make ci-test` | Not Complete | CI | CI test wrapper with health checks |
+| `make ci-generate` | Not Complete | CI | Generates child pipeline YAML |
+| `make ci-report` | Not Complete | CI | Repo metrics + optional MR comment |
+| `make ci-deploy` | Not Complete | CI | Deploys Superset to remote host |
+| `make ci-test-dashboard` | Not Complete | CI | Dashboard tests in CI mode |
+| `make opencode-pipeline-review` | Not Complete | AI Review | OpenCode AI review in CI |
+| `make opencode-local-review` | Not Complete | AI Review | OpenCode AI review on local changes |
+| `make ci-sync` | Not Complete | GitLab Sync | Mirror repo to GitHub |
+| `make ci-status` | Not Complete | GitLab Sync | Check GitLab API connectivity |
+| `make ci-list-pipelines` | Not Complete | GitLab Sync | List recent CI pipelines |
+| `make ci-list-jobs` | Not Complete | GitLab Sync | List jobs in a pipeline |
+| `make ci-fetch-artifact` | Not Complete | GitLab Sync | Download a single job artifact |
+| `make ci-sync-db` | Not Complete | GitLab Sync | Sync CI pipeline results to database |
+| `make ci-verify-db` | Not Complete | GitLab Sync | Verify database contents after sync |
+| `make ci-list-pipeline-results` | Working | GitLab Sync | Lists pipeline_results from database |
+| `make ci-backfill` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
+| `make ci-backfill-metadata` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
+| `make version` | Working | Versioning | Prints current version (fixed: uses `uv run python`) |
+| `make code-coverage` | Working | Code Quality | Runs pytest with coverage report (new) |
+| `make code-audit` | Working | Code Quality | Audits dependencies for vulnerabilities (new) |
+
+### Summary
+
+- **Working (11):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
+  `import`, `code-lint`, `ci-list-pipeline-results`, `version`,
+  `code-coverage`, `code-audit`
+- **Not Complete (24):** Remaining targets need environment setup, testing,
+  or implementation work
+- **Deprecated (2):** `ci-backfill`, `ci-backfill-metadata`
+
+---
+
+## Future — Agentic Workflows & Playwright (Not Started)
+
+> **Owner decision (2026-02-19):** RFC should grow toward agentic workflows
+> using Robot Framework Tasks and Playwright. This is the horizon, not the sprint.
+
+| Feature | Status |
+|---------|--------|
+| Playwright-based web automation | Not Started |
+| Robot Framework Tasks (RPA-style `*** Tasks ***`) | Not Started |
+| Tool-call testing (structured function generation) | Not Started |
+| Multi-turn conversation testing | Not Started |
+| Humor evaluation (joke quality) | Not Started |
+| Storytelling evaluation (narrative coherence) | Not Started |
+| Role-play evaluation (character consistency) | Not Started |
+
+---
+
+## Future — TRON-Themed Grafana Dashboards (Not Started)
+
+> **Owner decision (2026-02-19):** "TRON - 10000 percent TRON." See
+> `ai/CLAUDE.md` § The TRON Aesthetic for full color palette and dashboard names.
+
+| Feature | Status |
+|---------|--------|
+| TRON color palette and theme | Not Started |
+| "The Grid" — node health matrix | Not Started |
+| "Light Cycle Arena" — A/B comparison | Not Started |
+| "Identity Disc" — per-model radar chart | Not Started |
+| "MCP Dashboard" — master overview | Not Started |
+| Public read-only anonymous access | Not Started |
 
 ---
 

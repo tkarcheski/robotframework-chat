@@ -23,6 +23,27 @@ case "$MODE" in
         uv run python scripts/generate_pipeline.py --mode regular -o generated-pipeline.yml
         echo "--- generated-pipeline.yml ---"
         cat generated-pipeline.yml
+        echo ""
+        echo "--- Validation ---"
+        FILE_SIZE=$(wc -c < generated-pipeline.yml)
+        echo "File size: ${FILE_SIZE} bytes"
+        if [ "$FILE_SIZE" -lt 10 ]; then
+            echo "ERROR: generated-pipeline.yml is too small (${FILE_SIZE} bytes)"
+            exit 1
+        fi
+        JOB_COUNT=$(uv run python -c "
+import yaml, sys
+with open('generated-pipeline.yml') as f:
+    data = yaml.safe_load(f)
+reserved = {'stages','variables','include','default','workflow','image','services','cache','before_script','after_script'}
+jobs = [k for k in data if k not in reserved and not k.startswith('.')]
+print(len(jobs))
+")
+        echo "Jobs in generated pipeline: ${JOB_COUNT}"
+        if [ "$JOB_COUNT" -lt 1 ]; then
+            echo "ERROR: generated pipeline has no jobs"
+            exit 1
+        fi
         echo "=== Done ==="
         ;;
 
