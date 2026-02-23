@@ -19,6 +19,9 @@ on:
           - "true"
           - "false"
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: self-hosted
@@ -49,6 +52,9 @@ jobs:
           fi
 
           AUTH_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/space-nomads/robotframework-chat.git"
+
+          # Configure origin with GITHUB_TOKEN so pushes authenticate
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
           # Add GitLab as a remote
           if git remote get-url gitlab >/dev/null 2>&1; then
