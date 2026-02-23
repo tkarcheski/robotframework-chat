@@ -142,8 +142,18 @@ class TestPipelineMonitor:
         PipelineMonitor._instance = None
 
     @patch("dashboard.monitoring._detect_gitlab_from_git_remote")
-    def test_not_configured_when_empty(self, mock_detect):
+    @patch("dashboard.monitoring._monitoring_config")
+    def test_not_configured_when_empty(self, mock_config, mock_detect):
         mock_detect.return_value = ("", "")
+        mock_config.return_value = {
+            "poll_interval_seconds": 30,
+            "history_hours": 24,
+            "gitlab_api_url": "",
+            "gitlab_project_id": "",
+            "gitlab_token_env": "GITLAB_TOKEN",
+            "pipeline_count": 20,
+            "job_count": 50,
+        }
         with patch.dict(
             os.environ,
             {

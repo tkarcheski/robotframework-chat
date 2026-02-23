@@ -1,4 +1,3 @@
-````robot
 *** Settings ***
 Documentation     Python code generation and execution tests using Docker containers
 Resource          ../../../resources/environments.resource
