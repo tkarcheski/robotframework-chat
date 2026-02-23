@@ -1,0 +1,82 @@
+name: Sync from GitLab
+
+on:
+  schedule:
+    # Run every 15 minutes to pick up GitLab changes
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to sync (leave empty for main only)"
+        required: false
+        default: ""
+      sync_tags:
+        description: "Also sync tags from GitLab"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  sync:
+    runs-on: self-hosted
+    environment: robotframework
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull from GitLab and push to GitHub
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          GITLAB_URL="https://gitlab.com/space-nomads/robotframework-chat.git"
+
+          echo "::add-mask::${GITLAB_TOKEN}"
+          echo "::add-mask::${GITLAB_URL}"
+
+          if [ -z "${GITLAB_TOKEN:-}" ]; then
+            echo "::error::GITLAB_TOKEN secret must be configured."
+            echo "Create a GitLab personal access token with read_repository scope"
+            echo "and add it as a repository secret named GITLAB_TOKEN."
+            exit 1
+          fi
+
+          AUTH_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/space-nomads/robotframework-chat.git"
+
+          # Add GitLab as a remote
+          if git remote get-url gitlab >/dev/null 2>&1; then
+            git remote set-url gitlab "${AUTH_URL}"
+          else
+            git remote add gitlab "${AUTH_URL}"
+          fi
+
+          # Fetch all branches and tags from GitLab
+          echo "Fetching from GitLab..."
+          git fetch gitlab --prune
+
+          BRANCH="${{ github.event.inputs.branch }}"
+
+          if [ -n "${BRANCH}" ]; then
+            echo "Syncing branch: ${BRANCH}"
+            git push origin "refs/remotes/gitlab/${BRANCH}:refs/heads/${BRANCH}" --force
+          else
+            echo "Syncing main from GitLab to GitHub"
+            git push origin refs/remotes/gitlab/main:refs/heads/main --force
+          fi
+
+          SYNC_TAGS="${{ github.event.inputs.sync_tags }}"
+          # Default to true for scheduled runs (inputs are empty)
+          if [ "${SYNC_TAGS}" = "true" ] || [ -z "${SYNC_TAGS}" ]; then
+            echo "Syncing tags from GitLab"
+            git fetch gitlab --tags --force
+            git push origin --tags --force
+          fi
+
+          echo "Sync from GitLab complete."
