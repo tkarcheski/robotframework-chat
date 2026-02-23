@@ -19,7 +19,6 @@
       - results/
       - data/
     expire_in: 30 days
-  allow_failure: true
 
 .dashboard-setup:
   before_script:

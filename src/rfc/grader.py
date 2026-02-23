@@ -1,4 +1,5 @@
 import json
+import re
 from .models import GradeResult
 
 
@@ -7,6 +8,39 @@ class Grader:
         if llm_client is None:
             raise TypeError("llm_client must not be None")
         self.llm = llm_client
+
+    def _extract_json(self, text: str) -> str:
+        """Extract JSON from text that may contain markdown or reasoning.
+
+        Handles:
+        - Markdown code blocks (```json...```)
+        - Thinking tags (<think>...</think> or <thinking>...</thinking>)
+        - Text before/after JSON
+        """
+        # Remove thinking tags (various formats used by different models)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+
+        # Try to find JSON in markdown code blocks
+        json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+        matches = re.findall(json_block_pattern, text, re.DOTALL)
+        if matches:
+            return matches[0]
+
+        # Try to find bare JSON object
+        json_pattern = r'(\{.*"score".*"reason".*?\})'
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        if matches:
+            return matches[0]
+
+        # Last resort: look for any JSON object
+        json_pattern = r"(\{.*?\})"
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        if matches:
+            # Return the largest match (most likely the full JSON)
+            return max(matches, key=len)
+
+        return text
 
     def grade(self, question: str, expected: str, actual: str) -> GradeResult:
         for name, val in [
@@ -45,8 +79,11 @@ Format:
 
         raw = self.llm.generate(prompt)
 
+        # Extract JSON from response (handle thinking tags, markdown, etc.)
+        json_text = self._extract_json(raw)
+
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(json_text)
         except json.JSONDecodeError as e:
             raise ValueError(f"Grader returned invalid JSON: {raw}") from e
 
