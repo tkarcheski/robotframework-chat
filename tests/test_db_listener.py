@@ -591,3 +591,127 @@ class TestDbListenerGetDb:
         db1 = listener._get_db()
         db2 = listener._get_db()
         assert db1 is db2
+
+
+class TestDbListenerDatabaseDescription:
+    """Tests for _describe_database_destination helper."""
+
+    def test_default_sqlite_when_no_url(self):
+        listener = DbListener()
+        desc = listener._describe_database_destination()
+        assert "SQLite" in desc
+        assert "test_history.db" in desc
+
+    def test_explicit_sqlite_url(self):
+        listener = DbListener(database_url="sqlite:///path/to/my.db")
+        desc = listener._describe_database_destination()
+        assert "SQLite" in desc
+        assert "path/to/my.db" in desc
+
+    def test_postgresql_url_strips_credentials(self):
+        listener = DbListener(
+            database_url="postgresql://user:secret@localhost:5433/rfc"
+        )
+        desc = listener._describe_database_destination()
+        assert "PostgreSQL" in desc
+        assert "localhost:5433/rfc" in desc
+        assert "secret" not in desc
+        assert "user" not in desc
+
+    def test_postgresql_url_without_credentials(self):
+        listener = DbListener(database_url="postgresql://localhost:5433/rfc")
+        desc = listener._describe_database_destination()
+        assert "PostgreSQL" in desc
+        assert "localhost:5433/rfc" in desc
+
+    def test_does_not_trigger_db_init(self):
+        listener = DbListener(database_url="sqlite:///whatever.db")
+        listener._describe_database_destination()
+        assert listener._db is None
+
+
+class TestDbListenerConsoleOutput:
+    """Tests for console output visibility."""
+
+    @patch("rfc.db_listener.logger")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_start_suite_emits_console_banner(self, _mock_ci, mock_logger):
+        listener = DbListener(database_url="sqlite:///test.db")
+        listener.start_suite("My Suite", {})
+
+        mock_logger.console.assert_called()
+        console_calls = [str(call) for call in mock_logger.console.call_args_list]
+        full_output = " ".join(console_calls)
+        assert "SQLite" in full_output
+
+    @patch("rfc.db_listener.logger")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_start_suite_banner_not_repeated_for_nested(self, _mock_ci, mock_logger):
+        listener = DbListener(database_url="sqlite:///test.db")
+        listener.start_suite("Top", {})
+        mock_logger.console.reset_mock()
+        listener.start_suite("Nested", {})
+        mock_logger.console.assert_not_called()
+
+    @patch("rfc.db_listener.logger")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_end_suite_emits_console_summary(self, _mock_ci, mock_logger, tmp_path):
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.end_test("T1", _test_attrs(status="PASS"))
+        listener.end_test("T2", _test_attrs(status="FAIL"))
+        mock_logger.console.reset_mock()
+        listener.end_suite("Suite", _suite_attrs(totaltests=2))
+
+        mock_logger.console.assert_called()
+        console_calls = [str(call) for call in mock_logger.console.call_args_list]
+        full_output = " ".join(console_calls)
+        assert "2 test" in full_output
+        assert "run_id=" in full_output
+
+    @patch("rfc.db_listener.logger")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_end_suite_console_includes_keyword_count(
+        self, _mock_ci, mock_logger, tmp_path
+    ):
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("T", {})
+        listener.start_keyword(
+            "Ask LLM",
+            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
+        )
+        listener.end_keyword(
+            "Ask LLM",
+            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
+        )
+        listener.end_test("T", _test_attrs())
+        mock_logger.console.reset_mock()
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        console_calls = [str(call) for call in mock_logger.console.call_args_list]
+        full_output = " ".join(console_calls)
+        assert "1 keyword" in full_output
+
+    @patch("rfc.db_listener.logger")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_database_error_emits_console_warning(self, _mock_ci, mock_logger):
+        listener = DbListener()
+        mock_db = MagicMock()
+        mock_db.add_test_run.side_effect = Exception("connection refused")
+        listener._db = mock_db
+
+        listener.start_suite("Suite", {})
+        listener.end_test("T1", _test_attrs())
+        mock_logger.console.reset_mock()
+        listener.end_suite("Suite", _suite_attrs())
+
+        mock_logger.console.assert_called()
+        console_calls = [str(call) for call in mock_logger.console.call_args_list]
+        full_output = " ".join(console_calls)
+        assert "FAILED" in full_output
+        assert "connection refused" in full_output
