@@ -136,11 +136,13 @@ class TestGitLabCIReleaseJobs:
         assert r"\d+\.\d+\.\d+-" in rule_if
 
     def test_test_release_uses_dry_run(self, ci_config: dict[str, object]) -> None:
-        """test-release must invoke release.sh with --dry-run."""
+        """test-release must invoke ci-release without UPLOAD (defaults to --dry-run)."""
         job = ci_config["test-release"]
         assert isinstance(job, dict)
         script = job["script"]
-        assert any("--dry-run" in cmd for cmd in script)
+        assert any("ci-release" in cmd for cmd in script)
+        # Must NOT have UPLOAD=1 (that would publish to PyPI)
+        assert not any("UPLOAD" in cmd for cmd in script)
 
     def test_test_release_saves_artifacts(self, ci_config: dict[str, object]) -> None:
         """test-release must save dist/ as artifacts for inspection."""
@@ -151,11 +153,9 @@ class TestGitLabCIReleaseJobs:
         paths = artifacts.get("paths", [])
         assert "dist/" in paths
 
-    def test_publish_pypi_does_not_use_dry_run(
-        self, ci_config: dict[str, object]
-    ) -> None:
-        """publish-pypi must NOT use --dry-run."""
+    def test_publish_pypi_uses_upload(self, ci_config: dict[str, object]) -> None:
+        """publish-pypi must use UPLOAD=1 to actually publish."""
         job = ci_config["publish-pypi"]
         assert isinstance(job, dict)
         script = job["script"]
-        assert not any("--dry-run" in cmd for cmd in script)
+        assert any("UPLOAD=1" in cmd for cmd in script)

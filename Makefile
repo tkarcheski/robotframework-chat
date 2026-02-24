@@ -18,7 +18,8 @@ export
         ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-test-dashboard ci-release \
         opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
-        grafana-up grafana-down grafana-logs grafana-restart
+        grafana-up grafana-down grafana-logs grafana-restart \
+        run-ci-pipeline
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -146,6 +147,38 @@ ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard
 
 ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
 	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
+
+# ── Local CI Pipeline ────────────────────────────────────────────────
+
+run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot tests)
+	@echo ""
+	@echo "============================================"
+	@echo "  Local CI Pipeline"
+	@echo "============================================"
+	@echo ""
+	@echo "=== Stage: install ==="
+	$(MAKE) install
+	@echo ""
+	@echo "=== Stage: lint ==="
+	$(MAKE) ci-lint
+	@echo ""
+	@echo "=== Stage: test (dashboard pytest) ==="
+	$(MAKE) ci-test-dashboard MODE=pytest
+	@echo ""
+	@echo "=== Stage: test (robot dryrun) ==="
+	$(MAKE) robot-dryrun
+ifdef ROBOT
+	@echo ""
+	@echo "=== Stage: test (robot live) ==="
+	$(MAKE) ci-test
+endif
+	@echo ""
+	@echo "=== Stage: release (dry-run) ==="
+	$(MAKE) ci-release
+	@echo ""
+	@echo "============================================"
+	@echo "  Local CI Pipeline: ALL STAGES PASSED"
+	@echo "============================================"
 
 # ── AI Review ────────────────────────────────────────────────────────
 
