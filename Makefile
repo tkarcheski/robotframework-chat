@@ -16,7 +16,6 @@ export
         import code-quality-lint code-quality-format code-quality-typecheck code-quality-check code-quality-coverage code-quality-audit version \
         ci-generate ci-report ci-deploy ci-release \
         opencode-pipeline-review opencode-local-review \
-        grafana-up grafana-down grafana-logs grafana-restart \
         run-ci-pipeline
 
 help: ## Show this help
@@ -48,20 +47,6 @@ docker-logs: ## Tail service logs
 
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
-
-# ── Grafana ──────────────────────────────────────────────────────────
-
-grafana-up: .env ## Start Grafana (+ PostgreSQL dependency)
-	$(COMPOSE) up -d grafana
-
-grafana-down: ## Stop Grafana
-	$(COMPOSE) stop grafana
-
-grafana-logs: ## Tail Grafana logs
-	$(COMPOSE) logs -f grafana
-
-grafana-restart: ## Restart Grafana (picks up provisioning changes)
-	$(COMPOSE) restart grafana
 
 # ── Robot Framework Tests ─────────────────────────────────────────────
 
