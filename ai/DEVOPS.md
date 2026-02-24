@@ -68,7 +68,7 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 | Robot Framework integration tests | Adopted | Math, Docker, safety test suites |
 | Browser/E2E tests (Playwright) | Adopted | Dashboard Playwright tests via Robot Framework |
 | Test result archival | Adopted | DbListener writes to SQLite/PostgreSQL |
-| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-coverage` target, 85% overall |
+| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-quality-coverage` target, 85% overall |
 | Coverage thresholds/gates | Not Started | No minimum coverage enforcement in CI |
 | Mutation testing | Not Started | No mutation testing framework |
 | Load/performance testing | Not Started | No load tests for dashboard or API |
@@ -100,14 +100,14 @@ Line coverage (via `pytest-cov`): **85%** overall.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Linting (ruff) | Adopted | `make code-lint`, pre-commit hook, CI stage |
-| Auto-formatting (ruff format) | Adopted | `make code-format`, pre-commit hook |
-| Type checking (mypy) | Adopted | `make code-typecheck`, pre-commit hook |
+| Linting (ruff) | Adopted | `make code-quality-lint`, pre-commit hook, CI stage |
+| Auto-formatting (ruff format) | Adopted | `make code-quality-format`, pre-commit hook |
+| Type checking (mypy) | Adopted | `make code-quality-typecheck`, pre-commit hook |
 | YAML/JSON validation | Adopted | Pre-commit hooks: `check-yaml`, `check-json` |
 | Trailing whitespace / EOF fixer | Adopted | Pre-commit hooks |
 | Merge conflict detection | Adopted | Pre-commit hook: `check-merge-conflict` |
 | Dependency pinning | Adopted | `pyproject.toml` with pinned versions |
-| Dependency vulnerability scanning | Adopted | `pip-audit` in dev deps, `make code-audit` target |
+| Dependency vulnerability scanning | Adopted | `pip-audit` in dev deps, `make code-quality-audit` target |
 | License compliance scanning | Not Started | No license checker |
 | Code complexity limits | Not Started | No cyclomatic complexity gates |
 | Dead code detection | Not Started | No vulture or similar tool |
@@ -219,7 +219,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | SAST (static analysis security) | Not Started | No Bandit, Semgrep, etc. |
 | DAST (dynamic analysis) | Not Started | No ZAP, Burp, etc. |
 | Supply chain security (SBOM) | Not Started | No software bill of materials |
-| Dependency vulnerability scanning | Adopted | `pip-audit` in dev deps, `make code-audit` |
+| Dependency vulnerability scanning | Adopted | `pip-audit` in dev deps, `make code-quality-audit` |
 | Network policies | Partial | Docker bridge network; no firewall rules |
 | RBAC for Superset | Partial | Admin user auto-created; no role hierarchy |
 
@@ -248,9 +248,9 @@ Line coverage (via `pytest-cov`): **85%** overall.
 ### Top Priorities for DevOps Improvement
 
 1. ~~**Test coverage measurement**~~ Done — `pytest-cov` configured,
-   `make code-coverage` target added. Current line coverage: 70%.
+   `make code-quality-coverage` target added. Current line coverage: 70%.
 2. ~~**Dependency vulnerability scanning**~~ Done — `pip-audit` added to
-   dev dependencies, `make code-audit` target added.
+   dev dependencies, `make code-quality-audit` target added.
 3. **Coverage thresholds in CI** — Enforce minimum coverage (e.g. 70%) as
    a CI gate so regressions are caught automatically.
 4. **Structured logging** — Adopt JSON logging for listeners and dashboard

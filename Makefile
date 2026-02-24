@@ -13,7 +13,7 @@ export
 .PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import \
-        import code-lint code-format code-typecheck code-check code-coverage code-audit version \
+        import code-quality-lint code-quality-format code-quality-typecheck code-quality-check code-quality-coverage code-quality-audit version \
         ci-generate ci-report ci-deploy ci-release \
         opencode-pipeline-review opencode-local-review \
         grafana-up grafana-down grafana-logs grafana-restart \
@@ -94,21 +94,21 @@ import: ## Import results from output.xml files: make import RESULTS_DIR=results
 
 # ── Code quality ──────────────────────────────────────────────────────
 
-code-lint: ## Run ruff linter
+code-quality-lint: ## Run ruff linter
 	uv run ruff check .
 
-code-format: ## Auto-format code
+code-quality-format: ## Auto-format code
 	uv run ruff format .
 
-code-typecheck: ## Run mypy type checker
+code-quality-typecheck: ## Run mypy type checker
 	uv run mypy src/
 
-code-check: code-lint code-typecheck ## Run all code quality checks
+code-quality-check: code-quality-lint code-quality-typecheck code-quality-coverage ## Run all code quality checks
 
-code-coverage: ## Run pytest with coverage report
+code-quality-coverage: ## Run pytest with coverage report
 	uv run pytest --cov --cov-report=term-missing --cov-report=html:htmlcov
 
-code-audit: ## Audit dependencies for known vulnerabilities
+code-quality-audit: ## Audit dependencies for known vulnerabilities
 	uv run pip-audit
 
 # ── CI Scripts ────────────────────────────────────────────────────────

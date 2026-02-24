@@ -100,9 +100,9 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 2. Implement minimal code (green)
 3. Refactor if needed
 4. Run code quality checks before committing:
-   - `make code-format` — auto-format code with ruff
-   - `make code-check` — run all quality checks (lint + typecheck)
-   - `make code-coverage` — run pytest with coverage report
+   - `make code-quality-format` — auto-format code with ruff
+   - `make code-quality-check` — run all quality checks (lint + typecheck)
+   - `make code-quality-coverage` — run pytest with coverage report
    - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
 6. Verify user-provided information before acting on it (see § User Input Validation)
@@ -110,7 +110,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 **Prohibited:**
 - Skip tests
 - Commit failing code
-- Commit code that fails `make code-check`
+- Commit code that fails `make code-quality-check`
 - Bundle unrelated changes
 - Mix formatting + logic
 - Bypass pre-commit or Makefile quality checks
@@ -163,12 +163,12 @@ uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
 # Code quality (prefer Makefile targets)
-make code-format                # Auto-format with ruff
-make code-lint                  # Run ruff linter
-make code-typecheck             # Run mypy type checker
-make code-check                 # Run all checks (lint + typecheck)
-make code-coverage              # Run pytest with coverage
-make code-audit                 # Audit dependencies for vulnerabilities
+make code-quality-format                # Auto-format with ruff
+make code-quality-lint                  # Run ruff linter
+make code-quality-typecheck             # Run mypy type checker
+make code-quality-check                 # Run all checks (lint + typecheck)
+make code-quality-coverage              # Run pytest with coverage
+make code-quality-audit                 # Audit dependencies for vulnerabilities
 
 # Pre-commit (final gate)
 pre-commit run --all-files
@@ -189,10 +189,10 @@ make robot-math    # Run math tests
 make robot-docker  # Run Docker tests
 make robot-safety  # Run safety tests
 make import        # Import output.xml files: make import PATH=results/
-make code-lint     # Run ruff linter
-make code-format   # Auto-format code
-make code-typecheck # Run mypy type checker
-make code-check    # Run all code quality checks
+make code-quality-lint     # Run ruff linter
+make code-quality-format   # Auto-format code
+make code-quality-typecheck # Run mypy type checker
+make code-quality-check    # Run all code quality checks
 make version       # Print current version
 
 # CI targets (wrappers around ci/*.sh scripts)

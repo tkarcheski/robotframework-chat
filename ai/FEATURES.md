@@ -255,10 +255,10 @@ successfully end-to-end in a properly configured environment.
 | `make test-dashboard` | Not Complete | Dashboard | Runs dashboard pytest unit tests |
 | `make test-dashboard-playwright` | Not Complete | Dashboard | Browser self-tests, requires Playwright |
 | `make import` | Working | Data | Imports output.xml results into database |
-| `make code-lint` | Working | Code Quality | Runs ruff linter (`make code` shorthand) |
-| `make code-format` | Not Complete | Code Quality | Auto-formats with ruff |
-| `make code-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
-| `make code-check` | Not Complete | Code Quality | Runs lint + typecheck together |
+| `make code-quality-lint` | Working | Code Quality | Runs ruff linter |
+| `make code-quality-format` | Not Complete | Code Quality | Auto-formats with ruff |
+| `make code-quality-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
+| `make code-quality-check` | Not Complete | Code Quality | Runs lint + typecheck + coverage |
 | `make ci-generate` | Not Complete | CI | Generates child pipeline YAML |
 | `make ci-report` | Not Complete | CI | Repo metrics + optional MR comment |
 | `make ci-deploy` | Not Complete | CI | Deploys Superset to remote host |
@@ -266,13 +266,13 @@ successfully end-to-end in a properly configured environment.
 | `make opencode-pipeline-review` | Not Complete | AI Review | OpenCode AI review in CI |
 | `make opencode-local-review` | Not Complete | AI Review | OpenCode AI review on local changes |
 | `make version` | Working | Versioning | Prints current version (fixed: uses `uv run python`) |
-| `make code-coverage` | Working | Code Quality | Runs pytest with coverage report (new) |
-| `make code-audit` | Working | Code Quality | Audits dependencies for vulnerabilities (new) |
+| `make code-quality-coverage` | Working | Code Quality | Runs pytest with coverage report |
+| `make code-quality-audit` | Working | Code Quality | Audits dependencies for vulnerabilities |
 
 ### Summary
 
 - **Working (9):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
-  `import`, `code-lint`, `version`, `code-coverage`, `code-audit`
+  `import`, `code-quality-lint`, `version`, `code-quality-coverage`, `code-quality-audit`
 - **Not Complete (15):** Remaining targets need environment setup, testing,
   or implementation work
 
