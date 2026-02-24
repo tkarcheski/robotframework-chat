@@ -26,21 +26,6 @@ jobs:
       - name: Mypy
         run: uv run mypy src/
 
-  dashboard-pytest:
-    name: Dashboard Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --extra dev --extra dashboard
-
-      - name: Run dashboard pytest
-        run: uv run pytest tests/test_dashboard_layout.py tests/test_dashboard_monitoring.py -v
-
   robot-dryrun:
     name: Robot Suite Validation (dry-run)
     runs-on: ubuntu-latest

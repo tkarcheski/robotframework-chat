@@ -39,14 +39,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dashboard = [
-    "dash>=2.15.0",
-    "dash-bootstrap-components>=1.5.0",
-    "plotly>=5.18.0",
-    "ansi2html>=1.8.0",
-    "watchdog>=3.0.0",
-    "psutil>=5.9.0",
-]
 playwright = [
     "robotframework-browser>=18.0.0",
 ]
@@ -68,9 +60,6 @@ dev = [
     "twine",
 ]
 
-[project.scripts]
-rfc-dashboard = "dashboard.cli:main"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -78,7 +67,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.coverage.run]
-source = ["src/rfc", "dashboard", "scripts"]
+source = ["src/rfc", "scripts"]
 omit = ["*/conftest.py", "*/test_*.py"]
 
 [tool.coverage.report]
@@ -91,4 +80,4 @@ exclude_lines = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rfc", "dashboard"]
+packages = ["src/rfc"]

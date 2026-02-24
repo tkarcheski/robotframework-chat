@@ -68,39 +68,6 @@ def mock_ollama_client():
 
 
 @pytest.fixture
-def fresh_session_manager():
-    """Return a fresh SessionManager with no sessions, patching suite_config."""
-    from dashboard.core.session_manager import SessionManager
-
-    with (
-        patch(
-            "dashboard.core.session_manager.test_suites",
-            return_value={"math": {"path": "robot/math/tests"}},
-        ),
-        patch(
-            "dashboard.core.session_manager.default_iq_levels",
-            return_value=["100"],
-        ),
-        patch(
-            "dashboard.core.session_manager.default_model",
-            return_value="llama3",
-        ),
-        patch(
-            "dashboard.core.session_manager.default_profile",
-            return_value="STANDARD",
-        ),
-    ):
-        yield SessionManager()
-
-
-@pytest.fixture
-def sample_session(fresh_session_manager):
-    """A SessionManager with one pre-created session."""
-    session = fresh_session_manager.create_session()
-    return fresh_session_manager, session
-
-
-@pytest.fixture
 def tmp_db(tmp_path):
     """SQLite TestDatabase in a temporary directory."""
     from rfc.test_database import TestDatabase

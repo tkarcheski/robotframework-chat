@@ -19,7 +19,3 @@
       - results/
       - data/
     expire_in: 30 days
-
-.dashboard-setup:
-  before_script:
-    - uv sync --extra dev --extra dashboard
