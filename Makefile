@@ -1,5 +1,12 @@
 # robotframework-chat Makefile
 # Run `make help` for a list of targets.
+#
+# Layers (debug bottom-up):
+#   Foundation: Robot Framework tests
+#   Layer 1:    Python code quality
+#   Layer 2:    Docker services
+#   Layer 3:    CI pipelines
+#   Layer 4:    Release & versioning
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
@@ -10,45 +17,30 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 -include .env
 export
 
-.PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
+.PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
-        robot-math-import robot-import \
-        import code-quality-lint code-quality-format code-quality-typecheck code-quality-check code-quality-coverage code-quality-audit version \
-        ci-generate ci-report ci-deploy ci-release \
+        robot-math-import robot-import import \
+        code-quality-lint code-quality-format code-quality-typecheck \
+        code-quality-check code-quality-coverage code-quality-audit \
+        docker-up docker-down docker-restart docker-logs bootstrap \
+        ci-generate ci-report ci-deploy run-ci-pipeline \
         opencode-pipeline-review opencode-local-review \
-        run-ci-pipeline
+        ci-release version
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}'
 
-# ── Setup ─────────────────────────────────────────────────────────────
+# ── Setup ────────────────────────────────────────────────────────────
 
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
-
-# ── Docker / Superset ─────────────────────────────────────────────────
 
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
-	$(COMPOSE) up -d
-
-docker-down: ## Stop all services
-	$(COMPOSE) down
-
-docker-restart: ## Rebuild images and restart all services
-	$(COMPOSE) up -d --build
-
-docker-logs: ## Tail service logs
-	$(COMPOSE) logs -f
-
-bootstrap: ## First-time Superset setup (run after 'make docker-up')
-	$(COMPOSE) run --rm superset-init
-
-# ── Robot Framework Tests ─────────────────────────────────────────────
+# ── Foundation: Robot Framework Tests ────────────────────────────────
 
 robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
 
@@ -77,7 +69,7 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
 
-# ── Code quality ──────────────────────────────────────────────────────
+# ── Layer 1: Python Code Quality ─────────────────────────────────────
 
 code-quality-lint: ## Run ruff linter
 	uv run ruff check .
@@ -96,8 +88,24 @@ code-quality-coverage: ## Run pytest with coverage report
 code-quality-audit: ## Audit dependencies for known vulnerabilities
 	uv run pip-audit
 
-# ── CI Scripts ────────────────────────────────────────────────────────
-# Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
+# ── Layer 2: Docker Services ─────────────────────────────────────────
+
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
+	$(COMPOSE) up -d
+
+docker-down: ## Stop all services
+	$(COMPOSE) down
+
+docker-restart: ## Rebuild images and restart all services
+	$(COMPOSE) up -d --build
+
+docker-logs: ## Tail service logs
+	$(COMPOSE) logs -f
+
+bootstrap: ## First-time Superset setup (run after 'make docker-up')
+	$(COMPOSE) run --rm superset-init
+
+# ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
 ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 	bash ci/generate.sh $(or $(MODE),regular)
@@ -107,11 +115,6 @@ ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
-
-ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
-	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
-
-# ── Local CI Pipeline ────────────────────────────────────────────────
 
 run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot tests)
 	@echo ""
@@ -140,15 +143,16 @@ endif
 	@echo "  Local CI Pipeline: ALL STAGES PASSED"
 	@echo "============================================"
 
-# ── AI Review ────────────────────────────────────────────────────────
-
 opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
 	bash ci/review.sh
 
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
 
-# ── Versioning ────────────────────────────────────────────────────────
+# ── Layer 4: Release & Versioning ────────────────────────────────────
+
+ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
+	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"
