@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from robot.api import logger
 import docker
-from docker.errors import DockerException, NotFound
+from docker.errors import APIError, DockerException, NotFound
 
 from .docker_config import ContainerConfig, ContainerResources
 
@@ -47,11 +47,32 @@ class ContainerManager:
 
         try:
             container = self.client.containers.run(**run_config)
-            self._active_containers[container.id] = container
-            logger.info(f"Container {container.id[:12]} started successfully")
-            return container.id
+        except APIError as e:
+            if e.status_code == 409 and config.name:
+                logger.warn(
+                    f"Container name conflict for '{config.name}', "
+                    "removing stale container and retrying"
+                )
+                try:
+                    stale = self.client.containers.get(config.name)
+                    stale.stop(timeout=5)
+                    stale.remove(force=True)
+                except Exception:
+                    pass
+                try:
+                    container = self.client.containers.run(**run_config)
+                except DockerException as retry_err:
+                    raise RuntimeError(
+                        f"Failed to create container after retry: {retry_err}"
+                    ) from retry_err
+            else:
+                raise RuntimeError(f"Failed to create container: {e}") from e
         except DockerException as e:
             raise RuntimeError(f"Failed to create container: {e}") from e
+
+        self._active_containers[container.id] = container
+        logger.info(f"Container {container.id[:12]} started successfully")
+        return container.id
 
     def stop_container(self, container_id: str, timeout: int = 10) -> None:
         """Stop and remove a container.
@@ -326,6 +347,37 @@ class ContainerManager:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
                 logger.info(f"Cleaned up temp directory: {temp_dir}")
+
+    def cleanup_orphaned(self, prefix: str = "rfc-") -> int:
+        """Find and remove all containers with names matching the prefix.
+
+        This handles stale containers left behind by previous failed CI runs.
+        Uses the Docker API to list ALL containers (including stopped ones)
+        with the given name prefix.
+
+        Args:
+            prefix: Container name prefix to match (default: "rfc-")
+
+        Returns:
+            Number of containers removed
+        """
+        removed = 0
+        try:
+            containers = self.client.containers.list(all=True, filters={"name": prefix})
+            for container in containers:
+                try:
+                    container.stop(timeout=5)
+                except Exception:
+                    pass
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+                removed += 1
+                logger.info(f"Removed orphaned container: {container.name}")
+        except Exception as e:
+            logger.warn(f"Failed to list orphaned containers: {e}")
+        return removed
 
     def create_temp_volume(
         self, container_id: str, size_mb: Optional[int] = None

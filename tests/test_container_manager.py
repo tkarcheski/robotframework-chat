@@ -6,7 +6,7 @@ All Docker calls are mocked — these tests verify logic without a Docker daemon
 from unittest.mock import MagicMock, patch
 
 import pytest
-from docker.errors import DockerException, NotFound
+from docker.errors import APIError, DockerException, NotFound
 
 from rfc.docker_config import ContainerConfig
 
@@ -76,6 +76,68 @@ class TestContainerManagerCreate:
 
         mgr = ContainerManager()
         config = ContainerConfig(image="nonexistent:latest")
+
+        with pytest.raises(RuntimeError, match="Failed to create container"):
+            mgr.create_container(config)
+
+    @patch("rfc.container_manager.docker")
+    def test_create_container_409_conflict_retries(self, mock_docker):
+        """When a 409 conflict occurs, remove stale container and retry."""
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        # First call raises 409, second succeeds
+        mock_new_container = MagicMock()
+        mock_new_container.id = "new-container-id"
+        api_err = APIError("409 Conflict", response=MagicMock(status_code=409))
+        mock_client.containers.run.side_effect = [api_err, mock_new_container]
+
+        # Stale container returned by get()
+        mock_stale = MagicMock()
+        mock_client.containers.get.return_value = mock_stale
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        config = ContainerConfig(image="python:3.11-slim")
+        cid = mgr.create_container(config, name="rfc-test-container")
+
+        assert cid == "new-container-id"
+        mock_stale.stop.assert_called_once_with(timeout=5)
+        mock_stale.remove.assert_called_once_with(force=True)
+        assert "new-container-id" in mgr._active_containers
+
+    @patch("rfc.container_manager.docker")
+    def test_create_container_409_retry_fails(self, mock_docker):
+        """When both attempts fail with 409, propagate RuntimeError."""
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        api_err = APIError("409 Conflict", response=MagicMock(status_code=409))
+        mock_client.containers.run.side_effect = [api_err, api_err]
+        mock_client.containers.get.return_value = MagicMock()
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        config = ContainerConfig(image="python:3.11-slim")
+
+        with pytest.raises(RuntimeError, match="Failed to create container"):
+            mgr.create_container(config, name="rfc-test")
+
+    @patch("rfc.container_manager.docker")
+    def test_create_container_409_no_name(self, mock_docker):
+        """409 without a container name cannot retry, propagates error."""
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        api_err = APIError("409 Conflict", response=MagicMock(status_code=409))
+        mock_client.containers.run.side_effect = api_err
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        config = ContainerConfig(image="python:3.11-slim")
 
         with pytest.raises(RuntimeError, match="Failed to create container"):
             mgr.create_container(config)
@@ -227,6 +289,77 @@ class TestContainerManagerCleanup:
         import shutil
 
         shutil.rmtree(path)
+
+
+class TestContainerManagerCleanupOrphaned:
+    @patch("rfc.container_manager.docker")
+    def test_cleanup_orphaned_removes_rfc_containers(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        mock_c1 = MagicMock()
+        mock_c1.name = "rfc-python-docker-suite-123"
+        mock_c2 = MagicMock()
+        mock_c2.name = "rfc-ollama-custom"
+        mock_client.containers.list.return_value = [mock_c1, mock_c2]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        removed = mgr.cleanup_orphaned()
+
+        assert removed == 2
+        mock_client.containers.list.assert_called_once_with(
+            all=True, filters={"name": "rfc-"}
+        )
+        mock_c1.stop.assert_called_once_with(timeout=5)
+        mock_c1.remove.assert_called_once_with(force=True)
+        mock_c2.stop.assert_called_once_with(timeout=5)
+        mock_c2.remove.assert_called_once_with(force=True)
+
+    @patch("rfc.container_manager.docker")
+    def test_cleanup_orphaned_no_containers(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_client.containers.list.return_value = []
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        removed = mgr.cleanup_orphaned()
+
+        assert removed == 0
+
+    @patch("rfc.container_manager.docker")
+    def test_cleanup_orphaned_handles_stop_errors(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        mock_c1 = MagicMock()
+        mock_c1.name = "rfc-broken-container"
+        mock_c1.stop.side_effect = Exception("already stopped")
+        mock_client.containers.list.return_value = [mock_c1]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        removed = mgr.cleanup_orphaned()
+
+        assert removed == 1
+        mock_c1.remove.assert_called_once_with(force=True)
+
+    @patch("rfc.container_manager.docker")
+    def test_cleanup_orphaned_docker_unavailable(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_client.containers.list.side_effect = DockerException("daemon gone")
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        removed = mgr.cleanup_orphaned()
+
+        assert removed == 0
 
 
 class TestContainerManagerMetrics:

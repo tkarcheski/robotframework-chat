@@ -135,6 +135,15 @@ class TestCleanupAll:
         mock_mgr.cleanup_all.assert_called_once()
         assert kw._container_configs == {}
 
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_cleanup_calls_orphan_cleanup(self, MockMgr):
+        mock_mgr = MagicMock()
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.cleanup_all_containers()
+        mock_mgr.cleanup_orphaned.assert_called_once()
+
 
 class TestCreateCodeExecutionContainer:
     @patch("rfc.docker_keywords.ContainerManager")
