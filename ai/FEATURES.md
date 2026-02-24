@@ -259,8 +259,6 @@ successfully end-to-end in a properly configured environment.
 | `make code-format` | Not Complete | Code Quality | Auto-formats with ruff |
 | `make code-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
 | `make code-check` | Not Complete | Code Quality | Runs lint + typecheck together |
-| `make ci-lint` | Not Complete | CI | CI lint wrapper |
-| `make ci-test` | Not Complete | CI | CI test wrapper with health checks |
 | `make ci-generate` | Not Complete | CI | Generates child pipeline YAML |
 | `make ci-report` | Not Complete | CI | Repo metrics + optional MR comment |
 | `make ci-deploy` | Not Complete | CI | Deploys Superset to remote host |

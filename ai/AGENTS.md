@@ -196,10 +196,6 @@ make code-check    # Run all code quality checks
 make version       # Print current version
 
 # CI targets (wrappers around ci/*.sh scripts)
-make ci-lint                 # Run all CI lint checks
-make ci-lint CHECK=ruff      # Run specific lint check
-make ci-test                 # Run all tests with Ollama health check
-make ci-test SUITE=math      # Run specific test suite
 make ci-generate             # Generate regular child pipeline
 make ci-generate MODE=dynamic # Generate dynamic child pipeline
 make ci-report               # Generate repo metrics
@@ -207,6 +203,11 @@ make ci-report POST_MR=1     # Generate and post to MR
 make ci-deploy               # Deploy Superset
 make opencode-pipeline-review # Run OpenCode AI review in CI
 make opencode-local-review   # Run OpenCode AI review on local changes
+
+# CI scripts (called directly in .gitlab-ci.yml and run-ci-pipeline)
+bash ci/lint.sh all          # Run all lint checks
+bash ci/test.sh all          # Run all tests with Ollama health check
+bash ci/pipeline_report.sh --post-mr  # Pipeline summary + MR comment
 ```
 
 ---
@@ -434,10 +435,11 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 
 | Script | Purpose | Makefile target |
 |--------|---------|-----------------|
-| `ci/lint.sh` | Run all linters, collect all failures, report summary | `make ci-lint` |
-| `ci/test.sh` | Ollama health check + run test suites via Makefile | `make ci-test` |
+| `ci/lint.sh` | Run all linters, collect all failures, report summary | (called directly) |
+| `ci/test.sh` | Ollama health check + run test suites via Makefile | (called directly) |
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
+| `ci/pipeline_report.sh` | Pipeline testing summary + MR comment | (called directly) |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
 | `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make opencode-pipeline-review` |
 | `ci/local_review.sh` | OpenCode AI review on local changes | `make opencode-local-review` |

@@ -14,7 +14,7 @@ export
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import \
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
-        ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-release \
+        ci-generate ci-report ci-deploy ci-release \
         opencode-pipeline-review opencode-local-review \
         grafana-up grafana-down grafana-logs grafana-restart \
         run-ci-pipeline
@@ -114,20 +114,11 @@ code-audit: ## Audit dependencies for known vulnerabilities
 # ── CI Scripts ────────────────────────────────────────────────────────
 # Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
 
-ci-lint: ## Run CI lint checks (all, or: make ci-lint CHECK=ruff)
-	bash ci/lint.sh $(or $(CHECK),all)
-
-ci-test: ## Run CI tests with health checks (all, or: make ci-test SUITE=math)
-	bash ci/test.sh $(or $(SUITE),all)
-
 ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 	bash ci/generate.sh $(or $(MODE),regular)
 
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
-
-ci-pipeline-report: ## Generate pipeline testing summary (add POST_MR=1 to post to MR)
-	bash ci/pipeline_report.sh $(if $(POST_MR),--post-mr,)
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
@@ -147,14 +138,14 @@ run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot
 	$(MAKE) install
 	@echo ""
 	@echo "=== Stage: lint ==="
-	$(MAKE) ci-lint
+	bash ci/lint.sh all
 	@echo ""
 	@echo "=== Stage: test (robot dryrun) ==="
 	$(MAKE) robot-dryrun
 ifdef ROBOT
 	@echo ""
 	@echo "=== Stage: test (robot live) ==="
-	$(MAKE) ci-test
+	bash ci/test.sh all
 endif
 	@echo ""
 	@echo "=== Stage: release (dry-run) ==="
