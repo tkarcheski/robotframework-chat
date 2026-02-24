@@ -26,10 +26,6 @@ echo "=== Pipeline Testing Summary ==="
 
 # Build JUnit XML args from known artifact locations
 JUNIT_ARGS=()
-if [ -f "results/dashboard/pytest-results.xml" ]; then
-    echo "Found dashboard pytest results"
-    JUNIT_ARGS+=(--junit-xml results/dashboard/pytest-results.xml)
-fi
 
 # Run the summary generator
 uv run python scripts/pipeline_summary.py -o metrics "${JUNIT_ARGS[@]}"
