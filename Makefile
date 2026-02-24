@@ -13,9 +13,8 @@ export
 .PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import \
-        test-dashboard test-dashboard-playwright \
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
-        ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-test-dashboard ci-release \
+        ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-release \
         opencode-pipeline-review opencode-local-review \
         ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
         grafana-up grafana-down grafana-logs grafana-restart \
@@ -28,7 +27,7 @@ help: ## Show this help
 # ── Setup ─────────────────────────────────────────────────────────────
 
 install: ## Install Python dependencies
-	uv sync --extra dev --extra dashboard --extra superset
+	uv sync --extra dev --extra superset
 
 # ── Docker / Superset ─────────────────────────────────────────────────
 
@@ -36,7 +35,7 @@ install: ## Install Python dependencies
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana + Dashboard
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
@@ -91,14 +90,6 @@ robot-import: ## Run all tests then import results (continues on test failures)
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
 
-# ── Dashboard Tests ──────────────────────────────────────────────────
-
-test-dashboard: ## Run dashboard pytest unit tests
-	uv run pytest tests/test_dashboard_layout.py tests/test_dashboard_monitoring.py -v
-
-test-dashboard-playwright: ## Run dashboard Playwright browser self-tests
-	bash ci/test_dashboard.sh playwright
-
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
 
@@ -142,9 +133,6 @@ ci-pipeline-report: ## Generate pipeline testing summary (add POST_MR=1 to post 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
 
-ci-test-dashboard: ## Run dashboard tests in CI (all, or: make ci-test-dashboard MODE=pytest)
-	bash ci/test_dashboard.sh $(or $(MODE),all)
-
 ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
 	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
 
@@ -161,9 +149,6 @@ run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot
 	@echo ""
 	@echo "=== Stage: lint ==="
 	$(MAKE) ci-lint
-	@echo ""
-	@echo "=== Stage: test (dashboard pytest) ==="
-	$(MAKE) ci-test-dashboard MODE=pytest
 	@echo ""
 	@echo "=== Stage: test (robot dryrun) ==="
 	$(MAKE) robot-dryrun

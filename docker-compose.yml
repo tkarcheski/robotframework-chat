@@ -1,10 +1,9 @@
-# Production Docker Compose for robotframework-chat + Superset + Grafana + Dashboard
+# Production Docker Compose for robotframework-chat + Superset + Grafana
 #
 # Quick start:
 #   cp .env.example .env        # edit credentials
 #   make docker-up               # start the stack
 #   make bootstrap              # first-time Superset setup
-#   open http://localhost:8050   # Dashboard control panel
 #   open http://localhost:8088   # Superset analytics
 #   open http://localhost:3000   # Grafana dashboards
 #
@@ -139,46 +138,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Dashboard (Dash control panel) ──────────────────────────────────
-  dashboard:
-    build:
-      context: .
-      dockerfile: dashboard/Dockerfile
-      network: host
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # Host networking: the container shares the host's network stack.
-    # localhost = the host machine, LAN hostnames (mini1, ai1, …) resolve
-    # via the host's DNS / mDNS / /etc/hosts.  Port 8050 is exposed
-    # directly on the host (no port mapping needed).
-    network_mode: host
-    # Kept for compatibility if someone switches back to bridge networking.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@localhost:${POSTGRES_PORT:-5433}/${POSTGRES_DB:-rfc}"
-      OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://localhost:11434}
-      DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
-      # Comma-separated list of Ollama node hostnames.
-      # With host networking these resolve via the host's DNS.
-      # Leave empty to use the nodes list from config/test_suites.yaml.
-      OLLAMA_NODES_LIST: ${OLLAMA_NODES_LIST:-}
-      # GitLab pipeline monitoring (leave empty to disable)
-      GITLAB_API_URL: ${GITLAB_API_URL:-}
-      GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-}
-      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
-    volumes:
-      - dashboard-results:/app/results/dashboard
-      - ./robot:/app/robot:ro
-      - ./config:/app/config:ro
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8050/\")' || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-
 networks:
   rfc-net:
     driver: bridge
@@ -186,4 +145,3 @@ networks:
 volumes:
   pgdata:
   grafana-data:
-  dashboard-results:
