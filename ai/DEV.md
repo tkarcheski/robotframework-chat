@@ -36,7 +36,7 @@ Runtime settings are centralized in `.env` (git-ignored, copied from `.env.examp
 
 The `.env` file is loaded automatically by:
 - **Makefile** — `-include .env` + `export` (all `make` targets see the vars)
-- **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/sync_db.sh`)
+- **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/lint.sh`)
 - **pytest** — `python-dotenv` session fixture in `tests/conftest.py` (`override=False`, so `patch.dict` mocks still work)
 - **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, `GITLAB_API_URL`, `GITLAB_PROJECT_ID`) onto `config/test_suites.yaml`
 
@@ -130,10 +130,10 @@ make robot         # Run all Robot Framework test suites
 make robot-math    # Run math tests
 make robot-docker  # Run Docker tests
 make robot-safety  # Run safety tests
-make code-lint     # Run ruff linter
-make code-format   # Auto-format code
-make code-typecheck # Run mypy type checker
-make code-check    # Run all code quality checks (lint + typecheck)
+make code-quality-lint     # Run ruff linter
+make code-quality-format   # Auto-format code
+make code-quality-typecheck # Run mypy type checker
+make code-quality-check    # Run all code quality checks (lint + typecheck + coverage)
 make import        # Import output.xml results: make import PATH=results/
 make version       # Print current version
 ```

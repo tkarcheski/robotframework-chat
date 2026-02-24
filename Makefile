@@ -1,5 +1,12 @@
 # robotframework-chat Makefile
 # Run `make help` for a list of targets.
+#
+# Layers (debug bottom-up):
+#   Foundation: Robot Framework tests
+#   Layer 1:    Python code quality
+#   Layer 2:    Docker services
+#   Layer 3:    CI pipelines
+#   Layer 4:    Release & versioning
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
@@ -10,61 +17,30 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 -include .env
 export
 
-.PHONY: help install docker-up docker-down docker-restart docker-logs bootstrap \
+.PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
-        robot-math-import robot-import \
-        import code-lint code-format code-typecheck code-check code-coverage code-audit version \
-        ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-release \
+        robot-math-import robot-import import \
+        code-quality-lint code-quality-format code-quality-typecheck \
+        code-quality-check code-quality-coverage code-quality-audit \
+        docker-up docker-down docker-restart docker-logs bootstrap \
+        ci-generate ci-report ci-deploy run-ci-pipeline \
         opencode-pipeline-review opencode-local-review \
-        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
-        grafana-up grafana-down grafana-logs grafana-restart \
-        run-ci-pipeline
+        ci-release version
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}'
 
-# ── Setup ─────────────────────────────────────────────────────────────
+# ── Setup ────────────────────────────────────────────────────────────
 
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
-
-# ── Docker / Superset ─────────────────────────────────────────────────
 
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
-	$(COMPOSE) up -d
-
-docker-down: ## Stop all services
-	$(COMPOSE) down
-
-docker-restart: ## Rebuild images and restart all services
-	$(COMPOSE) up -d --build
-
-docker-logs: ## Tail service logs
-	$(COMPOSE) logs -f
-
-bootstrap: ## First-time Superset setup (run after 'make docker-up')
-	$(COMPOSE) run --rm superset-init
-
-# ── Grafana ──────────────────────────────────────────────────────────
-
-grafana-up: .env ## Start Grafana (+ PostgreSQL dependency)
-	$(COMPOSE) up -d grafana
-
-grafana-down: ## Stop Grafana
-	$(COMPOSE) stop grafana
-
-grafana-logs: ## Tail Grafana logs
-	$(COMPOSE) logs -f grafana
-
-grafana-restart: ## Restart Grafana (picks up provisioning changes)
-	$(COMPOSE) restart grafana
-
-# ── Robot Framework Tests ─────────────────────────────────────────────
+# ── Foundation: Robot Framework Tests ────────────────────────────────
 
 robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
 
@@ -93,33 +69,43 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
 
-# ── Code quality ──────────────────────────────────────────────────────
+# ── Layer 1: Python Code Quality ─────────────────────────────────────
 
-code-lint: ## Run ruff linter
+code-quality-lint: ## Run ruff linter
 	uv run ruff check .
 
-code-format: ## Auto-format code
+code-quality-format: ## Auto-format code
 	uv run ruff format .
 
-code-typecheck: ## Run mypy type checker
+code-quality-typecheck: ## Run mypy type checker
 	uv run mypy src/
 
-code-check: code-lint code-typecheck ## Run all code quality checks
+code-quality-check: code-quality-lint code-quality-typecheck code-quality-coverage ## Run all code quality checks
 
-code-coverage: ## Run pytest with coverage report
+code-quality-coverage: ## Run pytest with coverage report
 	uv run pytest --cov --cov-report=term-missing --cov-report=html:htmlcov
 
-code-audit: ## Audit dependencies for known vulnerabilities
+code-quality-audit: ## Audit dependencies for known vulnerabilities
 	uv run pip-audit
 
-# ── CI Scripts ────────────────────────────────────────────────────────
-# Thin wrappers around ci/*.sh for use in .gitlab-ci.yml and locally.
+# ── Layer 2: Docker Services ─────────────────────────────────────────
 
-ci-lint: ## Run CI lint checks (all, or: make ci-lint CHECK=ruff)
-	bash ci/lint.sh $(or $(CHECK),all)
+docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
+	$(COMPOSE) up -d
 
-ci-test: ## Run CI tests with health checks (all, or: make ci-test SUITE=math)
-	bash ci/test.sh $(or $(SUITE),all)
+docker-down: ## Stop all services
+	$(COMPOSE) down
+
+docker-restart: ## Rebuild images and restart all services
+	$(COMPOSE) up -d --build
+
+docker-logs: ## Tail service logs
+	$(COMPOSE) logs -f
+
+bootstrap: ## First-time Superset setup (run after 'make docker-up')
+	$(COMPOSE) run --rm superset-init
+
+# ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
 ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 	bash ci/generate.sh $(or $(MODE),regular)
@@ -127,16 +113,8 @@ ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
 
-ci-pipeline-report: ## Generate pipeline testing summary (add POST_MR=1 to post to MR)
-	bash ci/pipeline_report.sh $(if $(POST_MR),--post-mr,)
-
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
-
-ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
-	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
-
-# ── Local CI Pipeline ────────────────────────────────────────────────
 
 run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot tests)
 	@echo ""
@@ -148,14 +126,14 @@ run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot
 	$(MAKE) install
 	@echo ""
 	@echo "=== Stage: lint ==="
-	$(MAKE) ci-lint
+	bash ci/lint.sh all
 	@echo ""
 	@echo "=== Stage: test (robot dryrun) ==="
 	$(MAKE) robot-dryrun
 ifdef ROBOT
 	@echo ""
 	@echo "=== Stage: test (robot live) ==="
-	$(MAKE) ci-test
+	bash ci/test.sh all
 endif
 	@echo ""
 	@echo "=== Stage: release (dry-run) ==="
@@ -165,44 +143,16 @@ endif
 	@echo "  Local CI Pipeline: ALL STAGES PASSED"
 	@echo "============================================"
 
-# ── AI Review ────────────────────────────────────────────────────────
-
 opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
 	bash ci/review.sh
 
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
 
-# ── GitLab CI ────────────────────────────────────────────────────────
+# ── Layer 4: Release & Versioning ────────────────────────────────────
 
-ci-status: ## Check GitLab API connectivity
-	uv run python scripts/sync_ci_results.py status
-
-ci-list-pipelines: ## List recent CI pipelines
-	uv run python scripts/sync_ci_results.py list-pipelines
-
-ci-list-jobs: ## List jobs in a pipeline: make ci-list-jobs PIPELINE=<id>
-	uv run python scripts/sync_ci_results.py list-jobs $(PIPELINE)
-
-ci-fetch-artifact: ## Download a single job artifact: make ci-fetch-artifact JOB=<id>
-	uv run python scripts/sync_ci_results.py fetch-artifact $(JOB)
-
-ci-sync-db: ## Sync CI pipeline results to database
-	uv run python scripts/sync_ci_results.py sync
-
-ci-verify-db: ## Verify database contents after sync
-	uv run python scripts/sync_ci_results.py verify
-
-ci-backfill: ## Backfill all GitLab pipeline data to database
-	uv run python scripts/sync_ci_results.py backfill
-
-ci-backfill-metadata: ## Store pipeline metadata only (no artifact download)
-	uv run python scripts/sync_ci_results.py backfill --metadata-only
-
-ci-list-pipeline-results: ## List pipeline_results stored in database
-	uv run python scripts/sync_ci_results.py list-pipeline-results
-
-# ── Versioning ────────────────────────────────────────────────────────
+ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
+	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"

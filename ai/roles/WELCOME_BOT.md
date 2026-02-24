@@ -240,7 +240,7 @@ After your first successful test run:
 
 6. **Check code quality:**
    ```bash
-   make code-check      # ruff lint + mypy typecheck
+   make code-quality-check      # ruff lint + mypy typecheck + pytest coverage
    pre-commit run --all-files
    ```
 
@@ -267,8 +267,8 @@ make robot                # Run all test suites
 uv run pytest             # Run Python unit tests
 
 # Code quality
-make code-check           # Lint (ruff) + typecheck (mypy)
-make code-format          # Auto-format code
+make code-quality-check           # Lint (ruff) + typecheck (mypy) + coverage
+make code-quality-format          # Auto-format code
 pre-commit run --all-files  # All quality checks
 
 # Docker services (optional)

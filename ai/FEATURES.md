@@ -46,7 +46,6 @@ dashboards, retention, scheduled exports) are not yet complete.
 | Recent Test Runs (table) | Done | 50-row limit, verified working |
 | Failures by Test Name (bar) | Done | Verified working in charts view |
 | Remote deploy via CI | Done | `ci/deploy.sh` → `make ci-deploy` |
-| CI pipeline artifact sync | Done | `scripts/sync_ci_results.py` + `ci/sync_db.sh` |
 | `.env` configuration flow | Done | Makefile, CI scripts, pytest, suite_config all load `.env` |
 | Full dashboard layout & navigation | In Progress | Charts view works; overall dashboard needs polish |
 | Cross-filtering and drill-down | Not Started | Superset native capabilities, needs chart updates |
@@ -171,7 +170,7 @@ Seven-stage GitLab pipeline with modular scripts.
 | GitHub mirror sync | Done | `ci/sync.sh` |
 | Claude Code review stage | Done | `ci/review.sh` — MR review + fix attempts |
 | Repo metrics + MR comments | Done | `ci/report.sh` |
-| `.env` sourcing in CI scripts | Done | `ci/sync_db.sh` sources `.env` |
+| `.env` sourcing in CI scripts | Done | CI scripts source `.env` when present |
 | Single-source config | Done | `config/test_suites.yaml` drives dashboard + CI |
 | Env var → YAML overlays | Done | `suite_config.py` applies `DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, etc. |
 
@@ -256,40 +255,26 @@ successfully end-to-end in a properly configured environment.
 | `make test-dashboard` | Not Complete | Dashboard | Runs dashboard pytest unit tests |
 | `make test-dashboard-playwright` | Not Complete | Dashboard | Browser self-tests, requires Playwright |
 | `make import` | Working | Data | Imports output.xml results into database |
-| `make code-lint` | Working | Code Quality | Runs ruff linter (`make code` shorthand) |
-| `make code-format` | Not Complete | Code Quality | Auto-formats with ruff |
-| `make code-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
-| `make code-check` | Not Complete | Code Quality | Runs lint + typecheck together |
-| `make ci-lint` | Not Complete | CI | CI lint wrapper |
-| `make ci-test` | Not Complete | CI | CI test wrapper with health checks |
+| `make code-quality-lint` | Working | Code Quality | Runs ruff linter |
+| `make code-quality-format` | Not Complete | Code Quality | Auto-formats with ruff |
+| `make code-quality-typecheck` | Not Complete | Code Quality | Runs mypy on `src/` |
+| `make code-quality-check` | Not Complete | Code Quality | Runs lint + typecheck + coverage |
 | `make ci-generate` | Not Complete | CI | Generates child pipeline YAML |
 | `make ci-report` | Not Complete | CI | Repo metrics + optional MR comment |
 | `make ci-deploy` | Not Complete | CI | Deploys Superset to remote host |
 | `make ci-test-dashboard` | Not Complete | CI | Dashboard tests in CI mode |
 | `make opencode-pipeline-review` | Not Complete | AI Review | OpenCode AI review in CI |
 | `make opencode-local-review` | Not Complete | AI Review | OpenCode AI review on local changes |
-| `make ci-sync` | Not Complete | GitLab Sync | Mirror repo to GitHub |
-| `make ci-status` | Not Complete | GitLab Sync | Check GitLab API connectivity |
-| `make ci-list-pipelines` | Not Complete | GitLab Sync | List recent CI pipelines |
-| `make ci-list-jobs` | Not Complete | GitLab Sync | List jobs in a pipeline |
-| `make ci-fetch-artifact` | Not Complete | GitLab Sync | Download a single job artifact |
-| `make ci-sync-db` | Not Complete | GitLab Sync | Sync CI pipeline results to database |
-| `make ci-verify-db` | Not Complete | GitLab Sync | Verify database contents after sync |
-| `make ci-list-pipeline-results` | Working | GitLab Sync | Lists pipeline_results from database |
-| `make ci-backfill` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
-| `make ci-backfill-metadata` | Deprecated | GitLab Sync | Replaced by `ci-sync-db` |
 | `make version` | Working | Versioning | Prints current version (fixed: uses `uv run python`) |
-| `make code-coverage` | Working | Code Quality | Runs pytest with coverage report (new) |
-| `make code-audit` | Working | Code Quality | Audits dependencies for vulnerabilities (new) |
+| `make code-quality-coverage` | Working | Code Quality | Runs pytest with coverage report |
+| `make code-quality-audit` | Working | Code Quality | Audits dependencies for vulnerabilities |
 
 ### Summary
 
-- **Working (11):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
-  `import`, `code-lint`, `ci-list-pipeline-results`, `version`,
-  `code-coverage`, `code-audit`
-- **Not Complete (24):** Remaining targets need environment setup, testing,
+- **Working (9):** `help`, `install`, `docker-up`, `bootstrap`, `robot`,
+  `import`, `code-quality-lint`, `version`, `code-quality-coverage`, `code-quality-audit`
+- **Not Complete (15):** Remaining targets need environment setup, testing,
   or implementation work
-- **Deprecated (2):** `ci-backfill`, `ci-backfill-metadata`
 
 ---
 

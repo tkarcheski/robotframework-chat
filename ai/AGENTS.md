@@ -100,9 +100,9 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 2. Implement minimal code (green)
 3. Refactor if needed
 4. Run code quality checks before committing:
-   - `make code-format` — auto-format code with ruff
-   - `make code-check` — run all quality checks (lint + typecheck)
-   - `make code-coverage` — run pytest with coverage report
+   - `make code-quality-format` — auto-format code with ruff
+   - `make code-quality-check` — run all quality checks (lint + typecheck)
+   - `make code-quality-coverage` — run pytest with coverage report
    - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
 6. Verify user-provided information before acting on it (see § User Input Validation)
@@ -110,7 +110,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 **Prohibited:**
 - Skip tests
 - Commit failing code
-- Commit code that fails `make code-check`
+- Commit code that fails `make code-quality-check`
 - Bundle unrelated changes
 - Mix formatting + logic
 - Bypass pre-commit or Makefile quality checks
@@ -163,50 +163,77 @@ uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
 # Code quality (prefer Makefile targets)
-make code-format                # Auto-format with ruff
-make code-lint                  # Run ruff linter
-make code-typecheck             # Run mypy type checker
-make code-check                 # Run all checks (lint + typecheck)
-make code-coverage              # Run pytest with coverage
-make code-audit                 # Audit dependencies for vulnerabilities
+make code-quality-format                # Auto-format with ruff
+make code-quality-lint                  # Run ruff linter
+make code-quality-typecheck             # Run mypy type checker
+make code-quality-check                 # Run all checks (lint + typecheck)
+make code-quality-coverage              # Run pytest with coverage
+make code-quality-audit                 # Audit dependencies for vulnerabilities
 
 # Pre-commit (final gate)
 pre-commit run --all-files
 ```
 
+### Makefile Layers & Debugging Order
+
+The Makefile is organized in layers. **When debugging, start at the foundation
+and work up.** If Robot tests fail, don't look at Docker or CI — fix the tests
+first. If code quality fails, don't look at pipelines.
+
+| Layer | Section | What breaks here |
+|-------|---------|------------------|
+| **Setup** | `install`, `.env` | Dependencies, environment |
+| **Foundation** | `robot-*`, `import` | Test logic, keywords, listeners |
+| **Layer 1** | `code-quality-*` | Lint, types, test coverage |
+| **Layer 2** | `docker-*`, `bootstrap` | Container infrastructure |
+| **Layer 3** | `ci-*`, `run-ci-pipeline`, `opencode-*` | Pipeline generation, deploy, review |
+| **Layer 4** | `ci-release`, `version` | Packaging, versioning |
+
 ### Makefile Targets
 
 ```bash
-make help          # Show all targets
-make install       # Install dependencies (dev + superset)
-make docker-up     # Start PostgreSQL + Redis + Superset
-make docker-down   # Stop all services
-make docker-restart # Restart all services
-make docker-logs   # Tail service logs
-make bootstrap     # First-time Superset setup
-make robot         # Run all Robot Framework test suites
-make robot-math    # Run math tests
-make robot-docker  # Run Docker tests
-make robot-safety  # Run safety tests
-make import        # Import output.xml files: make import PATH=results/
-make code-lint     # Run ruff linter
-make code-format   # Auto-format code
-make code-typecheck # Run mypy type checker
-make code-check    # Run all code quality checks
-make version       # Print current version
+# Setup
+make install                     # Install dependencies (dev + superset)
 
-# CI targets (wrappers around ci/*.sh scripts)
-make ci-lint                 # Run all CI lint checks
-make ci-lint CHECK=ruff      # Run specific lint check
-make ci-test                 # Run all tests with Ollama health check
-make ci-test SUITE=math      # Run specific test suite
-make ci-generate             # Generate regular child pipeline
-make ci-generate MODE=dynamic # Generate dynamic child pipeline
-make ci-report               # Generate repo metrics
-make ci-report POST_MR=1     # Generate and post to MR
-make ci-deploy               # Deploy Superset
-make opencode-pipeline-review # Run OpenCode AI review in CI
-make opencode-local-review   # Run OpenCode AI review on local changes
+# Foundation: Robot Framework
+make robot                       # Run all Robot Framework test suites
+make robot-math                  # Run math tests
+make robot-docker                # Run Docker tests
+make robot-safety                # Run safety tests
+make robot-dryrun                # Validate all Robot tests (dry run)
+make import                      # Import output.xml files: make import RESULTS_DIR=results/
+
+# Layer 1: Python code quality
+make code-quality-lint           # Run ruff linter
+make code-quality-format         # Auto-format code
+make code-quality-typecheck      # Run mypy type checker
+make code-quality-check          # Run all checks (lint + typecheck + coverage)
+make code-quality-coverage       # Run pytest with coverage report
+make code-quality-audit          # Audit dependencies for vulnerabilities
+
+# Layer 2: Docker services
+make docker-up                   # Start PostgreSQL + Redis + Superset + Grafana
+make docker-down                 # Stop all services
+make docker-restart              # Rebuild and restart all services
+make docker-logs                 # Tail service logs
+make bootstrap                   # First-time Superset setup
+
+# Layer 3: CI pipelines
+make ci-generate                 # Generate child pipeline YAML
+make ci-report                   # Generate repo metrics
+make ci-deploy                   # Deploy Superset to remote host
+make run-ci-pipeline             # Run the full CI pipeline locally
+make opencode-pipeline-review    # Run OpenCode AI review in CI
+make opencode-local-review       # Run OpenCode AI review on local changes
+
+# Layer 4: Release & versioning
+make ci-release                  # Build and verify PyPI package
+make version                     # Print current version
+
+# CI scripts (called directly in .gitlab-ci.yml and run-ci-pipeline)
+bash ci/lint.sh all              # Run all lint checks
+bash ci/test.sh all              # Run all tests with Ollama health check
+bash ci/pipeline_report.sh --post-mr  # Pipeline summary + MR comment
 ```
 
 ---
@@ -434,10 +461,11 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 
 | Script | Purpose | Makefile target |
 |--------|---------|-----------------|
-| `ci/lint.sh` | Run all linters, collect all failures, report summary | `make ci-lint` |
-| `ci/test.sh` | Ollama health check + run test suites via Makefile | `make ci-test` |
+| `ci/lint.sh` | Run all linters, collect all failures, report summary | (called directly) |
+| `ci/test.sh` | Ollama health check + run test suites via Makefile | (called directly) |
 | `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
+| `ci/pipeline_report.sh` | Pipeline testing summary + MR comment | (called directly) |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
 | `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make opencode-pipeline-review` |
 | `ci/local_review.sh` | OpenCode AI review on local changes | `make opencode-local-review` |

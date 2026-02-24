@@ -17,7 +17,7 @@ make install                  # Install all dependencies (dev + dashboard + supe
 pre-commit install            # Install git hooks (required before first commit)
 uv run pytest                 # Run Python unit tests
 pre-commit run --all-files    # Run all pre-commit checks
-make code-check               # Lint (ruff) + typecheck (mypy)
+make code-quality-check               # Lint (ruff) + typecheck (mypy)
 make robot-dryrun             # Validate Robot tests without execution
 ```
 
