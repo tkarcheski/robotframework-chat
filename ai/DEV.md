@@ -36,7 +36,7 @@ Runtime settings are centralized in `.env` (git-ignored, copied from `.env.examp
 
 The `.env` file is loaded automatically by:
 - **Makefile** — `-include .env` + `export` (all `make` targets see the vars)
-- **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/sync_db.sh`)
+- **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/lint.sh`)
 - **pytest** — `python-dotenv` session fixture in `tests/conftest.py` (`override=False`, so `patch.dict` mocks still work)
 - **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, `GITLAB_API_URL`, `GITLAB_PROJECT_ID`) onto `config/test_suites.yaml`
 

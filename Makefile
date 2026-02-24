@@ -16,7 +16,6 @@ export
         import code-lint code-format code-typecheck code-check code-coverage code-audit version \
         ci-lint ci-test ci-generate ci-report ci-pipeline-report ci-deploy ci-release \
         opencode-pipeline-review opencode-local-review \
-        ci-sync ci-sync-db ci-status ci-list-pipelines ci-list-jobs ci-fetch-artifact ci-verify-db \
         grafana-up grafana-down grafana-logs grafana-restart \
         run-ci-pipeline
 
@@ -172,35 +171,6 @@ opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + M
 
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
-
-# ── GitLab CI ────────────────────────────────────────────────────────
-
-ci-status: ## Check GitLab API connectivity
-	uv run python scripts/sync_ci_results.py status
-
-ci-list-pipelines: ## List recent CI pipelines
-	uv run python scripts/sync_ci_results.py list-pipelines
-
-ci-list-jobs: ## List jobs in a pipeline: make ci-list-jobs PIPELINE=<id>
-	uv run python scripts/sync_ci_results.py list-jobs $(PIPELINE)
-
-ci-fetch-artifact: ## Download a single job artifact: make ci-fetch-artifact JOB=<id>
-	uv run python scripts/sync_ci_results.py fetch-artifact $(JOB)
-
-ci-sync-db: ## Sync CI pipeline results to database
-	uv run python scripts/sync_ci_results.py sync
-
-ci-verify-db: ## Verify database contents after sync
-	uv run python scripts/sync_ci_results.py verify
-
-ci-backfill: ## Backfill all GitLab pipeline data to database
-	uv run python scripts/sync_ci_results.py backfill
-
-ci-backfill-metadata: ## Store pipeline metadata only (no artifact download)
-	uv run python scripts/sync_ci_results.py backfill --metadata-only
-
-ci-list-pipeline-results: ## List pipeline_results stored in database
-	uv run python scripts/sync_ci_results.py list-pipeline-results
 
 # ── Versioning ────────────────────────────────────────────────────────
 
