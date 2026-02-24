@@ -123,7 +123,9 @@ Custom LLM Configuration (IQ:140)
     ...    ports=${custom_port_mapping}
     ...    read_only=False
 
-    ${container}=    Docker.Create Configurable Container    ${custom_config}    rfc-ollama-custom
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${container_name}=    Set Variable    rfc-ollama-custom-${timestamp}
+    ${container}=    Docker.Create Configurable Container    ${custom_config}    ${container_name}
 
     # Wait for API to be ready
     ${custom_endpoint}=    Set Variable    http://localhost:${custom_port}
@@ -140,4 +142,4 @@ Custom LLM Configuration (IQ:140)
     Should Contain    ${response}    4
 
     # Cleanup
-    Docker.Stop Container    ${container}
+    [Teardown]    Run Keyword And Ignore Error    Docker.Stop Container    ${container}
