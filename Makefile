@@ -25,7 +25,7 @@ export
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
         ci-generate ci-report ci-deploy run-ci-pipeline \
-        opencode-pipeline-review opencode-local-review \
+        opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         ci-release version
 
 help: ## Show this help
@@ -160,6 +160,9 @@ opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + M
 
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
+
+opencode-audit-markdown: ## Audit markdown file references for broken/stale paths (Ollama)
+	bash ci/audit_markdown.sh
 
 # ── Layer 4: Release & Versioning ────────────────────────────────────
 
