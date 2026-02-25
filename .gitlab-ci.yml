@@ -5,11 +5,11 @@
 # edit the scripts -- not this file.
 #
 # Pipeline modes:
-#   1. Regular  - every push/MR, smoke-test with default model
-#   2. Dynamic  - manual or scheduled, full node/model matrix
-#   3. Schedule - hourly cron triggers dynamic pipeline
-#   4. Release  - clean semver tag (v1.2.3), build + publish to PyPI
-#   5. Test Release - pre-release tag (v1.2.3-rc1), build + verify only
+#   1. Test     - every push/MR, per-node `make run-local-models` (allow_failure)
+#   2. Release  - clean semver tag (v1.2.3), build + publish to PyPI
+#   3. Test Release - pre-release tag (v1.2.3-rc1), build + verify only
+#
+# Nodes: ai1, mini1, mini2, dev1, dev2 (matched by GitLab runner tags)
 #
 # See: ai/PIPELINES.md
 
@@ -18,7 +18,6 @@ include:
 
 stages:
   - lint
-  - generate
   - test
   - report
   - deploy
@@ -41,69 +40,39 @@ lint:
     - if: $CI_COMMIT_TAG =~ /^v/
     - if: $CI_COMMIT_BRANCH
 
-# ── Generate ─────────────────────────────────────────────────────────
+# ── Test: Per-Node Model Runs ──────────────────────────────────────
 
-generate-regular-pipeline:
-  extends: .uv-setup
-  stage: generate
-  script: [make ci-generate MODE=regular]
-  artifacts:
-    paths: [generated-pipeline.yml]
-    expire_in: 7 days
-  rules:
-    - if: $CI_COMMIT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
-discover-nodes:
-  extends: .uv-setup
-  stage: generate
-  script: [make ci-generate MODE=discover]
-  artifacts:
-    paths: [config/nodes_inventory.yaml]
-    expire_in: 7 days
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
-
-generate-dynamic-pipeline:
-  extends: .uv-setup
-  stage: generate
+.run-local-models:
+  extends: .robot-test
+  stage: test
   needs:
-    - job: discover-nodes
-      artifacts: true
-      optional: true
-  script: [make ci-generate MODE=dynamic]
-  artifacts:
-    paths: [generated-dynamic-pipeline.yml]
-    expire_in: 7 days
-  timeout: 60 minutes
+    - job: lint
+      artifacts: false
+  script: [make run-local-models]
+  allow_failure: true
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
-
-# ── Test ─────────────────────────────────────────────────────────────
-
-run-regular-tests:
-  stage: test
-  trigger:
-    include:
-      - artifact: generated-pipeline.yml
-        job: generate-regular-pipeline
-    strategy: depend
-  rules:
-    - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
 
-run-dynamic-tests:
-  stage: test
-  trigger:
-    include:
-      - artifact: generated-dynamic-pipeline.yml
-        job: generate-dynamic-pipeline
-    strategy: depend
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
+run-local-models-ai1:
+  extends: .run-local-models
+  tags: [ai1]
+
+run-local-models-mini1:
+  extends: .run-local-models
+  tags: [mini1]
+
+run-local-models-mini2:
+  extends: .run-local-models
+  tags: [mini2]
+
+run-local-models-dev1:
+  extends: .run-local-models
+  tags: [dev1]
+
+run-local-models-dev2:
+  extends: .run-local-models
+  tags: [dev2]
 
 # ── Report ───────────────────────────────────────────────────────────
 

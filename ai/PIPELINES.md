@@ -10,12 +10,12 @@ strategy for robotframework-chat CI/CD.
 The CI pipeline follows a strict separation of concerns:
 
 ```
-.gitlab-ci.yml          # Skeleton: stages, rules, artifacts (~170 lines)
+.gitlab-ci.yml          # Skeleton: stages, rules, artifacts (~165 lines)
 ci/common.yml           # Shared YAML templates (.uv-setup, .robot-test)
 ci/*.sh                 # All executable logic (bash scripts)
 Makefile                # ci-* targets wrap scripts for local + CI use
-scripts/generate_pipeline.py  # Child-pipeline YAML from config/test_suites.yaml
-config/test_suites.yaml       # Single source of truth for test suites
+config/test_suites.yaml # Single source of truth for test suites
+config/local_models.yaml # Local model discovery and test config
 ```
 
 **Strong requirement:** `.gitlab-ci.yml` stays minimal. To change pipeline
@@ -28,59 +28,28 @@ behavior, edit `ci/*.sh` scripts or `Makefile` targets — not the YAML.
 3. **Reusable** — scripts run identically in CI and locally (`make ci-lint`)
 4. **Extendable** — add a new script, add a job that calls it
 5. **Fail fast and loud** — `set -euo pipefail`, verbose error diagnostics
-6. **Dynamic** — child pipelines generated from config, not hardcoded YAML
+6. **Per-node** — each runner tag gets its own job, `allow_failure: true`
 
 ---
 
 ## Pipeline Modes
 
-There are four pipeline modes:
-
 | Mode | Trigger | Purpose |
 |------|---------|---------|
-| **Regular** | Every push / MR | Smoke-test the system works with the smallest viable model |
-| **Dynamic** | Manual play-button | Discover Ollama nodes on the network, enumerate models, run every (node, model, suite) combination |
-| **Scheduled** | Hourly cron | Run the dynamic pipeline automatically for continuous coverage |
+| **Test** | Every push / MR | Per-node `make run-local-models` on ai1, mini1, mini2, dev1, dev2 |
 | **Release** | Tag push (`v*`) | Build and publish package to PyPI |
+| **Test Release** | Pre-release tag (`v*-rc*`) | Build and verify only |
 
-Regular, Dynamic, and Scheduled modes are generated from
-`config/test_suites.yaml` via `scripts/generate_pipeline.py`.
+### Per-node test strategy
 
----
+Each node gets its own CI job, dispatched by GitLab runner tag. Every job
+runs `make run-local-models`, which discovers models on the local Ollama
+instance and runs all test suites against each model.
 
-## Model Selection Strategy
-
-### Regular pipeline: smallest viable model
-
-The regular pipeline exists to verify that **the testing system itself works** —
-not to evaluate model quality. For this reason it always runs on the smallest
-model that can pass the test suites.
-
-- **Current default:** `llama3` (set in `.gitlab-ci.yml` and `config/test_suites.yaml`)
-- As test suites grow and require more capable responses, the default model
-  is bumped to the **smallest model that satisfies all suites**
-- The goal is fast feedback on code changes, not model benchmarking
-
-### Dynamic and scheduled pipelines: test every model
-
-The dynamic pipeline discovers all available Ollama nodes and their loaded
-models, then runs every (node, model, suite) combination. This is where
-actual model evaluation and comparison happens.
-
-- Scheduled pipelines run hourly to catch model regressions over time
-- Manual triggers let developers test specific models on demand
-- Results are archived to SQL and visualized in Superset dashboards
-
-### When to update the default model
-
-Update `DEFAULT_MODEL` in `.gitlab-ci.yml` and `defaults.model` in
-`config/test_suites.yaml` when:
-
-1. A new test suite requires capabilities the current default lacks
-2. The current default model is deprecated or unavailable
-3. A smaller model becomes available that still passes all suites
-
-Always pick the **smallest model that passes all regular-pipeline suites**.
+- All per-node jobs have `allow_failure: true` — nodes may be offline
+- Jobs wait for `lint` to pass before starting
+- Results are archived to `results/` and collected as artifacts
+- Node list: `ai1`, `mini1`, `mini2`, `dev1`, `dev2`
 
 ---
 
@@ -109,7 +78,6 @@ Stages skipped locally (CI-only):
 
 | Stage | Why |
 |-------|-----|
-| generate | child pipeline YAML for GitLab triggers |
 | report | MR comments via GitLab API |
 | deploy | remote host deployment |
 | review | AI code review (requires opencode-ai + OpenRouter) |
@@ -119,14 +87,13 @@ Stages skipped locally (CI-only):
 ## Pipeline Stages
 
 ```
-lint → generate → test → report → deploy → release → review
+lint → test → report → deploy → release → review
 ```
 
 | Stage | Job(s) | Make target | Notes |
 |-------|--------|-------------|-------|
 | `lint` | `lint` | `make ci-lint` | Runs pre-commit, ruff, mypy |
-| `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `make ci-generate MODE=...` | Produce child-pipeline YAML from `test_suites.yaml` |
-| `test` | `run-regular-tests`, `run-dynamic-tests`, `dashboard-pytest`, `dashboard-playwright` | `make ci-test-dashboard`, `make ci-test` | Execute generated child pipelines and dashboard tests |
+| `test` | `run-local-models-{ai1,mini1,mini2,dev1,dev2}` | `make run-local-models` | Per-node model discovery + test runs (`allow_failure`) |
 | `report` | `repo-metrics`, `pipeline-summary` | `make ci-report`, `make ci-pipeline-report` | Repo metrics, MR comments |
 | `deploy` | `deploy-superset` | `make ci-deploy` | Update Superset stack on default branch |
 | `release` | `test-release`, `publish-pypi` | `make ci-release [UPLOAD=1]` | Build + publish to PyPI on version tags (`v*`) |
@@ -174,17 +141,15 @@ See [AGENTS.md](AGENTS.md) for the full project architecture.
 
 ---
 
-## Node Auto-Discovery (Planned)
+## Node Strategy
 
-> **Owner decision (2026-02-19):** Pipelines should discover which nodes are
-> online before scheduling jobs. See `humans/TODO.md` § Pipeline node auto-discovery.
+Each physical node has a GitLab runner with a matching tag (`ai1`, `mini1`,
+`mini2`, `dev1`, `dev2`). The CI pipeline creates one job per node. Each job
+runs `make run-local-models`, which discovers models on the local Ollama
+instance automatically via `scripts/run_local_models.py`.
 
-Proposed flow:
-1. Ping each node's Ollama `/api/tags` endpoint
-2. Build a live inventory of online nodes + available models
-3. Schedule jobs only to reachable nodes
-
-This replaces hardcoded node lists in `config/test_suites.yaml`.
+Nodes that are offline simply have their job stay pending or fail — this is
+safe because all per-node jobs have `allow_failure: true`.
 
 ---
 
