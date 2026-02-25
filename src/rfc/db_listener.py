@@ -22,6 +22,7 @@ URL is provided.
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
 
@@ -115,6 +116,26 @@ class DbListener:
                 self._db = TestDatabase()
         return self._db
 
+    def _describe_database_destination(self) -> str:
+        """Return a human-readable description of the database target.
+
+        Does NOT trigger lazy database initialization. Parses
+        ``self._database_url`` to determine the backend and destination,
+        stripping credentials from PostgreSQL URLs.
+        """
+        url = self._database_url
+        if url and url.startswith("postgresql"):
+            parsed = urlparse(url)
+            host_part = parsed.hostname or "localhost"
+            if parsed.port:
+                host_part += f":{parsed.port}"
+            db_name = parsed.path.lstrip("/") if parsed.path else ""
+            return f"PostgreSQL: {host_part}/{db_name}"
+        if url and url.startswith("sqlite:///"):
+            path = url.replace("sqlite:///", "")
+            return f"SQLite: {path}"
+        return "SQLite: data/test_history.db (default)"
+
     def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
         self._suite_depth += 1
         if self._suite_depth == 1:
@@ -122,6 +143,10 @@ class DbListener:
             self._ci_info = collect_ci_metadata()
             self._test_cases = []
             self._keyword_results = []
+            dest = self._describe_database_destination()
+            banner = f"DbListener: archiving results to {dest}"
+            logger.info(banner)
+            logger.console(banner)
 
     def start_test(self, name: str, attributes: Dict[str, Any]) -> None:
         """Reset per-test structured data at the start of each test."""
@@ -291,13 +316,18 @@ class DbListener:
             ]
             db.add_keyword_results(kw_results)
 
-            logger.info(
-                f"Archived {len(results)} test results and "
-                f"{len(kw_results)} keyword results "
-                f"to database (run_id={run_id})"
+            dest = self._describe_database_destination()
+            summary = (
+                f"DbListener: archived {len(results)} test result(s) "
+                f"and {len(kw_results)} keyword result(s) "
+                f"to {dest} (run_id={run_id})"
             )
+            logger.info(summary)
+            logger.console(summary)
         except Exception as e:
-            logger.warn(f"Failed to archive results to database: {e}")
+            error_msg = f"DbListener: FAILED to archive results: {e}"
+            logger.warn(error_msg)
+            logger.console(error_msg)
 
 
 def _compute_duration(start: str, end: str) -> Optional[float]:

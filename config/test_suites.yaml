@@ -1,8 +1,7 @@
 # Test Suite Configuration - Single Source of Truth
 #
-# This file drives both the Dash dashboard UI and GitLab CI pipelines.
+# This file drives GitLab CI pipelines and test configuration.
 # Changes here automatically propagate to:
-#   - Dashboard UI (test suite dropdown, IQ levels, container profiles)
 #   - GitLab CI pipeline (regular and dynamic pipeline generation)
 #
 # See src/rfc/suite_config.py for the Python loader.
@@ -45,9 +44,7 @@ nodes:
 # ---------------------------------------------------------------------------
 # Master Models List
 #
-# All known model names across the fleet.  The dashboard always shows these
-# in the LLM Model dropdown.  Models found on at least one node are
-# selectable; models not found on any node appear grayed out.
+# All known model names across the fleet.
 #
 # This list is updated automatically by the discover-nodes CI job, or you
 # can maintain it manually.
@@ -70,7 +67,7 @@ master_models:
 # ---------------------------------------------------------------------------
 # Test Suites
 #
-# Each suite is an atomic unit the dashboard can run individually.
+# Each suite is an atomic unit that CI runs individually.
 # CI jobs may group several suites (see ci.job_groups below).
 # ---------------------------------------------------------------------------
 test_suites:
@@ -99,12 +96,7 @@ test_suites:
     path: "robot/safety/test_cases"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
-  dashboard:
-    label: "Dashboard Self-Tests"
-    path: "robot/dashboard/tests"
-    description: "Playwright browser tests for the dashboard UI (no LLM dependency)"
-
-# Special "run all" entry used by the dashboard
+# Special "run all" entry
 run_all:
   label: "Run All Test Suites"
   path: "robot"
@@ -113,7 +105,6 @@ run_all:
 # IQ Levels - available for parameterized IQ tests
 #
 # These map to Robot Framework tags like [Tags]  IQ:100
-# The dashboard IQ dropdown is populated from this list.
 # ---------------------------------------------------------------------------
 iq_levels:
   - "100"
@@ -175,7 +166,7 @@ ci:
 # ---------------------------------------------------------------------------
 # Monitoring Configuration
 #
-# Settings for the dashboard's Ollama Hosts and GitLab Pipelines tabs.
+# Settings for Ollama host monitoring and GitLab pipeline tracking.
 #
 # To enable GitLab pipeline monitoring, either:
 #   1. Set GITLAB_API_URL, GITLAB_PROJECT_ID, GITLAB_TOKEN env vars, or

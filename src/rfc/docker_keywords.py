@@ -290,8 +290,9 @@ class ConfigurableDockerKeywords:
 
     @keyword("Cleanup All Containers")
     def cleanup_all_containers(self) -> None:
-        """Stop and remove all containers managed by this instance."""
+        """Stop and remove all containers managed by this instance and orphaned rfc-* containers."""
         self.manager.cleanup_all()
+        self.manager.cleanup_orphaned()
         self._container_configs.clear()
 
     @keyword("Create Code Execution Container")

@@ -84,21 +84,53 @@ Always pick the **smallest model that passes all regular-pipeline suites**.
 
 ---
 
+## Local CI Pipeline
+
+Run the full CI pipeline locally with a single command:
+
+```bash
+make run-ci-pipeline                      # lint + dashboard tests + robot dryrun + release verify
+make run-ci-pipeline ROBOT=1              # same, plus live robot tests (requires Ollama)
+make run-ci-pipeline ROBOT=1 SUITE=math   # live tests, math suite only
+```
+
+Stages run locally:
+
+| Stage | Command | Notes |
+|-------|---------|-------|
+| install | `make install` | `uv sync` all extras |
+| lint | `make ci-lint` | pre-commit + ruff + mypy |
+| test | `make ci-test-dashboard MODE=pytest` | dashboard unit tests |
+| test | `make robot-dryrun` | validate robot test syntax |
+| test | `make ci-test` | live robot tests (only with `ROBOT=1`) |
+| release | `make ci-release` | dry-run package build + twine verify |
+
+Stages skipped locally (CI-only):
+
+| Stage | Why |
+|-------|-----|
+| generate | child pipeline YAML for GitLab triggers |
+| report | MR comments via GitLab API |
+| deploy | remote host deployment |
+| review | AI code review (requires opencode-ai + OpenRouter) |
+
+---
+
 ## Pipeline Stages
 
 ```
 lint → generate → test → report → deploy → release → review
 ```
 
-| Stage | Job(s) | Script | Notes |
-|-------|--------|--------|-------|
-| `lint` | `lint` | `ci/lint.sh` | Runs pre-commit, ruff, mypy (allow_failure) |
-| `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `ci/generate.sh` | Produce child-pipeline YAML from `test_suites.yaml` |
-| `test` | `run-regular-tests`, `run-dynamic-tests`, `dashboard-pytest`, `dashboard-playwright` | (child pipelines + scripts) | Execute generated child pipelines and dashboard tests |
-| `report` | `repo-metrics` | `ci/report.sh` | Repo metrics, MR comments |
-| `deploy` | `deploy-superset` | `ci/deploy.sh` | Update Superset stack on default branch |
-| `release` | `publish-pypi` | `ci/release.sh` | Build + publish to PyPI on version tags (`v*`) |
-| `review` | `opencode-review` | `ci/review.sh` | AI code review + fix via OpenCode + Kimi K2.5 on OpenRouter |
+| Stage | Job(s) | Make target | Notes |
+|-------|--------|-------------|-------|
+| `lint` | `lint` | `make ci-lint` | Runs pre-commit, ruff, mypy |
+| `generate` | `generate-regular-pipeline`, `discover-nodes`, `generate-dynamic-pipeline` | `make ci-generate MODE=...` | Produce child-pipeline YAML from `test_suites.yaml` |
+| `test` | `run-regular-tests`, `run-dynamic-tests`, `dashboard-pytest`, `dashboard-playwright` | `make ci-test-dashboard`, `make ci-test` | Execute generated child pipelines and dashboard tests |
+| `report` | `repo-metrics`, `pipeline-summary` | `make ci-report`, `make ci-pipeline-report` | Repo metrics, MR comments |
+| `deploy` | `deploy-superset` | `make ci-deploy` | Update Superset stack on default branch |
+| `release` | `test-release`, `publish-pypi` | `make ci-release [UPLOAD=1]` | Build + publish to PyPI on version tags (`v*`) |
+| `review` | `opencode-review` | `make opencode-pipeline-review` | AI code review + fix via OpenCode + Kimi K2.5 on OpenRouter |
 
 ---
 

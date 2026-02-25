@@ -35,7 +35,7 @@ variables:
 lint:
   extends: .uv-setup
   stage: lint
-  script: [bash ci/lint.sh]
+  script: [bash ci/lint.sh all]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG =~ /^v/
@@ -46,7 +46,7 @@ lint:
 generate-regular-pipeline:
   extends: .uv-setup
   stage: generate
-  script: [bash ci/generate.sh regular]
+  script: [make ci-generate MODE=regular]
   artifacts:
     paths: [generated-pipeline.yml]
     expire_in: 7 days
@@ -57,7 +57,7 @@ generate-regular-pipeline:
 discover-nodes:
   extends: .uv-setup
   stage: generate
-  script: [bash ci/generate.sh discover]
+  script: [make ci-generate MODE=discover]
   artifacts:
     paths: [config/nodes_inventory.yaml]
     expire_in: 7 days
@@ -72,7 +72,7 @@ generate-dynamic-pipeline:
     - job: discover-nodes
       artifacts: true
       optional: true
-  script: [bash ci/generate.sh dynamic]
+  script: [make ci-generate MODE=dynamic]
   artifacts:
     paths: [generated-dynamic-pipeline.yml]
     expire_in: 7 days
@@ -82,56 +82,6 @@ generate-dynamic-pipeline:
     - when: manual
 
 # ── Test ─────────────────────────────────────────────────────────────
-
-# Dashboard unit tests (pytest) - no Ollama/LLM dependency
-dashboard-pytest:
-  extends: .uv-setup
-  stage: test
-  needs: []
-  tags: [nodejs]
-  before_script:
-    - uv sync --extra dev --extra dashboard
-  script: [bash ci/test_dashboard.sh pytest]
-  artifacts:
-    when: always
-    paths:
-      - results/dashboard/
-    reports:
-      junit: results/dashboard/pytest-results.xml
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_TAG =~ /^v/
-    - if: $CI_COMMIT_BRANCH
-  allow_failure: false
-
-# Dashboard browser self-tests (Robot Framework + Playwright)
-dashboard-playwright:
-  extends: .uv-setup
-  stage: test
-  tags: [nodejs]
-  needs: []
-  before_script:
-    - mkdir -p results/dashboard/playwright
-    - . ci/ensure_node.sh
-    - uv sync --extra dev --extra dashboard
-    - uv pip install robotframework-browser
-    - uv run rfbrowser init chromium
-  script: [bash ci/test_dashboard.sh playwright]
-  after_script:
-    - mkdir -p results/dashboard/playwright
-  artifacts:
-    when: always
-    paths:
-      - results/dashboard/
-    reports:
-      junit: results/dashboard/playwright/output.xml
-    expire_in: 7 days
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - when: manual
-      allow_failure: true
-  allow_failure: true
 
 run-regular-tests:
   stage: test
@@ -161,7 +111,7 @@ repo-metrics:
   extends: .uv-setup
   stage: report
   needs: []
-  script: [bash ci/report.sh --post-mr]
+  script: [make ci-report POST_MR=1]
   artifacts:
     paths: [metrics/]
     expire_in: 30 days
@@ -173,9 +123,6 @@ pipeline-summary:
   extends: .uv-setup
   stage: report
   needs:
-    - job: dashboard-pytest
-      artifacts: true
-      optional: true
     - job: lint
       artifacts: false
       optional: true
@@ -191,7 +138,7 @@ pipeline-summary:
 
 deploy-superset:
   stage: deploy
-  script: [bash ci/deploy.sh]
+  script: [make ci-deploy]
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
 
@@ -205,9 +152,7 @@ test-release:
   needs:
     - job: lint
       artifacts: false
-    - job: dashboard-pytest
-      artifacts: false
-  script: [bash ci/release.sh --dry-run]
+  script: [make ci-release]
   artifacts:
     paths: [dist/]
     expire_in: 7 days
@@ -223,9 +168,7 @@ publish-pypi:
   needs:
     - job: lint
       artifacts: false
-    - job: dashboard-pytest
-      artifacts: false
-  script: [bash ci/release.sh]
+  script: [make ci-release UPLOAD=1]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   allow_failure: false
@@ -239,7 +182,7 @@ opencode-review:
     REVIEW_MODEL: "openrouter/moonshotai/kimi-k2.5"
   before_script:
     - npm install -g opencode-ai
-  script: [bash ci/review.sh]
+  script: [make opencode-pipeline-review]
   artifacts:
     paths:
       - review-result.md
