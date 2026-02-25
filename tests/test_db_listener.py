@@ -233,6 +233,48 @@ class TestDbListenerEndSuiteArchival:
         assert runs[0]["model_name"] == "mistral"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_model_name_from_robot_variable_overrides_env(self, _mock_ci, tmp_path):
+        """Robot --variable DEFAULT_MODEL:llama3 should override the env var."""
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "gpt-oss:20b"}):
+            listener.start_suite("Suite", {})
+            listener.end_test("T1", _test_attrs())
+            # Simulate Robot variable override (as set by --variable flag)
+            with patch(
+                "rfc.db_listener.BuiltIn"
+            ) as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = "llama3"
+                listener.end_suite("Suite", _suite_attrs())
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["model_name"] == "llama3"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_model_name_falls_back_when_robot_variable_unavailable(
+        self, _mock_ci, tmp_path
+    ):
+        """When BuiltIn is not available (e.g. unit tests), fall back to env/ci_info."""
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
+            listener.start_suite("Suite", {})
+            listener.end_test("T1", _test_attrs())
+            # Simulate BuiltIn not available (outside Robot context)
+            with patch(
+                "rfc.db_listener.BuiltIn"
+            ) as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.side_effect = (
+                    RuntimeError("Not in RF context")
+                )
+                listener.end_suite("Suite", _suite_attrs())
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["model_name"] == "mistral"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_database_error_does_not_raise(self, _mock_ci):
         listener = DbListener()
         mock_db = MagicMock()
