@@ -260,7 +260,11 @@ class DbListener:
         if total == 0:
             total = len(self._test_cases)
 
-        model_name = os.getenv("DEFAULT_MODEL", "unknown")
+        model_name: str = (
+            self._ci_info.get("Default_Model")
+            or os.getenv("DEFAULT_MODEL")
+            or "unknown"
+        )
 
         run = TestRun(
             timestamp=self._start_time or end_time,
