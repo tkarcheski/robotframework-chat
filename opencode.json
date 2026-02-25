@@ -5,6 +5,11 @@
       "models": {
         "moonshotai/kimi-k2.5": {}
       }
+    },
+    "ollama": {
+      "models": {
+        "qwen3-coder:30b-a3b-q4_K_M": {}
+      }
     }
   }
 }

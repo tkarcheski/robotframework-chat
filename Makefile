@@ -10,7 +10,7 @@
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.loki_listener.LokiListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
 # Load .env if present
@@ -20,12 +20,14 @@ export
 .PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import import \
+        send-results \
         discover-local-nodes discover-local-models run-local-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
+        cache-flush \
         ci-generate ci-report ci-deploy run-ci-pipeline \
-        opencode-pipeline-review opencode-local-review \
+        opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         ci-release version
 
 help: ## Show this help
@@ -65,10 +67,16 @@ robot-import: ## Run all tests then import results (continues on test failures)
 	$(MAKE) import
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
-	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
+	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
 
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
+	@$(COMPOSE) exec -T redis redis-cli FLUSHALL >/dev/null 2>&1 && \
+		echo "Redis cache flushed — Superset will show fresh data." || \
+		echo "Note: Redis not running — skip cache flush."
+
+send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
+	bash ci/send_results.sh
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
@@ -117,6 +125,11 @@ docker-logs: ## Tail service logs
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
 
+cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query PostgreSQL)
+	@echo "Flushing Redis cache..."
+	$(COMPOSE) exec redis redis-cli FLUSHALL
+	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
 ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
@@ -160,6 +173,9 @@ opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + M
 
 opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
 	bash ci/local_review.sh
+
+opencode-audit-markdown: ## Audit markdown file references for broken/stale paths (Ollama)
+	bash ci/audit_markdown.sh
 
 # ── Layer 4: Release & Versioning ────────────────────────────────────
 
