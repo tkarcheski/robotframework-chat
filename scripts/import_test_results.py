@@ -163,7 +163,18 @@ def import_results(
     metadata = data["metadata"]
 
     if model_name is None:
-        model_name = metadata.get("Model", os.getenv("DEFAULT_MODEL", "unknown"))
+        # Try metadata keys in priority order:
+        # "Default_Model" — set by git_metadata_listener (always present)
+        # "Model" — may be set manually or by older output.xml files
+        # "Model_Name" — set by the pre-run modifier (from models.yaml)
+        # "Selected_Model" — set by model-aware filtering
+        model_name = (
+            metadata.get("Default_Model")
+            or metadata.get("Model")
+            or metadata.get("Model_Name")
+            or metadata.get("Selected_Model")
+            or os.getenv("DEFAULT_MODEL", "unknown")
+        )
 
     model_release_date = metadata.get("Model_Release_Date")
     model_parameters = metadata.get("Model_Parameters")

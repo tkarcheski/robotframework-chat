@@ -19,7 +19,7 @@ SECRET_KEY = os.getenv(
     "robotframework-chat-superset-secret-change-me",
 )
 
-# Redis cache
+# Redis cache — metadata/filter cache (longer TTL is fine)
 CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
     "CACHE_DEFAULT_TIMEOUT": 300,
@@ -29,7 +29,14 @@ CACHE_CONFIG = {
     "CACHE_REDIS_DB": 0,
 }
 
-DATA_CACHE_CONFIG = CACHE_CONFIG
+# Data query cache — short TTL so new imports appear quickly.
+# `make import` also flushes Redis automatically, but this ensures
+# dashboards stay reasonably fresh even without explicit flushes.
+DATA_CACHE_CONFIG = {
+    **CACHE_CONFIG,
+    "CACHE_DEFAULT_TIMEOUT": 30,
+    "CACHE_KEY_PREFIX": "superset_data_",
+}
 
 # Feature flags
 FEATURE_FLAGS = {

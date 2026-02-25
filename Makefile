@@ -25,6 +25,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
+        cache-flush \
         ci-generate ci-report ci-deploy run-ci-pipeline \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         ci-release version
@@ -70,6 +71,9 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
+	@$(COMPOSE) exec -T redis redis-cli FLUSHALL >/dev/null 2>&1 && \
+		echo "Redis cache flushed — Superset will show fresh data." || \
+		echo "Note: Redis not running — skip cache flush."
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
@@ -120,6 +124,11 @@ docker-logs: ## Tail service logs
 
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
+
+cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query PostgreSQL)
+	@echo "Flushing Redis cache..."
+	$(COMPOSE) exec redis redis-cli FLUSHALL
+	@echo "Cache flushed — reload Superset dashboards to see fresh data."
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
