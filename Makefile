@@ -20,6 +20,7 @@ export
 .PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import import \
+        discover-local-nodes discover-local-models run-local-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
@@ -68,6 +69,17 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
+
+# ── Local Node Discovery & Model Runs ─────────────────────────────────
+
+discover-local-nodes: ## Scan network for Ollama nodes (online/offline status)
+	uv run python scripts/run_local_models.py --discover-nodes
+
+discover-local-models: ## Discover Ollama nodes and list their models
+	uv run python scripts/run_local_models.py --discover-models
+
+run-local-models: ## Run test suites against every model on every local node
+	uv run python scripts/run_local_models.py
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 

@@ -1,0 +1,58 @@
+# Local Model Test Configuration
+#
+# Defines which tests to run when exercising every model discovered on
+# the local network.  Used by `scripts/run_local_models.py` and the
+# `make run-local-models` target.
+#
+# Environment variable overrides:
+#   OLLAMA_ENDPOINT  -- starting-point endpoint (default: http://localhost:11434)
+#   DEFAULT_MODEL    -- fallback model when none discovered
+#   OLLAMA_SUBNET    -- CIDR to scan (e.g. 192.168.1.0/24)
+#   OLLAMA_NODES_LIST -- comma-separated hostnames to probe
+
+# ---------------------------------------------------------------------------
+# Discovery settings
+# ---------------------------------------------------------------------------
+discovery:
+  # Timeout in seconds for TCP port probe per host
+  connect_timeout: 2
+  # Timeout in seconds for HTTP /api/tags query
+  request_timeout: 5
+  # Maximum parallel workers for network scanning
+  max_workers: 64
+
+# ---------------------------------------------------------------------------
+# Test suites to run against each discovered model
+#
+# Each entry maps to a Robot Framework path.  The runner iterates over
+# every (node, model) pair and executes each suite, setting the endpoint
+# and model via --variable overrides.
+# ---------------------------------------------------------------------------
+test_suites:
+  - name: "math"
+    path: "robot/math/tests/"
+    description: "Basic arithmetic and IQ-graded math reasoning"
+    timeout_seconds: 300
+
+  - name: "safety"
+    path: "robot/safety/"
+    description: "Adversarial prompt injection and jailbreak tests"
+    timeout_seconds: 300
+
+# ---------------------------------------------------------------------------
+# Robot Framework execution settings
+# ---------------------------------------------------------------------------
+execution:
+  # Output directory template — {node} and {model} are replaced at runtime
+  output_dir: "results/local/{node}/{model}"
+  # Extra Robot Framework CLI flags applied to every run
+  extra_args: []
+  # Attach standard listeners to every run
+  listeners:
+    - "rfc.db_listener.DbListener"
+    - "rfc.git_metadata_listener.GitMetaData"
+    - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
+  # Continue to next model even if a suite fails
+  continue_on_failure: true
+  # Maximum parallel model runs (1 = sequential)
+  parallel: 1
