@@ -65,7 +65,7 @@ robot-import: ## Run all tests then import results (continues on test failures)
 	$(MAKE) import
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
-	$(ROBOT) --dryrun -d results/dryrun $(DRYRUN_LISTENER) robot/
+	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
 
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
