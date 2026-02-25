@@ -113,12 +113,47 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Loki (log aggregation) ──────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.4.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - rfc-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --output-document=- http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ── Promtail (log shipper → Loki) ─────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.4.2
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    depends_on:
+      loki:
+        condition: service_healthy
+    volumes:
+      - ./loki/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rfc-net
+
   # ── Grafana ────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana-oss:11.4.0
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      loki:
         condition: service_healthy
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
@@ -145,3 +180,4 @@ networks:
 volumes:
   pgdata:
   grafana-data:
+  loki-data:
