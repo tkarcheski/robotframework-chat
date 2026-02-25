@@ -20,6 +20,7 @@ export
 .PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
         robot-math-import robot-import import \
+        send-results \
         discover-local-nodes discover-local-models run-local-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
@@ -69,6 +70,9 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 import: ## Import results from output.xml files: make import RESULTS_DIR=results/
 	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
+
+send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
+	bash ci/send_results.sh
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
