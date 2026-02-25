@@ -146,7 +146,7 @@ Research LLM Models Metadata
             Run Keyword If    ${hf_info} != ${EMPTY}
             ...    Set To Dictionary    ${models}[${model}]    &{hf_info}
 
-        EXCEPT    ${error}
+        EXCEPT    AS    ${error}
             Log    Error researching ${model}: ${error}    level=WARN
             # Add minimal info for failed models
             ${failed_info}=    Create Dictionary
