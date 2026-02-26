@@ -79,6 +79,8 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 | [ai/REFACTOR.md](ai/REFACTOR.md) | Refactoring and maintenance guide |
 | [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
+| [docs/GRAFANA_SUPERSET_SETUP.md](docs/GRAFANA_SUPERSET_SETUP.md) | Grafana & Superset visualization stack setup |
+| [docs/SUPERSET_EXPORT_GUIDE.md](docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [humans/TODO.md](humans/TODO.md) | Owner action items and decisions |
 | [humans/QA_TRANSCRIPT.md](humans/QA_TRANSCRIPT.md) | Full Q&A from spec review sessions |
 
