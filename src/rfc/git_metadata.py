@@ -7,6 +7,7 @@ the pre-run modifier.
 """
 
 import os
+import subprocess
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -101,6 +102,45 @@ def _collect_github_metadata() -> Dict[str, str]:
     }
 
 
+def _git_command(*args: str) -> str:
+    """Run a git command and return its stripped stdout.
+
+    Returns an empty string if git is not installed, the working
+    directory is not a git repository, or any other error occurs.
+    """
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return ""
+
+
+def _collect_local_metadata() -> Dict[str, str]:
+    """Collect metadata from local git repository.
+
+    Uses ``git rev-parse`` to determine the current branch and commit SHA.
+    Falls back gracefully when git is not installed or when running
+    outside a git repository.
+    """
+    branch = _git_command("rev-parse", "--abbrev-ref", "HEAD")
+    sha = _git_command("rev-parse", "HEAD")
+
+    return {
+        "CI": "false",
+        "CI_Platform": "local",
+        "Branch": branch,
+        "Commit_SHA": sha,
+        "Commit_Short_SHA": sha[:8] if sha else "",
+    }
+
+
 def collect_ci_metadata() -> Dict[str, str]:
     """Collect metadata from the current CI environment.
 
@@ -119,7 +159,7 @@ def collect_ci_metadata() -> Dict[str, str]:
     elif platform == "gitlab":
         metadata = _collect_gitlab_metadata()
     else:
-        metadata = {"CI": "false"}
+        metadata = _collect_local_metadata()
 
     # Common fields (always present regardless of platform)
     metadata["Ollama_Endpoint"] = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
