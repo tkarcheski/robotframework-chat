@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
+from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
@@ -260,8 +261,18 @@ class DbListener:
         if total == 0:
             total = len(self._test_cases)
 
+        # Prefer the Robot variable (set via --variable DEFAULT_MODEL:<model>)
+        # over env-var / CI metadata so that run_local_models correctly
+        # records the actual model under test.
+        robot_model: Optional[str] = None
+        try:
+            robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
+        except Exception:
+            pass  # Not running inside Robot context (e.g. unit tests)
+
         model_name: str = (
-            self._ci_info.get("Default_Model")
+            robot_model
+            or self._ci_info.get("Default_Model")
             or os.getenv("DEFAULT_MODEL")
             or "unknown"
         )
