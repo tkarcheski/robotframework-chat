@@ -161,9 +161,7 @@ class TestLokiListenerLogMessage:
     def test_captures_llm_output_during_grade(self):
         listener = LokiListener()
         listener.start_keyword("Grade Answer", {"args": ["Q?", "A", "A"]})
-        listener.log_message(
-            {"message": 'llama3 >> {"score": 1}', "level": "INFO"}
-        )
+        listener.log_message({"message": 'llama3 >> {"score": 1}', "level": "INFO"})
         assert len(listener._entries) == 2
         entry = listener._entries[1]
         assert entry["event_type"] == "output"

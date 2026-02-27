@@ -25,7 +25,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush \
+        cache-flush superset-export superset-import \
         ci-generate ci-report ci-deploy run-ci-pipeline \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         ci-release version
@@ -129,6 +129,22 @@ cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query Postgr
 	@echo "Flushing Redis cache..."
 	$(COMPOSE) exec redis redis-cli FLUSHALL
 	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+
+superset-export: ## Export Superset dashboards to backups/ directory
+	@mkdir -p backups
+	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
+	$(COMPOSE) exec superset superset export-dashboards \
+		-f "/tmp/superset_export_$${TIMESTAMP}.zip" && \
+	$(COMPOSE) cp "superset:/tmp/superset_export_$${TIMESTAMP}.zip" \
+		"./backups/superset_export_$${TIMESTAMP}.zip" && \
+	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
+
+superset-import: ## Import Superset dashboards from ZIP: make superset-import FILE=backups/export.zip
+	$(COMPOSE) cp $(FILE) superset:/tmp/superset_import.zip
+	$(COMPOSE) exec superset superset import-dashboards \
+		-p /tmp/superset_import.zip \
+		-u "$${SUPERSET_ADMIN_USER:-admin}"
+	@echo "Dashboard import complete."
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
