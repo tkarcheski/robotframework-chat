@@ -70,17 +70,23 @@ class TestLLMKeywordsAsk:
 
         kw.ask_llm("What is 6 * 7?")
 
-        # Find the RFC_DATA:ollama_metrics call
-        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
-        metrics_calls = [c for c in debug_calls if "RFC_DATA:ollama_metrics:" in c]
+        # RFC_DATA messages must be emitted at INFO level so the
+        # DbListener.log_message() receives them at the default --loglevel.
+        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        metrics_calls = [c for c in info_calls if "RFC_DATA:ollama_metrics:" in c]
         assert len(metrics_calls) == 1
 
         # Parse and verify the JSON payload
-        raw = mock_logger.debug.call_args_list[-1].args[0]
+        raw = [
+            c.args[0]
+            for c in mock_logger.info.call_args_list
+            if "RFC_DATA:ollama_metrics:" in str(c)
+        ][0]
         payload = raw.split("RFC_DATA:ollama_metrics:", 1)[1]
         data = json.loads(payload)
         assert data["model_name"] == "llama3"
         assert data["total_duration_ns"] == 17607688368
+        assert data["prompt_text"] == "What is 6 * 7?"
 
     @patch("rfc.keywords.logger")
     @patch("rfc.keywords.OllamaClient")
@@ -92,8 +98,8 @@ class TestLLMKeywordsAsk:
 
         kw.ask_llm("test")
 
-        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
-        metrics_calls = [c for c in debug_calls if "RFC_DATA:ollama_metrics:" in c]
+        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        metrics_calls = [c for c in info_calls if "RFC_DATA:ollama_metrics:" in c]
         assert len(metrics_calls) == 0
 
 

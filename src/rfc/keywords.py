@@ -36,9 +36,10 @@ class LLMKeywords:
         logger.info(prompt)
         response = self.client.generate(prompt)
         logger.info(response)
-        logger.debug(f"RFC_DATA:actual_answer:{response}")
+        logger.info(f"RFC_DATA:actual_answer:{response}")
         if self.client.last_metrics is not None:
-            logger.debug(
+            self.client.last_metrics["prompt_text"] = prompt
+            logger.info(
                 f"RFC_DATA:ollama_metrics:{json.dumps(self.client.last_metrics)}"
             )
         return response
@@ -46,8 +47,8 @@ class LLMKeywords:
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
         result = self.grader.grade(question, expected, actual)
-        logger.debug(f"RFC_DATA:expected_answer:{expected}")
-        logger.debug(f"RFC_DATA:grading_reason:{result.reason}")
+        logger.info(f"RFC_DATA:expected_answer:{expected}")
+        logger.info(f"RFC_DATA:grading_reason:{result.reason}")
         return result.score, result.reason
 
     @keyword("Wait For LLM")

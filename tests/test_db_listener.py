@@ -851,6 +851,31 @@ class TestDbListenerOllamaMetrics:
             row = conn.execute("SELECT * FROM ollama_metrics").fetchone()
             assert row["rfc_version"] is not None
 
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_prompt_text_archived_to_database(self, _mock_ci, tmp_path):
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("T", {})
+        metrics = {
+            "model_name": "llama3",
+            "prompt_text": "What is 6 * 7?",
+            "eval_rate": 11.0,
+        }
+        listener.log_message(
+            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
+        )
+        listener.end_test("T", _test_attrs())
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM ollama_metrics").fetchone()
+            assert row["prompt_text"] == "What is 6 * 7?"
+
     def test_ignores_invalid_json_in_ollama_metrics(self):
         listener = DbListener()
         listener.start_test("T", {})
