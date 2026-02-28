@@ -336,6 +336,126 @@ class TestWaitUntilReady:
             OllamaClient().wait_until_ready(poll_interval=0)
 
 
+class TestGenerateMetrics:
+    """Tests for last_metrics capture from generate() responses."""
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_stores_last_metrics(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "response": "hello",
+            "total_duration": 17607688368,
+            "load_duration": 108889428,
+            "prompt_eval_count": 73,
+            "prompt_eval_duration": 489998464,
+            "eval_count": 186,
+            "eval_duration": 16907870673,
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test prompt")
+
+        assert client.last_metrics is not None
+        assert client.last_metrics["total_duration_ns"] == 17607688368
+        assert client.last_metrics["load_duration_ns"] == 108889428
+        assert client.last_metrics["prompt_eval_count"] == 73
+        assert client.last_metrics["prompt_eval_duration_ns"] == 489998464
+        assert client.last_metrics["eval_count"] == 186
+        assert client.last_metrics["eval_duration_ns"] == 16907870673
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_computes_eval_rate(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "response": "hello",
+            "eval_count": 186,
+            "eval_duration": 16907870673,
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        # 186 / (16907870673 / 1e9) ≈ 11.00
+        assert abs(client.last_metrics["eval_rate"] - 11.00) < 0.1
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_computes_prompt_eval_rate(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "response": "hello",
+            "prompt_eval_count": 73,
+            "prompt_eval_duration": 489998464,
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        # 73 / (489998464 / 1e9) ≈ 148.98
+        assert abs(client.last_metrics["prompt_eval_rate"] - 148.98) < 0.5
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_missing_metrics_fields_are_none(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "hello"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        assert client.last_metrics["total_duration_ns"] is None
+        assert client.last_metrics["eval_rate"] is None
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_zero_duration_gives_none_rate(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "response": "hello",
+            "eval_count": 10,
+            "eval_duration": 0,
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        assert client.last_metrics["eval_rate"] is None
+
+    def test_last_metrics_none_initially(self):
+        client = OllamaClient()
+        assert client.last_metrics is None
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_last_metrics_includes_model_name(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "hello"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="llama3")
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        assert client.last_metrics["model_name"] == "llama3"
+
+
 class TestLLMClientAlias:
     def test_alias(self):
         assert LLMClient is OllamaClient

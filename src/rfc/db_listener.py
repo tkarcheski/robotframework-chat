@@ -19,6 +19,7 @@ The listener reads DATABASE_URL from the environment if no explicit
 URL is provided.
 """
 
+import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -29,7 +30,13 @@ from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
-from .test_database import KeywordResult, TestDatabase, TestResult, TestRun
+from .test_database import (
+    KeywordResult,
+    OllamaMetrics,
+    TestDatabase,
+    TestResult,
+    TestRun,
+)
 
 # Prefix used by keywords to emit structured data for the listener.
 RFC_DATA_PREFIX = "RFC_DATA:"
@@ -108,6 +115,8 @@ class DbListener:
         self._keyword_results: List[Dict[str, Any]] = []
         self._current_keyword: Optional[Dict[str, Any]] = None
         self._current_test_name: Optional[str] = None
+        # Ollama performance metrics accumulated per suite.
+        self._ollama_metrics: List[Dict[str, Any]] = []
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -144,6 +153,7 @@ class DbListener:
             self._ci_info = collect_ci_metadata()
             self._test_cases = []
             self._keyword_results = []
+            self._ollama_metrics = []
             dest = self._describe_database_destination()
             banner = f"DbListener: archiving results to {dest}"
             logger.info(banner)
@@ -205,7 +215,14 @@ class DbListener:
             return
         payload = text[len(RFC_DATA_PREFIX) :]
         key, _, value = payload.partition(":")
-        if key:
+        if key == "ollama_metrics":
+            try:
+                metrics = json.loads(value)
+                metrics["test_name"] = self._current_test_name or ""
+                self._ollama_metrics.append(metrics)
+            except (json.JSONDecodeError, TypeError):
+                pass  # Skip malformed metrics JSON
+        elif key:
             self._current_test_data[key] = value
 
     def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
@@ -331,10 +348,33 @@ class DbListener:
             ]
             db.add_keyword_results(kw_results)
 
+            om_results = [
+                OllamaMetrics(
+                    run_id=run_id,
+                    test_name=om.get("test_name", ""),
+                    model_name=om.get("model_name", "unknown"),
+                    prompt_text=om.get("prompt_text", "")[:500]
+                    if om.get("prompt_text")
+                    else None,
+                    total_duration_ns=om.get("total_duration_ns"),
+                    load_duration_ns=om.get("load_duration_ns"),
+                    prompt_eval_count=om.get("prompt_eval_count"),
+                    prompt_eval_duration_ns=om.get("prompt_eval_duration_ns"),
+                    prompt_eval_rate=om.get("prompt_eval_rate"),
+                    eval_count=om.get("eval_count"),
+                    eval_duration_ns=om.get("eval_duration_ns"),
+                    eval_rate=om.get("eval_rate"),
+                    rfc_version=__version__,
+                )
+                for om in self._ollama_metrics
+            ]
+            db.add_ollama_metrics(om_results)
+
             dest = self._describe_database_destination()
             summary = (
-                f"DbListener: archived {len(results)} test result(s) "
-                f"and {len(kw_results)} keyword result(s) "
+                f"DbListener: archived {len(results)} test result(s), "
+                f"{len(kw_results)} keyword result(s), "
+                f"and {len(om_results)} ollama metric(s) "
                 f"to {dest} (run_id={run_id})"
             )
             logger.info(summary)

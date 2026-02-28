@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from rfc.test_database import TestDatabase, TestResult, TestRun
+from rfc.test_database import OllamaMetrics, TestDatabase, TestResult, TestRun
 
 
 def _make_run(**overrides):
@@ -159,3 +159,101 @@ class TestTestResultDataclass:
         assert result.run_id == 1
         assert result.test_name == "Test One"
         assert result.score is None
+
+
+def _make_metrics(**overrides):
+    defaults = dict(
+        run_id=1,
+        test_name="Math Test",
+        model_name="llama3",
+        prompt_text="What is 2+2?",
+        total_duration_ns=17607688368,
+        load_duration_ns=108889428,
+        prompt_eval_count=73,
+        prompt_eval_duration_ns=489998464,
+        prompt_eval_rate=148.98,
+        eval_count=186,
+        eval_duration_ns=16907870673,
+        eval_rate=11.00,
+        rfc_version="0.2.0",
+    )
+    defaults.update(overrides)
+    return OllamaMetrics(**defaults)
+
+
+class TestOllamaMetricsDataclass:
+    def test_required_fields(self):
+        m = _make_metrics()
+        assert m.run_id == 1
+        assert m.test_name == "Math Test"
+        assert m.model_name == "llama3"
+        assert m.total_duration_ns == 17607688368
+        assert m.eval_rate == 11.00
+        assert m.rfc_version == "0.2.0"
+
+    def test_optional_fields_default_none(self):
+        m = _make_metrics()
+        assert m.timestamp is None
+        assert m.id is None
+
+    def test_nullable_metrics(self):
+        m = _make_metrics(
+            total_duration_ns=None,
+            load_duration_ns=None,
+            prompt_eval_count=None,
+            prompt_eval_duration_ns=None,
+            prompt_eval_rate=None,
+            eval_count=None,
+            eval_duration_ns=None,
+            eval_rate=None,
+        )
+        assert m.total_duration_ns is None
+        assert m.eval_rate is None
+
+
+class TestOllamaMetricsDatabase:
+    def test_add_ollama_metrics(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        metrics = [_make_metrics(run_id=run_id)]
+        db.add_ollama_metrics(metrics)
+
+    def test_add_empty_ollama_metrics(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_ollama_metrics([])
+
+    def test_get_ollama_metrics(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        db.add_ollama_metrics([_make_metrics(run_id=run_id)])
+
+        rows = db.get_ollama_metrics(limit=10)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["model_name"] == "llama3"
+        assert row["total_duration_ns"] == 17607688368
+        assert row["eval_rate"] == 11.00
+        assert row["rfc_version"] == "0.2.0"
+        assert row["prompt_text"] == "What is 2+2?"
+
+    def test_get_ollama_metrics_respects_limit(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        for i in range(5):
+            db.add_ollama_metrics([_make_metrics(run_id=run_id, test_name=f"Test {i}")])
+
+        rows = db.get_ollama_metrics(limit=2)
+        assert len(rows) == 2
+
+    def test_multiple_metrics_per_run(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        db.add_ollama_metrics(
+            [
+                _make_metrics(run_id=run_id, test_name="Test A", eval_rate=11.0),
+                _make_metrics(run_id=run_id, test_name="Test B", eval_rate=15.5),
+            ]
+        )
+
+        rows = db.get_ollama_metrics(limit=10)
+        assert len(rows) == 2

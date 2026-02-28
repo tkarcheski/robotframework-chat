@@ -1,5 +1,6 @@
 """Tests for rfc.keywords.LLMKeywords."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 from rfc.keywords import LLMKeywords
@@ -50,9 +51,50 @@ class TestLLMKeywordsAsk:
     def test_ask_llm(self, MockGrader, MockClient):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
+        kw.client.last_metrics = None
         result = kw.ask_llm("What is 6 * 7?")
         kw.client.generate.assert_called_once_with("What is 6 * 7?")
         assert result == "42"
+
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.Grader")
+    def test_ask_llm_emits_ollama_metrics(self, MockGrader, MockClient, mock_logger):
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.last_metrics = {
+            "model_name": "llama3",
+            "total_duration_ns": 17607688368,
+            "eval_rate": 11.0,
+        }
+
+        kw.ask_llm("What is 6 * 7?")
+
+        # Find the RFC_DATA:ollama_metrics call
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        metrics_calls = [c for c in debug_calls if "RFC_DATA:ollama_metrics:" in c]
+        assert len(metrics_calls) == 1
+
+        # Parse and verify the JSON payload
+        raw = mock_logger.debug.call_args_list[-1].args[0]
+        payload = raw.split("RFC_DATA:ollama_metrics:", 1)[1]
+        data = json.loads(payload)
+        assert data["model_name"] == "llama3"
+        assert data["total_duration_ns"] == 17607688368
+
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.Grader")
+    def test_ask_llm_skips_metrics_when_none(self, MockGrader, MockClient, mock_logger):
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.last_metrics = None
+
+        kw.ask_llm("test")
+
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        metrics_calls = [c for c in debug_calls if "RFC_DATA:ollama_metrics:" in c]
+        assert len(metrics_calls) == 0
 
 
 class TestLLMKeywordsGrade:

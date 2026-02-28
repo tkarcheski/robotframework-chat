@@ -1,3 +1,4 @@
+import json
 from typing import List, Dict, Any
 
 from robot.api import logger
@@ -36,6 +37,10 @@ class LLMKeywords:
         response = self.client.generate(prompt)
         logger.info(response)
         logger.debug(f"RFC_DATA:actual_answer:{response}")
+        if self.client.last_metrics is not None:
+            logger.debug(
+                f"RFC_DATA:ollama_metrics:{json.dumps(self.client.last_metrics)}"
+            )
         return response
 
     @keyword("Grade Answer")
