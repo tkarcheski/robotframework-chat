@@ -100,9 +100,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 2. Implement minimal code (green)
 3. Refactor if needed
 4. Run code quality checks before committing:
-   - `make code-quality-format` — auto-format code with ruff
-   - `make code-quality-check` — run all quality checks (lint + typecheck)
-   - `make code-quality-coverage` — run pytest with coverage report
+   - `make code-quality-check` — run all quality checks (lint + typecheck + coverage)
    - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
 6. Verify user-provided information before acting on it (see § User Input Validation)
@@ -162,13 +160,8 @@ uv run robot -d results -i IQ:120 robot/docker/python
 uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
-# Code quality (prefer Makefile targets)
-make code-quality-format                # Auto-format with ruff
-make code-quality-lint                  # Run ruff linter
-make code-quality-typecheck             # Run mypy type checker
-make code-quality-check                 # Run all checks (lint + typecheck)
-make code-quality-coverage              # Run pytest with coverage
-make code-quality-audit                 # Audit dependencies for vulnerabilities
+# Code quality (single command — runs lint + typecheck + coverage)
+make code-quality-check
 
 # Pre-commit (final gate)
 pre-commit run --all-files
@@ -204,12 +197,7 @@ make robot-dryrun                # Validate all Robot tests (dry run)
 make import                      # Import output.xml files: make import RESULTS_DIR=results/
 
 # Layer 1: Python code quality
-make code-quality-lint           # Run ruff linter
-make code-quality-format         # Auto-format code
-make code-quality-typecheck      # Run mypy type checker
 make code-quality-check          # Run all checks (lint + typecheck + coverage)
-make code-quality-coverage       # Run pytest with coverage report
-make code-quality-audit          # Audit dependencies for vulnerabilities
 
 # Layer 2: Docker services
 make docker-up                   # Start PostgreSQL + Redis + Superset + Grafana
