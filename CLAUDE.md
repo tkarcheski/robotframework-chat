@@ -19,6 +19,12 @@ uv run pytest                 # Run Python unit tests
 pre-commit run --all-files    # Run all pre-commit checks
 make code-quality-check               # Lint (ruff) + typecheck (mypy)
 make robot-dryrun             # Validate Robot tests without execution
+
+# Cross-platform alternative (works on Windows without make/bash):
+uv run python tasks.py help           # List all available targets
+uv run python tasks.py install        # Install dependencies
+uv run python tasks.py check          # Lint + typecheck + coverage
+uv run python tasks.py robot-dryrun   # Validate Robot tests
 ```
 
 ---
