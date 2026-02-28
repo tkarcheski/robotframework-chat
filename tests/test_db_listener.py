@@ -1,5 +1,6 @@
 """Tests for rfc.db_listener.DbListener."""
 
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -242,9 +243,7 @@ class TestDbListenerEndSuiteArchival:
             listener.start_suite("Suite", {})
             listener.end_test("T1", _test_attrs())
             # Simulate Robot variable override (as set by --variable flag)
-            with patch(
-                "rfc.db_listener.BuiltIn"
-            ) as mock_builtin_cls:
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = "llama3"
                 listener.end_suite("Suite", _suite_attrs())
 
@@ -263,9 +262,7 @@ class TestDbListenerEndSuiteArchival:
             listener.start_suite("Suite", {})
             listener.end_test("T1", _test_attrs())
             # Simulate BuiltIn not available (outside Robot context)
-            with patch(
-                "rfc.db_listener.BuiltIn"
-            ) as mock_builtin_cls:
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.side_effect = (
                     RuntimeError("Not in RF context")
                 )
@@ -757,3 +754,105 @@ class TestDbListenerConsoleOutput:
         full_output = " ".join(console_calls)
         assert "FAILED" in full_output
         assert "connection refused" in full_output
+
+
+class TestDbListenerOllamaMetrics:
+    """Tests for Ollama performance metrics capture via RFC_DATA:ollama_metrics."""
+
+    def test_initial_ollama_metrics_list_is_empty(self):
+        listener = DbListener()
+        assert listener._ollama_metrics == []
+
+    def test_captures_ollama_metrics_from_log_message(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        metrics = {
+            "model_name": "llama3",
+            "total_duration_ns": 17607688368,
+            "eval_rate": 11.0,
+        }
+        listener.log_message(
+            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
+        )
+        assert len(listener._ollama_metrics) == 1
+        assert listener._ollama_metrics[0]["model_name"] == "llama3"
+        assert listener._ollama_metrics[0]["test_name"] == "T"
+
+    def test_accumulates_metrics_across_calls(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        for i in range(3):
+            metrics = {"model_name": f"model_{i}", "eval_rate": float(i)}
+            listener.log_message(
+                {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
+            )
+        assert len(listener._ollama_metrics) == 3
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_resets_metrics_on_start_suite(self, _mock_ci):
+        listener = DbListener()
+        listener._ollama_metrics = [{"stale": "data"}]
+        listener.start_suite("Suite", {})
+        assert listener._ollama_metrics == []
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_metrics_archived_to_database(self, _mock_ci, tmp_path):
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Math Test", {})
+        metrics = {
+            "model_name": "llama3",
+            "total_duration_ns": 17607688368,
+            "load_duration_ns": 108889428,
+            "prompt_eval_count": 73,
+            "prompt_eval_duration_ns": 489998464,
+            "prompt_eval_rate": 148.98,
+            "eval_count": 186,
+            "eval_duration_ns": 16907870673,
+            "eval_rate": 11.0,
+        }
+        listener.log_message(
+            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
+        )
+        listener.end_test("Math Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM ollama_metrics").fetchall()
+            assert len(rows) == 1
+            row = rows[0]
+            assert row["model_name"] == "llama3"
+            assert row["total_duration_ns"] == 17607688368
+            assert row["eval_rate"] == 11.0
+            assert row["test_name"] == "Math Test"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_metrics_include_rfc_version(self, _mock_ci, tmp_path):
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("T", {})
+        listener.log_message(
+            {"message": 'RFC_DATA:ollama_metrics:{"model_name": "llama3"}'}
+        )
+        listener.end_test("T", _test_attrs())
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM ollama_metrics").fetchone()
+            assert row["rfc_version"] is not None
+
+    def test_ignores_invalid_json_in_ollama_metrics(self):
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:ollama_metrics:not-valid-json"})
+        assert len(listener._ollama_metrics) == 0

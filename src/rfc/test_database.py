@@ -134,6 +134,27 @@ class KeywordResult:
 
 
 @dataclass
+class OllamaMetrics:
+    """Represents Ollama performance metrics from a single generate() call."""
+
+    run_id: int
+    test_name: str
+    model_name: str
+    prompt_text: Optional[str]
+    total_duration_ns: Optional[int]
+    load_duration_ns: Optional[int]
+    prompt_eval_count: Optional[int]
+    prompt_eval_duration_ns: Optional[int]
+    prompt_eval_rate: Optional[float]
+    eval_count: Optional[int]
+    eval_duration_ns: Optional[int]
+    eval_rate: Optional[float]
+    rfc_version: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -188,6 +209,12 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None: ...
+
+    @abc.abstractmethod
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
 
 class _SQLiteBackend(_Backend):
@@ -283,6 +310,25 @@ class _SQLiteBackend(_Backend):
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ollama_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        test_name TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        prompt_text TEXT,
+        total_duration_ns INTEGER,
+        load_duration_ns INTEGER,
+        prompt_eval_count INTEGER,
+        prompt_eval_duration_ns INTEGER,
+        prompt_eval_rate REAL,
+        eval_count INTEGER,
+        eval_duration_ns INTEGER,
+        eval_rate REAL,
+        rfc_version TEXT,
+        timestamp DATETIME,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
@@ -294,6 +340,8 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
     CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp ON robot_dry_run_results(timestamp);
     CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite ON robot_dry_run_results(test_suite);
+    CREATE INDEX IF NOT EXISTS idx_ollama_metrics_run_id ON ollama_metrics(run_id);
+    CREATE INDEX IF NOT EXISTS idx_ollama_metrics_model ON ollama_metrics(model_name);
     """
 
     # Idempotent migrations for renaming gitlab_* columns.
@@ -605,6 +653,50 @@ class _SQLiteBackend(_Backend):
             )
             return [dict(row) for row in cursor.fetchall()]
 
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        if not results:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO ollama_metrics
+                (run_id, test_name, model_name, prompt_text,
+                 total_duration_ns, load_duration_ns,
+                 prompt_eval_count, prompt_eval_duration_ns, prompt_eval_rate,
+                 eval_count, eval_duration_ns, eval_rate,
+                 rfc_version, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.run_id,
+                        r.test_name,
+                        r.model_name,
+                        r.prompt_text,
+                        r.total_duration_ns,
+                        r.load_duration_ns,
+                        r.prompt_eval_count,
+                        r.prompt_eval_duration_ns,
+                        r.prompt_eval_rate,
+                        r.eval_count,
+                        r.eval_duration_ns,
+                        r.eval_rate,
+                        r.rfc_version,
+                        r.timestamp.isoformat() if r.timestamp else None,
+                    )
+                    for r in results
+                ],
+            )
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM ollama_metrics ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
@@ -748,6 +840,31 @@ class _SQLAlchemyBackend(_Backend):
             Column("args", Text),
         )
 
+        self.ollama_metrics = Table(
+            "ollama_metrics",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column(
+                "run_id",
+                Integer,
+                ForeignKey("test_runs.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            Column("test_name", String(255), nullable=False),
+            Column("model_name", String(255), nullable=False),
+            Column("prompt_text", Text),
+            Column("total_duration_ns", BigInteger),
+            Column("load_duration_ns", BigInteger),
+            Column("prompt_eval_count", Integer),
+            Column("prompt_eval_duration_ns", BigInteger),
+            Column("prompt_eval_rate", Float),
+            Column("eval_count", Integer),
+            Column("eval_duration_ns", BigInteger),
+            Column("eval_rate", Float),
+            Column("rfc_version", String(50)),
+            Column("timestamp", DateTime),
+        )
+
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
         Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
         Index("idx_pipeline_results_status", self.pipeline_results.c.status)
@@ -755,6 +872,8 @@ class _SQLAlchemyBackend(_Backend):
         Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
         Index("idx_keyword_results_run_id", self.keyword_results.c.run_id)
         Index("idx_keyword_results_name", self.keyword_results.c.keyword_name)
+        Index("idx_ollama_metrics_run_id", self.ollama_metrics.c.run_id)
+        Index("idx_ollama_metrics_model", self.ollama_metrics.c.model_name)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -1039,6 +1158,41 @@ class _SQLAlchemyBackend(_Backend):
             )
             return [dict(row._mapping) for row in result.fetchall()]
 
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        if not results:
+            return
+        with self.engine.begin() as conn:
+            conn.execute(
+                self.ollama_metrics.insert(),
+                [
+                    {
+                        "run_id": r.run_id,
+                        "test_name": r.test_name,
+                        "model_name": r.model_name,
+                        "prompt_text": r.prompt_text,
+                        "total_duration_ns": r.total_duration_ns,
+                        "load_duration_ns": r.load_duration_ns,
+                        "prompt_eval_count": r.prompt_eval_count,
+                        "prompt_eval_duration_ns": r.prompt_eval_duration_ns,
+                        "prompt_eval_rate": r.prompt_eval_rate,
+                        "eval_count": r.eval_count,
+                        "eval_duration_ns": r.eval_duration_ns,
+                        "eval_rate": r.eval_rate,
+                        "rfc_version": r.rfc_version,
+                        "timestamp": r.timestamp,
+                    }
+                    for r in results
+                ],
+            )
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM ollama_metrics ORDER BY id DESC LIMIT :lim"),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -1146,6 +1300,12 @@ class TestDatabase:
 
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self._backend.get_dry_run_results(limit)
+
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        self._backend.add_ollama_metrics(results)
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_ollama_metrics(limit)
 
 
 def main():
