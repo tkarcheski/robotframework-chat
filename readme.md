@@ -12,7 +12,7 @@ A Robot Framework-based test harness for systematically testing Large Language M
 - **Docker** for containerized code execution, LLM testing, and the Superset stack
 - **Ollama** (optional) for local LLM testing
 
-### Installation
+### Installation (Linux / macOS)
 
 ```bash
 make install                # Install all dependencies
@@ -20,23 +20,49 @@ pre-commit install          # Install pre-commit hooks
 ollama pull llama3          # Pull default LLM model (optional)
 ```
 
+### Installation (Windows)
+
+The `tasks.py` script provides a cross-platform alternative to the Makefile.
+It requires only Python and `uv` — no `make`, `bash`, or Unix tools needed.
+
+```powershell
+uv run python tasks.py install      # Install all dependencies
+uv run pre-commit install           # Install pre-commit hooks
+ollama pull llama3                  # Pull default LLM model (optional)
+uv run python tasks.py help         # List all available targets
+```
+
+> **Note:** Docker-based tests require [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) with the WSL 2 backend enabled.
+
 ### Running Tests
 
 ```bash
+# Linux / macOS
 make robot                  # Run all Robot Framework test suites
 make robot-math             # Run math tests
 make robot-docker           # Run Docker tests
 make robot-safety           # Run safety tests
+
+# All platforms (including Windows)
+uv run python tasks.py robot        # Run all suites
+uv run python tasks.py robot-math   # Run math tests
+uv run python tasks.py robot-dryrun # Validate tests (dry run)
+uv run python tasks.py check        # Lint + typecheck + coverage
 ```
 
 ### Superset Dashboard
 
 ```bash
+# Linux / macOS
 cp .env.example .env        # Configure environment
 make docker-up              # Start PostgreSQL + Redis + Superset
 make bootstrap              # First-time Superset initialization
-open http://localhost:8088   # Open the dashboard
+
+# Windows — tasks.py copies .env automatically if missing
+uv run python tasks.py docker-up
 ```
+
+Open <http://localhost:8088> to view the dashboard.
 
 ---
 
