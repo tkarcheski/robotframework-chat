@@ -373,15 +373,13 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
-├── dashboard/                  # Dash-based test runner UI (DEPRECATED — Grafana replacing)
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
 │   ├── TEST_DATABASE.md        # Database schema & usage
 │   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
 ├── humans/                     # Owner decisions & action items
-│   ├── TODO.md                 # Actionable items from spec reviews
-│   └── QA_TRANSCRIPT.md        # Full Q&A record from spec review sessions
+│   └── TODO.md                 # Actionable items from spec reviews
 ├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks

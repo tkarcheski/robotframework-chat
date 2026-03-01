@@ -7,7 +7,7 @@ Updated Superset dashboard and Makefile completeness as of 2026-02-17.
 Updated with owner decisions from spec review as of 2026-02-19.
 
 > **Cross-references:** For grading tiers and test rules see `ai/CLAUDE.md`.
-> For actionable items see `humans/TODO.md`. For full Q&A record see `humans/QA_TRANSCRIPT.md`.
+> For actionable items see `humans/TODO.md`.
 
 **Legend:** Done / In Progress / Not Started / Deprecated
 
@@ -298,7 +298,7 @@ successfully end-to-end in a properly configured environment.
 ## Future — TRON-Themed Grafana Dashboards (Not Started)
 
 > **Owner decision (2026-02-19):** "TRON - 10000 percent TRON." See
-> `humans/TODO.md` and `humans/QA_TRANSCRIPT.md` for TRON details.
+> `humans/TODO.md` for TRON details.
 
 | Feature | Status |
 |---------|--------|

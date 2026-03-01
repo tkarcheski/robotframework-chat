@@ -6,8 +6,7 @@ with current adoption status.
 Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 > **Cross-references:** See `ai/CLAUDE.md` for grading tiers and test rules,
-> `humans/TODO.md` for actionable items, `humans/QA_TRANSCRIPT.md` for
-> the full Q&A record.
+> `humans/TODO.md` for actionable items.
 
 **Legend:** Adopted / Partial / Not Started
 
