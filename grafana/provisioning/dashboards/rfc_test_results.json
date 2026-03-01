@@ -25,7 +25,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(*) AS \"Total Runs\" FROM robot_test_runs;",
+          "rawSql": "SELECT COUNT(*) AS \"Total Runs\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -49,7 +49,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT SUM(total_tests) AS \"Total Tests\" FROM robot_test_runs;",
+          "rawSql": "SELECT SUM(total_tests) AS \"Total Tests\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -73,7 +73,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs;",
+          "rawSql": "SELECT ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -100,7 +100,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT SUM(failed) AS \"Total Failures\" FROM robot_test_runs;",
+          "rawSql": "SELECT SUM(failed) AS \"Total Failures\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -126,7 +126,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(DISTINCT model_name) AS \"Models\" FROM robot_test_runs;",
+          "rawSql": "SELECT COUNT(DISTINCT model_name) AS \"Models\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -150,7 +150,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 1) AS \"Avg Seconds\" FROM robot_test_runs;",
+          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 1) AS \"Avg Seconds\" FROM test_runs;",
           "format": "table",
           "refId": "A"
         }
@@ -177,7 +177,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT timestamp AS time, passed AS \"Passed\", failed AS \"Failed\", skipped AS \"Skipped\" FROM robot_test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
+          "rawSql": "SELECT timestamp AS time, passed AS \"Passed\", failed AS \"Failed\", skipped AS \"Skipped\" FROM test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
           "format": "time_series",
           "refId": "A"
         }
@@ -213,7 +213,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT timestamp AS time, duration_seconds AS \"Duration (s)\", test_suite AS \"Suite\" FROM robot_test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
+          "rawSql": "SELECT timestamp AS time, duration_seconds AS \"Duration (s)\", test_suite AS \"Suite\" FROM test_runs WHERE $__timeFilter(timestamp) ORDER BY timestamp;",
           "format": "time_series",
           "refId": "A"
         }
@@ -238,7 +238,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT model_name AS \"Model\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs GROUP BY model_name ORDER BY \"Pass Rate %\" DESC;",
+          "rawSql": "SELECT model_name AS \"Model\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM test_runs GROUP BY model_name ORDER BY \"Pass Rate %\" DESC;",
           "format": "table",
           "refId": "A"
         }
@@ -264,7 +264,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT test_suite AS \"Suite\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM robot_test_runs GROUP BY test_suite ORDER BY \"Pass Rate %\" DESC;",
+          "rawSql": "SELECT test_suite AS \"Suite\", ROUND(SUM(passed)::numeric / NULLIF(SUM(total_tests), 0) * 100, 1) AS \"Pass Rate %\" FROM test_runs GROUP BY test_suite ORDER BY \"Pass Rate %\" DESC;",
           "format": "table",
           "refId": "A"
         }
@@ -290,7 +290,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT timestamp, model_name AS \"Model\", test_suite AS \"Suite\", total_tests AS \"Total\", passed AS \"Pass\", failed AS \"Fail\", skipped AS \"Skip\", ROUND(duration_seconds::numeric, 1) AS \"Duration (s)\", git_branch AS \"Branch\", SUBSTRING(git_commit, 1, 8) AS \"Commit\" FROM robot_test_runs ORDER BY timestamp DESC LIMIT 25;",
+          "rawSql": "SELECT timestamp, model_name AS \"Model\", test_suite AS \"Suite\", total_tests AS \"Total\", passed AS \"Pass\", failed AS \"Fail\", skipped AS \"Skip\", ROUND(duration_seconds::numeric, 1) AS \"Duration (s)\", git_branch AS \"Branch\", SUBSTRING(git_commit, 1, 8) AS \"Commit\" FROM test_runs ORDER BY timestamp DESC LIMIT 25;",
           "format": "table",
           "refId": "A"
         }
@@ -307,7 +307,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT tr.test_name AS \"Test\", tr.test_status AS \"Status\", tr.score AS \"Score\", tr.question AS \"Question\", SUBSTRING(tr.actual_answer, 1, 100) AS \"Actual Answer\", SUBSTRING(tr.expected_answer, 1, 100) AS \"Expected Answer\", tr.grading_reason AS \"Grading Reason\" FROM robot_test_results tr JOIN robot_test_runs r ON tr.run_id = r.id WHERE r.id = (SELECT MAX(id) FROM robot_test_runs) ORDER BY tr.test_name;",
+          "rawSql": "SELECT tr.test_name AS \"Test\", tr.test_status AS \"Status\", tr.score AS \"Score\", tr.question AS \"Question\", SUBSTRING(tr.actual_answer, 1, 100) AS \"Actual Answer\", SUBSTRING(tr.expected_answer, 1, 100) AS \"Expected Answer\", tr.grading_reason AS \"Grading Reason\" FROM test_results tr JOIN test_runs r ON tr.run_id = r.id WHERE r.id = (SELECT MAX(id) FROM test_runs) ORDER BY tr.test_name;",
           "format": "table",
           "refId": "A"
         }
@@ -336,7 +336,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT r.timestamp AS time, AVG(tr.score) AS \"Avg Score\" FROM robot_test_results tr JOIN robot_test_runs r ON tr.run_id = r.id WHERE tr.score IS NOT NULL AND $__timeFilter(r.timestamp) GROUP BY r.timestamp ORDER BY r.timestamp;",
+          "rawSql": "SELECT r.timestamp AS time, AVG(tr.score) AS \"Avg Score\" FROM test_results tr JOIN test_runs r ON tr.run_id = r.id WHERE tr.score IS NOT NULL AND $__timeFilter(r.timestamp) GROUP BY r.timestamp ORDER BY r.timestamp;",
           "format": "time_series",
           "refId": "A"
         }
@@ -361,7 +361,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT test_status AS \"Status\", COUNT(*) AS \"Count\" FROM robot_test_results GROUP BY test_status;",
+          "rawSql": "SELECT test_status AS \"Status\", COUNT(*) AS \"Count\" FROM test_results GROUP BY test_status;",
           "format": "table",
           "refId": "A"
         }
@@ -390,22 +390,22 @@
       {
         "current": {},
         "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
-        "definition": "SELECT DISTINCT model_name FROM robot_test_runs ORDER BY model_name;",
+        "definition": "SELECT DISTINCT model_name FROM test_runs ORDER BY model_name;",
         "includeAll": true,
         "multi": true,
         "name": "model",
-        "query": "SELECT DISTINCT model_name FROM robot_test_runs ORDER BY model_name;",
+        "query": "SELECT DISTINCT model_name FROM test_runs ORDER BY model_name;",
         "refresh": 2,
         "type": "query"
       },
       {
         "current": {},
         "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
-        "definition": "SELECT DISTINCT test_suite FROM robot_test_runs ORDER BY test_suite;",
+        "definition": "SELECT DISTINCT test_suite FROM test_runs ORDER BY test_suite;",
         "includeAll": true,
         "multi": true,
         "name": "suite",
-        "query": "SELECT DISTINCT test_suite FROM robot_test_runs ORDER BY test_suite;",
+        "query": "SELECT DISTINCT test_suite FROM test_runs ORDER BY test_suite;",
         "refresh": 2,
         "type": "query"
       }

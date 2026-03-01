@@ -7,10 +7,10 @@ datasources:
     type: postgres
     access: proxy
     url: postgres:5432
-    database: ${POSTGRES_DB:-rfc}
-    user: ${POSTGRES_USER:-rfc}
+    database: $POSTGRES_DB
+    user: $POSTGRES_USER
     secureJsonData:
-      password: ${POSTGRES_PASSWORD:-changeme}
+      password: $POSTGRES_PASSWORD
     jsonData:
       sslmode: disable
       maxOpenConns: 5
