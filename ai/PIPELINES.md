@@ -165,7 +165,7 @@ Long-term: web UI to manage assignments.
 
 ## Branching Model
 
-> **Owner decision (2026-02-19):** See `ai/CLAUDE.md` § Branching Model.
+> **Owner decision (2026-02-19):**
 
 - `main` — human-reviewed, tested, stable
 - `claude-code-staging` — AI agent working branch (long-lived)

@@ -5,7 +5,7 @@ with current adoption status.
 
 Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
-> **Cross-references:** See `ai/CLAUDE.md` for architecture decisions,
+> **Cross-references:** See `ai/CLAUDE.md` for grading tiers and test rules,
 > `humans/TODO.md` for actionable items, `humans/QA_TRANSCRIPT.md` for
 > the full Q&A record.
 
@@ -275,6 +275,6 @@ These decisions from the spec review session impact DevOps practices:
 | Discord notifications (future) | New CI integration after DB/Grafana stable | `humans/TODO.md` § Alerting |
 | `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
 | Makefile parity with pipeline | Fix 24 broken targets | `ai/FEATURES.md` § Makefile |
-| Secrets stay in `.env` | No vault needed | `ai/CLAUDE.md` § Secrets |
-| Public Grafana + internal tools | RBAC: anonymous viewer for Grafana | `ai/CLAUDE.md` § Access Model |
-| Branching: main / staging / claude/* | Document and enforce | `ai/CLAUDE.md` § Branching Model |
+| Secrets stay in `.env` | No vault needed | `.env.example` |
+| Public Grafana + internal tools | RBAC: anonymous viewer for Grafana | `humans/TODO.md` |
+| Branching: main / staging / claude/* | Document and enforce | `ai/PIPELINES.md` § Branching Model |
