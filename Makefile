@@ -200,3 +200,10 @@ ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to pu
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"
+
+release-internal: ## Bump version from commits + git tag (no PyPI publish)
+	uv run python scripts/bump_version.py
+
+release-external: ## Bump version + git tag + publish to PyPI (runs quality gates)
+	uv run python scripts/bump_version.py --bump major --push-tag
+	$(MAKE) ci-release UPLOAD=1
