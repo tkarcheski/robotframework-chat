@@ -39,7 +39,7 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ## Agent Personality
 
-Read `ai/CLAUDE.md` for the full project intelligence and context document.
+Read `ai/CLAUDE.md` for grading tiers and test rules.
 
 1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
    vague, ask. If an architecture decision has trade-offs, surface them. The
@@ -328,7 +328,7 @@ Robot Framework Test
 robotframework-chat/
 ├── readme.md                   # Project overview
 ├── ai/                         # AI agent documentation
-│   ├── CLAUDE.md               # Project intelligence & owner decisions (start here)
+│   ├── CLAUDE.md               # Grading tiers & test rules
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines

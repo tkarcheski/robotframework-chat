@@ -96,7 +96,7 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 | Document | Description |
 |----------|-------------|
-| [ai/CLAUDE.md](ai/CLAUDE.md) | Project intelligence, owner decisions, architecture vision |
+| [ai/CLAUDE.md](ai/CLAUDE.md) | Grading tiers and test rules |
 | [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, code style, and commands |
 | [ai/DEV.md](ai/DEV.md) | Development guidelines and TDD workflow |
 | [ai/FEATURES.md](ai/FEATURES.md) | Feature tracker (prioritized, with status) |
