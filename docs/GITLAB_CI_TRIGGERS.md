@@ -123,7 +123,7 @@ rules:
 - Scheduled pipelines run the **dynamic** pipeline — the full test matrix
 - `discover-nodes` finds all online Ollama nodes and their loaded models
 - The dynamic pipeline tests **every model on every node** for regression tracking
-- Results are archived to SQL for Superset/Grafana dashboards
+- Results are archived to SQL for Superset dashboards
 - Regular-pipeline jobs (lint, dashboard-pytest) do **not** run on schedule
 
 ---

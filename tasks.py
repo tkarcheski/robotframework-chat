@@ -29,8 +29,6 @@ LISTENERS = [
     "rfc.git_metadata_listener.GitMetaData",
     "--listener",
     "rfc.ollama_timestamp_listener.OllamaTimestampListener",
-    "--listener",
-    "rfc.loki_listener.LokiListener",
 ]
 
 DRYRUN_LISTENER = ["--listener", "rfc.dry_run_listener.DryRunListener"]
@@ -144,7 +142,7 @@ def check() -> None:
 
 
 def docker_up() -> None:
-    """Start PostgreSQL + Redis + Superset + Grafana."""
+    """Start PostgreSQL + Redis + Superset."""
     _ensure_env()
     _docker_compose("up", "-d")
 

@@ -13,11 +13,11 @@ Updated with owner decisions from spec review as of 2026-02-19.
 
 ---
 
-## Priority 1 — Database & Reporting (In Progress — Migrating to Grafana)
+## Priority 1 — Database & Reporting (In Progress)
 
-> **Owner decision (2026-02-19):** Database schema is the #1 priority.
-> Grafana (TRON-themed) replaces Superset for visualization. Superset may
-> stay for ad-hoc SQL queries or be removed entirely. See `humans/TODO.md`.
+> **Owner decision (2026-03-01):** Superset is the only officially supported
+> dashboard for v1. Grafana and Loki are deferred to v2+. Database schema
+> remains the #1 priority.
 
 The Superset stack is partially functional. The **charts view** is working
 (all 6 charts render correctly) and **Recent Test Runs** table displays
@@ -85,13 +85,12 @@ have been reviewed, bugs fixed, and comprehensive unit tests added.
 
 ---
 
-## Priority 2 — Dashboard Control Panel (Deprecated — Grafana Replacing)
+## Priority 2 — Dashboard Control Panel (Deprecated)
 
-> **Owner decision (2026-02-19):** The Dash dashboard is a prototype. Grafana
-> with TRON theming replaces it. Do not invest further. Remove once Grafana
-> dashboards cover visualization needs. See `humans/TODO.md` § Dash Dashboard Deprecation.
+> **Owner decision (2026-02-19):** The Dash dashboard is a prototype. Do not
+> invest further. Superset is the v1 dashboard.
 
-The Dash-based UI is feature-rich but being replaced by Grafana.
+The Dash-based UI is feature-rich but deprecated in favor of Superset.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -242,7 +241,7 @@ successfully end-to-end in a properly configured environment.
 |---------|--------|----------|-------|
 | `make help` | Working | Setup | Lists all targets with descriptions |
 | `make install` | Working | Setup | `uv sync --extra dev --extra dashboard --extra superset` |
-| `make docker-up` | Working | Docker | Starts PostgreSQL + Redis + Superset + Dashboard |
+| `make docker-up` | Working | Docker | Starts PostgreSQL + Redis + Superset |
 | `make docker-down` | Not Complete | Docker | Depends on running stack; untested in isolation |
 | `make docker-restart` | Not Complete | Docker | Depends on running stack |
 | `make docker-logs` | Not Complete | Docker | Depends on running stack |
@@ -295,19 +294,19 @@ successfully end-to-end in a properly configured environment.
 
 ---
 
-## Future — TRON-Themed Grafana Dashboards (Not Started)
+## Future — TRON-Themed Dashboards (Deferred to v2+)
 
-> **Owner decision (2026-02-19):** "TRON - 10000 percent TRON." See
-> `humans/TODO.md` and `humans/QA_TRANSCRIPT.md` for TRON details.
+> **Owner decision (2026-02-19):** "TRON - 10000 percent TRON."
+> Deferred to v2+ along with Grafana/Loki integration.
 
 | Feature | Status |
 |---------|--------|
-| TRON color palette and theme | Not Started |
-| "The Grid" — node health matrix | Not Started |
-| "Light Cycle Arena" — A/B comparison | Not Started |
-| "Identity Disc" — per-model radar chart | Not Started |
-| "MCP Dashboard" — master overview | Not Started |
-| Public read-only anonymous access | Not Started |
+| TRON color palette and theme | Deferred (v2+) |
+| "The Grid" — node health matrix | Deferred (v2+) |
+| "Light Cycle Arena" — A/B comparison | Deferred (v2+) |
+| "Identity Disc" — per-model radar chart | Deferred (v2+) |
+| "MCP Dashboard" — master overview | Deferred (v2+) |
+| Public read-only anonymous access | Deferred (v2+) |
 
 ---
 

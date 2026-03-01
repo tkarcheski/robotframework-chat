@@ -77,7 +77,7 @@ make help
 ## Services & Dashboards
 
 - `make docker-up`
-  Start PostgreSQL + Redis + Superset + Grafana.
+  Start PostgreSQL + Redis + Superset.
 
 - `make docker-down`
   Stop all services.
