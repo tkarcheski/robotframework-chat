@@ -27,7 +27,7 @@ export
         cache-flush superset-export superset-import \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
-        build-check version
+        build-check docker-build-app docker-test-app version
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -155,6 +155,13 @@ opencode-audit-markdown: ## Audit markdown file references for broken/stale path
 
 build-check: ## Build and verify PyPI package locally (no upload)
 	bash ci/release.sh
+
+docker-build-app: ## Build the application Docker image locally
+	docker build -t ghcr.io/tkarcheski/robotframework-chat:local .
+
+docker-test-app: docker-build-app ## Smoke-test the application Docker image (dry-run)
+	docker run --rm ghcr.io/tkarcheski/robotframework-chat:local \
+		robot --dryrun -d /results robot/
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"
