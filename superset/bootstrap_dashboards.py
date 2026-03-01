@@ -985,6 +985,24 @@ def _ensure_tables(pg_uri: str) -> None:
     log.info("Ensured RFC result tables exist in PostgreSQL")
 
 
+def _probe_columns(db_uri: str, sql: str) -> List[str]:
+    """Discover column names by executing a virtual dataset SQL with LIMIT 0.
+
+    PostgreSQL (and SQLite) can infer column names from the query plan
+    without returning any rows.  This is used as a fallback when Superset's
+    ``fetch_metadata()`` fails because the underlying tables are empty.
+    """
+    from sqlalchemy import create_engine, text  # type: ignore[import-untyped]
+
+    engine = create_engine(db_uri)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT * FROM ({sql}) AS _col_probe LIMIT 0"))
+            return list(result.keys())
+    finally:
+        engine.dispose()
+
+
 def _build_position_json(slices: list, title: str) -> str:
     """Build a valid Superset dashboard position_json.
 
@@ -1093,6 +1111,7 @@ def bootstrap() -> None:
         from superset import db  # type: ignore[import-untyped,attr-defined]
         from superset.connectors.sqla.models import (  # type: ignore[import-untyped]
             SqlaTable,
+            TableColumn,
         )
         from superset.models.core import Database  # type: ignore[import-untyped]
         from superset.models.dashboard import (  # type: ignore[import-untyped]
@@ -1181,6 +1200,28 @@ def bootstrap() -> None:
                 log.info("Synced columns for virtual dataset: %s", vds_name)
             except Exception as e:
                 log.warning("Could not sync columns for %s: %s", vds_name, e)
+
+            # Fallback: when fetch_metadata() fails to register columns
+            # (e.g. underlying tables are empty), probe the database with
+            # LIMIT 0 to discover column names from the query plan.
+            if not ds.columns:
+                log.info(
+                    "No columns for %s — probing via LIMIT 0",
+                    vds_name,
+                )
+                try:
+                    col_names = _probe_columns(pg_uri, sql)
+                    for col_name in col_names:
+                        db.session.add(TableColumn(column_name=col_name, table=ds))
+                    db.session.flush()
+                    log.info(
+                        "Registered %d columns for %s via LIMIT 0 probe",
+                        len(col_names),
+                        vds_name,
+                    )
+                except Exception as e:
+                    log.warning("Column probe also failed for %s: %s", vds_name, e)
+
             datasets[vds_name] = ds
 
         # ── 4. Charts ────────────────────────────────────────────────
