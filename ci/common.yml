@@ -6,9 +6,19 @@
 #
 # All logic lives in ci/*.sh scripts. Jobs here are thin wrappers.
 
-.uv-setup:
+# Base template for all Python/uv CI jobs.
+# Provides a python:3.11 image, pins jobs to self-hosted [python] runners,
+# and installs uv if not already present (idempotent on shell runners).
+# Jobs that need uv should extend .uv-setup (not this template directly).
+.python-uv-base:
+  image: python:3.11
+  tags: [python]
   before_script:
+    - command -v uv > /dev/null 2>&1 || pip install --disable-pip-version-check uv
     - uv sync --extra dev --extra superset
+
+.uv-setup:
+  extends: .python-uv-base
 
 .robot-test:
   extends: .uv-setup
