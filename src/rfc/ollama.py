@@ -42,15 +42,19 @@ class OllamaClient:
     integration point for all Ollama interactions.
     """
 
+    _DEFAULT_TIMEOUT = 120
+
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
         model: str = os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
         temperature: float = 0.0,
         max_tokens: int = 256,
-        timeout: int = 120,
+        timeout: Optional[int] = None,
         max_retries: int = 2,
     ):
+        if timeout is None:
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(self._DEFAULT_TIMEOUT)))
         if not isinstance(base_url, str) or not base_url:
             raise ValueError("base_url must be a non-empty string")
         if not isinstance(model, str) or not model:

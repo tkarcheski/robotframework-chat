@@ -6,7 +6,7 @@ from unittest.mock import patch
 from rfc.suite_config import (
     _apply_env_overrides,
     defaults,
-    test_suites,
+    test_suites as get_test_suites,
     run_all_entry,
     iq_levels,
     container_profiles,
@@ -37,7 +37,7 @@ class TestConvenienceAccessors:
         assert "model" in result
 
     def test_test_suites_returns_dict(self, mock_suite_config):
-        result = test_suites()
+        result = get_test_suites()
         assert isinstance(result, dict)
         assert "math" in result
 

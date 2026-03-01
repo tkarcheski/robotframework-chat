@@ -11,12 +11,15 @@ from rfc.pre_run_modifier import ModelAwarePreRunModifier
 class TestPreRunModifierInit:
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_defaults(self, MockClient):
-        mod = ModelAwarePreRunModifier()
-        assert mod.ollama_endpoint == "http://localhost:11434"
-        assert mod.config_path == "robot/ci/models.yaml"
-        assert mod.default_model == "gpt-oss:20b"
-        assert mod.available_models == []
-        assert mod.model_config == {}
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OLLAMA_ENDPOINT", None)
+            os.environ.pop("DEFAULT_MODEL", None)
+            mod = ModelAwarePreRunModifier()
+            assert mod.ollama_endpoint == "http://localhost:11434"
+            assert mod.config_path == "robot/ci/models.yaml"
+            assert mod.default_model == "gpt-oss:20b"
+            assert mod.available_models == []
+            assert mod.model_config == {}
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_custom_args(self, MockClient):
