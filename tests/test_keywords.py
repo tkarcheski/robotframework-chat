@@ -1,6 +1,7 @@
 """Tests for rfc.keywords.LLMKeywords."""
 
 import json
+import os
 from unittest.mock import MagicMock, patch
 
 from rfc.keywords import LLMKeywords
@@ -19,6 +20,13 @@ class TestLLMKeywordsInit:
     def test_custom_timeout_and_retries(self, MockGrader, MockClient):
         LLMKeywords(timeout=60, max_retries=5)
         MockClient.assert_called_once_with(timeout=60, max_retries=5)
+
+    @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
+    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.Grader")
+    def test_default_timeout_from_env(self, MockGrader, MockClient):
+        LLMKeywords()
+        MockClient.assert_called_once_with(timeout=300, max_retries=2)
 
 
 class TestLLMKeywordsSetters:

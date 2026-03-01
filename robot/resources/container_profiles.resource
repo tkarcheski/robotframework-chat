@@ -23,7 +23,7 @@ Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME   
 
 # Default timeouts
 ${DEFAULT_TIMEOUT}      30
-${LLM_TIMEOUT}          120
+${LLM_TIMEOUT}          %{OLLAMA_TIMEOUT=120}
 ${LONG_TIMEOUT}         300
 
 *** Keywords ***
