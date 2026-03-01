@@ -1,8 +1,16 @@
 """Tests for rfc.test_database."""
 
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-from rfc.test_database import HostInfo, OllamaMetrics, TestDatabase, TestResult, TestRun
+from rfc.test_database import (
+    HostInfo,
+    OllamaMetrics,
+    TestDatabase,
+    TestResult,
+    TestRun,
+    _SQLAlchemyBackend,
+)
 
 
 def _make_run(**overrides):
@@ -330,3 +338,63 @@ class TestHostInfoDatabase:
         runs = db.get_recent_runs(limit=1)
         assert len(runs) == 1
         assert runs[0]["hostname"] == "dev1"
+
+
+class TestSQLAlchemyMigrations:
+    """Verify each PG migration runs in its own transaction."""
+
+    @patch("rfc.test_database.text", create=True, side_effect=lambda s: s)
+    @patch.object(_SQLAlchemyBackend, "__init__", lambda self, url: None)
+    def test_each_migration_uses_own_transaction(self, _mock_text: MagicMock) -> None:
+        """engine.begin() must be called once per migration, not once total."""
+        backend = _SQLAlchemyBackend.__new__(_SQLAlchemyBackend)
+        backend.engine = MagicMock()
+
+        backend._run_migrations()
+
+        expected_calls = len(_SQLAlchemyBackend._PG_MIGRATIONS)
+        actual_calls = backend.engine.begin.call_count
+        assert actual_calls == expected_calls, (
+            f"engine.begin() called {actual_calls} times, "
+            f"expected {expected_calls} (once per migration)"
+        )
+
+    @patch("rfc.test_database.text", create=True, side_effect=lambda s: s)
+    @patch.object(_SQLAlchemyBackend, "__init__", lambda self, url: None)
+    def test_later_migrations_run_after_earlier_failure(
+        self, _mock_text: MagicMock
+    ) -> None:
+        """A failing migration must not prevent subsequent migrations."""
+        backend = _SQLAlchemyBackend.__new__(_SQLAlchemyBackend)
+        backend.engine = MagicMock()
+
+        executed_sql: list[str] = []
+
+        call_count = 0
+
+        def fake_begin():
+            nonlocal call_count
+            call_count += 1
+            ctx = MagicMock()
+            conn = MagicMock()
+
+            if call_count == 1:
+                # First migration fails
+                conn.execute.side_effect = Exception("already applied")
+            else:
+                conn.execute.side_effect = lambda sql: executed_sql.append(str(sql))
+
+            ctx.__enter__.return_value = conn
+            ctx.__exit__.return_value = False
+            return ctx
+
+        backend.engine.begin = fake_begin
+
+        backend._run_migrations()
+
+        # Even though the first migration failed, the rest should have run.
+        remaining = len(_SQLAlchemyBackend._PG_MIGRATIONS) - 1
+        assert len(executed_sql) == remaining, (
+            f"Only {len(executed_sql)} migrations ran after first failure, "
+            f"expected {remaining}"
+        )

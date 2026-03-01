@@ -798,12 +798,12 @@ class _SQLAlchemyBackend(_Backend):
         self._run_migrations()
 
     def _run_migrations(self) -> None:
-        with self.engine.begin() as conn:
-            for sql in self._PG_MIGRATIONS:
-                try:
+        for sql in self._PG_MIGRATIONS:
+            try:
+                with self.engine.begin() as conn:
                     conn.execute(text(sql))
-                except Exception:
-                    pass  # Column already BIGINT or table doesn't exist yet
+            except Exception:
+                pass  # Already applied or table doesn't exist yet
 
     def _define_tables(self) -> None:
         self.test_runs = Table(
