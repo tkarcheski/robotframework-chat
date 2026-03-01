@@ -380,8 +380,7 @@ robotframework-chat/
 │   ├── TEST_DATABASE.md        # Database schema & usage
 │   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
 ├── humans/                     # Owner decisions & action items
-│   ├── TODO.md                 # Actionable items from spec reviews
-│   └── QA_TRANSCRIPT.md        # Full Q&A record from spec review sessions
+│   └── TODO.md                 # Actionable items from spec reviews
 ├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks

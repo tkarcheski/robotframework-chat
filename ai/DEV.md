@@ -249,4 +249,3 @@ These must be stored in the database per test run.
 - `ai/AGENTS.md` — Agent contract, code style, commands
 - `ai/FEATURES.md` — Feature status tracker
 - `humans/TODO.md` — Owner action items
-- `humans/QA_TRANSCRIPT.md` — Full Q&A record from spec review

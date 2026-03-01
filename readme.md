@@ -96,25 +96,16 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 | Document | Description |
 |----------|-------------|
-| [ai/CLAUDE.md](ai/CLAUDE.md) | Grading tiers and test rules |
-| [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, code style, and commands |
-| [ai/DEV.md](ai/DEV.md) | Development guidelines and TDD workflow |
-| [ai/FEATURES.md](ai/FEATURES.md) | Feature tracker (prioritized, with status) |
-| [ai/PIPELINES.md](ai/PIPELINES.md) | Pipeline strategy and model selection |
-| [ai/DEVOPS.md](ai/DEVOPS.md) | DevOps practices tracker |
-| [ai/REFACTOR.md](ai/REFACTOR.md) | Refactoring and maintenance guide |
 | [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
 | [docs/GRAFANA_SUPERSET_SETUP.md](docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
-| [humans/TODO.md](humans/TODO.md) | Owner action items and decisions |
-| [humans/QA_TRANSCRIPT.md](humans/QA_TRANSCRIPT.md) | Full Q&A from spec review sessions |
 
 ---
 
 ## Contributing
 
-1. Follow the code style guidelines in [ai/AGENTS.md](ai/AGENTS.md)
-2. Add tests for new features
-3. Run `pre-commit run --all-files` before committing
-4. See [ai/DEV.md](ai/DEV.md) for the full development workflow
+1. Read [ai/DEV.md](ai/DEV.md) for the development workflow and TDD discipline
+2. Follow the code style guidelines in [ai/AGENTS.md](ai/AGENTS.md)
+3. Add tests for new features (see [ai/CLAUDE.md](ai/CLAUDE.md) for grading tiers)
+4. Run `pre-commit run --all-files` before committing

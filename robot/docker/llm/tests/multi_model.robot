@@ -51,7 +51,7 @@ Check Ollama Health On Endpoint
 *** Test Cases ***
 Compare Models On Code Generation (IQ:130)
     [Documentation]    Same coding prompt, different models, compare quality
-    [Tags]    IQ:130    comparison    code-generation
+    [Tags]    IQ:130    comparison    code-generation    tier:4    verify:llm
     [Setup]    Switch LLM Model    llama3
 
     # Generate code with current model
@@ -77,7 +77,7 @@ Compare Models On Code Generation (IQ:130)
 
 LLM Algorithm Explanation (IQ:120)
     [Documentation]    Test algorithm explanation capabilities
-    [Tags]    IQ:120    algorithm    explanation
+    [Tags]    IQ:120    algorithm    explanation    tier:1    verify:robot
 
     ${response}=    LLM.Ask LLM    ${ALGO_PROMPT}
 
@@ -91,7 +91,7 @@ LLM Algorithm Explanation (IQ:120)
 
 LLM Container Resource Usage (IQ:110)
     [Documentation]    Monitor resource usage during LLM inference
-    [Tags]    IQ:110    monitoring    resources
+    [Tags]    IQ:110    monitoring    resources    tier:1    verify:robot
 
     # Start a request
     ${response}=    LLM.Ask LLM    Write a short Python script to calculate prime numbers
@@ -107,7 +107,7 @@ LLM Container Resource Usage (IQ:110)
 
 Custom LLM Configuration (IQ:140)
     [Documentation]    Test with custom resource allocation for LLM
-    [Tags]    IQ:140    custom-config
+    [Tags]    IQ:140    custom-config    tier:1    verify:robot
 
     # Find available port for custom container
     ${custom_port}=    Docker.Find Available Port    11434    11500
