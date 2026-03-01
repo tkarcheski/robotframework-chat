@@ -25,7 +25,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(*) AS \"Keywords\" FROM robot_keyword_results;",
+          "rawSql": "SELECT COUNT(*) AS \"Keywords\" FROM keyword_results;",
           "format": "table",
           "refId": "A"
         }
@@ -45,7 +45,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 2) AS \"Avg Duration\" FROM robot_keyword_results WHERE duration_seconds IS NOT NULL;",
+          "rawSql": "SELECT ROUND(AVG(duration_seconds)::numeric, 2) AS \"Avg Duration\" FROM keyword_results WHERE duration_seconds IS NOT NULL;",
           "format": "table",
           "refId": "A"
         }
@@ -72,7 +72,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(DISTINCT keyword_name) AS \"Keywords\" FROM robot_keyword_results;",
+          "rawSql": "SELECT COUNT(DISTINCT keyword_name) AS \"Keywords\" FROM keyword_results;",
           "format": "table",
           "refId": "A"
         }
@@ -92,7 +92,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT ROUND(SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS \"Failure %\" FROM robot_keyword_results;",
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0) * 100, 1) AS \"Failure %\" FROM keyword_results;",
           "format": "table",
           "refId": "A"
         }
@@ -119,7 +119,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT keyword_name AS \"Keyword\", ROUND(AVG(duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM robot_keyword_results WHERE duration_seconds IS NOT NULL GROUP BY keyword_name ORDER BY \"Avg Duration (s)\" DESC LIMIT 20;",
+          "rawSql": "SELECT keyword_name AS \"Keyword\", ROUND(AVG(duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM keyword_results WHERE duration_seconds IS NOT NULL GROUP BY keyword_name ORDER BY \"Avg Duration (s)\" DESC LIMIT 20;",
           "format": "table",
           "refId": "A"
         }
@@ -149,7 +149,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT keyword_name AS \"Keyword\", COUNT(*) AS \"Executions\", SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS \"Passed\", SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS \"Failed\" FROM robot_keyword_results GROUP BY keyword_name ORDER BY \"Executions\" DESC LIMIT 20;",
+          "rawSql": "SELECT keyword_name AS \"Keyword\", COUNT(*) AS \"Executions\", SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS \"Passed\", SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS \"Failed\" FROM keyword_results GROUP BY keyword_name ORDER BY \"Executions\" DESC LIMIT 20;",
           "format": "table",
           "refId": "A"
         }
@@ -183,7 +183,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Ask LLM' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
+          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM keyword_results kw JOIN test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Ask LLM' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
           "format": "time_series",
           "refId": "A"
         }
@@ -207,7 +207,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Grade Answer' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
+          "rawSql": "SELECT r.timestamp AS time, kw.duration_seconds AS \"Duration (s)\", r.model_name AS \"Model\" FROM keyword_results kw JOIN test_runs r ON kw.run_id = r.id WHERE kw.keyword_name = 'Grade Answer' AND kw.duration_seconds IS NOT NULL AND $__timeFilter(r.timestamp) ORDER BY r.timestamp;",
           "format": "time_series",
           "refId": "A"
         }
@@ -231,7 +231,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT r.model_name AS \"Model\", kw.keyword_name AS \"Keyword\", ROUND(AVG(kw.duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id WHERE kw.duration_seconds IS NOT NULL AND kw.keyword_name IN ('Ask LLM', 'Grade Answer') GROUP BY r.model_name, kw.keyword_name ORDER BY r.model_name;",
+          "rawSql": "SELECT r.model_name AS \"Model\", kw.keyword_name AS \"Keyword\", ROUND(AVG(kw.duration_seconds)::numeric, 3) AS \"Avg Duration (s)\" FROM keyword_results kw JOIN test_runs r ON kw.run_id = r.id WHERE kw.duration_seconds IS NOT NULL AND kw.keyword_name IN ('Ask LLM', 'Grade Answer') GROUP BY r.model_name, kw.keyword_name ORDER BY r.model_name;",
           "format": "table",
           "refId": "A"
         }
@@ -251,7 +251,7 @@
       "datasource": { "type": "postgres", "uid": "${DS_RFC_POSTGRESQL}" },
       "targets": [
         {
-          "rawSql": "SELECT kw.keyword_name AS \"Keyword\", kw.test_name AS \"Test\", kw.library_name AS \"Library\", kw.status AS \"Status\", kw.duration_seconds AS \"Duration (s)\", kw.args AS \"Args\", r.model_name AS \"Model\", r.timestamp AS \"Run Time\" FROM robot_keyword_results kw JOIN robot_test_runs r ON kw.run_id = r.id ORDER BY r.timestamp DESC, kw.id DESC LIMIT 50;",
+          "rawSql": "SELECT kw.keyword_name AS \"Keyword\", kw.test_name AS \"Test\", kw.library_name AS \"Library\", kw.status AS \"Status\", kw.duration_seconds AS \"Duration (s)\", kw.args AS \"Args\", r.model_name AS \"Model\", r.timestamp AS \"Run Time\" FROM keyword_results kw JOIN test_runs r ON kw.run_id = r.id ORDER BY r.timestamp DESC, kw.id DESC LIMIT 50;",
           "format": "table",
           "refId": "A"
         }
