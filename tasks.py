@@ -152,6 +152,29 @@ def import_results() -> None:
     _uv_run(*cmd)
 
 
+def docker_build_app() -> None:
+    """Build the application Docker image locally."""
+    _run(["docker", "build", "-t", "ghcr.io/tkarcheski/robotframework-chat:local", "."])
+
+
+def docker_test_app() -> None:
+    """Smoke-test the application Docker image (dry-run)."""
+    docker_build_app()
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "ghcr.io/tkarcheski/robotframework-chat:local",
+            "robot",
+            "--dryrun",
+            "-d",
+            "/results",
+            "robot/",
+        ]
+    )
+
+
 def show_help() -> None:
     """Show available targets."""
     print("\nAvailable targets:\n")
@@ -174,6 +197,8 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
     "import-results": import_results,
+    "docker-build-app": docker_build_app,
+    "docker-test-app": docker_test_app,
     "help": show_help,
 }
 
