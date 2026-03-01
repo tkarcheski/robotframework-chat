@@ -64,6 +64,11 @@ class TestVersionConsistency:
         release_sh = ROOT / "ci" / "release.sh"
         assert release_sh.is_file(), "ci/release.sh not found"
 
+    def test_bump_version_script_exists(self) -> None:
+        """scripts/bump_version.py must exist."""
+        bump_script = ROOT / "scripts" / "bump_version.py"
+        assert bump_script.is_file(), "scripts/bump_version.py not found"
+
 
 class TestReleaseScriptContent:
     """Validate ci/release.sh script structure."""
