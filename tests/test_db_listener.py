@@ -881,3 +881,69 @@ class TestDbListenerOllamaMetrics:
         listener.start_test("T", {})
         listener.log_message({"message": "RFC_DATA:ollama_metrics:not-valid-json"})
         assert len(listener._ollama_metrics) == 0
+
+
+class TestDbListenerHostInfo:
+    """Tests for host identification metrics capture."""
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch(
+        "rfc.db_listener.collect_host_info",
+        return_value={
+            "hostname": "dev1",
+            "os_name": "Linux",
+            "os_version": "5.15.0",
+            "cpu_arch": "x86_64",
+            "cpu_count": 16,
+            "total_ram_gb": 64.0,
+            "gpu_info": "NVIDIA RTX 4090, 24576 MiB",
+        },
+    )
+    def test_hostname_stored_on_test_run(self, _mock_host, _mock_ci, tmp_path):
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("T", {})
+        listener.end_test("T", _test_attrs())
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert row["hostname"] == "dev1"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch(
+        "rfc.db_listener.collect_host_info",
+        return_value={
+            "hostname": "mini1",
+            "os_name": "Darwin",
+            "os_version": "24.0.0",
+            "cpu_arch": "arm64",
+            "cpu_count": 10,
+            "total_ram_gb": 16.0,
+            "gpu_info": None,
+        },
+    )
+    def test_host_info_upserted_to_database(self, _mock_host, _mock_ci, tmp_path):
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("T", {})
+        listener.end_test("T", _test_attrs())
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM host_info").fetchone()
+            assert row["hostname"] == "mini1"
+            assert row["os_name"] == "Darwin"
+            assert row["cpu_arch"] == "arm64"
+            assert row["cpu_count"] == 10
+            assert row["total_ram_gb"] == 16.0
