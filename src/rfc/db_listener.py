@@ -335,6 +335,7 @@ class DbListener:
                         cpu_count=self._host_info.get("cpu_count", 0),
                         total_ram_gb=self._host_info.get("total_ram_gb", 0.0),
                         gpu_info=self._host_info.get("gpu_info"),
+                        rfc_version=__version__,
                     )
                 )
 
@@ -348,6 +349,7 @@ class DbListener:
                     expected_answer=tc.get("expected_answer"),
                     actual_answer=tc.get("actual_answer"),
                     grading_reason=tc.get("grading_reason"),
+                    rfc_version=__version__,
                 )
                 for tc in self._test_cases
             ]
@@ -364,6 +366,7 @@ class DbListener:
                     end_time=kw["end_time"],
                     duration_seconds=kw["duration_seconds"],
                     args=kw["args"],
+                    rfc_version=__version__,
                 )
                 for kw in self._keyword_results
             ]

@@ -1,11 +1,15 @@
 """Tests for rfc.test_database."""
 
+import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from rfc.test_database import (
     HostInfo,
+    KeywordResult,
+    ModelInfo,
     OllamaMetrics,
+    PipelineResult,
     TestDatabase,
     TestResult,
     TestRun,
@@ -418,3 +422,269 @@ class TestSQLAlchemyMigrations:
                 _SQLAlchemyBackend(database_url="postgresql://fake")
 
         mock_migrations.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# rfc_version on tables that previously lacked it
+# ---------------------------------------------------------------------------
+
+
+class TestRfcVersionDataclasses:
+    """Verify rfc_version field exists on all dataclasses."""
+
+    def test_test_result_rfc_version_defaults_none(self) -> None:
+        r = TestResult(
+            run_id=1,
+            test_name="T",
+            test_status="PASS",
+            score=None,
+            question=None,
+            expected_answer=None,
+            actual_answer=None,
+            grading_reason=None,
+        )
+        assert r.rfc_version is None
+
+    def test_test_result_rfc_version_set(self) -> None:
+        r = TestResult(
+            run_id=1,
+            test_name="T",
+            test_status="PASS",
+            score=None,
+            question=None,
+            expected_answer=None,
+            actual_answer=None,
+            grading_reason=None,
+            rfc_version="0.133.0",
+        )
+        assert r.rfc_version == "0.133.0"
+
+    def test_keyword_result_rfc_version_defaults_none(self) -> None:
+        k = KeywordResult(
+            run_id=1,
+            test_name="T",
+            keyword_name="Ask LLM",
+            library_name="rfc.keywords",
+            status="PASS",
+        )
+        assert k.rfc_version is None
+
+    def test_keyword_result_rfc_version_set(self) -> None:
+        k = KeywordResult(
+            run_id=1,
+            test_name="T",
+            keyword_name="Ask LLM",
+            library_name="rfc.keywords",
+            status="PASS",
+            rfc_version="0.133.0",
+        )
+        assert k.rfc_version == "0.133.0"
+
+    def test_pipeline_result_rfc_version_defaults_none(self) -> None:
+        p = PipelineResult(
+            pipeline_id=100,
+            status="success",
+            ref="main",
+            sha="abc123",
+            web_url="https://example.com",
+        )
+        assert p.rfc_version is None
+
+    def test_pipeline_result_rfc_version_set(self) -> None:
+        p = PipelineResult(
+            pipeline_id=100,
+            status="success",
+            ref="main",
+            sha="abc123",
+            web_url="https://example.com",
+            rfc_version="0.133.0",
+        )
+        assert p.rfc_version == "0.133.0"
+
+    def test_host_info_rfc_version_defaults_none(self) -> None:
+        h = _make_host_info()
+        assert h.rfc_version is None
+
+    def test_host_info_rfc_version_set(self) -> None:
+        h = _make_host_info(rfc_version="0.133.0")
+        assert h.rfc_version == "0.133.0"
+
+    def test_model_info_rfc_version_defaults_none(self) -> None:
+        m = ModelInfo(
+            name="llama3",
+            full_name="Meta Llama 3",
+            organization="Meta",
+            release_date="2024-01-01",
+            parameters="8B",
+        )
+        assert m.rfc_version is None
+
+    def test_model_info_rfc_version_set(self) -> None:
+        m = ModelInfo(
+            name="llama3",
+            full_name="Meta Llama 3",
+            organization="Meta",
+            release_date="2024-01-01",
+            parameters="8B",
+            rfc_version="0.133.0",
+        )
+        assert m.rfc_version == "0.133.0"
+
+
+class TestRfcVersionRoundTrip:
+    """Verify rfc_version is stored and retrieved for each table."""
+
+    def test_test_results_stores_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="T",
+                    test_status="PASS",
+                    score=1,
+                    question=None,
+                    expected_answer=None,
+                    actual_answer=None,
+                    grading_reason=None,
+                    rfc_version="0.133.0",
+                )
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM test_results").fetchone()
+            assert row["rfc_version"] == "0.133.0"
+
+    def test_keyword_results_stores_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run_id = db.add_test_run(_make_run())
+        db.add_keyword_results(
+            [
+                KeywordResult(
+                    run_id=run_id,
+                    test_name="T",
+                    keyword_name="Ask LLM",
+                    library_name="rfc.keywords",
+                    status="PASS",
+                    rfc_version="0.133.0",
+                )
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM keyword_results").fetchone()
+            assert row["rfc_version"] == "0.133.0"
+
+    def test_pipeline_results_stores_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_pipeline_result(
+            PipelineResult(
+                pipeline_id=100,
+                status="success",
+                ref="main",
+                sha="abc123",
+                web_url="https://example.com",
+                rfc_version="0.133.0",
+            )
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM pipeline_results").fetchone()
+            assert row["rfc_version"] == "0.133.0"
+
+    def test_host_info_stores_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_host(_make_host_info(rfc_version="0.133.0"))
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM host_info").fetchone()
+            assert row["rfc_version"] == "0.133.0"
+
+    def test_model_stores_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_model(
+            ModelInfo(
+                name="llama3",
+                full_name="Meta Llama 3",
+                organization="Meta",
+                release_date="2024-01-01",
+                parameters="8B",
+                rfc_version="0.133.0",
+            )
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM models").fetchone()
+            assert row["rfc_version"] == "0.133.0"
+
+
+class TestRfcVersionUpsertPreservesOriginal:
+    """Upsert tables must preserve the original rfc_version."""
+
+    def test_host_info_upsert_preserves_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_host(_make_host_info(rfc_version="0.100.0"))
+        # Second upsert with newer version should NOT overwrite
+        db.add_or_update_host(_make_host_info(rfc_version="0.133.0"))
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM host_info").fetchone()
+            assert row["rfc_version"] == "0.100.0"
+
+    def test_model_upsert_preserves_rfc_version(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_model(
+            ModelInfo(
+                name="llama3",
+                full_name="Meta Llama 3",
+                organization="Meta",
+                release_date="2024-01-01",
+                parameters="8B",
+                rfc_version="0.100.0",
+            )
+        )
+        # Second upsert with newer version should NOT overwrite
+        db.add_or_update_model(
+            ModelInfo(
+                name="llama3",
+                full_name="Meta Llama 3",
+                organization="Meta",
+                release_date="2024-01-01",
+                parameters="8B",
+                rfc_version="0.133.0",
+            )
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM models").fetchone()
+            assert row["rfc_version"] == "0.100.0"
+
+    def test_model_upsert_sets_rfc_version_when_null(self, tmp_path) -> None:
+        """When existing record has NULL rfc_version, upsert should set it."""
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_model(
+            ModelInfo(
+                name="llama3",
+                full_name="Meta Llama 3",
+                organization="Meta",
+                release_date="2024-01-01",
+                parameters="8B",
+            )
+        )
+        # Second upsert should fill in the NULL rfc_version
+        db.add_or_update_model(
+            ModelInfo(
+                name="llama3",
+                full_name="Meta Llama 3",
+                organization="Meta",
+                release_date="2024-01-01",
+                parameters="8B",
+                rfc_version="0.133.0",
+            )
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT rfc_version FROM models").fetchone()
+            assert row["rfc_version"] == "0.133.0"
