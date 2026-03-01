@@ -194,6 +194,8 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
     "import-results": import_results,
+    "docker-build-app": docker_build_app,
+    "docker-test-app": docker_test_app,
     "help": show_help,
 }
 
