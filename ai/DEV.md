@@ -228,7 +228,7 @@ When calling Ollama's `/api/generate`, always specify and record:
 - `top_p` — include for completeness
 - `top_k` — include for completeness
 
-These must be stored in the database per test run. See `ai/CLAUDE.md` § Inference Parameters.
+These must be stored in the database per test run.
 
 ---
 
@@ -240,13 +240,12 @@ These must be stored in the database per test run. See `ai/CLAUDE.md` § Inferen
 - **Buffer results locally** if DB is unreachable, sync later
 - **Skip remaining tests** for a node that goes offline mid-suite, continue with other nodes
 
-See `ai/CLAUDE.md` § Resilience Rules.
 
 ---
 
 ## Cross-References
 
-- `ai/CLAUDE.md` — Project intelligence, owner decisions, architecture
+- `ai/CLAUDE.md` — Grading tiers and test rules
 - `ai/AGENTS.md` — Agent contract, code style, commands
 - `ai/FEATURES.md` — Feature status tracker
 - `humans/TODO.md` — Owner action items

@@ -281,7 +281,7 @@ make bootstrap            # Initialize Superset (first time)
 
 ## Cross-References
 
-- `ai/CLAUDE.md` — project vision, architecture decisions, grading tiers
+- `ai/CLAUDE.md` — grading tiers and test rules
 - `ai/AGENTS.md` — agent instructions, code style, testing patterns
 - `ai/DEV.md` — development workflow, TDD discipline
 - `.env.example` — full list of environment variables

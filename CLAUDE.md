@@ -1,7 +1,6 @@
 # CLAUDE.md — Claude Code persistent instructions
 
-Read `@ai/CLAUDE.md` for project intelligence, owner decisions, architecture vision,
-grading tiers, TRON dashboard specs, and everything from the spec review sessions.
+Read `@ai/CLAUDE.md` for grading tiers and test rules.
 
 Read and follow `@ai/AGENTS.md` for project philosophy, architecture, code style,
 commit conventions, and the full agent contract.
@@ -42,7 +41,7 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
-- **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. Log mistakes in `ai/CLAUDE.md` § User Mistake Log. See `ai/AGENTS.md` § User Input Validation.
+- **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
 
 ---
 

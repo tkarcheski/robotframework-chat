@@ -6,7 +6,7 @@ Updated listener review as of 2026-02-15.
 Updated Superset dashboard and Makefile completeness as of 2026-02-17.
 Updated with owner decisions from spec review as of 2026-02-19.
 
-> **Cross-references:** For owner-confirmed architecture decisions see `ai/CLAUDE.md`.
+> **Cross-references:** For grading tiers and test rules see `ai/CLAUDE.md`.
 > For actionable items see `humans/TODO.md`. For full Q&A record see `humans/QA_TRANSCRIPT.md`.
 
 **Legend:** Done / In Progress / Not Started / Deprecated
@@ -17,7 +17,7 @@ Updated with owner decisions from spec review as of 2026-02-19.
 
 > **Owner decision (2026-02-19):** Database schema is the #1 priority.
 > Grafana (TRON-themed) replaces Superset for visualization. Superset may
-> stay for ad-hoc SQL queries or be removed entirely. See `ai/CLAUDE.md`.
+> stay for ad-hoc SQL queries or be removed entirely. See `humans/TODO.md`.
 
 The Superset stack is partially functional. The **charts view** is working
 (all 6 charts render correctly) and **Recent Test Runs** table displays
@@ -298,7 +298,7 @@ successfully end-to-end in a properly configured environment.
 ## Future — TRON-Themed Grafana Dashboards (Not Started)
 
 > **Owner decision (2026-02-19):** "TRON - 10000 percent TRON." See
-> `ai/CLAUDE.md` § The TRON Aesthetic for full color palette and dashboard names.
+> `humans/TODO.md` and `humans/QA_TRANSCRIPT.md` for TRON details.
 
 | Feature | Status |
 |---------|--------|
