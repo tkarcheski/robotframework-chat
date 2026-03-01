@@ -10,12 +10,15 @@ PostgreSQL:  postgresql://user:pass@host:5432/dbname
 
 import abc
 import json
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     from sqlalchemy import (  # type: ignore[import-not-found]
@@ -787,14 +790,20 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
         # Add hostname column for host identification.
-        "ALTER TABLE test_runs ADD COLUMN hostname VARCHAR(255)",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname VARCHAR(255)",
     ]
 
     def __init__(self, database_url: str):
         self.engine: Engine = create_engine(database_url)
         self.metadata = MetaData()
         self._define_tables()
-        self.metadata.create_all(self.engine)
+        try:
+            self.metadata.create_all(self.engine)
+        except Exception:
+            logger.warning(
+                "metadata.create_all() failed; continuing with migrations",
+                exc_info=True,
+            )
         self._run_migrations()
 
     def _run_migrations(self) -> None:
@@ -803,7 +812,7 @@ class _SQLAlchemyBackend(_Backend):
                 with self.engine.begin() as conn:
                     conn.execute(text(sql))
             except Exception:
-                pass  # Already applied or table doesn't exist yet
+                logger.debug("Migration skipped (already applied): %s", sql)
 
     def _define_tables(self) -> None:
         self.test_runs = Table(
