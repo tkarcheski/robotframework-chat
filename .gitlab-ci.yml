@@ -113,35 +113,22 @@ deploy-superset:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
 
 # ── Release ──────────────────────────────────────────────────────────
-
-# Test release: any semver tag with a pre-release suffix (v1.2.3-*)
-# Builds and verifies the package but does NOT upload to PyPI.
-test-release:
+# PyPI publishing is handled by GitHub Actions trusted publishing.
+# See .github/workflows/pypi-publish.yml
+#
+# This job only verifies the package builds correctly.
+build-check:
   extends: .uv-setup
   stage: release
   needs:
     - job: lint
       artifacts: false
-  script: [make ci-release]
+  script: [make build-check]
   artifacts:
     paths: [dist/]
     expire_in: 7 days
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-.+/
-  allow_failure: false
-
-# Real release: clean semver tag only (v1.2.3)
-# Builds, verifies, and uploads to PyPI.
-publish-pypi:
-  extends: .uv-setup
-  stage: release
-  needs:
-    - job: lint
-      artifacts: false
-  script: [make ci-release UPLOAD=1]
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-  allow_failure: false
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
 
 # ── Review ───────────────────────────────────────────────────────────
 
