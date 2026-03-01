@@ -60,6 +60,7 @@ class TestRun:
     skipped: int
     duration_seconds: float
     rfc_version: Optional[str] = None
+    hostname: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -155,6 +156,21 @@ class OllamaMetrics:
 
 
 @dataclass
+class HostInfo:
+    """Represents a host machine that executes test runs."""
+
+    hostname: str
+    os_name: str
+    os_version: str
+    cpu_arch: str
+    cpu_count: int
+    total_ram_gb: float
+    gpu_info: Optional[str] = None
+    last_seen: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass
 class ModelInfo:
     """Represents model metadata."""
 
@@ -216,6 +232,12 @@ class _Backend(abc.ABC):
     @abc.abstractmethod
     def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
+    @abc.abstractmethod
+    def add_or_update_host(self, host: HostInfo) -> None: ...
+
+    @abc.abstractmethod
+    def get_hosts(self) -> List[Dict[str, Any]]: ...
+
 
 class _SQLiteBackend(_Backend):
     """SQLite backend using the stdlib sqlite3 module."""
@@ -238,7 +260,8 @@ class _SQLiteBackend(_Backend):
         failed INTEGER DEFAULT 0,
         skipped INTEGER DEFAULT 0,
         duration_seconds REAL,
-        rfc_version TEXT
+        rfc_version TEXT,
+        hostname TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -329,6 +352,19 @@ class _SQLiteBackend(_Backend):
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS host_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hostname TEXT NOT NULL UNIQUE,
+        os_name TEXT,
+        os_version TEXT,
+        cpu_arch TEXT,
+        cpu_count INTEGER,
+        total_ram_gb REAL,
+        gpu_info TEXT,
+        last_seen DATETIME
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
@@ -352,6 +388,7 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
+        "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -373,8 +410,8 @@ class _SQLiteBackend(_Backend):
                 (timestamp, model_name, model_release_date, model_parameters,
                  test_suite, git_commit, git_branch, pipeline_url,
                  runner_id, runner_tags, total_tests, passed, failed, skipped,
-                 duration_seconds, rfc_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 duration_seconds, rfc_version, hostname)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -393,6 +430,7 @@ class _SQLiteBackend(_Backend):
                     run.skipped,
                     run.duration_seconds,
                     run.rfc_version,
+                    run.hostname,
                 ),
             )
             run_id = cursor.lastrowid
@@ -697,6 +735,45 @@ class _SQLiteBackend(_Backend):
             )
             return [dict(row) for row in cursor.fetchall()]
 
+    def add_or_update_host(self, host: HostInfo) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO host_info
+                (hostname, os_name, os_version, cpu_arch, cpu_count,
+                 total_ram_gb, gpu_info, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(hostname) DO UPDATE SET
+                    os_name=excluded.os_name,
+                    os_version=excluded.os_version,
+                    cpu_arch=excluded.cpu_arch,
+                    cpu_count=excluded.cpu_count,
+                    total_ram_gb=excluded.total_ram_gb,
+                    gpu_info=excluded.gpu_info,
+                    last_seen=excluded.last_seen
+                """,
+                (
+                    host.hostname,
+                    host.os_name,
+                    host.os_version,
+                    host.cpu_arch,
+                    host.cpu_count,
+                    host.total_ram_gb,
+                    host.gpu_info,
+                    (
+                        host.last_seen.isoformat()
+                        if host.last_seen
+                        else datetime.now().isoformat()
+                    ),
+                ),
+            )
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM host_info ORDER BY hostname")
+            return [dict(row) for row in cursor.fetchall()]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
@@ -709,6 +786,8 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
+        # Add hostname column for host identification.
+        "ALTER TABLE test_runs ADD COLUMN hostname VARCHAR(255)",
     ]
 
     def __init__(self, database_url: str):
@@ -747,6 +826,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("skipped", Integer, default=0),
             Column("duration_seconds", Float),
             Column("rfc_version", String(50)),
+            Column("hostname", String(255)),
         )
 
         self.test_results = Table(
@@ -865,6 +945,20 @@ class _SQLAlchemyBackend(_Backend):
             Column("timestamp", DateTime),
         )
 
+        self.host_info = Table(
+            "host_info",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("hostname", String(255), nullable=False, unique=True),
+            Column("os_name", String(255)),
+            Column("os_version", String(255)),
+            Column("cpu_arch", String(255)),
+            Column("cpu_count", Integer),
+            Column("total_ram_gb", Float),
+            Column("gpu_info", Text),
+            Column("last_seen", DateTime),
+        )
+
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
         Index("idx_pipeline_results_ref", self.pipeline_results.c.ref)
         Index("idx_pipeline_results_status", self.pipeline_results.c.status)
@@ -874,6 +968,7 @@ class _SQLAlchemyBackend(_Backend):
         Index("idx_keyword_results_name", self.keyword_results.c.keyword_name)
         Index("idx_ollama_metrics_run_id", self.ollama_metrics.c.run_id)
         Index("idx_ollama_metrics_model", self.ollama_metrics.c.model_name)
+        Index("idx_test_runs_hostname", self.test_runs.c.hostname)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -895,6 +990,7 @@ class _SQLAlchemyBackend(_Backend):
                     skipped=run.skipped,
                     duration_seconds=run.duration_seconds,
                     rfc_version=run.rfc_version,
+                    hostname=run.hostname,
                 )
             )
             assert result.inserted_primary_key is not None
@@ -1193,6 +1289,43 @@ class _SQLAlchemyBackend(_Backend):
             )
             return [dict(row._mapping) for row in result.fetchall()]
 
+    def add_or_update_host(self, host: HostInfo) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO host_info
+                    (hostname, os_name, os_version, cpu_arch, cpu_count,
+                     total_ram_gb, gpu_info, last_seen)
+                    VALUES (:hostname, :os_name, :os_version, :cpu_arch,
+                            :cpu_count, :total_ram_gb, :gpu_info, :last_seen)
+                    ON CONFLICT(hostname) DO UPDATE SET
+                        os_name = EXCLUDED.os_name,
+                        os_version = EXCLUDED.os_version,
+                        cpu_arch = EXCLUDED.cpu_arch,
+                        cpu_count = EXCLUDED.cpu_count,
+                        total_ram_gb = EXCLUDED.total_ram_gb,
+                        gpu_info = EXCLUDED.gpu_info,
+                        last_seen = EXCLUDED.last_seen
+                    """
+                ),
+                {
+                    "hostname": host.hostname,
+                    "os_name": host.os_name,
+                    "os_version": host.os_version,
+                    "cpu_arch": host.cpu_arch,
+                    "cpu_count": host.cpu_count,
+                    "total_ram_gb": host.total_ram_gb,
+                    "gpu_info": host.gpu_info,
+                    "last_seen": host.last_seen or datetime.utcnow(),
+                },
+            )
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(text("SELECT * FROM host_info ORDER BY hostname"))
+            return [dict(row._mapping) for row in result.fetchall()]
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -1306,6 +1439,12 @@ class TestDatabase:
 
     def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self._backend.get_ollama_metrics(limit)
+
+    def add_or_update_host(self, host: HostInfo) -> None:
+        self._backend.add_or_update_host(host)
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        return self._backend.get_hosts()
 
 
 def main():

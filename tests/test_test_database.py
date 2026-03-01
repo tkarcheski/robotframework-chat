@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from rfc.test_database import OllamaMetrics, TestDatabase, TestResult, TestRun
+from rfc.test_database import HostInfo, OllamaMetrics, TestDatabase, TestResult, TestRun
 
 
 def _make_run(**overrides):
@@ -257,3 +257,76 @@ class TestOllamaMetricsDatabase:
 
         rows = db.get_ollama_metrics(limit=10)
         assert len(rows) == 2
+
+
+# ---------------------------------------------------------------------------
+# HostInfo dataclass
+# ---------------------------------------------------------------------------
+
+
+def _make_host_info(**overrides: object) -> HostInfo:
+    defaults = dict(
+        hostname="dev1",
+        os_name="Linux",
+        os_version="5.15.0",
+        cpu_arch="x86_64",
+        cpu_count=16,
+        total_ram_gb=64.0,
+        gpu_info="NVIDIA RTX 4090, 24576 MiB",
+    )
+    defaults.update(overrides)
+    return HostInfo(**defaults)  # type: ignore[arg-type]
+
+
+class TestHostInfoDataclass:
+    def test_required_fields(self) -> None:
+        h = _make_host_info()
+        assert h.hostname == "dev1"
+        assert h.os_name == "Linux"
+        assert h.cpu_count == 16
+        assert h.total_ram_gb == 64.0
+
+    def test_gpu_info_optional(self) -> None:
+        h = _make_host_info(gpu_info=None)
+        assert h.gpu_info is None
+
+    def test_id_defaults_none(self) -> None:
+        h = _make_host_info()
+        assert h.id is None
+
+
+class TestHostInfoDatabase:
+    def test_add_host_info(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        host = _make_host_info()
+        db.add_or_update_host(host)
+
+    def test_upsert_host_info(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        host = _make_host_info(total_ram_gb=32.0)
+        db.add_or_update_host(host)
+        # Update RAM
+        host2 = _make_host_info(total_ram_gb=64.0)
+        db.add_or_update_host(host2)
+
+        hosts = db.get_hosts()
+        assert len(hosts) == 1
+        assert hosts[0]["total_ram_gb"] == 64.0
+
+    def test_get_hosts(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        db.add_or_update_host(_make_host_info(hostname="dev1"))
+        db.add_or_update_host(_make_host_info(hostname="mini1"))
+        hosts = db.get_hosts()
+        assert len(hosts) == 2
+        hostnames = {h["hostname"] for h in hosts}
+        assert hostnames == {"dev1", "mini1"}
+
+    def test_hostname_stored_on_test_run(self, tmp_path) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run = _make_run(hostname="dev1")
+        db.add_test_run(run)
+
+        runs = db.get_recent_runs(limit=1)
+        assert len(runs) == 1
+        assert runs[0]["hostname"] == "dev1"

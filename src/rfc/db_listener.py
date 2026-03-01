@@ -30,7 +30,9 @@ from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
+from .host_info import collect_host_info
 from .test_database import (
+    HostInfo,
     KeywordResult,
     OllamaMetrics,
     TestDatabase,
@@ -107,6 +109,7 @@ class DbListener:
         self._db: Optional[TestDatabase] = None
         self._start_time: Optional[datetime] = None
         self._ci_info: Dict[str, str] = {}
+        self._host_info: Dict[str, Any] = {}
         self._test_cases: List[Dict[str, Any]] = []
         self._suite_depth = 0
         # Per-test structured data captured from RFC_DATA: log messages.
@@ -151,6 +154,7 @@ class DbListener:
         if self._suite_depth == 1:
             self._start_time = datetime.utcnow()
             self._ci_info = collect_ci_metadata()
+            self._host_info = collect_host_info()
             self._test_cases = []
             self._keyword_results = []
             self._ollama_metrics = []
@@ -294,6 +298,8 @@ class DbListener:
             or "unknown"
         )
 
+        hostname = self._host_info.get("hostname")
+
         run = TestRun(
             timestamp=self._start_time or end_time,
             model_name=model_name,
@@ -311,11 +317,26 @@ class DbListener:
             skipped=skip_count,
             duration_seconds=duration,
             rfc_version=__version__,
+            hostname=hostname,
         )
 
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
+
+            # Upsert host identification metrics.
+            if hostname and self._host_info:
+                db.add_or_update_host(
+                    HostInfo(
+                        hostname=hostname,
+                        os_name=self._host_info.get("os_name", ""),
+                        os_version=self._host_info.get("os_version", ""),
+                        cpu_arch=self._host_info.get("cpu_arch", ""),
+                        cpu_count=self._host_info.get("cpu_count", 0),
+                        total_ram_gb=self._host_info.get("total_ram_gb", 0.0),
+                        gpu_info=self._host_info.get("gpu_info"),
+                    )
+                )
 
             results = [
                 TestResult(
