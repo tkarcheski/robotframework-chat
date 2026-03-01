@@ -200,7 +200,7 @@ make import                      # Import output.xml files: make import RESULTS_
 make code-quality-check          # Run all checks (lint + typecheck + coverage)
 
 # Layer 2: Docker services
-make docker-up                   # Start PostgreSQL + Redis + Superset + Grafana
+make docker-up                   # Start PostgreSQL + Redis + Superset
 make docker-down                 # Stop all services
 make docker-restart              # Rebuild and restart all services
 make docker-logs                 # Tail service logs
@@ -373,6 +373,7 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
+├── dashboard/                  # Dash-based test runner UI (DEPRECATED)
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation

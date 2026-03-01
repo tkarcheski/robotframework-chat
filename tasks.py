@@ -142,7 +142,7 @@ def check() -> None:
 
 
 def docker_up() -> None:
-    """Start PostgreSQL + Redis + Superset + Grafana."""
+    """Start PostgreSQL + Redis + Superset."""
     _ensure_env()
     _docker_compose("up", "-d")
 

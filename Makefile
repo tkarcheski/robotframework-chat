@@ -110,7 +110,7 @@ code-quality-audit: ## Audit dependencies for known vulnerabilities
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
+docker-up: .env ## Start PostgreSQL + Redis + Superset
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services

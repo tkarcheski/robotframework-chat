@@ -131,13 +131,13 @@ Line coverage (via `pytest-cov`): **85%** overall.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Docker Compose orchestration | Adopted | 5 services: postgres, redis, superset-init, superset, dashboard |
+| Docker Compose orchestration | Adopted | 4 services: postgres, redis, superset-init, superset |
 | Multi-stage Docker builds | Partial | `superset/Dockerfile` and `dashboard/Dockerfile` exist; CI uses `Dockerfile.ci` |
 | Container resource limits | Adopted | Container profiles (MINIMAL/STANDARD/PERFORMANCE) |
 | Docker health checks | Adopted | All services have health checks |
 | Container image pinning | Adopted | `postgres:16-alpine`, `redis:7-alpine` |
 | Container registry | Not Started | No private registry; images built locally |
-| Kubernetes/orchestration | Not Started | Docker Compose only |
+| Kubernetes/orchestration | Deferred (v2+) | Docker Compose only; K8s deferred to post-v1 |
 | Infrastructure as Code (IaC) | Not Started | No Terraform, Pulumi, etc. |
 | Network segmentation | Adopted | `rfc-net` bridge network for service isolation |
 
@@ -153,7 +153,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Repo metrics reporting | Adopted | `ci/report.sh` generates metrics, posts to MR |
 | Application logging | Partial | Python logging in listeners; no centralized logging |
 | Structured logging (JSON) | Not Started | No structured log format |
-| Log aggregation (ELK/Loki) | Not Started | No centralized log collection |
+| Log aggregation (ELK/Loki) | Deferred (v2+) | Loki listener removed; deferred to post-v1 |
 | APM / distributed tracing | Not Started | No OpenTelemetry, Datadog, etc. |
 | Alerting (PagerDuty/OpsGenie) | Not Started | No alerting integration |
 | Uptime monitoring | Not Started | No external health checks |
@@ -271,9 +271,8 @@ These decisions from the spec review session impact DevOps practices:
 | 90-day data retention | Need cleanup cron/CI job | `humans/TODO.md` § Data Retention |
 | Semver auto-bump on merge to main | Need CI pipeline rule + version script | `humans/TODO.md` § Versioning |
 | CHANGELOG.rst from conventional commits | Need `git-cliff` or similar in CI | `humans/TODO.md` § Versioning |
-| Discord notifications (future) | New CI integration after DB/Grafana stable | `humans/TODO.md` § Alerting |
+| Discord notifications (future) | New CI integration after DB/Superset stable | `humans/TODO.md` § Alerting |
 | `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
 | Makefile parity with pipeline | Fix 24 broken targets | `ai/FEATURES.md` § Makefile |
 | Secrets stay in `.env` | No vault needed | `.env.example` |
-| Public Grafana + internal tools | RBAC: anonymous viewer for Grafana | `humans/TODO.md` |
 | Branching: main / staging / claude/* | Document and enforce | `ai/PIPELINES.md` § Branching Model |
