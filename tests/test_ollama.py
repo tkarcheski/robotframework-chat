@@ -20,6 +20,16 @@ class TestOllamaClientInit:
         assert client.timeout == 120
         assert client.max_retries == 2
 
+    @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
+    def test_default_timeout_from_env(self):
+        client = OllamaClient()
+        assert client.timeout == 300
+
+    @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
+    def test_explicit_timeout_overrides_env(self):
+        client = OllamaClient(timeout=60)
+        assert client.timeout == 60
+
     def test_strips_trailing_slash(self):
         client = OllamaClient(base_url="http://example.com/")
         assert client.base_url == "http://example.com"

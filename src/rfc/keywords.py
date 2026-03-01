@@ -1,10 +1,13 @@
 import json
-from typing import List, Dict, Any
+import os
+from typing import List, Dict, Any, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
 from .ollama import OllamaClient
 from .grader import Grader
+
+_DEFAULT_TIMEOUT = 120
 
 
 class LLMKeywords:
@@ -12,7 +15,9 @@ class LLMKeywords:
     Robot Framework keywords for testing LLMs.
     """
 
-    def __init__(self, timeout: int = 120, max_retries: int = 2):
+    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
+        if timeout is None:
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
         self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = Grader(self.client)
 
