@@ -31,6 +31,7 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 
 ## Rules
 
+- **Always read `ai/AGENTS.md` before starting any task.** This file contains critical agent architecture guidance and must be consulted first.
 - **Always run tests after changes.** `uv run pytest` for Python, `make robot-dryrun` for Robot Framework.
 - **Always run `pre-commit run --all-files` before committing.** Never bypass hooks.
 - **Don't remove functionality without explicit approval.**
