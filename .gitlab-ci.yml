@@ -107,6 +107,7 @@ pipeline-summary:
 
 deploy-superset:
   stage: deploy
+  tags: [deploy]
   script: [make ci-deploy]
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $SUPERSET_DEPLOY_HOST
