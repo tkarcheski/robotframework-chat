@@ -12,7 +12,7 @@ A Robot Framework-based test harness for systematically testing Large Language M
 - **Docker** for containerized code execution, LLM testing, and the Superset stack
 - **Ollama** (optional) for local LLM testing
 
-### Installation
+### Installation (Linux / macOS)
 
 ```bash
 make install                # Install all dependencies
@@ -20,23 +20,49 @@ pre-commit install          # Install pre-commit hooks
 ollama pull llama3          # Pull default LLM model (optional)
 ```
 
+### Installation (Windows)
+
+The `tasks.py` script provides a cross-platform alternative to the Makefile.
+It requires only Python and `uv` — no `make`, `bash`, or Unix tools needed.
+
+```powershell
+uv run python tasks.py install      # Install all dependencies
+uv run pre-commit install           # Install pre-commit hooks
+ollama pull llama3                  # Pull default LLM model (optional)
+uv run python tasks.py help         # List all available targets
+```
+
+> **Note:** Docker-based tests require [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) with the WSL 2 backend enabled.
+
 ### Running Tests
 
 ```bash
+# Linux / macOS
 make robot                  # Run all Robot Framework test suites
 make robot-math             # Run math tests
 make robot-docker           # Run Docker tests
 make robot-safety           # Run safety tests
+
+# All platforms (including Windows)
+uv run python tasks.py robot        # Run all suites
+uv run python tasks.py robot-math   # Run math tests
+uv run python tasks.py robot-dryrun # Validate tests (dry run)
+uv run python tasks.py check        # Lint + typecheck + coverage
 ```
 
 ### Superset Dashboard
 
 ```bash
+# Linux / macOS
 cp .env.example .env        # Configure environment
 make docker-up              # Start PostgreSQL + Redis + Superset
 make bootstrap              # First-time Superset initialization
-open http://localhost:8088   # Open the dashboard
+
+# Windows — tasks.py copies .env automatically if missing
+uv run python tasks.py docker-up
 ```
+
+Open <http://localhost:8088> to view the dashboard.
 
 ---
 
@@ -70,23 +96,16 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 | Document | Description |
 |----------|-------------|
-| [ai/CLAUDE.md](ai/CLAUDE.md) | Project intelligence, owner decisions, architecture vision |
-| [ai/AGENTS.md](ai/AGENTS.md) | Agent instructions, code style, and commands |
-| [ai/DEV.md](ai/DEV.md) | Development guidelines and TDD workflow |
-| [ai/FEATURES.md](ai/FEATURES.md) | Feature tracker (prioritized, with status) |
-| [ai/PIPELINES.md](ai/PIPELINES.md) | Pipeline strategy and model selection |
-| [ai/DEVOPS.md](ai/DEVOPS.md) | DevOps practices tracker |
-| [ai/REFACTOR.md](ai/REFACTOR.md) | Refactoring and maintenance guide |
 | [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
-| [humans/TODO.md](humans/TODO.md) | Owner action items and decisions |
-| [humans/QA_TRANSCRIPT.md](humans/QA_TRANSCRIPT.md) | Full Q&A from spec review sessions |
+| [docs/GRAFANA_SUPERSET_SETUP.md](docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
+| [docs/SUPERSET_EXPORT_GUIDE.md](docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 
 ---
 
 ## Contributing
 
-1. Follow the code style guidelines in [ai/AGENTS.md](ai/AGENTS.md)
-2. Add tests for new features
-3. Run `pre-commit run --all-files` before committing
-4. See [ai/DEV.md](ai/DEV.md) for the full development workflow
+1. Read [ai/DEV.md](ai/DEV.md) for the development workflow and TDD discipline
+2. Follow the code style guidelines in [ai/AGENTS.md](ai/AGENTS.md)
+3. Add tests for new features (see [ai/CLAUDE.md](ai/CLAUDE.md) for grading tiers)
+4. Run `pre-commit run --all-files` before committing

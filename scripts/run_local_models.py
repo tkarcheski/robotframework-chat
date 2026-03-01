@@ -310,7 +310,12 @@ def run_model_suites(
                 )
                 print(f"  > {' '.join(cmd)}\n")
 
-                proc = subprocess.run(cmd, cwd=str(_project_root))
+                env = {
+                    **os.environ,
+                    "DEFAULT_MODEL": model,
+                    "OLLAMA_ENDPOINT": endpoint,
+                }
+                proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
                 results.append(
                     RunResult(
@@ -360,6 +365,93 @@ def _print_summary(results: list[RunResult]) -> None:
             print(f"    - {r.suite} | {r.model}@{r.node} (rc={r.returncode})")
 
     print()
+
+
+def run_iteration_loop(
+    config: dict[str, Any],
+    *,
+    iterations: int = 1,
+    dry_run: bool = False,
+) -> bool:
+    """Run the full discover → test → summary cycle, optionally repeating.
+
+    Args:
+        config: Parsed local_models.yaml.
+        iterations: How many passes to run.
+            *  1  (default) — run once (backward compatible).
+            * >1  — run exactly *iterations* passes.
+            *  0  — run until a test failure occurs ("stop-on-error").
+            * -1  — run forever (until ``KeyboardInterrupt``).
+        dry_run: If True, print commands without executing.
+
+    Returns:
+        True if any pass had a test failure, False otherwise.
+    """
+    discovery_cfg = config.get("discovery", {})
+    had_failure = False
+    iteration = 0
+
+    try:
+        while True:
+            iteration += 1
+
+            # Check termination for finite iterations (> 0)
+            if iterations > 0 and iteration > iterations:
+                break
+
+            # Iteration header
+            if iterations <= 0:
+                label = f"Iteration {iteration}"
+            else:
+                label = f"Iteration {iteration}/{iterations}"
+            print(f"\n{'#' * 70}")
+            print(f"  {label}")
+            print(f"{'#' * 70}\n")
+
+            # Re-discover each iteration (nodes may come/go)
+            node_list = _load_node_list()
+            print(f"Probing {len(node_list)} node(s)...")
+
+            nodes_with_models = discover_local_models(
+                node_list,
+                connect_timeout=discovery_cfg.get("connect_timeout", 2),
+                max_workers=discovery_cfg.get("max_workers", 64),
+            )
+
+            _print_discovered_nodes(nodes_with_models)
+
+            suites = config.get("test_suites", [])
+            total_models = sum(len(n["models"]) for n in nodes_with_models)
+            total_runs = total_models * len(suites)
+
+            if total_runs == 0:
+                print("No models discovered — nothing to run.")
+                if iterations > 0:
+                    continue
+                # For infinite/stop-on-error, keep trying
+                continue
+
+            print(
+                f"Running {len(suites)} suite(s) x {total_models} model(s) = "
+                f"{total_runs} total run(s)\n"
+            )
+
+            results = run_model_suites(config, nodes_with_models, dry_run=dry_run)
+            _print_summary(results)
+
+            pass_had_failure = any(r.returncode != 0 for r in results)
+            if pass_had_failure:
+                had_failure = True
+
+            # iterations=0: stop on first failure
+            if iterations == 0 and pass_had_failure:
+                print("Stopping — failure detected (iterations=0, stop-on-error).")
+                break
+
+    except KeyboardInterrupt:
+        print(f"\n\nInterrupted after {iteration} iteration(s).")
+
+    return had_failure
 
 
 def _print_discovered_nodes(nodes_with_models: list[dict[str, Any]]) -> None:
@@ -413,17 +505,26 @@ def main() -> None:
         action="store_true",
         help="Show what would be executed without running tests",
     )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        metavar="N",
+        help=(
+            "How many full discover+test cycles to run. "
+            "1 = once (default), N>1 = exactly N times, "
+            "-1 = forever (until Ctrl+C), "
+            "0 = repeat until a test failure (stop-on-error)"
+        ),
+    )
     args = parser.parse_args()
 
     config = load_local_config(Path(args.config))
     discovery_cfg = config.get("discovery", {})
 
-    # Load node list
-    node_list = _load_node_list()
-    print(f"Probing {len(node_list)} node(s)...")
-
     if args.discover_nodes:
-        # Just check which nodes are reachable
+        node_list = _load_node_list()
+        print(f"Probing {len(node_list)} node(s)...")
         for node in node_list:
             hostname = node["hostname"]
             port = node.get("port", 11434)
@@ -434,37 +535,23 @@ def main() -> None:
             print(f"  {hostname}:{port}  {status}")
         return
 
-    # Full discovery: nodes + models
-    nodes_with_models = discover_local_models(
-        node_list,
-        connect_timeout=discovery_cfg.get("connect_timeout", 2),
-        max_workers=discovery_cfg.get("max_workers", 64),
-    )
-
-    _print_discovered_nodes(nodes_with_models)
-
     if args.discover_models:
+        node_list = _load_node_list()
+        print(f"Probing {len(node_list)} node(s)...")
+        nodes_with_models = discover_local_models(
+            node_list,
+            connect_timeout=discovery_cfg.get("connect_timeout", 2),
+            max_workers=discovery_cfg.get("max_workers", 64),
+        )
+        _print_discovered_nodes(nodes_with_models)
         return
 
-    # Run test suites against every (node, model) pair
-    suites = config.get("test_suites", [])
-    total_models = sum(len(n["models"]) for n in nodes_with_models)
-    total_runs = total_models * len(suites)
-
-    if total_runs == 0:
-        print("No models discovered — nothing to run.")
-        return
-
-    print(
-        f"Running {len(suites)} suite(s) x {total_models} model(s) = "
-        f"{total_runs} total run(s)\n"
+    # Run the iteration loop
+    had_failure = run_iteration_loop(
+        config, iterations=args.iterations, dry_run=args.dry_run
     )
 
-    results = run_model_suites(config, nodes_with_models, dry_run=args.dry_run)
-    _print_summary(results)
-
-    # Exit with non-zero if any run failed
-    if any(r.returncode != 0 for r in results):
+    if had_failure:
         sys.exit(1)
 
 

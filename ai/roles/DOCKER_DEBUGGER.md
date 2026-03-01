@@ -255,5 +255,4 @@ If you're still guessing, you're not done debugging.
 - `ai/AGENTS.md` § Agent Personality — tone, question-asking, user validation
 - `ai/AGENTS.md` § Docker Testing — container profiles, keywords, port allocation
 - `ai/DEVOPS.md` — infrastructure context (runners, Docker, CI pipeline)
-- `ai/CLAUDE.md` § User Mistake Log — log patterns for future reference
 - `ci/review.sh` — CI pipeline review script that uses this role

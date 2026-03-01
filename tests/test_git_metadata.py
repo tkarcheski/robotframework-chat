@@ -1,9 +1,14 @@
 """Tests for rfc.git_metadata."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from rfc.git_metadata import collect_ci_metadata, detect_ci_platform
+from rfc.git_metadata import (
+    _collect_local_metadata,
+    _git_command,
+    collect_ci_metadata,
+    detect_ci_platform,
+)
 
 
 class TestDetectCiPlatform:
@@ -97,8 +102,110 @@ class TestCollectGitMetadata:
         assert result["Pipeline_URL"] == "https://gitlab.com/pipeline/1"
         assert result["Runner_ID"] == "42"
 
-    def test_no_ci_platform(self):
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_no_ci_platform_uses_local_metadata(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="main\n"),
+            MagicMock(returncode=0, stdout="abc123def456\n"),
+        ]
         with patch.dict(os.environ, {}, clear=True):
             result = collect_ci_metadata()
         assert result.get("CI") == "false"
-        assert "CI_Platform" not in result
+        assert result.get("CI_Platform") == "local"
+        assert result.get("Branch") == "main"
+        assert result.get("Commit_SHA") == "abc123def456"
+
+
+class TestCollectLocalMetadata:
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_has_branch(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="feature-branch\n"),
+            MagicMock(returncode=0, stdout="abc123def456\n"),
+        ]
+        result = _collect_local_metadata()
+        assert result["Branch"] == "feature-branch"
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_has_commit_sha(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="main\n"),
+            MagicMock(returncode=0, stdout="abc123def456789000\n"),
+        ]
+        result = _collect_local_metadata()
+        assert result["Commit_SHA"] == "abc123def456789000"
+        assert result["Commit_Short_SHA"] == "abc123de"
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_ci_platform_is_local(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="main\n"),
+            MagicMock(returncode=0, stdout="abc123\n"),
+        ]
+        result = _collect_local_metadata()
+        assert result["CI"] == "false"
+        assert result["CI_Platform"] == "local"
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_git_not_installed(self, mock_run):
+        mock_run.side_effect = FileNotFoundError("git not found")
+        result = _collect_local_metadata()
+        assert result["CI"] == "false"
+        assert result["CI_Platform"] == "local"
+        assert result["Branch"] == ""
+        assert result["Commit_SHA"] == ""
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_not_a_git_repo(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=128, stdout="")
+        result = _collect_local_metadata()
+        assert result["Branch"] == ""
+        assert result["Commit_SHA"] == ""
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_strips_whitespace(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="  main  \n"),
+            MagicMock(returncode=0, stdout="  abc123  \n"),
+        ]
+        result = _collect_local_metadata()
+        assert result["Branch"] == "main"
+        assert result["Commit_SHA"] == "abc123"
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_detached_head(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="HEAD\n"),
+            MagicMock(returncode=0, stdout="abc123def456\n"),
+        ]
+        result = _collect_local_metadata()
+        assert result["Branch"] == "HEAD"
+
+
+class TestGitCommand:
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_returns_stdout_on_success(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="main\n")
+        assert _git_command("rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_returns_empty_on_nonzero_exit(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=128, stdout="")
+        assert _git_command("rev-parse", "HEAD") == ""
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_returns_empty_on_file_not_found(self, mock_run):
+        mock_run.side_effect = FileNotFoundError
+        assert _git_command("rev-parse", "HEAD") == ""
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_returns_empty_on_timeout(self, mock_run):
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="git", timeout=5)
+        assert _git_command("rev-parse", "HEAD") == ""
+
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_returns_empty_on_os_error(self, mock_run):
+        mock_run.side_effect = OSError("permission denied")
+        assert _git_command("rev-parse", "HEAD") == ""

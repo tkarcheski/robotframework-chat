@@ -2,10 +2,37 @@
 
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from robot.api import logger
 import requests
+
+
+def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[float]:
+    """Compute tokens/s from token count and nanosecond duration."""
+    if count is None or duration_ns is None or duration_ns <= 0:
+        return None
+    return round(count / (duration_ns / 1e9), 2)
+
+
+def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
+    """Extract performance metrics from an Ollama generate response."""
+    prompt_eval_count = data.get("prompt_eval_count")
+    prompt_eval_duration = data.get("prompt_eval_duration")
+    eval_count = data.get("eval_count")
+    eval_duration = data.get("eval_duration")
+
+    return {
+        "model_name": model,
+        "total_duration_ns": data.get("total_duration"),
+        "load_duration_ns": data.get("load_duration"),
+        "prompt_eval_count": prompt_eval_count,
+        "prompt_eval_duration_ns": prompt_eval_duration,
+        "prompt_eval_rate": _compute_rate(prompt_eval_count, prompt_eval_duration),
+        "eval_count": eval_count,
+        "eval_duration_ns": eval_duration,
+        "eval_rate": _compute_rate(eval_count, eval_duration),
+    }
 
 
 class OllamaClient:
@@ -15,15 +42,19 @@ class OllamaClient:
     integration point for all Ollama interactions.
     """
 
+    _DEFAULT_TIMEOUT = 120
+
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
         model: str = os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
         temperature: float = 0.0,
         max_tokens: int = 256,
-        timeout: int = 120,
+        timeout: Optional[int] = None,
         max_retries: int = 2,
     ):
+        if timeout is None:
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(self._DEFAULT_TIMEOUT)))
         if not isinstance(base_url, str) or not base_url:
             raise ValueError("base_url must be a non-empty string")
         if not isinstance(model, str) or not model:
@@ -42,6 +73,7 @@ class OllamaClient:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.max_retries = max_retries
+        self.last_metrics: Optional[Dict[str, Any]] = None
 
     @property
     def endpoint(self) -> str:
@@ -83,6 +115,7 @@ class OllamaClient:
             },
         }
 
+        self.last_metrics = None
         last_exception: Exception | None = None
         for attempt in range(1 + self.max_retries):
             try:
@@ -92,7 +125,9 @@ class OllamaClient:
                     timeout=self.timeout,
                 )
                 response.raise_for_status()
-                text = response.json()["response"].strip()
+                data = response.json()
+                text = data["response"].strip()
+                self.last_metrics = _extract_metrics(data, self.model)
                 logger.info(f"{self.model} >> {text}")
                 return text
             except (

@@ -39,7 +39,7 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ## Agent Personality
 
-Read `ai/CLAUDE.md` for the full project intelligence and context document.
+Read `ai/CLAUDE.md` for grading tiers and test rules.
 
 1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
    vague, ask. If an architecture decision has trade-offs, surface them. The
@@ -100,9 +100,7 @@ Read `ai/CLAUDE.md` for the full project intelligence and context document.
 2. Implement minimal code (green)
 3. Refactor if needed
 4. Run code quality checks before committing:
-   - `make code-quality-format` — auto-format code with ruff
-   - `make code-quality-check` — run all quality checks (lint + typecheck)
-   - `make code-quality-coverage` — run pytest with coverage report
+   - `make code-quality-check` — run all quality checks (lint + typecheck + coverage)
    - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
 5. Commit: `<type>: <summary>`
 6. Verify user-provided information before acting on it (see § User Input Validation)
@@ -162,13 +160,8 @@ uv run robot -d results -i IQ:120 robot/docker/python
 uv sync --extra dashboard
 rfc-dashboard  # or: uv run python -m dashboard.cli
 
-# Code quality (prefer Makefile targets)
-make code-quality-format                # Auto-format with ruff
-make code-quality-lint                  # Run ruff linter
-make code-quality-typecheck             # Run mypy type checker
-make code-quality-check                 # Run all checks (lint + typecheck)
-make code-quality-coverage              # Run pytest with coverage
-make code-quality-audit                 # Audit dependencies for vulnerabilities
+# Code quality (single command — runs lint + typecheck + coverage)
+make code-quality-check
 
 # Pre-commit (final gate)
 pre-commit run --all-files
@@ -204,15 +197,10 @@ make robot-dryrun                # Validate all Robot tests (dry run)
 make import                      # Import output.xml files: make import RESULTS_DIR=results/
 
 # Layer 1: Python code quality
-make code-quality-lint           # Run ruff linter
-make code-quality-format         # Auto-format code
-make code-quality-typecheck      # Run mypy type checker
 make code-quality-check          # Run all checks (lint + typecheck + coverage)
-make code-quality-coverage       # Run pytest with coverage report
-make code-quality-audit          # Audit dependencies for vulnerabilities
 
 # Layer 2: Docker services
-make docker-up                   # Start PostgreSQL + Redis + Superset + Grafana
+make docker-up                   # Start PostgreSQL + Redis + Superset
 make docker-down                 # Stop all services
 make docker-restart              # Rebuild and restart all services
 make docker-logs                 # Tail service logs
@@ -340,7 +328,7 @@ Robot Framework Test
 robotframework-chat/
 ├── readme.md                   # Project overview
 ├── ai/                         # AI agent documentation
-│   ├── CLAUDE.md               # Project intelligence & owner decisions (start here)
+│   ├── CLAUDE.md               # Grading tiers & test rules
 │   ├── AGENTS.md               # Agent instructions (this file)
 │   ├── SKILLS.md               # Agent capabilities
 │   ├── DEV.md                  # Development guidelines
@@ -385,15 +373,14 @@ robotframework-chat/
 │   │   └── shell/tests/        # Shell/terminal tests
 │   ├── safety/                 # Safety/security tests
 │   └── resources/              # Reusable resource files
-├── dashboard/                  # Dash-based test runner UI (DEPRECATED — Grafana replacing)
+├── dashboard/                  # Dash-based test runner UI (DEPRECATED)
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
 │   ├── TEST_DATABASE.md        # Database schema & usage
 │   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
 ├── humans/                     # Owner decisions & action items
-│   ├── TODO.md                 # Actionable items from spec reviews
-│   └── QA_TRANSCRIPT.md        # Full Q&A record from spec review sessions
+│   └── TODO.md                 # Actionable items from spec reviews
 ├── data/                       # SQLite database (gitignored)
 ├── results/                    # Test output (gitignored)
 └── .pre-commit-config.yaml     # Git hooks

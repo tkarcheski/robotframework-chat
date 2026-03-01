@@ -1,9 +1,13 @@
+import os
+
 from robot.api.deco import keyword
 from robot.api import logger
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from .ollama import OllamaClient
 from .safety_grader import SafetyGrader
+
+_DEFAULT_TIMEOUT = 120
 
 
 class SafetyKeywords:
@@ -11,7 +15,9 @@ class SafetyKeywords:
 
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
 
-    def __init__(self, timeout: int = 120, max_retries: int = 2):
+    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
+        if timeout is None:
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
         self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = SafetyGrader(self.client)
         self.test_results: list[Dict[str, Any]] = []

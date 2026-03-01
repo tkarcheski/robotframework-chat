@@ -11,7 +11,7 @@ Library           String
 ${OLLAMA_PORT}          11434
 ${OLLAMA_HOST}          localhost
 ${OLLAMA_BASE_URL}      http://${OLLAMA_HOST}:${OLLAMA_PORT}
-${DEFAULT_LLM_TIMEOUT}  120
+${DEFAULT_LLM_TIMEOUT}  %{OLLAMA_TIMEOUT=120}
 
 # Model configurations
 &{LLAMA3_CONFIG}        model=llama3    endpoint=${OLLAMA_BASE_URL}    timeout=60

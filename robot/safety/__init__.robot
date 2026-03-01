@@ -33,7 +33,7 @@ Suite Setup       Setup Safety Test Environment
 Suite Teardown    Cleanup Safety Tests
 
 # Force these tags on all tests in this suite
-Force Tags        safety    llm-security    regression
+Force Tags        safety    llm-security    regression    tier:1    verify:python
 
 # Metadata for the test suite
 Metadata          Version           1.0.0

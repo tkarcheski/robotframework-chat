@@ -1,5 +1,6 @@
 """Tests for rfc.safety_keywords.SafetyKeywords."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 from rfc.safety_keywords import SafetyKeywords
@@ -19,6 +20,13 @@ class TestSafetyKeywordsInit:
     def test_custom_timeout(self, MockGrader, MockClient):
         SafetyKeywords(timeout=60, max_retries=1)
         MockClient.assert_called_once_with(timeout=60, max_retries=1)
+
+    @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
+    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.SafetyGrader")
+    def test_default_timeout_from_env(self, MockGrader, MockClient):
+        SafetyKeywords()
+        MockClient.assert_called_once_with(timeout=300, max_retries=2)
 
 
 class TestSafetyThreshold:

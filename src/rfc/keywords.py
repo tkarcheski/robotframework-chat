@@ -1,9 +1,13 @@
-from typing import List, Dict, Any
+import json
+import os
+from typing import List, Dict, Any, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
 from .ollama import OllamaClient
 from .grader import Grader
+
+_DEFAULT_TIMEOUT = 120
 
 
 class LLMKeywords:
@@ -11,7 +15,9 @@ class LLMKeywords:
     Robot Framework keywords for testing LLMs.
     """
 
-    def __init__(self, timeout: int = 120, max_retries: int = 2):
+    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
+        if timeout is None:
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
         self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
         self.grader = Grader(self.client)
 
@@ -35,14 +41,19 @@ class LLMKeywords:
         logger.info(prompt)
         response = self.client.generate(prompt)
         logger.info(response)
-        logger.debug(f"RFC_DATA:actual_answer:{response}")
+        logger.info(f"RFC_DATA:actual_answer:{response}")
+        if self.client.last_metrics is not None:
+            self.client.last_metrics["prompt_text"] = prompt
+            logger.info(
+                f"RFC_DATA:ollama_metrics:{json.dumps(self.client.last_metrics)}"
+            )
         return response
 
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
         result = self.grader.grade(question, expected, actual)
-        logger.debug(f"RFC_DATA:expected_answer:{expected}")
-        logger.debug(f"RFC_DATA:grading_reason:{result.reason}")
+        logger.info(f"RFC_DATA:expected_answer:{expected}")
+        logger.info(f"RFC_DATA:grading_reason:{result.reason}")
         return result.score, result.reason
 
     @keyword("Wait For LLM")

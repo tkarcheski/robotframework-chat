@@ -10,12 +10,15 @@ PostgreSQL:  postgresql://user:pass@host:5432/dbname
 
 import abc
 import json
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     from sqlalchemy import (  # type: ignore[import-not-found]
@@ -60,6 +63,7 @@ class TestRun:
     skipped: int
     duration_seconds: float
     rfc_version: Optional[str] = None
+    hostname: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -75,6 +79,7 @@ class TestResult:
     expected_answer: Optional[str]
     actual_answer: Optional[str]
     grading_reason: Optional[str]
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -96,6 +101,7 @@ class PipelineResult:
     jobs_fetched: int = 0
     artifacts_found: int = 0
     synced_at: Optional[datetime] = None
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -130,6 +136,44 @@ class KeywordResult:
     end_time: Optional[str] = None
     duration_seconds: Optional[float] = None
     args: Optional[str] = None
+    rfc_version: Optional[str] = None
+    id: Optional[int] = None
+
+
+@dataclass
+class OllamaMetrics:
+    """Represents Ollama performance metrics from a single generate() call."""
+
+    run_id: int
+    test_name: str
+    model_name: str
+    prompt_text: Optional[str]
+    total_duration_ns: Optional[int]
+    load_duration_ns: Optional[int]
+    prompt_eval_count: Optional[int]
+    prompt_eval_duration_ns: Optional[int]
+    prompt_eval_rate: Optional[float]
+    eval_count: Optional[int]
+    eval_duration_ns: Optional[int]
+    eval_rate: Optional[float]
+    rfc_version: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    id: Optional[int] = None
+
+
+@dataclass
+class HostInfo:
+    """Represents a host machine that executes test runs."""
+
+    hostname: str
+    os_name: str
+    os_version: str
+    cpu_arch: str
+    cpu_count: int
+    total_ram_gb: float
+    gpu_info: Optional[str] = None
+    last_seen: Optional[datetime] = None
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -143,6 +187,7 @@ class ModelInfo:
     release_date: Optional[str]
     parameters: Optional[str]
     last_tested: Optional[datetime] = None
+    rfc_version: Optional[str] = None
 
 
 class _Backend(abc.ABC):
@@ -189,6 +234,18 @@ class _Backend(abc.ABC):
     @abc.abstractmethod
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
+    @abc.abstractmethod
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None: ...
+
+    @abc.abstractmethod
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def add_or_update_host(self, host: HostInfo) -> None: ...
+
+    @abc.abstractmethod
+    def get_hosts(self) -> List[Dict[str, Any]]: ...
+
 
 class _SQLiteBackend(_Backend):
     """SQLite backend using the stdlib sqlite3 module."""
@@ -211,7 +268,8 @@ class _SQLiteBackend(_Backend):
         failed INTEGER DEFAULT 0,
         skipped INTEGER DEFAULT 0,
         duration_seconds REAL,
-        rfc_version TEXT
+        rfc_version TEXT,
+        hostname TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -224,6 +282,7 @@ class _SQLiteBackend(_Backend):
         expected_answer TEXT,
         actual_answer TEXT,
         grading_reason TEXT,
+        rfc_version TEXT,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -233,7 +292,8 @@ class _SQLiteBackend(_Backend):
         organization TEXT,
         release_date TEXT,
         parameters TEXT,
-        last_tested DATETIME
+        last_tested DATETIME,
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS pipeline_results (
@@ -251,7 +311,8 @@ class _SQLiteBackend(_Backend):
         tag BOOLEAN,
         jobs_fetched INTEGER DEFAULT 0,
         artifacts_found INTEGER DEFAULT 0,
-        synced_at DATETIME
+        synced_at DATETIME,
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS robot_dry_run_results (
@@ -280,9 +341,43 @@ class _SQLiteBackend(_Backend):
         end_time TEXT,
         duration_seconds REAL,
         args TEXT,
+        rfc_version TEXT,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ollama_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        test_name TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        prompt_text TEXT,
+        total_duration_ns INTEGER,
+        load_duration_ns INTEGER,
+        prompt_eval_count INTEGER,
+        prompt_eval_duration_ns INTEGER,
+        prompt_eval_rate REAL,
+        eval_count INTEGER,
+        eval_duration_ns INTEGER,
+        eval_rate REAL,
+        rfc_version TEXT,
+        timestamp DATETIME,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS host_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hostname TEXT NOT NULL UNIQUE,
+        os_name TEXT,
+        os_version TEXT,
+        cpu_arch TEXT,
+        cpu_count INTEGER,
+        total_ram_gb REAL,
+        gpu_info TEXT,
+        last_seen DATETIME,
+        rfc_version TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
@@ -294,6 +389,8 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_pipeline_results_status ON pipeline_results(status);
     CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp ON robot_dry_run_results(timestamp);
     CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite ON robot_dry_run_results(test_suite);
+    CREATE INDEX IF NOT EXISTS idx_ollama_metrics_run_id ON ollama_metrics(run_id);
+    CREATE INDEX IF NOT EXISTS idx_ollama_metrics_model ON ollama_metrics(model_name);
     """
 
     # Idempotent migrations for renaming gitlab_* columns.
@@ -304,6 +401,12 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
+        "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
+        "ALTER TABLE test_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE pipeline_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE keyword_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE host_info ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE models ADD COLUMN rfc_version TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -325,8 +428,8 @@ class _SQLiteBackend(_Backend):
                 (timestamp, model_name, model_release_date, model_parameters,
                  test_suite, git_commit, git_branch, pipeline_url,
                  runner_id, runner_tags, total_tests, passed, failed, skipped,
-                 duration_seconds, rfc_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 duration_seconds, rfc_version, hostname)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -345,16 +448,20 @@ class _SQLiteBackend(_Backend):
                     run.skipped,
                     run.duration_seconds,
                     run.rfc_version,
+                    run.hostname,
                 ),
             )
             run_id = cursor.lastrowid
             conn.execute(
                 """
-                INSERT INTO models (name, last_tested)
-                VALUES (?, ?)
-                ON CONFLICT(name) DO UPDATE SET last_tested=excluded.last_tested
+                INSERT INTO models (name, last_tested, rfc_version)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    last_tested=excluded.last_tested,
+                    rfc_version=COALESCE(models.rfc_version,
+                                         excluded.rfc_version)
                 """,
-                (run.model_name, run.timestamp.isoformat()),
+                (run.model_name, run.timestamp.isoformat(), run.rfc_version),
             )
             return run_id if run_id is not None else 0
 
@@ -364,8 +471,9 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO test_results
                 (run_id, test_name, test_status, score, question,
-                 expected_answer, actual_answer, grading_reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 expected_answer, actual_answer, grading_reason,
+                 rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -377,6 +485,7 @@ class _SQLiteBackend(_Backend):
                         r.expected_answer,
                         r.actual_answer,
                         r.grading_reason,
+                        r.rfc_version,
                     )
                     for r in results
                 ],
@@ -390,8 +499,9 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO keyword_results
                 (run_id, test_name, keyword_name, library_name,
-                 status, start_time, end_time, duration_seconds, args)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, start_time, end_time, duration_seconds, args,
+                 rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -404,6 +514,7 @@ class _SQLiteBackend(_Backend):
                         r.end_time,
                         r.duration_seconds,
                         r.args,
+                        r.rfc_version,
                     )
                     for r in results
                 ],
@@ -415,8 +526,8 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO models
                 (name, full_name, organization, release_date, parameters,
-                 last_tested)
-                VALUES (?, ?, ?, ?, ?, ?)
+                 last_tested, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     full_name=COALESCE(excluded.full_name, models.full_name),
                     organization=COALESCE(excluded.organization,
@@ -425,7 +536,9 @@ class _SQLiteBackend(_Backend):
                                           models.release_date),
                     parameters=COALESCE(excluded.parameters, models.parameters),
                     last_tested=COALESCE(excluded.last_tested,
-                                         models.last_tested)
+                                         models.last_tested),
+                    rfc_version=COALESCE(models.rfc_version,
+                                         excluded.rfc_version)
                 """,
                 (
                     model.name,
@@ -434,6 +547,7 @@ class _SQLiteBackend(_Backend):
                     model.release_date,
                     model.parameters,
                     model.last_tested.isoformat() if model.last_tested else None,
+                    model.rfc_version,
                 ),
             )
 
@@ -518,8 +632,8 @@ class _SQLiteBackend(_Backend):
                 (pipeline_id, status, ref, sha, web_url, created_at,
                  updated_at, source, duration_seconds,
                  queued_duration_seconds, tag, jobs_fetched,
-                 artifacts_found, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 artifacts_found, synced_at, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(pipeline_id) DO UPDATE SET
                     status=excluded.status,
                     updated_at=excluded.updated_at,
@@ -548,6 +662,7 @@ class _SQLiteBackend(_Backend):
                         if pipeline.synced_at
                         else datetime.now().isoformat()
                     ),
+                    pipeline.rfc_version,
                 ),
             )
             return cursor.lastrowid if cursor.lastrowid else 0
@@ -605,6 +720,92 @@ class _SQLiteBackend(_Backend):
             )
             return [dict(row) for row in cursor.fetchall()]
 
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        if not results:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO ollama_metrics
+                (run_id, test_name, model_name, prompt_text,
+                 total_duration_ns, load_duration_ns,
+                 prompt_eval_count, prompt_eval_duration_ns, prompt_eval_rate,
+                 eval_count, eval_duration_ns, eval_rate,
+                 rfc_version, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        r.run_id,
+                        r.test_name,
+                        r.model_name,
+                        r.prompt_text,
+                        r.total_duration_ns,
+                        r.load_duration_ns,
+                        r.prompt_eval_count,
+                        r.prompt_eval_duration_ns,
+                        r.prompt_eval_rate,
+                        r.eval_count,
+                        r.eval_duration_ns,
+                        r.eval_rate,
+                        r.rfc_version,
+                        r.timestamp.isoformat() if r.timestamp else None,
+                    )
+                    for r in results
+                ],
+            )
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM ollama_metrics ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def add_or_update_host(self, host: HostInfo) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO host_info
+                (hostname, os_name, os_version, cpu_arch, cpu_count,
+                 total_ram_gb, gpu_info, last_seen, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(hostname) DO UPDATE SET
+                    os_name=excluded.os_name,
+                    os_version=excluded.os_version,
+                    cpu_arch=excluded.cpu_arch,
+                    cpu_count=excluded.cpu_count,
+                    total_ram_gb=excluded.total_ram_gb,
+                    gpu_info=excluded.gpu_info,
+                    last_seen=excluded.last_seen,
+                    rfc_version=COALESCE(host_info.rfc_version,
+                                         excluded.rfc_version)
+                """,
+                (
+                    host.hostname,
+                    host.os_name,
+                    host.os_version,
+                    host.cpu_arch,
+                    host.cpu_count,
+                    host.total_ram_gb,
+                    host.gpu_info,
+                    (
+                        host.last_seen.isoformat()
+                        if host.last_seen
+                        else datetime.now().isoformat()
+                    ),
+                    host.rfc_version,
+                ),
+            )
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM host_info ORDER BY hostname")
+            return [dict(row) for row in cursor.fetchall()]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL/SQLAlchemy backend for Superset integration."""
@@ -617,22 +818,36 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_commit TO git_commit",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
+        # Add hostname column for host identification.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname VARCHAR(255)",
+        # Add rfc_version to tables that were missing it.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE pipeline_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE keyword_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE host_info ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE models ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
     ]
 
     def __init__(self, database_url: str):
         self.engine: Engine = create_engine(database_url)
         self.metadata = MetaData()
         self._define_tables()
-        self.metadata.create_all(self.engine)
+        try:
+            self.metadata.create_all(self.engine)
+        except Exception:
+            logger.warning(
+                "metadata.create_all() failed; continuing with migrations",
+                exc_info=True,
+            )
         self._run_migrations()
 
     def _run_migrations(self) -> None:
-        with self.engine.begin() as conn:
-            for sql in self._PG_MIGRATIONS:
-                try:
+        for sql in self._PG_MIGRATIONS:
+            try:
+                with self.engine.begin() as conn:
                     conn.execute(text(sql))
-                except Exception:
-                    pass  # Column already BIGINT or table doesn't exist yet
+            except Exception:
+                logger.debug("Migration skipped (already applied): %s", sql)
 
     def _define_tables(self) -> None:
         self.test_runs = Table(
@@ -655,6 +870,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("skipped", Integer, default=0),
             Column("duration_seconds", Float),
             Column("rfc_version", String(50)),
+            Column("hostname", String(255)),
         )
 
         self.test_results = Table(
@@ -674,6 +890,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("expected_answer", Text),
             Column("actual_answer", Text),
             Column("grading_reason", Text),
+            Column("rfc_version", String(50)),
         )
 
         self.models = Table(
@@ -685,6 +902,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("release_date", String(255)),
             Column("parameters", String(255)),
             Column("last_tested", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         self.pipeline_results = Table(
@@ -705,6 +923,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("jobs_fetched", Integer, default=0),
             Column("artifacts_found", Integer, default=0),
             Column("synced_at", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         Index("idx_test_runs_model", self.test_runs.c.model_name)
@@ -746,6 +965,47 @@ class _SQLAlchemyBackend(_Backend):
             Column("end_time", String(255)),
             Column("duration_seconds", Float),
             Column("args", Text),
+            Column("rfc_version", String(50)),
+        )
+
+        self.ollama_metrics = Table(
+            "ollama_metrics",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column(
+                "run_id",
+                Integer,
+                ForeignKey("test_runs.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            Column("test_name", String(255), nullable=False),
+            Column("model_name", String(255), nullable=False),
+            Column("prompt_text", Text),
+            Column("total_duration_ns", BigInteger),
+            Column("load_duration_ns", BigInteger),
+            Column("prompt_eval_count", Integer),
+            Column("prompt_eval_duration_ns", BigInteger),
+            Column("prompt_eval_rate", Float),
+            Column("eval_count", Integer),
+            Column("eval_duration_ns", BigInteger),
+            Column("eval_rate", Float),
+            Column("rfc_version", String(50)),
+            Column("timestamp", DateTime),
+        )
+
+        self.host_info = Table(
+            "host_info",
+            self.metadata,
+            Column("id", Integer, primary_key=True, autoincrement=True),
+            Column("hostname", String(255), nullable=False, unique=True),
+            Column("os_name", String(255)),
+            Column("os_version", String(255)),
+            Column("cpu_arch", String(255)),
+            Column("cpu_count", Integer),
+            Column("total_ram_gb", Float),
+            Column("gpu_info", Text),
+            Column("last_seen", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
@@ -755,6 +1015,9 @@ class _SQLAlchemyBackend(_Backend):
         Index("idx_dry_run_results_suite", self.dry_run_results.c.test_suite)
         Index("idx_keyword_results_run_id", self.keyword_results.c.run_id)
         Index("idx_keyword_results_name", self.keyword_results.c.keyword_name)
+        Index("idx_ollama_metrics_run_id", self.ollama_metrics.c.run_id)
+        Index("idx_ollama_metrics_model", self.ollama_metrics.c.model_name)
+        Index("idx_test_runs_hostname", self.test_runs.c.hostname)
 
     def add_test_run(self, run: TestRun) -> int:
         with self.engine.begin() as conn:
@@ -776,6 +1039,7 @@ class _SQLAlchemyBackend(_Backend):
                     skipped=run.skipped,
                     duration_seconds=run.duration_seconds,
                     rfc_version=run.rfc_version,
+                    hostname=run.hostname,
                 )
             )
             assert result.inserted_primary_key is not None
@@ -785,13 +1049,20 @@ class _SQLAlchemyBackend(_Backend):
             conn.execute(
                 text(
                     """
-                    INSERT INTO models (name, last_tested)
-                    VALUES (:name, :last_tested)
+                    INSERT INTO models (name, last_tested, rfc_version)
+                    VALUES (:name, :last_tested, :rfc_version)
                     ON CONFLICT(name)
-                    DO UPDATE SET last_tested = EXCLUDED.last_tested
+                    DO UPDATE SET
+                        last_tested = EXCLUDED.last_tested,
+                        rfc_version = COALESCE(models.rfc_version,
+                                               EXCLUDED.rfc_version)
                     """
                 ),
-                {"name": run.model_name, "last_tested": run.timestamp},
+                {
+                    "name": run.model_name,
+                    "last_tested": run.timestamp,
+                    "rfc_version": run.rfc_version,
+                },
             )
             return int(run_id)
 
@@ -811,6 +1082,7 @@ class _SQLAlchemyBackend(_Backend):
                         "expected_answer": r.expected_answer,
                         "actual_answer": r.actual_answer,
                         "grading_reason": r.grading_reason,
+                        "rfc_version": r.rfc_version,
                     }
                     for r in results
                 ],
@@ -833,6 +1105,7 @@ class _SQLAlchemyBackend(_Backend):
                         "end_time": r.end_time,
                         "duration_seconds": r.duration_seconds,
                         "args": r.args,
+                        "rfc_version": r.rfc_version,
                     }
                     for r in results
                 ],
@@ -845,9 +1118,9 @@ class _SQLAlchemyBackend(_Backend):
                     """
                     INSERT INTO models
                     (name, full_name, organization, release_date, parameters,
-                     last_tested)
+                     last_tested, rfc_version)
                     VALUES (:name, :full_name, :organization, :release_date,
-                            :parameters, :last_tested)
+                            :parameters, :last_tested, :rfc_version)
                     ON CONFLICT(name) DO UPDATE SET
                         full_name = COALESCE(EXCLUDED.full_name, models.full_name),
                         organization = COALESCE(EXCLUDED.organization,
@@ -857,7 +1130,9 @@ class _SQLAlchemyBackend(_Backend):
                         parameters = COALESCE(EXCLUDED.parameters,
                                               models.parameters),
                         last_tested = COALESCE(EXCLUDED.last_tested,
-                                               models.last_tested)
+                                               models.last_tested),
+                        rfc_version = COALESCE(models.rfc_version,
+                                               EXCLUDED.rfc_version)
                     """
                 ),
                 {
@@ -867,6 +1142,7 @@ class _SQLAlchemyBackend(_Backend):
                     "release_date": model.release_date,
                     "parameters": model.parameters,
                     "last_tested": (model.last_tested if model.last_tested else None),
+                    "rfc_version": model.rfc_version,
                 },
             )
 
@@ -953,11 +1229,12 @@ class _SQLAlchemyBackend(_Backend):
                     (pipeline_id, status, ref, sha, web_url, created_at,
                      updated_at, source, duration_seconds,
                      queued_duration_seconds, tag, jobs_fetched,
-                     artifacts_found, synced_at)
+                     artifacts_found, synced_at, rfc_version)
                     VALUES (:pipeline_id, :status, :ref, :sha, :web_url,
                             :created_at, :updated_at, :source,
                             :duration_seconds, :queued_duration_seconds,
-                            :tag, :jobs_fetched, :artifacts_found, :synced_at)
+                            :tag, :jobs_fetched, :artifacts_found, :synced_at,
+                            :rfc_version)
                     ON CONFLICT(pipeline_id) DO UPDATE SET
                         status = EXCLUDED.status,
                         updated_at = EXCLUDED.updated_at,
@@ -986,6 +1263,7 @@ class _SQLAlchemyBackend(_Backend):
                     "synced_at": (
                         pipeline.synced_at if pipeline.synced_at else datetime.now()
                     ),
+                    "rfc_version": pipeline.rfc_version,
                 },
             )
             row = result.fetchone()
@@ -1037,6 +1315,82 @@ class _SQLAlchemyBackend(_Backend):
                 text("SELECT * FROM robot_dry_run_results ORDER BY id DESC LIMIT :lim"),
                 {"lim": limit},
             )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        if not results:
+            return
+        with self.engine.begin() as conn:
+            conn.execute(
+                self.ollama_metrics.insert(),
+                [
+                    {
+                        "run_id": r.run_id,
+                        "test_name": r.test_name,
+                        "model_name": r.model_name,
+                        "prompt_text": r.prompt_text,
+                        "total_duration_ns": r.total_duration_ns,
+                        "load_duration_ns": r.load_duration_ns,
+                        "prompt_eval_count": r.prompt_eval_count,
+                        "prompt_eval_duration_ns": r.prompt_eval_duration_ns,
+                        "prompt_eval_rate": r.prompt_eval_rate,
+                        "eval_count": r.eval_count,
+                        "eval_duration_ns": r.eval_duration_ns,
+                        "eval_rate": r.eval_rate,
+                        "rfc_version": r.rfc_version,
+                        "timestamp": r.timestamp,
+                    }
+                    for r in results
+                ],
+            )
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM ollama_metrics ORDER BY id DESC LIMIT :lim"),
+                {"lim": limit},
+            )
+            return [dict(row._mapping) for row in result.fetchall()]
+
+    def add_or_update_host(self, host: HostInfo) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO host_info
+                    (hostname, os_name, os_version, cpu_arch, cpu_count,
+                     total_ram_gb, gpu_info, last_seen, rfc_version)
+                    VALUES (:hostname, :os_name, :os_version, :cpu_arch,
+                            :cpu_count, :total_ram_gb, :gpu_info, :last_seen,
+                            :rfc_version)
+                    ON CONFLICT(hostname) DO UPDATE SET
+                        os_name = EXCLUDED.os_name,
+                        os_version = EXCLUDED.os_version,
+                        cpu_arch = EXCLUDED.cpu_arch,
+                        cpu_count = EXCLUDED.cpu_count,
+                        total_ram_gb = EXCLUDED.total_ram_gb,
+                        gpu_info = EXCLUDED.gpu_info,
+                        last_seen = EXCLUDED.last_seen,
+                        rfc_version = COALESCE(host_info.rfc_version,
+                                               EXCLUDED.rfc_version)
+                    """
+                ),
+                {
+                    "hostname": host.hostname,
+                    "os_name": host.os_name,
+                    "os_version": host.os_version,
+                    "cpu_arch": host.cpu_arch,
+                    "cpu_count": host.cpu_count,
+                    "total_ram_gb": host.total_ram_gb,
+                    "gpu_info": host.gpu_info,
+                    "last_seen": host.last_seen or datetime.utcnow(),
+                    "rfc_version": host.rfc_version,
+                },
+            )
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(text("SELECT * FROM host_info ORDER BY hostname"))
             return [dict(row._mapping) for row in result.fetchall()]
 
 
@@ -1146,6 +1500,18 @@ class TestDatabase:
 
     def get_dry_run_results(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self._backend.get_dry_run_results(limit)
+
+    def add_ollama_metrics(self, results: List[OllamaMetrics]) -> None:
+        self._backend.add_ollama_metrics(results)
+
+    def get_ollama_metrics(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self._backend.get_ollama_metrics(limit)
+
+    def add_or_update_host(self, host: HostInfo) -> None:
+        self._backend.add_or_update_host(host)
+
+    def get_hosts(self) -> List[Dict[str, Any]]:
+        return self._backend.get_hosts()
 
 
 def main():

@@ -10,7 +10,7 @@
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.loki_listener.LokiListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
 # Load .env if present
@@ -25,7 +25,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush \
+        cache-flush superset-export superset-import \
         ci-generate ci-report ci-deploy run-ci-pipeline \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         ci-release version
@@ -86,8 +86,8 @@ discover-local-nodes: ## Scan network for Ollama nodes (online/offline status)
 discover-local-models: ## Discover Ollama nodes and list their models
 	uv run python scripts/run_local_models.py --discover-models
 
-run-local-models: ## Run test suites against every model on every local node
-	uv run python scripts/run_local_models.py
+run-local-models: ## Run test suites against every model on every local node (ITERATIONS=-1 forever, 0 stop-on-error)
+	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),)
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 
@@ -110,7 +110,7 @@ code-quality-audit: ## Audit dependencies for known vulnerabilities
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset + Grafana
+docker-up: .env ## Start PostgreSQL + Redis + Superset
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
@@ -129,6 +129,22 @@ cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query Postgr
 	@echo "Flushing Redis cache..."
 	$(COMPOSE) exec redis redis-cli FLUSHALL
 	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+
+superset-export: ## Export Superset dashboards to backups/ directory
+	@mkdir -p backups
+	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
+	$(COMPOSE) exec superset superset export-dashboards \
+		-f "/tmp/superset_export_$${TIMESTAMP}.zip" && \
+	$(COMPOSE) cp "superset:/tmp/superset_export_$${TIMESTAMP}.zip" \
+		"./backups/superset_export_$${TIMESTAMP}.zip" && \
+	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
+
+superset-import: ## Import Superset dashboards from ZIP: make superset-import FILE=backups/export.zip
+	$(COMPOSE) cp $(FILE) superset:/tmp/superset_import.zip
+	$(COMPOSE) exec superset superset import-dashboards \
+		-p /tmp/superset_import.zip \
+		-u "$${SUPERSET_ADMIN_USER:-admin}"
+	@echo "Dashboard import complete."
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
@@ -184,3 +200,10 @@ ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to pu
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"
+
+release-internal: ## Bump version from commits + git tag (no PyPI publish)
+	uv run python scripts/bump_version.py
+
+release-external: ## Bump version + git tag + publish to PyPI (runs quality gates)
+	uv run python scripts/bump_version.py --bump major --push-tag
+	$(MAKE) ci-release UPLOAD=1

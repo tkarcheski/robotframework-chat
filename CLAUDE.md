@@ -1,7 +1,6 @@
 # CLAUDE.md — Claude Code persistent instructions
 
-Read `@ai/CLAUDE.md` for project intelligence, owner decisions, architecture vision,
-grading tiers, TRON dashboard specs, and everything from the spec review sessions.
+Read `@ai/CLAUDE.md` for grading tiers and test rules.
 
 Read and follow `@ai/AGENTS.md` for project philosophy, architecture, code style,
 commit conventions, and the full agent contract.
@@ -19,12 +18,19 @@ uv run pytest                 # Run Python unit tests
 pre-commit run --all-files    # Run all pre-commit checks
 make code-quality-check               # Lint (ruff) + typecheck (mypy)
 make robot-dryrun             # Validate Robot tests without execution
+
+# Cross-platform alternative (works on Windows without make/bash):
+uv run python tasks.py help           # List all available targets
+uv run python tasks.py install        # Install dependencies
+uv run python tasks.py check          # Lint + typecheck + coverage
+uv run python tasks.py robot-dryrun   # Validate Robot tests
 ```
 
 ---
 
 ## Rules
 
+- **Always read `ai/AGENTS.md` before starting any task.** This file contains critical agent architecture guidance and must be consulted first.
 - **Always run tests after changes.** `uv run pytest` for Python, `make robot-dryrun` for Robot Framework.
 - **Always run `pre-commit run --all-files` before committing.** Never bypass hooks.
 - **Don't remove functionality without explicit approval.**
@@ -35,7 +41,8 @@ make robot-dryrun             # Validate Robot tests without execution
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
-- **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. Log mistakes in `ai/CLAUDE.md` § User Mistake Log. See `ai/AGENTS.md` § User Input Validation.
+- **Every Robot test must be tagged** with exactly one `tier:*` (0–6) and one `verify:*` tag per `ai/CLAUDE.md` § Tagging Rules.
+- **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
 
 ---
 

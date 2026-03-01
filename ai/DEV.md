@@ -130,9 +130,6 @@ make robot         # Run all Robot Framework test suites
 make robot-math    # Run math tests
 make robot-docker  # Run Docker tests
 make robot-safety  # Run safety tests
-make code-quality-lint     # Run ruff linter
-make code-quality-format   # Auto-format code
-make code-quality-typecheck # Run mypy type checker
 make code-quality-check    # Run all code quality checks (lint + typecheck + coverage)
 make import        # Import output.xml results: make import PATH=results/
 make version       # Print current version
@@ -231,7 +228,7 @@ When calling Ollama's `/api/generate`, always specify and record:
 - `top_p` — include for completeness
 - `top_k` — include for completeness
 
-These must be stored in the database per test run. See `ai/CLAUDE.md` § Inference Parameters.
+These must be stored in the database per test run.
 
 ---
 
@@ -243,14 +240,12 @@ These must be stored in the database per test run. See `ai/CLAUDE.md` § Inferen
 - **Buffer results locally** if DB is unreachable, sync later
 - **Skip remaining tests** for a node that goes offline mid-suite, continue with other nodes
 
-See `ai/CLAUDE.md` § Resilience Rules.
 
 ---
 
 ## Cross-References
 
-- `ai/CLAUDE.md` — Project intelligence, owner decisions, architecture
+- `ai/CLAUDE.md` — Grading tiers and test rules
 - `ai/AGENTS.md` — Agent contract, code style, commands
 - `ai/FEATURES.md` — Feature status tracker
 - `humans/TODO.md` — Owner action items
-- `humans/QA_TRANSCRIPT.md` — Full Q&A record from spec review

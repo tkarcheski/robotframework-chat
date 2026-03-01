@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS test_results (
     question TEXT,
     expected_answer TEXT,
     actual_answer TEXT,
-    grading_reason TEXT
+    grading_reason TEXT,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS models (
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS models (
     organization VARCHAR(255),
     release_date VARCHAR(255),
     parameters VARCHAR(255),
-    last_tested TIMESTAMP
+    last_tested TIMESTAMP,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS pipeline_results (
@@ -80,7 +82,8 @@ CREATE TABLE IF NOT EXISTS pipeline_results (
     tag INTEGER,
     jobs_fetched INTEGER DEFAULT 0,
     artifacts_found INTEGER DEFAULT 0,
-    synced_at TIMESTAMP
+    synced_at TIMESTAMP,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS robot_dry_run_results (
@@ -108,7 +111,8 @@ CREATE TABLE IF NOT EXISTS keyword_results (
     start_time VARCHAR(255),
     end_time VARCHAR(255),
     duration_seconds DOUBLE PRECISION,
-    args TEXT
+    args TEXT,
+    rfc_version VARCHAR(50)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
@@ -122,10 +126,32 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id
 CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
 CREATE INDEX IF NOT EXISTS idx_pipeline_results_status
     ON pipeline_results(status);
+CREATE TABLE IF NOT EXISTS ollama_metrics (
+    id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
+    test_name VARCHAR(255) NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    prompt_text TEXT,
+    total_duration_ns BIGINT,
+    load_duration_ns BIGINT,
+    prompt_eval_count INTEGER,
+    prompt_eval_duration_ns BIGINT,
+    prompt_eval_rate DOUBLE PRECISION,
+    eval_count INTEGER,
+    eval_duration_ns BIGINT,
+    eval_rate DOUBLE PRECISION,
+    rfc_version VARCHAR(50),
+    timestamp TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp
     ON robot_dry_run_results(timestamp);
 CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite
     ON robot_dry_run_results(test_suite);
+CREATE INDEX IF NOT EXISTS idx_ollama_metrics_run_id
+    ON ollama_metrics(run_id);
+CREATE INDEX IF NOT EXISTS idx_ollama_metrics_model
+    ON ollama_metrics(model_name);
 """
 
 # ---------------------------------------------------------------------------
@@ -149,7 +175,8 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
             runs.test_suite,
             runs.git_branch,
             runs.git_commit,
-            runs.duration_seconds AS run_duration
+            runs.duration_seconds AS run_duration,
+            runs.rfc_version
         FROM test_results tr
         JOIN test_runs runs ON tr.run_id = runs.id
     """,
@@ -182,9 +209,36 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
             runs.timestamp,
             runs.model_name,
             runs.test_suite,
-            runs.git_branch
+            runs.git_branch,
+            runs.rfc_version
         FROM keyword_results kw
         JOIN test_runs runs ON kw.run_id = runs.id
+    """,
+    "ollama_performance": """
+        SELECT
+            om.id AS metrics_id,
+            om.test_name,
+            om.model_name,
+            om.prompt_text,
+            om.total_duration_ns,
+            om.load_duration_ns,
+            om.prompt_eval_count,
+            om.prompt_eval_duration_ns,
+            om.prompt_eval_rate,
+            om.eval_count,
+            om.eval_duration_ns,
+            om.eval_rate,
+            om.rfc_version,
+            runs.timestamp,
+            runs.test_suite,
+            runs.git_branch,
+            CAST(om.total_duration_ns AS DOUBLE PRECISION) / 1e9 AS total_duration_s,
+            CAST(om.load_duration_ns AS DOUBLE PRECISION) / 1e9 AS load_duration_s,
+            CAST(om.prompt_eval_duration_ns AS DOUBLE PRECISION) / 1e9
+                AS prompt_eval_duration_s,
+            CAST(om.eval_duration_ns AS DOUBLE PRECISION) / 1e9 AS eval_duration_s
+        FROM ollama_metrics om
+        JOIN test_runs runs ON om.run_id = runs.id
     """,
 }
 
@@ -791,6 +845,134 @@ def _model_analytics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _ollama_performance_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Charts for the Ollama Performance dashboard."""
+    return [
+        {
+            "name": "Eval Rate by Model (tokens/s)",
+            "viz_type": "bar",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_eval_rate",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(eval_rate)",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Eval Rate (tokens/s)",
+            },
+        },
+        {
+            "name": "Prompt Eval Rate by Model (tokens/s)",
+            "viz_type": "bar",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_prompt_eval_rate",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(prompt_eval_rate)",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Prompt Eval Rate (tokens/s)",
+            },
+        },
+        {
+            "name": "Token Throughput Over Time",
+            "viz_type": "line",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "line",
+                "granularity_sqla": "timestamp",
+                "time_grain_sqla": "P1D",
+                "metrics": [
+                    {
+                        "label": "avg_eval_rate",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(eval_rate)",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 10000,
+                "color_scheme": "supersetColors",
+                "show_legend": True,
+                "y_axis_label": "Avg Eval Rate (tokens/s)",
+            },
+        },
+        {
+            "name": "Total Duration by Model",
+            "viz_type": "bar",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_total_duration_s",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(total_duration_s)",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Total Duration (s)",
+            },
+        },
+        {
+            "name": "Model Load Time",
+            "viz_type": "bar",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_load_duration_s",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(load_duration_s)",
+                    }
+                ],
+                "groupby": ["model_name"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Load Duration (s)",
+            },
+        },
+        {
+            "name": "Ollama Metrics Detail",
+            "viz_type": "table",
+            "datasource": datasets["ollama_performance"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "timestamp",
+                    "model_name",
+                    "test_suite",
+                    "test_name",
+                    "total_duration_s",
+                    "load_duration_s",
+                    "prompt_eval_count",
+                    "prompt_eval_rate",
+                    "eval_count",
+                    "eval_rate",
+                    "rfc_version",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["timestamp"]',
+            },
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -805,6 +987,24 @@ def _ensure_tables(pg_uri: str) -> None:
         conn.execute(text(_TABLE_DDL))
     engine.dispose()
     log.info("Ensured RFC result tables exist in PostgreSQL")
+
+
+def _probe_columns(db_uri: str, sql: str) -> List[str]:
+    """Discover column names by executing a virtual dataset SQL with LIMIT 0.
+
+    PostgreSQL (and SQLite) can infer column names from the query plan
+    without returning any rows.  This is used as a fallback when Superset's
+    ``fetch_metadata()`` fails because the underlying tables are empty.
+    """
+    from sqlalchemy import create_engine, text  # type: ignore[import-untyped]
+
+    engine = create_engine(db_uri)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT * FROM ({sql}) AS _col_probe LIMIT 0"))
+            return list(result.keys())
+    finally:
+        engine.dispose()
 
 
 def _build_position_json(slices: list, title: str) -> str:
@@ -915,6 +1115,7 @@ def bootstrap() -> None:
         from superset import db  # type: ignore[import-untyped,attr-defined]
         from superset.connectors.sqla.models import (  # type: ignore[import-untyped]
             SqlaTable,
+            TableColumn,
         )
         from superset.models.core import Database  # type: ignore[import-untyped]
         from superset.models.dashboard import (  # type: ignore[import-untyped]
@@ -955,6 +1156,7 @@ def bootstrap() -> None:
             "pipeline_results",
             "robot_dry_run_results",
             "keyword_results",
+            "ollama_metrics",
         ):
             ds = (
                 db.session.query(SqlaTable)
@@ -1002,6 +1204,28 @@ def bootstrap() -> None:
                 log.info("Synced columns for virtual dataset: %s", vds_name)
             except Exception as e:
                 log.warning("Could not sync columns for %s: %s", vds_name, e)
+
+            # Fallback: when fetch_metadata() fails to register columns
+            # (e.g. underlying tables are empty), probe the database with
+            # LIMIT 0 to discover column names from the query plan.
+            if not ds.columns:
+                log.info(
+                    "No columns for %s — probing via LIMIT 0",
+                    vds_name,
+                )
+                try:
+                    col_names = _probe_columns(pg_uri, sql)
+                    for col_name in col_names:
+                        db.session.add(TableColumn(column_name=col_name, table=ds))
+                    db.session.flush()
+                    log.info(
+                        "Registered %d columns for %s via LIMIT 0 probe",
+                        len(col_names),
+                        vds_name,
+                    )
+                except Exception as e:
+                    log.warning("Column probe also failed for %s: %s", vds_name, e)
+
             datasets[vds_name] = ds
 
         # ── 4. Charts ────────────────────────────────────────────────
@@ -1016,6 +1240,10 @@ def bootstrap() -> None:
         model_slices = [
             _get_or_create_slice(db, Slice, cdef)
             for cdef in _model_analytics_charts(datasets)
+        ]
+        ollama_slices = [
+            _get_or_create_slice(db, Slice, cdef)
+            for cdef in _ollama_performance_charts(datasets)
         ]
 
         # ── 5. Dashboards ───────────────────────────────────────────
@@ -1040,9 +1268,16 @@ def bootstrap() -> None:
             "rfc-models",
             model_slices,
         )
+        _get_or_create_dashboard(
+            db,
+            Dashboard,
+            "Ollama Performance",
+            "rfc-ollama",
+            ollama_slices,
+        )
 
         db.session.commit()
-        log.info("Bootstrap complete — 3 dashboards created")
+        log.info("Bootstrap complete — 4 dashboards created")
 
 
 if __name__ == "__main__":

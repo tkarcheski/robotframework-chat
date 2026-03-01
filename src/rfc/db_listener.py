@@ -19,16 +19,26 @@ The listener reads DATABASE_URL from the environment if no explicit
 URL is provided.
 """
 
+import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
+from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
-from .test_database import KeywordResult, TestDatabase, TestResult, TestRun
+from .host_info import collect_host_info
+from .test_database import (
+    HostInfo,
+    KeywordResult,
+    OllamaMetrics,
+    TestDatabase,
+    TestResult,
+    TestRun,
+)
 
 # Prefix used by keywords to emit structured data for the listener.
 RFC_DATA_PREFIX = "RFC_DATA:"
@@ -99,6 +109,7 @@ class DbListener:
         self._db: Optional[TestDatabase] = None
         self._start_time: Optional[datetime] = None
         self._ci_info: Dict[str, str] = {}
+        self._host_info: Dict[str, Any] = {}
         self._test_cases: List[Dict[str, Any]] = []
         self._suite_depth = 0
         # Per-test structured data captured from RFC_DATA: log messages.
@@ -107,6 +118,8 @@ class DbListener:
         self._keyword_results: List[Dict[str, Any]] = []
         self._current_keyword: Optional[Dict[str, Any]] = None
         self._current_test_name: Optional[str] = None
+        # Ollama performance metrics accumulated per suite.
+        self._ollama_metrics: List[Dict[str, Any]] = []
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -141,8 +154,10 @@ class DbListener:
         if self._suite_depth == 1:
             self._start_time = datetime.utcnow()
             self._ci_info = collect_ci_metadata()
+            self._host_info = collect_host_info()
             self._test_cases = []
             self._keyword_results = []
+            self._ollama_metrics = []
             dest = self._describe_database_destination()
             banner = f"DbListener: archiving results to {dest}"
             logger.info(banner)
@@ -204,7 +219,14 @@ class DbListener:
             return
         payload = text[len(RFC_DATA_PREFIX) :]
         key, _, value = payload.partition(":")
-        if key:
+        if key == "ollama_metrics":
+            try:
+                metrics = json.loads(value)
+                metrics["test_name"] = self._current_test_name or ""
+                self._ollama_metrics.append(metrics)
+            except (json.JSONDecodeError, TypeError):
+                pass  # Skip malformed metrics JSON
+        elif key:
             self._current_test_data[key] = value
 
     def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
@@ -260,11 +282,23 @@ class DbListener:
         if total == 0:
             total = len(self._test_cases)
 
+        # Prefer the Robot variable (set via --variable DEFAULT_MODEL:<model>)
+        # over env-var / CI metadata so that run_local_models correctly
+        # records the actual model under test.
+        robot_model: Optional[str] = None
+        try:
+            robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
+        except Exception:
+            pass  # Not running inside Robot context (e.g. unit tests)
+
         model_name: str = (
-            self._ci_info.get("Default_Model")
+            robot_model
+            or self._ci_info.get("Default_Model")
             or os.getenv("DEFAULT_MODEL")
             or "unknown"
         )
+
+        hostname = self._host_info.get("hostname")
 
         run = TestRun(
             timestamp=self._start_time or end_time,
@@ -283,11 +317,27 @@ class DbListener:
             skipped=skip_count,
             duration_seconds=duration,
             rfc_version=__version__,
+            hostname=hostname,
         )
 
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
+
+            # Upsert host identification metrics.
+            if hostname and self._host_info:
+                db.add_or_update_host(
+                    HostInfo(
+                        hostname=hostname,
+                        os_name=self._host_info.get("os_name", ""),
+                        os_version=self._host_info.get("os_version", ""),
+                        cpu_arch=self._host_info.get("cpu_arch", ""),
+                        cpu_count=self._host_info.get("cpu_count", 0),
+                        total_ram_gb=self._host_info.get("total_ram_gb", 0.0),
+                        gpu_info=self._host_info.get("gpu_info"),
+                        rfc_version=__version__,
+                    )
+                )
 
             results = [
                 TestResult(
@@ -299,6 +349,7 @@ class DbListener:
                     expected_answer=tc.get("expected_answer"),
                     actual_answer=tc.get("actual_answer"),
                     grading_reason=tc.get("grading_reason"),
+                    rfc_version=__version__,
                 )
                 for tc in self._test_cases
             ]
@@ -315,15 +366,39 @@ class DbListener:
                     end_time=kw["end_time"],
                     duration_seconds=kw["duration_seconds"],
                     args=kw["args"],
+                    rfc_version=__version__,
                 )
                 for kw in self._keyword_results
             ]
             db.add_keyword_results(kw_results)
 
+            om_results = [
+                OllamaMetrics(
+                    run_id=run_id,
+                    test_name=om.get("test_name", ""),
+                    model_name=om.get("model_name", "unknown"),
+                    prompt_text=om.get("prompt_text", "")[:500]
+                    if om.get("prompt_text")
+                    else None,
+                    total_duration_ns=om.get("total_duration_ns"),
+                    load_duration_ns=om.get("load_duration_ns"),
+                    prompt_eval_count=om.get("prompt_eval_count"),
+                    prompt_eval_duration_ns=om.get("prompt_eval_duration_ns"),
+                    prompt_eval_rate=om.get("prompt_eval_rate"),
+                    eval_count=om.get("eval_count"),
+                    eval_duration_ns=om.get("eval_duration_ns"),
+                    eval_rate=om.get("eval_rate"),
+                    rfc_version=__version__,
+                )
+                for om in self._ollama_metrics
+            ]
+            db.add_ollama_metrics(om_results)
+
             dest = self._describe_database_destination()
             summary = (
-                f"DbListener: archived {len(results)} test result(s) "
-                f"and {len(kw_results)} keyword result(s) "
+                f"DbListener: archived {len(results)} test result(s), "
+                f"{len(kw_results)} keyword result(s), "
+                f"and {len(om_results)} ollama metric(s) "
                 f"to {dest} (run_id={run_id})"
             )
             logger.info(summary)
