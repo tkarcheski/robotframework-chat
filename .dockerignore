@@ -1,0 +1,58 @@
+# Git & CI
+.git/
+.github/
+.gitlab-ci.yml
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Dev tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Generated results
+results/
+*.log
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+
+# Data & backups
+data/
+backups/
+
+# Infrastructure (separate concern)
+superset/
+Dockerfile.ci
+docker-compose.yml
+
+# Documentation & AI agent configs
+docs/
+ai/
+humans/
+readme.md
+CLAUDE.md
+LICENSE
+
+# Dev tooling not needed in image
+.pre-commit-config.yaml
+.python-version
+tests/
+scripts/
+ci/
+Makefile
+tasks.py
+uv.lock
+requirements.txt
+metrics/
+opencode.json
