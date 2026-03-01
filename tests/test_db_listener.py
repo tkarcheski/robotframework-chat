@@ -636,10 +636,12 @@ class TestDbListenerDatabaseDescription:
     """Tests for _describe_database_destination helper."""
 
     def test_default_sqlite_when_no_url(self):
-        listener = DbListener()
-        desc = listener._describe_database_destination()
-        assert "SQLite" in desc
-        assert "test_history.db" in desc
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DATABASE_URL", None)
+            listener = DbListener()
+            desc = listener._describe_database_destination()
+            assert "SQLite" in desc
+            assert "test_history.db" in desc
 
     def test_explicit_sqlite_url(self):
         listener = DbListener(database_url="sqlite:///path/to/my.db")
