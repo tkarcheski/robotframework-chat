@@ -249,6 +249,7 @@ def import_results(
             expected_answer=td["expected_answer"],
             actual_answer=td["actual_answer"],
             grading_reason=td["grading_reason"],
+            rfc_version=__version__,
         )
         for td in data["test_results"]
     ]

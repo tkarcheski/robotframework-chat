@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS test_results (
     question TEXT,
     expected_answer TEXT,
     actual_answer TEXT,
-    grading_reason TEXT
+    grading_reason TEXT,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS models (
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS models (
     organization VARCHAR(255),
     release_date VARCHAR(255),
     parameters VARCHAR(255),
-    last_tested TIMESTAMP
+    last_tested TIMESTAMP,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS pipeline_results (
@@ -80,7 +82,8 @@ CREATE TABLE IF NOT EXISTS pipeline_results (
     tag INTEGER,
     jobs_fetched INTEGER DEFAULT 0,
     artifacts_found INTEGER DEFAULT 0,
-    synced_at TIMESTAMP
+    synced_at TIMESTAMP,
+    rfc_version VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS robot_dry_run_results (
@@ -108,7 +111,8 @@ CREATE TABLE IF NOT EXISTS keyword_results (
     start_time VARCHAR(255),
     end_time VARCHAR(255),
     duration_seconds DOUBLE PRECISION,
-    args TEXT
+    args TEXT,
+    rfc_version VARCHAR(50)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);

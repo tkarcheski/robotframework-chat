@@ -79,6 +79,7 @@ class TestResult:
     expected_answer: Optional[str]
     actual_answer: Optional[str]
     grading_reason: Optional[str]
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -100,6 +101,7 @@ class PipelineResult:
     jobs_fetched: int = 0
     artifacts_found: int = 0
     synced_at: Optional[datetime] = None
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -134,6 +136,7 @@ class KeywordResult:
     end_time: Optional[str] = None
     duration_seconds: Optional[float] = None
     args: Optional[str] = None
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -170,6 +173,7 @@ class HostInfo:
     total_ram_gb: float
     gpu_info: Optional[str] = None
     last_seen: Optional[datetime] = None
+    rfc_version: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -183,6 +187,7 @@ class ModelInfo:
     release_date: Optional[str]
     parameters: Optional[str]
     last_tested: Optional[datetime] = None
+    rfc_version: Optional[str] = None
 
 
 class _Backend(abc.ABC):
@@ -277,6 +282,7 @@ class _SQLiteBackend(_Backend):
         expected_answer TEXT,
         actual_answer TEXT,
         grading_reason TEXT,
+        rfc_version TEXT,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -286,7 +292,8 @@ class _SQLiteBackend(_Backend):
         organization TEXT,
         release_date TEXT,
         parameters TEXT,
-        last_tested DATETIME
+        last_tested DATETIME,
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS pipeline_results (
@@ -304,7 +311,8 @@ class _SQLiteBackend(_Backend):
         tag BOOLEAN,
         jobs_fetched INTEGER DEFAULT 0,
         artifacts_found INTEGER DEFAULT 0,
-        synced_at DATETIME
+        synced_at DATETIME,
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS robot_dry_run_results (
@@ -333,6 +341,7 @@ class _SQLiteBackend(_Backend):
         end_time TEXT,
         duration_seconds REAL,
         args TEXT,
+        rfc_version TEXT,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -364,7 +373,8 @@ class _SQLiteBackend(_Backend):
         cpu_count INTEGER,
         total_ram_gb REAL,
         gpu_info TEXT,
-        last_seen DATETIME
+        last_seen DATETIME,
+        rfc_version TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
@@ -392,6 +402,11 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_branch TO git_branch",
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
         "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
+        "ALTER TABLE test_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE pipeline_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE keyword_results ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE host_info ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE models ADD COLUMN rfc_version TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -439,11 +454,14 @@ class _SQLiteBackend(_Backend):
             run_id = cursor.lastrowid
             conn.execute(
                 """
-                INSERT INTO models (name, last_tested)
-                VALUES (?, ?)
-                ON CONFLICT(name) DO UPDATE SET last_tested=excluded.last_tested
+                INSERT INTO models (name, last_tested, rfc_version)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    last_tested=excluded.last_tested,
+                    rfc_version=COALESCE(models.rfc_version,
+                                         excluded.rfc_version)
                 """,
-                (run.model_name, run.timestamp.isoformat()),
+                (run.model_name, run.timestamp.isoformat(), run.rfc_version),
             )
             return run_id if run_id is not None else 0
 
@@ -453,8 +471,9 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO test_results
                 (run_id, test_name, test_status, score, question,
-                 expected_answer, actual_answer, grading_reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 expected_answer, actual_answer, grading_reason,
+                 rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -466,6 +485,7 @@ class _SQLiteBackend(_Backend):
                         r.expected_answer,
                         r.actual_answer,
                         r.grading_reason,
+                        r.rfc_version,
                     )
                     for r in results
                 ],
@@ -479,8 +499,9 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO keyword_results
                 (run_id, test_name, keyword_name, library_name,
-                 status, start_time, end_time, duration_seconds, args)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, start_time, end_time, duration_seconds, args,
+                 rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -493,6 +514,7 @@ class _SQLiteBackend(_Backend):
                         r.end_time,
                         r.duration_seconds,
                         r.args,
+                        r.rfc_version,
                     )
                     for r in results
                 ],
@@ -504,8 +526,8 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO models
                 (name, full_name, organization, release_date, parameters,
-                 last_tested)
-                VALUES (?, ?, ?, ?, ?, ?)
+                 last_tested, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     full_name=COALESCE(excluded.full_name, models.full_name),
                     organization=COALESCE(excluded.organization,
@@ -514,7 +536,9 @@ class _SQLiteBackend(_Backend):
                                           models.release_date),
                     parameters=COALESCE(excluded.parameters, models.parameters),
                     last_tested=COALESCE(excluded.last_tested,
-                                         models.last_tested)
+                                         models.last_tested),
+                    rfc_version=COALESCE(models.rfc_version,
+                                         excluded.rfc_version)
                 """,
                 (
                     model.name,
@@ -523,6 +547,7 @@ class _SQLiteBackend(_Backend):
                     model.release_date,
                     model.parameters,
                     model.last_tested.isoformat() if model.last_tested else None,
+                    model.rfc_version,
                 ),
             )
 
@@ -607,8 +632,8 @@ class _SQLiteBackend(_Backend):
                 (pipeline_id, status, ref, sha, web_url, created_at,
                  updated_at, source, duration_seconds,
                  queued_duration_seconds, tag, jobs_fetched,
-                 artifacts_found, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 artifacts_found, synced_at, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(pipeline_id) DO UPDATE SET
                     status=excluded.status,
                     updated_at=excluded.updated_at,
@@ -637,6 +662,7 @@ class _SQLiteBackend(_Backend):
                         if pipeline.synced_at
                         else datetime.now().isoformat()
                     ),
+                    pipeline.rfc_version,
                 ),
             )
             return cursor.lastrowid if cursor.lastrowid else 0
@@ -744,8 +770,8 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT INTO host_info
                 (hostname, os_name, os_version, cpu_arch, cpu_count,
-                 total_ram_gb, gpu_info, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 total_ram_gb, gpu_info, last_seen, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hostname) DO UPDATE SET
                     os_name=excluded.os_name,
                     os_version=excluded.os_version,
@@ -753,7 +779,9 @@ class _SQLiteBackend(_Backend):
                     cpu_count=excluded.cpu_count,
                     total_ram_gb=excluded.total_ram_gb,
                     gpu_info=excluded.gpu_info,
-                    last_seen=excluded.last_seen
+                    last_seen=excluded.last_seen,
+                    rfc_version=COALESCE(host_info.rfc_version,
+                                         excluded.rfc_version)
                 """,
                 (
                     host.hostname,
@@ -768,6 +796,7 @@ class _SQLiteBackend(_Backend):
                         if host.last_seen
                         else datetime.now().isoformat()
                     ),
+                    host.rfc_version,
                 ),
             )
 
@@ -791,6 +820,12 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs RENAME COLUMN gitlab_pipeline_url TO pipeline_url",
         # Add hostname column for host identification.
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname VARCHAR(255)",
+        # Add rfc_version to tables that were missing it.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE pipeline_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE keyword_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE host_info ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE models ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
     ]
 
     def __init__(self, database_url: str):
@@ -855,6 +890,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("expected_answer", Text),
             Column("actual_answer", Text),
             Column("grading_reason", Text),
+            Column("rfc_version", String(50)),
         )
 
         self.models = Table(
@@ -866,6 +902,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("release_date", String(255)),
             Column("parameters", String(255)),
             Column("last_tested", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         self.pipeline_results = Table(
@@ -886,6 +923,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("jobs_fetched", Integer, default=0),
             Column("artifacts_found", Integer, default=0),
             Column("synced_at", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         Index("idx_test_runs_model", self.test_runs.c.model_name)
@@ -927,6 +965,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("end_time", String(255)),
             Column("duration_seconds", Float),
             Column("args", Text),
+            Column("rfc_version", String(50)),
         )
 
         self.ollama_metrics = Table(
@@ -966,6 +1005,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("total_ram_gb", Float),
             Column("gpu_info", Text),
             Column("last_seen", DateTime),
+            Column("rfc_version", String(50)),
         )
 
         Index("idx_pipeline_results_pipeline_id", self.pipeline_results.c.pipeline_id)
@@ -1009,13 +1049,20 @@ class _SQLAlchemyBackend(_Backend):
             conn.execute(
                 text(
                     """
-                    INSERT INTO models (name, last_tested)
-                    VALUES (:name, :last_tested)
+                    INSERT INTO models (name, last_tested, rfc_version)
+                    VALUES (:name, :last_tested, :rfc_version)
                     ON CONFLICT(name)
-                    DO UPDATE SET last_tested = EXCLUDED.last_tested
+                    DO UPDATE SET
+                        last_tested = EXCLUDED.last_tested,
+                        rfc_version = COALESCE(models.rfc_version,
+                                               EXCLUDED.rfc_version)
                     """
                 ),
-                {"name": run.model_name, "last_tested": run.timestamp},
+                {
+                    "name": run.model_name,
+                    "last_tested": run.timestamp,
+                    "rfc_version": run.rfc_version,
+                },
             )
             return int(run_id)
 
@@ -1035,6 +1082,7 @@ class _SQLAlchemyBackend(_Backend):
                         "expected_answer": r.expected_answer,
                         "actual_answer": r.actual_answer,
                         "grading_reason": r.grading_reason,
+                        "rfc_version": r.rfc_version,
                     }
                     for r in results
                 ],
@@ -1057,6 +1105,7 @@ class _SQLAlchemyBackend(_Backend):
                         "end_time": r.end_time,
                         "duration_seconds": r.duration_seconds,
                         "args": r.args,
+                        "rfc_version": r.rfc_version,
                     }
                     for r in results
                 ],
@@ -1069,9 +1118,9 @@ class _SQLAlchemyBackend(_Backend):
                     """
                     INSERT INTO models
                     (name, full_name, organization, release_date, parameters,
-                     last_tested)
+                     last_tested, rfc_version)
                     VALUES (:name, :full_name, :organization, :release_date,
-                            :parameters, :last_tested)
+                            :parameters, :last_tested, :rfc_version)
                     ON CONFLICT(name) DO UPDATE SET
                         full_name = COALESCE(EXCLUDED.full_name, models.full_name),
                         organization = COALESCE(EXCLUDED.organization,
@@ -1081,7 +1130,9 @@ class _SQLAlchemyBackend(_Backend):
                         parameters = COALESCE(EXCLUDED.parameters,
                                               models.parameters),
                         last_tested = COALESCE(EXCLUDED.last_tested,
-                                               models.last_tested)
+                                               models.last_tested),
+                        rfc_version = COALESCE(models.rfc_version,
+                                               EXCLUDED.rfc_version)
                     """
                 ),
                 {
@@ -1091,6 +1142,7 @@ class _SQLAlchemyBackend(_Backend):
                     "release_date": model.release_date,
                     "parameters": model.parameters,
                     "last_tested": (model.last_tested if model.last_tested else None),
+                    "rfc_version": model.rfc_version,
                 },
             )
 
@@ -1177,11 +1229,12 @@ class _SQLAlchemyBackend(_Backend):
                     (pipeline_id, status, ref, sha, web_url, created_at,
                      updated_at, source, duration_seconds,
                      queued_duration_seconds, tag, jobs_fetched,
-                     artifacts_found, synced_at)
+                     artifacts_found, synced_at, rfc_version)
                     VALUES (:pipeline_id, :status, :ref, :sha, :web_url,
                             :created_at, :updated_at, :source,
                             :duration_seconds, :queued_duration_seconds,
-                            :tag, :jobs_fetched, :artifacts_found, :synced_at)
+                            :tag, :jobs_fetched, :artifacts_found, :synced_at,
+                            :rfc_version)
                     ON CONFLICT(pipeline_id) DO UPDATE SET
                         status = EXCLUDED.status,
                         updated_at = EXCLUDED.updated_at,
@@ -1210,6 +1263,7 @@ class _SQLAlchemyBackend(_Backend):
                     "synced_at": (
                         pipeline.synced_at if pipeline.synced_at else datetime.now()
                     ),
+                    "rfc_version": pipeline.rfc_version,
                 },
             )
             row = result.fetchone()
@@ -1305,9 +1359,10 @@ class _SQLAlchemyBackend(_Backend):
                     """
                     INSERT INTO host_info
                     (hostname, os_name, os_version, cpu_arch, cpu_count,
-                     total_ram_gb, gpu_info, last_seen)
+                     total_ram_gb, gpu_info, last_seen, rfc_version)
                     VALUES (:hostname, :os_name, :os_version, :cpu_arch,
-                            :cpu_count, :total_ram_gb, :gpu_info, :last_seen)
+                            :cpu_count, :total_ram_gb, :gpu_info, :last_seen,
+                            :rfc_version)
                     ON CONFLICT(hostname) DO UPDATE SET
                         os_name = EXCLUDED.os_name,
                         os_version = EXCLUDED.os_version,
@@ -1315,7 +1370,9 @@ class _SQLAlchemyBackend(_Backend):
                         cpu_count = EXCLUDED.cpu_count,
                         total_ram_gb = EXCLUDED.total_ram_gb,
                         gpu_info = EXCLUDED.gpu_info,
-                        last_seen = EXCLUDED.last_seen
+                        last_seen = EXCLUDED.last_seen,
+                        rfc_version = COALESCE(host_info.rfc_version,
+                                               EXCLUDED.rfc_version)
                     """
                 ),
                 {
@@ -1327,6 +1384,7 @@ class _SQLAlchemyBackend(_Backend):
                     "total_ram_gb": host.total_ram_gb,
                     "gpu_info": host.gpu_info,
                     "last_seen": host.last_seen or datetime.utcnow(),
+                    "rfc_version": host.rfc_version,
                 },
             )
 
