@@ -398,3 +398,23 @@ class TestSQLAlchemyMigrations:
             f"Only {len(executed_sql)} migrations ran after first failure, "
             f"expected {remaining}"
         )
+
+    @patch("rfc.test_database.text", create=True, side_effect=lambda s: s)
+    @patch.object(_SQLAlchemyBackend, "_run_migrations")
+    @patch.object(_SQLAlchemyBackend, "_define_tables")
+    def test_migrations_run_when_create_all_fails(
+        self,
+        _mock_define: MagicMock,
+        mock_migrations: MagicMock,
+        _mock_text: MagicMock,
+    ) -> None:
+        """_run_migrations() must execute even if metadata.create_all() raises."""
+        with patch("rfc.test_database.create_engine", create=True):
+            with patch("rfc.test_database.MetaData", create=True) as mock_meta_cls:
+                mock_meta = MagicMock()
+                mock_meta.create_all.side_effect = Exception("schema conflict")
+                mock_meta_cls.return_value = mock_meta
+
+                _SQLAlchemyBackend(database_url="postgresql://fake")
+
+        mock_migrations.assert_called_once()
