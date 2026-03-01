@@ -19,16 +19,15 @@ export
 
 .PHONY: help install \
         robot robot-math robot-docker robot-safety robot-dryrun \
-        robot-math-import robot-import import \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush superset-export superset-import \
-        ci-generate ci-report ci-deploy run-ci-pipeline \
+        ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
-        ci-release version
+        build-check version
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
@@ -56,24 +55,8 @@ robot-docker: ## Run Docker tests (Robot Framework)
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
 
-robot-math-import: ## Run math tests then import results (continues on test failures)
-	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
-	$(MAKE) import
-
-robot-import: ## Run all tests then import results (continues on test failures)
-	-$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
-	-$(ROBOT) -d results/docker $(LISTENER) robot/docker/
-	-$(ROBOT) -d results/safety $(LISTENER) robot/safety/
-	$(MAKE) import
-
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
-
-import: ## Import results from output.xml files: make import RESULTS_DIR=results/
-	uv run python scripts/import_test_results.py $(or $(RESULTS_DIR),results/) -r
-	@$(COMPOSE) exec -T redis redis-cli FLUSHALL >/dev/null 2>&1 && \
-		echo "Redis cache flushed — Superset will show fresh data." || \
-		echo "Note: Redis not running — skip cache flush."
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
@@ -157,33 +140,6 @@ ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
 
-run-ci-pipeline: ## Run the full CI pipeline locally (add ROBOT=1 for live robot tests)
-	@echo ""
-	@echo "============================================"
-	@echo "  Local CI Pipeline"
-	@echo "============================================"
-	@echo ""
-	@echo "=== Stage: install ==="
-	$(MAKE) install
-	@echo ""
-	@echo "=== Stage: lint ==="
-	bash ci/lint.sh all
-	@echo ""
-	@echo "=== Stage: test (robot dryrun) ==="
-	$(MAKE) robot-dryrun
-ifdef ROBOT
-	@echo ""
-	@echo "=== Stage: test (robot live) ==="
-	bash ci/test.sh all
-endif
-	@echo ""
-	@echo "=== Stage: release (dry-run) ==="
-	$(MAKE) ci-release
-	@echo ""
-	@echo "============================================"
-	@echo "  Local CI Pipeline: ALL STAGES PASSED"
-	@echo "============================================"
-
 opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
 	bash ci/review.sh
 
@@ -194,16 +150,11 @@ opencode-audit-markdown: ## Audit markdown file references for broken/stale path
 	bash ci/audit_markdown.sh
 
 # ── Layer 4: Release & Versioning ────────────────────────────────────
+# Publishing is handled by GitHub Actions trusted publishing.
+# See .github/workflows/pypi-publish.yml
 
-ci-release: ## Build and verify PyPI package (dry run by default, UPLOAD=1 to publish)
-	bash ci/release.sh $(if $(UPLOAD),,--dry-run)
+build-check: ## Build and verify PyPI package locally (no upload)
+	bash ci/release.sh
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"
-
-release-internal: ## Bump version from commits + git tag (no PyPI publish)
-	uv run python scripts/bump_version.py
-
-release-external: ## Bump version + git tag + publish to PyPI (runs quality gates)
-	uv run python scripts/bump_version.py --bump major --push-tag
-	$(MAKE) ci-release UPLOAD=1

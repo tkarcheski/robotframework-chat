@@ -45,18 +45,18 @@ and using dashboards to compare LLM model performance.
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        Docker Compose Stack                          │
 │                                                                      │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────────┐ │
-│  │   Grafana     │   │   Superset   │   │   Superset-Init          │ │
-│  │  :3000        │   │   :8088      │   │   (one-shot bootstrap)   │ │
-│  │  Dashboards   │   │   Dashboards │   │   Creates tables,        │ │
-│  │  provisioned  │   │   SQL Lab    │   │   charts, dashboards     │ │
-│  └──────┬───────┘   └──────┬───────┘   └────────────┬─────────────┘ │
-│         │                  │                         │               │
-│         └────────────┬─────┴─────────────────────────┘               │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────────┐  │
+│  │   Grafana    │   │   Superset   │   │   Superset-Init          │  │
+│  │  :3000       │   │   :8088      │   │   (one-shot bootstrap)   │  │
+│  │  Dashboards  │   │   Dashboards │   │   Creates tables,        │  │
+│  │  provisione  │   │   SQL Lab    │   │   charts, dashboards     │  │
+│  └──────┬───────┘   └──────┬───────┘   └────────────┬─────────────┘  │
+│         │                  │                        │                │
+│         └────────────┬─────┴────────────────────────┘                │
 │                      │                                               │
 │              ┌───────▼───────┐         ┌──────────────┐              │
-│              │  PostgreSQL   │         │    Redis      │              │
-│              │  :5432 (int)  │◄────────│    (cache)    │              │
+│              │  PostgreSQL   │         │    Redis     │              │
+│              │  :5432 (int)  │◄────────│    (cache)   │              │
 │              │  :5433 (ext)  │         └──────────────┘              │
 │              └───────────────┘                                       │
 │                                                                      │
@@ -68,8 +68,8 @@ and using dashboards to compare LLM model performance.
 │  Robot Framework Tests                                               │
 │                                                                      │
 │  make robot-math ──► DbListener ──► PostgreSQL                       │
-│  make robot-docker   GitMetaData                                     │
-│  make robot-safety   OllamaTimestampListener                         │
+│                      GitMetaData                                     │
+│                      OllamaTimestampListener                         │
 │                                                                      │
 │  scripts/query_results.py ──► CLI model comparison                   │
 │  scripts/import_test_results.py ──► Bulk import output.xml           │

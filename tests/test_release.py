@@ -1,11 +1,8 @@
-"""Tests for release version consistency and CI pipeline structure.
+"""Tests for release version consistency and GitHub Actions publish workflow.
 
 Validates that version strings are consistent across pyproject.toml
-and src/rfc/__init__.py — the invariant that ci/release.sh depends on
-when matching CI_COMMIT_TAG against the package version.
-
-Also validates that the GitLab CI release jobs are correctly configured
-with the right tag patterns and dry-run behavior.
+and src/rfc/__init__.py, and that the GitHub Actions workflow for
+PyPI trusted publishing is correctly configured.
 """
 
 from __future__ import annotations
@@ -14,7 +11,6 @@ import re
 import tomllib
 from pathlib import Path
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,108 +55,76 @@ class TestVersionConsistency:
         assert "build" in dep_names, "build package missing from dev dependencies"
         assert "twine" in dep_names, "twine package missing from dev dependencies"
 
-    def test_release_script_exists_and_is_executable(self) -> None:
-        """ci/release.sh must exist."""
-        release_sh = ROOT / "ci" / "release.sh"
-        assert release_sh.is_file(), "ci/release.sh not found"
-
     def test_bump_version_script_exists(self) -> None:
         """scripts/bump_version.py must exist."""
         bump_script = ROOT / "scripts" / "bump_version.py"
         assert bump_script.is_file(), "scripts/bump_version.py not found"
 
+    def test_pyproject_has_urls(self) -> None:
+        """pyproject.toml must have project.urls for PyPI listing."""
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        urls = data["project"]["urls"]
+        assert "Homepage" in urls
+        assert "Repository" in urls
 
-class TestReleaseScriptContent:
-    """Validate ci/release.sh script structure."""
-
-    @pytest.fixture()
-    def release_script(self) -> str:
-        return (ROOT / "ci" / "release.sh").read_text()
-
-    def test_uses_strict_mode(self, release_script: str) -> None:
-        """Release script must use set -euo pipefail."""
-        assert "set -euo pipefail" in release_script
-
-    def test_validates_tag_version(self, release_script: str) -> None:
-        """Release script must validate CI_COMMIT_TAG against pyproject.toml."""
-        assert "CI_COMMIT_TAG" in release_script
-        assert "pyproject.toml" in release_script
-
-    def test_supports_dry_run(self, release_script: str) -> None:
-        """Release script must support --dry-run flag."""
-        assert "--dry-run" in release_script
-
-    def test_builds_with_uv(self, release_script: str) -> None:
-        """Release script must build using uv run."""
-        assert "uv run python -m build" in release_script
-
-    def test_verifies_with_twine(self, release_script: str) -> None:
-        """Release script must verify distributions with twine check."""
-        assert "uv run twine check" in release_script
-
-    def test_uploads_with_twine(self, release_script: str) -> None:
-        """Release script must upload with twine upload."""
-        assert "uv run twine upload" in release_script
+    def test_pyproject_has_keywords(self) -> None:
+        """pyproject.toml must have keywords for PyPI discoverability."""
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        keywords = data["project"]["keywords"]
+        assert len(keywords) > 0
 
 
-class TestGitLabCIReleaseJobs:
-    """Validate .gitlab-ci.yml release job configuration."""
+class TestGitHubActionsPublishWorkflow:
+    """Validate .github/workflows/pypi-publish.yml configuration."""
 
-    @pytest.fixture()
-    def ci_config(self) -> dict[str, object]:
-        return yaml.safe_load((ROOT / ".gitlab-ci.yml").read_text())  # type: ignore[no-any-return]
+    def test_workflow_exists(self) -> None:
+        """GitHub Actions publish workflow must exist."""
+        wf = ROOT / ".github" / "workflows" / "pypi-publish.yml"
+        assert wf.is_file(), ".github/workflows/pypi-publish.yml not found"
 
-    def test_release_stage_exists(self, ci_config: dict[str, object]) -> None:
-        """The 'release' stage must be declared."""
-        stages = ci_config["stages"]
-        assert isinstance(stages, list)
-        assert "release" in stages
+    def test_triggers_on_version_tags(self) -> None:
+        """Workflow must trigger on v* tags."""
+        wf = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        )
+        assert "push" in wf[True]  # 'on' is parsed as True by PyYAML
+        tags = wf[True]["push"]["tags"]
+        assert "v*" in tags
 
-    def test_publish_pypi_triggers_on_clean_semver(
-        self, ci_config: dict[str, object]
-    ) -> None:
-        """publish-pypi must only trigger on clean semver tags (v1.2.3)."""
-        job = ci_config["publish-pypi"]
-        assert isinstance(job, dict)
-        rules = job["rules"]
-        assert len(rules) == 1
-        rule_if = rules[0]["if"]
-        # Must match v1.2.3 but NOT v1.2.3-rc1
-        assert r"\d+\.\d+\.\d+$" in rule_if
+    def test_has_id_token_permission(self) -> None:
+        """Workflow must request id-token: write for OIDC trusted publishing."""
+        wf = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        )
+        permissions = wf.get("permissions", {})
+        assert permissions.get("id-token") == "write"
 
-    def test_test_release_triggers_on_prerelease_tag(
-        self, ci_config: dict[str, object]
-    ) -> None:
-        """test-release must trigger on pre-release semver tags (v1.2.3-*)."""
-        job = ci_config["test-release"]
-        assert isinstance(job, dict)
-        rules = job["rules"]
-        assert len(rules) == 1
-        rule_if = rules[0]["if"]
-        # Must match v1.2.3-rc1 but NOT v1.2.3
-        assert r"\d+\.\d+\.\d+-" in rule_if
+    def test_uses_pypi_publish_action(self) -> None:
+        """Workflow must use pypa/gh-action-pypi-publish."""
+        text = (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        assert "pypa/gh-action-pypi-publish" in text
 
-    def test_test_release_uses_dry_run(self, ci_config: dict[str, object]) -> None:
-        """test-release must invoke ci-release without UPLOAD (defaults to --dry-run)."""
-        job = ci_config["test-release"]
-        assert isinstance(job, dict)
-        script = job["script"]
-        assert any("ci-release" in cmd for cmd in script)
-        # Must NOT have UPLOAD=1 (that would publish to PyPI)
-        assert not any("UPLOAD" in cmd for cmd in script)
+    def test_has_build_and_publish_jobs(self) -> None:
+        """Workflow must have separate build and publish jobs."""
+        wf = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        )
+        assert "build" in wf["jobs"]
+        assert "publish" in wf["jobs"]
 
-    def test_test_release_saves_artifacts(self, ci_config: dict[str, object]) -> None:
-        """test-release must save dist/ as artifacts for inspection."""
-        job = ci_config["test-release"]
-        assert isinstance(job, dict)
-        artifacts = job.get("artifacts", {})
-        assert isinstance(artifacts, dict)
-        paths = artifacts.get("paths", [])
-        assert "dist/" in paths
+    def test_publish_needs_build(self) -> None:
+        """Publish job must depend on build job."""
+        wf = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        )
+        publish = wf["jobs"]["publish"]
+        assert "build" in publish["needs"]
 
-    def test_publish_pypi_uses_upload(self, ci_config: dict[str, object]) -> None:
-        """publish-pypi must use UPLOAD=1 to actually publish."""
-        job = ci_config["publish-pypi"]
-        assert isinstance(job, dict)
-        script = job["script"]
-        assert any("UPLOAD=1" in cmd for cmd in script)
+    def test_publish_has_pypi_environment(self) -> None:
+        """Publish job must use the 'pypi' environment."""
+        wf = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "pypi-publish.yml").read_text()
+        )
+        publish = wf["jobs"]["publish"]
+        env = publish.get("environment", {})
+        assert env.get("name") == "pypi"
