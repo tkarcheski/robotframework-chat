@@ -41,6 +41,7 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
+- **Every Robot test must be tagged** with exactly one `tier:*` (0–6) and one `verify:*` tag per `ai/CLAUDE.md` § Tagging Rules.
 - **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
 
 ---

@@ -123,7 +123,7 @@ Save Model Metadata
 *** Test Cases ***
 Research LLM Models Metadata
     [Documentation]    Research metadata for known LLM models
-    [Tags]    ci    metadata    research
+    [Tags]    ci    metadata    research    tier:1    verify:robot
 
     # Get current date for metadata
     ${CURRENT_DATE}=    Get Current Date    result_format=%Y-%m-%d
