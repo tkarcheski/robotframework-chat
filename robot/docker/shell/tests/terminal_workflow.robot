@@ -12,7 +12,7 @@ ${PROJECT_SETUP_PROMPT}    Generate shell commands to: create a directory called
 *** Test Cases ***
 LLM Generates Project Setup Commands (IQ:120)
     [Documentation]    LLM generates correct shell workflow
-    [Tags]    IQ:120    workflow    project-setup
+    [Tags]    IQ:120    workflow    project-setup    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${PROJECT_SETUP_PROMPT}
 
@@ -32,7 +32,7 @@ LLM Generates Project Setup Commands (IQ:120)
 
 LLM Generates File Processing Pipeline (IQ:130)
     [Documentation]    LLM creates file processing command pipeline
-    [Tags]    IQ:130    pipeline    file-processing
+    [Tags]    IQ:130    pipeline    file-processing    tier:4    verify:robot
 
     # Create test data
     Docker.Execute In Container    ${SHELL_CONTAINER}    echo -e "apple\nbanana\napple\ncherry\nbanana\napple" > /tmp/fruits.txt
@@ -51,7 +51,7 @@ LLM Generates File Processing Pipeline (IQ:130)
 
 Container Is Network Isolated (IQ:110)
     [Documentation]    Verify container network isolation
-    [Tags]    IQ:110    security    network
+    [Tags]    IQ:110    security    network    tier:1    verify:robot
 
     # Try to access network
     ${result}=    Docker.Execute In Container    ${SHELL_CONTAINER}    wget -q --timeout=5 http://google.com
@@ -61,7 +61,7 @@ Container Is Network Isolated (IQ:110)
 
 Custom Shell Container (IQ:120)
     [Documentation]    Create shell container with custom resources
-    [Tags]    IQ:120    custom-resources
+    [Tags]    IQ:120    custom-resources    tier:1    verify:robot
 
     ${config}=    Create Dictionary
     ...    image=alpine:latest
@@ -83,7 +83,7 @@ Custom Shell Container (IQ:120)
 
 Container Preserves State Between Commands (IQ:130)
     [Documentation]    Verify container state is maintained
-    [Tags]    IQ:130    state-management
+    [Tags]    IQ:130    state-management    tier:1    verify:robot
 
     # Create a file
     Docker.Execute In Container    ${SHELL_CONTAINER}    echo "test data" > /tmp/persist.txt
