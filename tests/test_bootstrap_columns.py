@@ -30,6 +30,7 @@ from bootstrap_dashboards import _probe_columns  # noqa: E402
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def empty_db(tmp_path: Path) -> str:
     """SQLite database with empty tables mirroring the RFC schema."""
@@ -37,7 +38,8 @@ def empty_db(tmp_path: Path) -> str:
     uri = f"sqlite:///{db_path}"
     engine = create_engine(uri)
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE test_runs (
                 id INTEGER PRIMARY KEY,
                 timestamp TEXT,
@@ -52,8 +54,10 @@ def empty_db(tmp_path: Path) -> str:
                 failed INTEGER DEFAULT 0,
                 skipped INTEGER DEFAULT 0
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TABLE ollama_metrics (
                 id INTEGER PRIMARY KEY,
                 run_id INTEGER REFERENCES test_runs(id),
@@ -71,7 +75,8 @@ def empty_db(tmp_path: Path) -> str:
                 rfc_version TEXT,
                 timestamp TEXT
             )
-        """))
+        """)
+        )
     engine.dispose()
     return uri
 
@@ -79,6 +84,7 @@ def empty_db(tmp_path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestProbeColumns:
     """Unit tests for _probe_columns()."""
