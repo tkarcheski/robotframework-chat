@@ -240,6 +240,36 @@ class TestRunModelSuites:
         assert r.returncode == 0
 
     @patch("scripts.run_local_models.subprocess.run")
+    def test_passes_env_with_model_and_endpoint(self, mock_run: MagicMock) -> None:
+        """subprocess.run receives env with DEFAULT_MODEL and OLLAMA_ENDPOINT."""
+        mock_run.return_value = MagicMock(returncode=0)
+        config = {
+            "test_suites": [
+                {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+            ],
+            "execution": {
+                "output_dir": "results/local/{node}/{model}",
+                "extra_args": [],
+                "listeners": [],
+                "continue_on_failure": True,
+                "parallel": 1,
+            },
+        }
+        nodes_with_models = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        run_model_suites(config, nodes_with_models)
+        call_kwargs = mock_run.call_args
+        env = call_kwargs.kwargs.get("env")
+        assert env is not None, "subprocess.run must be called with env= keyword"
+        assert env["DEFAULT_MODEL"] == "llama3"
+        assert env["OLLAMA_ENDPOINT"] == "http://host1:11434"
+
+    @patch("scripts.run_local_models.subprocess.run")
     def test_no_models_no_runs(self, mock_run: MagicMock) -> None:
         config = {
             "test_suites": [

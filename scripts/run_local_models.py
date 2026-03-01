@@ -310,7 +310,8 @@ def run_model_suites(
                 )
                 print(f"  > {' '.join(cmd)}\n")
 
-                proc = subprocess.run(cmd, cwd=str(_project_root))
+                env = {**os.environ, "DEFAULT_MODEL": model, "OLLAMA_ENDPOINT": endpoint}
+                proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
                 results.append(
                     RunResult(
