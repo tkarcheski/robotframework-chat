@@ -125,10 +125,17 @@ Placeholder: `cost_seconds REAL` (wall-clock time for local runs),
 90-day rolling window. Archive older data to compressed exports.
 
 ### Versioning
-- Semver (`v0.2.0` currently)
-- Auto-bump version on merge to `main` (derive from conventional commit prefixes)
-- Auto-generate `CHANGELOG.rst` from conventional commits
-- Track test suite version (git SHA of `.robot` file) in DB for result comparability
+- Semver (`v0.133.0` currently)
+- **Auto-bump implemented** via `scripts/bump_version.py`:
+  - `release` in commit message → major bump (X.0.0)
+  - `breaking` or `!` in commit → minor bump (0.X+1.0)
+  - `feat:` / `fix:` prefix → patch bump (0.133.X+1)
+  - `docs:` / `chore:` / `test:` / `refactor:` → no bump
+  - Auto-detects GitHub/GitLab from git remote URL or CI env vars
+  - `make release-internal` — bump version from commits + git tag (no PyPI)
+  - `make release-external` — major bump + git tag + push + publish to PyPI
+- Auto-generate `CHANGELOG.rst` from conventional commits (planned, not yet implemented)
+- Track test suite version (git SHA of `.robot` file) in DB for result comparability (planned)
 
 ### Secrets
 All in `.env` files (gitignored). CI uses GitLab CI/CD variables. No vault.
