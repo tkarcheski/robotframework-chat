@@ -27,8 +27,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /build
 
-# Copy dependency spec first for layer caching
-COPY pyproject.toml ./
+# Copy build inputs (readme.md required by hatchling for wheel metadata)
+COPY pyproject.toml readme.md ./
 COPY src/ src/
 
 # Install the package and all runtime dependencies into the system site-packages
