@@ -36,11 +36,10 @@ superset/
 Dockerfile.ci
 docker-compose.yml
 
-# Documentation & AI agent configs
+# Documentation & AI agent configs (readme.md kept — required by hatchling build)
 docs/
 ai/
 humans/
-readme.md
 CLAUDE.md
 LICENSE
 
