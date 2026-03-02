@@ -93,7 +93,7 @@ code-quality-audit: ## Audit dependencies for known vulnerabilities
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 
-docker-up: .env ## Start PostgreSQL + Redis + Superset
+docker-up: .env ## Start the full stack (app + PostgreSQL + Redis + Superset)
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
@@ -161,7 +161,7 @@ docker-build-app: ## Build the application Docker image locally
 
 docker-test-app: docker-build-app ## Smoke-test the application Docker image (dry-run)
 	docker run --rm ghcr.io/tkarcheski/robotframework-chat:local \
-		robot --dryrun -d /results robot/
+		make robot-dryrun
 
 version: ## Print current version
 	@uv run python -c "from rfc import __version__; print(__version__)"

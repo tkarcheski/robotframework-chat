@@ -166,11 +166,8 @@ def docker_test_app() -> None:
             "run",
             "--rm",
             "ghcr.io/tkarcheski/robotframework-chat:local",
-            "robot",
-            "--dryrun",
-            "-d",
-            "/results",
-            "robot/",
+            "make",
+            "robot-dryrun",
         ]
     )
 

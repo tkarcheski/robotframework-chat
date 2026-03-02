@@ -1,52 +1,57 @@
 # Application Docker image for robotframework-chat
 #
-# Multi-stage build: builder installs the package, runtime copies results.
-# Entry point is bash — users run robot, pytest, or explore interactively.
+# Dev-ready image: includes make, uv, and the full project so users can
+# run any Makefile target inside the container.
 #
 # Usage:
 #   # Interactive shell
-#   docker run -it ghcr.io/tkarcheski/robotframework-chat:1.0.1
+#   docker run -it ghcr.io/tkarcheski/robotframework-chat:1.0.2
 #
 #   # Run math tests against local Ollama
 #   docker run --rm \
 #     -e OLLAMA_ENDPOINT=http://host.docker.internal:11434 \
-#     ghcr.io/tkarcheski/robotframework-chat:1.0.1 \
-#     robot -d /results robot/math/tests/
+#     ghcr.io/tkarcheski/robotframework-chat:1.0.2 \
+#     make robot-math
 #
 #   # Dry-run validation (no Ollama needed)
-#   docker run --rm ghcr.io/tkarcheski/robotframework-chat:1.0.1 \
-#     robot --dryrun -d /results robot/
+#   docker run --rm ghcr.io/tkarcheski/robotframework-chat:1.0.2 \
+#     make robot-dryrun
+#
+#   # Full stack with Superset frontend
+#   docker compose up -d
+#   docker compose exec app make robot-dryrun
 
-# ── Builder stage ────────────────────────────────────────────────────
+# ── UV binary ──────────────────────────────────────────────────────
 FROM ghcr.io/astral-sh/uv:0.7 AS uv
 
-FROM python:3.13-slim AS builder
-
-# Copy uv binary from official image (no pip/network needed for uv itself)
-COPY --from=uv /uv /usr/local/bin/uv
-
-WORKDIR /build
-
-# Copy build inputs (readme.md required by hatchling for wheel metadata)
-COPY pyproject.toml readme.md ./
-COPY src/ src/
-
-# Install the package and all runtime dependencies into the system site-packages
-RUN uv pip install --system --no-cache .
-
-# ── Runtime stage ────────────────────────────────────────────────────
+# ── Runtime stage ──────────────────────────────────────────────────
 FROM python:3.13-slim
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# System tools needed for dev workflow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    make \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy uv binary from official image
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Bundle test suites, config, and environment template
+# Copy lockfile + manifest first (cache-friendly layer)
+COPY pyproject.toml uv.lock readme.md ./
+
+# Copy source and project files
+COPY src/ src/
 COPY robot/ robot/
 COPY config/ config/
-COPY .env.example .env.example
+COPY scripts/ scripts/
+COPY tests/ tests/
+COPY ci/ ci/
+COPY Makefile tasks.py .env.example ./
+
+# Install all dependencies (dev + superset extras for full make target support)
+RUN uv sync --frozen --extra dev --extra superset
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash rfc && \
