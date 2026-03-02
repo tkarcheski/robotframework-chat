@@ -5,16 +5,16 @@
 #
 # Usage:
 #   # Interactive shell
-#   docker run -it ghcr.io/tkarcheski/robotframework-chat:1.0.0
+#   docker run -it ghcr.io/tkarcheski/robotframework-chat:1.0.1
 #
 #   # Run math tests against local Ollama
 #   docker run --rm \
 #     -e OLLAMA_ENDPOINT=http://host.docker.internal:11434 \
-#     ghcr.io/tkarcheski/robotframework-chat:1.0.0 \
+#     ghcr.io/tkarcheski/robotframework-chat:1.0.1 \
 #     robot -d /results robot/math/tests/
 #
 #   # Dry-run validation (no Ollama needed)
-#   docker run --rm ghcr.io/tkarcheski/robotframework-chat:1.0.0 \
+#   docker run --rm ghcr.io/tkarcheski/robotframework-chat:1.0.1 \
 #     robot --dryrun -d /results robot/
 
 # ── Builder stage ────────────────────────────────────────────────────
