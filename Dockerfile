@@ -18,9 +18,12 @@
 #     robot --dryrun -d /results robot/
 
 # ── Builder stage ────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:0.7 AS uv
+
 FROM python:3.13-slim AS builder
 
-RUN pip install --no-cache-dir uv
+# Copy uv binary from official image (no pip/network needed for uv itself)
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /build
 
