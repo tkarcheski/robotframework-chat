@@ -50,6 +50,7 @@ nodes:
 # can maintain it manually.
 # ---------------------------------------------------------------------------
 master_models:
+  - "qwen3.5:27b"
   - "llama3"
   - "llama3:latest"
   - "llama3.1:latest"

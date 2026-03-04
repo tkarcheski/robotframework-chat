@@ -45,7 +45,7 @@ Key variables:
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | SQLite (`data/test_history.db`) |
-| `DEFAULT_MODEL` | LLM model for tests + dashboard | `llama3` |
+| `DEFAULT_MODEL` | LLM model for tests + dashboard | `qwen3.5:27b` |
 | `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` |
 | `OLLAMA_NODES_LIST` | Comma-separated Ollama hostnames | from `config/test_suites.yaml` |
 | `GITLAB_API_URL` | GitLab instance URL | (empty) |

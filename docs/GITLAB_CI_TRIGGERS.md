@@ -55,7 +55,7 @@ rules:
 **Key behavior:**
 - Runs on **every** branch, giving fast feedback on every push
 - On the default branch (`main`), also triggers deploy and reporting jobs
-- Uses the smallest viable model (`llama3`) for speed
+- Uses the default model (`qwen3.5:27b`) for testing
 
 ---
 

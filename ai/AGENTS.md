@@ -528,7 +528,7 @@ after loading `config/test_suites.yaml`:
 
 | Env var | YAML path | Example |
 |---------|-----------|---------|
-| `DEFAULT_MODEL` | `defaults.model` | `mistral` |
+| `DEFAULT_MODEL` | `defaults.model` | `qwen3.5:27b` |
 | `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
 | `GITLAB_API_URL` | `monitoring.gitlab_api_url` | `https://gitlab.example.com` |
 | `GITLAB_PROJECT_ID` | `monitoring.gitlab_project_id` | `42` |

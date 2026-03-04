@@ -26,7 +26,7 @@ stages:
 
 variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
-  DEFAULT_MODEL: "llama3"
+  DEFAULT_MODEL: "qwen3.5:27b"
   DATABASE_HOST: "localhost"
   DATABASE_URL: "postgresql://rfc:changeme@${DATABASE_HOST}:5433/rfc"
   ROBOT_OPTIONS: "--metadata CI:true"
@@ -38,9 +38,12 @@ lint:
   stage: lint
   script: [bash ci/lint.sh all]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG =~ /^v/
+      allow_failure: false
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
     - if: $CI_COMMIT_BRANCH
+      allow_failure: true
 
 # ── Test: Per-Node Model Runs ──────────────────────────────────────
 
@@ -51,10 +54,13 @@ lint:
     - job: lint
       artifacts: false
   script: [make run-local-models]
-  allow_failure: true
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+      allow_failure: false
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
     - if: $CI_COMMIT_BRANCH
+      allow_failure: true
 
 run-local-models-ai1:
   extends: .run-local-models

@@ -86,7 +86,7 @@ sudo systemctl enable ollama
 ### Step 3: Pull Models
 
 ```bash
-ollama pull llama3
+ollama pull qwen3.5:27b
 ollama list
 ```
 
@@ -97,7 +97,7 @@ Configure in GitLab (Settings > CI/CD > Variables):
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `OLLAMA_ENDPOINT` | Ollama API endpoint | `http://localhost:11434` | No |
-| `DEFAULT_MODEL` | Default LLM model | `llama3` | No |
+| `DEFAULT_MODEL` | Default LLM model | `qwen3.5:27b` | No |
 | `DATABASE_URL` | PostgreSQL connection string | (unset → SQLite) | No |
 | `SUPERSET_DEPLOY_HOST` | Superset deploy target host | — | For deploy stage |
 | `SUPERSET_DEPLOY_USER` | SSH user for deploy | — | For deploy stage |
