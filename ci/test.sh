@@ -12,13 +12,13 @@
 #
 # Environment:
 #   OLLAMA_ENDPOINT  - Ollama API URL (default: http://localhost:11434)
-#   DEFAULT_MODEL    - Model to test with (default: llama3)
+#   DEFAULT_MODEL    - Model to test with (default: qwen3.5:27b)
 
 set -uo pipefail
 
 SUITE="${1:-all}"
 OLLAMA_ENDPOINT="${OLLAMA_ENDPOINT:-http://localhost:11434}"
-DEFAULT_MODEL="${DEFAULT_MODEL:-llama3}"
+DEFAULT_MODEL="${DEFAULT_MODEL:-qwen3.5:27b}"
 
 # ── Ollama health check ──────────────────────────────────────────────
 

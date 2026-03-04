@@ -17,7 +17,7 @@ A Robot Framework-based test harness for systematically testing Large Language M
 ```bash
 make install                # Install all dependencies
 pre-commit install          # Install pre-commit hooks
-ollama pull llama3          # Pull default LLM model (optional)
+ollama pull qwen3.5:27b     # Pull default LLM model (optional)
 ```
 
 ### Installation (Windows)
@@ -28,7 +28,7 @@ It requires only Python and `uv` — no `make`, `bash`, or Unix tools needed.
 ```powershell
 uv run python tasks.py install      # Install all dependencies
 uv run pre-commit install           # Install pre-commit hooks
-ollama pull llama3                  # Pull default LLM model (optional)
+ollama pull qwen3.5:27b             # Pull default LLM model (optional)
 uv run python tasks.py help         # List all available targets
 ```
 
