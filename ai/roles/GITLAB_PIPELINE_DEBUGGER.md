@@ -224,7 +224,7 @@ lint → generate → test → report → deploy → release → review
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_ENDPOINT` | `http://localhost:11434` | Ollama API endpoint |
-| `DEFAULT_MODEL` | `llama3` | Model for test execution |
+| `DEFAULT_MODEL` | `qwen3.5:27b` | Model for test execution |
 | `ROBOT_OPTIONS` | `--metadata CI:true` | Extra Robot Framework flags |
 
 ---

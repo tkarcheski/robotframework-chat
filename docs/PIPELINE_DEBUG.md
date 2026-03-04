@@ -75,7 +75,7 @@ sudo systemctl start ollama
 sudo systemctl enable ollama
 
 # 5. Pull models
-ollama pull llama3
+ollama pull qwen3.5:27b
 ollama pull mistral
 ollama list
 
