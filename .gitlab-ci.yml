@@ -27,6 +27,8 @@ stages:
 variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "llama3"
+  DATABASE_HOST: "localhost"
+  DATABASE_URL: "postgresql://rfc:changeme@${DATABASE_HOST}:5433/rfc"
   ROBOT_OPTIONS: "--metadata CI:true"
 
 # ── Lint ─────────────────────────────────────────────────────────────
