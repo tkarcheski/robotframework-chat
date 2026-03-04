@@ -247,5 +247,5 @@ These must be stored in the database per test run.
 
 - `ai/CLAUDE.md` — Grading tiers and test rules
 - `ai/AGENTS.md` — Agent contract, code style, commands
-- `ai/FEATURES.md` — Feature status tracker
+- `docs/requirements.md` — Project requirements and status tracker
 - `humans/TODO.md` — Owner action items
