@@ -85,7 +85,7 @@ repo-metrics:
   script: [make ci-report POST_MR=1]
   artifacts:
     paths: [metrics/]
-    expire_in: 30 days
+    expire_in: 90 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -100,7 +100,7 @@ pipeline-summary:
   script: [bash ci/pipeline_report.sh --post-mr]
   artifacts:
     paths: [metrics/]
-    expire_in: 30 days
+    expire_in: 90 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -147,7 +147,7 @@ opencode-review:
       - review-result.md
       - review-fix-attempt.md
       - review-patch-*.diff
-    expire_in: 30 days
+    expire_in: 90 days
     when: always
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /opencode-review/
