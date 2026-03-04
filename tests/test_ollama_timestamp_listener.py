@@ -227,9 +227,7 @@ class TestOllamaAuditLog:
 
     def test_initial_endpoint_from_env(self):
         """Listener picks up OLLAMA_ENDPOINT from environment."""
-        with patch.dict(
-            os.environ, {"OLLAMA_ENDPOINT": "http://ai1:11434"}
-        ):
+        with patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://ai1:11434"}):
             listener = OllamaTimestampListener()
         assert listener._endpoint == "http://ai1:11434"
 
@@ -249,12 +247,8 @@ class TestOllamaAuditLog:
     def test_set_llm_endpoint_updates_endpoint(self):
         """Set LLM Endpoint keyword updates the tracked endpoint."""
         listener = OllamaTimestampListener()
-        listener.start_keyword(
-            "Set LLM Endpoint", {"args": ["http://gpu-box:11434"]}
-        )
-        listener.end_keyword(
-            "Set LLM Endpoint", {"args": ["http://gpu-box:11434"]}
-        )
+        listener.start_keyword("Set LLM Endpoint", {"args": ["http://gpu-box:11434"]})
+        listener.end_keyword("Set LLM Endpoint", {"args": ["http://gpu-box:11434"]})
         assert listener._endpoint == "http://gpu-box:11434"
 
     def test_chat_records_model_and_endpoint(self):
@@ -359,7 +353,9 @@ class TestOllamaAuditLog:
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
-                data_lines = [line for line in f.readlines() if not line.startswith("#")]
+                data_lines = [
+                    line for line in f.readlines() if not line.startswith("#")
+                ]
 
             assert len(data_lines) == 3
 
@@ -384,7 +380,9 @@ class TestOllamaAuditLog:
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
-                data_lines = [line for line in f.readlines() if not line.startswith("#")]
+                data_lines = [
+                    line for line in f.readlines() if not line.startswith("#")
+                ]
 
         # 4 entries: Set LLM Model, Ask LLM, Set LLM Model, Ask LLM
         assert len(data_lines) == 4
