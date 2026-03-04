@@ -205,4 +205,210 @@ class TestOllamaTimestampListener:
                 "start_time",
                 "end_time",
                 "duration_seconds",
+                "model",
+                "endpoint",
             }
+
+
+class TestOllamaAuditLog:
+    """Tests for the auditable ollama_audit.log file."""
+
+    def test_initial_model_from_env(self):
+        """Listener picks up DEFAULT_MODEL from environment."""
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "gemma2"}):
+            listener = OllamaTimestampListener()
+        assert listener._model == "gemma2"
+
+    def test_initial_model_default(self):
+        """Falls back to 'unknown' when DEFAULT_MODEL is unset."""
+        with patch.dict(os.environ, {}, clear=True):
+            listener = OllamaTimestampListener()
+        assert listener._model == "unknown"
+
+    def test_initial_endpoint_from_env(self):
+        """Listener picks up OLLAMA_ENDPOINT from environment."""
+        with patch.dict(
+            os.environ, {"OLLAMA_ENDPOINT": "http://ai1:11434"}
+        ):
+            listener = OllamaTimestampListener()
+        assert listener._endpoint == "http://ai1:11434"
+
+    def test_initial_endpoint_default(self):
+        """Falls back to 'http://localhost:11434' when unset."""
+        with patch.dict(os.environ, {}, clear=True):
+            listener = OllamaTimestampListener()
+        assert listener._endpoint == "http://localhost:11434"
+
+    def test_set_llm_model_updates_model(self):
+        """Set LLM Model keyword updates the tracked model."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Set LLM Model", {"args": ["mistral"]})
+        listener.end_keyword("Set LLM Model", {"args": ["mistral"]})
+        assert listener._model == "mistral"
+
+    def test_set_llm_endpoint_updates_endpoint(self):
+        """Set LLM Endpoint keyword updates the tracked endpoint."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword(
+            "Set LLM Endpoint", {"args": ["http://gpu-box:11434"]}
+        )
+        listener.end_keyword(
+            "Set LLM Endpoint", {"args": ["http://gpu-box:11434"]}
+        )
+        assert listener._endpoint == "http://gpu-box:11434"
+
+    def test_chat_records_model_and_endpoint(self):
+        """Each completed chat entry includes model and endpoint."""
+        with patch.dict(
+            os.environ,
+            {
+                "DEFAULT_MODEL": "llama3",
+                "OLLAMA_ENDPOINT": "http://localhost:11434",
+            },
+        ):
+            listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hi"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hi"]})
+        chat = listener._chats[0]
+        assert chat["model"] == "llama3"
+        assert chat["endpoint"] == "http://localhost:11434"
+
+    def test_audit_log_file_created(self):
+        """end_suite writes ollama_audit.log alongside the JSON."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hello"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("My Suite", {"totaltests": 1})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            assert os.path.exists(audit_file)
+
+    def test_audit_log_not_created_when_no_chats(self):
+        """No audit log when there are no Ollama interactions."""
+        listener = OllamaTimestampListener()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("My Suite", {"totaltests": 0})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            assert not os.path.exists(audit_file)
+
+    def test_audit_log_header(self):
+        """Audit log starts with a comment header."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hello"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("My Suite", {"totaltests": 1})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            with open(audit_file) as f:
+                lines = f.readlines()
+
+            assert lines[0].startswith("# ollama_audit.log")
+            assert "My Suite" in lines[1]
+
+    def test_audit_log_tab_separated_entries(self):
+        """Each entry is tab-separated with expected fields."""
+        with patch.dict(
+            os.environ,
+            {
+                "DEFAULT_MODEL": "llama3",
+                "OLLAMA_ENDPOINT": "http://localhost:11434",
+            },
+        ):
+            listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["What is 2+2?"]})
+        listener.end_keyword("Ask LLM", {"args": ["What is 2+2?"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("Suite", {"totaltests": 1})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            with open(audit_file) as f:
+                lines = [line for line in f.readlines() if not line.startswith("#")]
+
+            assert len(lines) == 1
+            parts = lines[0].strip().split("\t")
+            # TIMESTAMP  ENDPOINT  MODEL  KEYWORD  DURATION_S  PROMPT
+            assert len(parts) == 6
+            assert parts[0].endswith("Z")  # ISO timestamp
+            assert parts[1] == "http://localhost:11434"
+            assert parts[2] == "llama3"
+            assert parts[3] == "Ask LLM"
+            assert float(parts[4]) >= 0  # duration
+            assert parts[5] == "What is 2+2?"
+
+    def test_audit_log_multiple_entries(self):
+        """Multiple interactions produce multiple log lines."""
+        listener = OllamaTimestampListener()
+        for i in range(3):
+            listener.start_keyword("Ask LLM", {"args": [f"Q{i}"]})
+            listener.end_keyword("Ask LLM", {"args": [f"Q{i}"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("Suite", {"totaltests": 3})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            with open(audit_file) as f:
+                data_lines = [line for line in f.readlines() if not line.startswith("#")]
+
+            assert len(data_lines) == 3
+
+    def test_audit_log_reflects_model_change(self):
+        """Log entries reflect model changes mid-session."""
+        listener = OllamaTimestampListener()
+        listener.start_keyword("Set LLM Model", {"args": ["llama3"]})
+        listener.end_keyword("Set LLM Model", {"args": ["llama3"]})
+
+        listener.start_keyword("Ask LLM", {"args": ["Q1"]})
+        listener.end_keyword("Ask LLM", {"args": ["Q1"]})
+
+        listener.start_keyword("Set LLM Model", {"args": ["mistral"]})
+        listener.end_keyword("Set LLM Model", {"args": ["mistral"]})
+
+        listener.start_keyword("Ask LLM", {"args": ["Q2"]})
+        listener.end_keyword("Ask LLM", {"args": ["Q2"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("Suite", {"totaltests": 2})
+
+            audit_file = os.path.join(tmpdir, "ollama_audit.log")
+            with open(audit_file) as f:
+                data_lines = [line for line in f.readlines() if not line.startswith("#")]
+
+        # 4 entries: Set LLM Model, Ask LLM, Set LLM Model, Ask LLM
+        assert len(data_lines) == 4
+        # First Ask LLM should use llama3
+        ask1_parts = data_lines[1].strip().split("\t")
+        assert ask1_parts[2] == "llama3"
+        # Second Ask LLM should use mistral
+        ask2_parts = data_lines[3].strip().split("\t")
+        assert ask2_parts[2] == "mistral"
+
+    def test_json_output_includes_model_and_endpoint(self):
+        """JSON output also includes model and endpoint per chat entry."""
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi3"}):
+            listener = OllamaTimestampListener()
+        listener.start_keyword("Ask LLM", {"args": ["Hello"]})
+        listener.end_keyword("Ask LLM", {"args": ["Hello"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                listener.end_suite("Suite", {"totaltests": 1})
+
+            with open(os.path.join(tmpdir, "ollama_timestamps.json")) as f:
+                data = json.load(f)
+
+            chat = data["chats"][0]
+            assert chat["model"] == "phi3"
+            assert "endpoint" in chat

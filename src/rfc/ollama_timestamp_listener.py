@@ -1,8 +1,16 @@
 """Robot Framework listener that timestamps all Ollama chat interactions.
 
 Records start/end times and duration for every Ollama-related keyword
-call (Ask LLM, Set LLM Model, Wait For LLM, etc.) and saves a JSON
-log at the end of the top-level suite.
+call (Ask LLM, Set LLM Model, Wait For LLM, etc.) and saves both a JSON
+log and a human-readable audit log at the end of the top-level suite.
+
+Output files (written to ``ROBOT_OUTPUT_DIR``):
+    ``ollama_timestamps.json`` — machine-readable JSON with full details.
+    ``ollama_audit.log``       — tab-separated audit log for compliance.
+
+Audit log format::
+
+    TIMESTAMP<TAB>ENDPOINT<TAB>MODEL<TAB>KEYWORD<TAB>DURATION_S<TAB>PROMPT
 
 Usage:
     robot --listener rfc.ollama_timestamp_listener.OllamaTimestampListener tests/
@@ -35,7 +43,12 @@ class OllamaTimestampListener:
     Hooks into ``start_keyword`` / ``end_keyword`` to record when each
     Ollama-related keyword begins and finishes.  At the end of the
     top-level suite the collected timestamps are saved to
-    ``ollama_timestamps.json`` in the output directory.
+    ``ollama_timestamps.json`` and ``ollama_audit.log`` in the output
+    directory.
+
+    The audit log is a human-readable, tab-separated file suitable for
+    compliance review.  Each line records the LLM endpoint, model,
+    keyword invoked, duration, and prompt — all with ISO 8601 timestamps.
 
     Usage:
         robot --listener rfc.ollama_timestamp_listener.OllamaTimestampListener tests/
@@ -47,6 +60,10 @@ class OllamaTimestampListener:
         self._chats: List[Dict[str, Any]] = []
         self._current_keyword: Optional[Dict[str, Any]] = None
         self._suite_depth: int = 0
+        self._model: str = os.getenv("DEFAULT_MODEL", "unknown")
+        self._endpoint: str = os.getenv(
+            "OLLAMA_ENDPOINT", "http://localhost:11434"
+        )
 
     def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
         """Track suite nesting depth."""
@@ -60,10 +77,18 @@ class OllamaTimestampListener:
         args = attributes.get("args", [])
         prompt = args[0] if args else ""
 
+        # Track model/endpoint changes from configuration keywords.
+        if name == "Set LLM Model" and args:
+            self._model = args[0]
+        elif name == "Set LLM Endpoint" and args:
+            self._endpoint = args[0]
+
         self._current_keyword = {
             "keyword": name,
             "prompt": prompt,
             "start_time": datetime.utcnow().isoformat() + "Z",
+            "model": self._model,
+            "endpoint": self._endpoint,
         }
 
     def end_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
@@ -99,6 +124,7 @@ class OllamaTimestampListener:
             return
 
         self._save_timestamps_json(name)
+        self._save_audit_log(name)
 
     def _save_timestamps_json(self, suite_name: str) -> None:
         """Write collected timestamps to a JSON file.
@@ -123,3 +149,45 @@ class OllamaTimestampListener:
             )
         except Exception as e:
             logger.warn(f"Could not save Ollama timestamps: {e}")
+
+    def _save_audit_log(self, suite_name: str) -> None:
+        """Write a human-readable, tab-separated audit log.
+
+        Format per line::
+
+            TIMESTAMP\\tENDPOINT\\tMODEL\\tKEYWORD\\tDURATION_S\\tPROMPT
+
+        Args:
+            suite_name: Name of the suite that just finished.
+        """
+        output_dir = os.getenv("ROBOT_OUTPUT_DIR", ".")
+        output_file = os.path.join(output_dir, "ollama_audit.log")
+
+        try:
+            with open(output_file, "w") as f:
+                f.write("# ollama_audit.log - Auditable Ollama LLM interaction log\n")
+                f.write(f"# Suite: {suite_name}\n")
+                f.write(f"# Generated: {datetime.utcnow().isoformat()}Z\n")
+                f.write(
+                    "# Format: TIMESTAMP\\tENDPOINT\\tMODEL\\tKEYWORD"
+                    "\\tDURATION_S\\tPROMPT\n"
+                )
+                f.write("#\n")
+                for chat in self._chats:
+                    prompt = (
+                        chat["prompt"].replace("\n", " ").replace("\r", "").strip()
+                    )
+                    duration = chat.get("duration_seconds", 0)
+                    f.write(
+                        f"{chat['start_time']}\t"
+                        f"{chat['endpoint']}\t"
+                        f"{chat['model']}\t"
+                        f"{chat['keyword']}\t"
+                        f"{duration}\t"
+                        f"{prompt}\n"
+                    )
+            logger.info(
+                f"Audit log saved to: {output_file} ({len(self._chats)} entries)"
+            )
+        except Exception as e:
+            logger.warn(f"Could not save audit log: {e}")
