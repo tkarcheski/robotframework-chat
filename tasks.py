@@ -29,6 +29,8 @@ LISTENERS = [
     "rfc.git_metadata_listener.GitMetaData",
     "--listener",
     "rfc.ollama_timestamp_listener.OllamaTimestampListener",
+    "--listener",
+    "rfc.chat_log_listener.ChatLogListener",
 ]
 
 DRYRUN_LISTENER = ["--listener", "rfc.dry_run_listener.DryRunListener"]
