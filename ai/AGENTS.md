@@ -416,7 +416,7 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 | `DATABASE_URL` | Backend | Notes |
 |----------------|---------|-------|
-| Not set | SQLite | Stores to `data/test_history.db` |
+| Not set | **Error** | `RuntimeError` — must be configured |
 | `postgresql://...` | PostgreSQL | Requires `uv sync --extra superset` |
 
 ---
@@ -490,19 +490,15 @@ During the **review stage** (MR label `opencode-review` or manual trigger), Open
 
 ## Database
 
-Test results are stored in a SQL database with dual-backend support:
-
-- **SQLite** (default) — zero-config, stores in `data/test_history.db`
-- **PostgreSQL** — for production use with Superset visualization
-
-Set `DATABASE_URL` in your environment or `.env` to switch backends:
+Test results are stored in PostgreSQL (required). `DATABASE_URL` must be set
+in the environment or `.env`:
 
 ```bash
-# PostgreSQL (for Superset)
 DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
-
-# SQLite (default when DATABASE_URL is unset)
 ```
+
+SQLite is only used internally by test fixtures (via `db_path=` parameter)
+and is not a supported production backend.
 
 See [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) for schema details, queries, and maintenance.
 

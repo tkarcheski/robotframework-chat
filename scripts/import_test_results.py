@@ -272,7 +272,6 @@ def main():
         "--model",
         help="Model name override (default: from metadata or DEFAULT_MODEL env var)",
     )
-    parser.add_argument("--db", help="Database path (default: data/test_history.db)")
     parser.add_argument(
         "--recursive",
         "-r",
@@ -282,11 +281,8 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize database (respects DATABASE_URL env var for PostgreSQL)
-    if args.db:
-        db = TestDatabase(db_path=args.db)
-    else:
-        db = TestDatabase()
+    # Initialize database (requires DATABASE_URL env var)
+    db = TestDatabase()
 
     # Find output.xml files
     xml_files: list[str] = []
