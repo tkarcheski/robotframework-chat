@@ -1,17 +1,18 @@
-"""Cross-platform task runner — replaces Makefile for Windows users.
+"""Cross-platform task runner — essential targets for Windows users.
 
 Usage:
     uv run python tasks.py <target>
     uv run python tasks.py help          # list all targets
 
-This script mirrors the most-used Makefile targets using only the
-Python standard library, so it works on Windows, macOS, and Linux
-without requiring ``make``, ``bash``, or any other Unix tools.
+Provides the core targets needed to run Robot Framework tests, discover
+and test local models, and upload results to Apache Superset.  Works on
+Windows, macOS, and Linux without ``make``, ``bash``, or other Unix tools.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -58,11 +59,6 @@ def _uv_run(*args: str, check: bool = True) -> int:
     return _run(["uv", "run", *args], check=check)
 
 
-def _docker_compose(*args: str, check: bool = True) -> int:
-    """Run a ``docker compose`` subcommand."""
-    return _run(["docker", "compose", *args], check=check)
-
-
 def _ensure_env() -> None:
     """Copy ``.env.example`` → ``.env`` if ``.env`` doesn't exist."""
     env_file = ROOT / ".env"
@@ -83,18 +79,12 @@ def install() -> None:
 def robot() -> None:
     """Run all Robot Framework test suites."""
     robot_math()
-    robot_docker()
     robot_safety()
 
 
 def robot_math() -> None:
     """Run math tests (Robot Framework)."""
     _uv_run("robot", "-d", "results/math", *LISTENERS, "robot/math/tests/")
-
-
-def robot_docker() -> None:
-    """Run Docker tests (Robot Framework)."""
-    _uv_run("robot", "-d", "results/docker", *LISTENERS, "robot/docker/")
 
 
 def robot_safety() -> None:
@@ -116,42 +106,30 @@ def robot_dryrun() -> None:
     )
 
 
-def lint() -> None:
-    """Run ruff linter."""
-    _uv_run("ruff", "check", ".")
-
-
-def format_code() -> None:
-    """Auto-format code with ruff."""
-    _uv_run("ruff", "format", ".")
-
-
-def typecheck() -> None:
-    """Run mypy type checker."""
-    _uv_run("mypy", "src/")
-
-
-def coverage() -> None:
-    """Run pytest with coverage report."""
-    _uv_run("pytest", "--cov", "--cov-report=term-missing", "--cov-report=html:htmlcov")
-
-
-def check() -> None:
-    """Run all code quality checks (lint + typecheck + coverage)."""
-    lint()
-    typecheck()
-    coverage()
-
-
-def docker_up() -> None:
-    """Start PostgreSQL + Redis + Superset."""
+def run_local_models() -> None:
+    """Run test suites against every model on every local node."""
     _ensure_env()
-    _docker_compose("up", "-d")
+    cmd: list[str] = ["python", "scripts/run_local_models.py"]
+    iterations = os.environ.get("ITERATIONS")
+    if iterations:
+        cmd.extend(["--iterations", iterations])
+    _uv_run(*cmd)
 
 
-def docker_down() -> None:
-    """Stop all services."""
-    _docker_compose("down")
+def import_results() -> None:
+    """Import output.xml results into the Superset database."""
+    _ensure_env()
+    results_path = os.environ.get("RESULTS_PATH", "results/")
+    cmd: list[str] = [
+        "python",
+        "scripts/import_test_results.py",
+        results_path,
+        "--recursive",
+    ]
+    model = os.environ.get("DEFAULT_MODEL")
+    if model:
+        cmd.extend(["--model", model])
+    _uv_run(*cmd)
 
 
 def docker_build_app() -> None:
@@ -190,18 +168,10 @@ TARGETS: dict[str, object] = {
     "install": install,
     "robot": robot,
     "robot-math": robot_math,
-    "robot-docker": robot_docker,
     "robot-safety": robot_safety,
     "robot-dryrun": robot_dryrun,
-    "lint": lint,
-    "format": format_code,
-    "typecheck": typecheck,
-    "coverage": coverage,
-    "check": check,
-    "docker-up": docker_up,
-    "docker-down": docker_down,
-    "docker-build-app": docker_build_app,
-    "docker-test-app": docker_test_app,
+    "run-local-models": run_local_models,
+    "import-results": import_results,
     "help": show_help,
 }
 
