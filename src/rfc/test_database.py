@@ -15,7 +15,6 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -1397,11 +1396,12 @@ class _SQLAlchemyBackend(_Backend):
 class TestDatabase:
     """Manager for test results database.
 
-    Supports SQLite (default) and PostgreSQL backends.
+    Supports PostgreSQL (via DATABASE_URL) and SQLite (via explicit db_path).
     Backend selection:
       - Set DATABASE_URL env var to a PostgreSQL connection string
-      - Pass database_url to constructor
-      - Falls back to SQLite at data/test_history.db
+      - Pass database_url= to constructor
+      - Pass db_path= for SQLite (test fixtures only)
+    Raises RuntimeError if no database is configured.
     """
 
     def __init__(
@@ -1415,9 +1415,14 @@ class TestDatabase:
             db_path: Path to SQLite database file.  When provided
                      explicitly this **always** creates a SQLite backend,
                      even if DATABASE_URL is set in the environment.
+                     Intended for test fixtures only.
             database_url: SQLAlchemy database URL.  Takes precedence over
                           the DATABASE_URL env var but **not** over an
                           explicit *db_path*.
+
+        Raises:
+            RuntimeError: If no database is configured (no *db_path*,
+                no *database_url*, and DATABASE_URL env var is unset).
         """
         self._backend: _Backend
 
@@ -1430,7 +1435,18 @@ class TestDatabase:
 
         url = database_url or os.getenv("DATABASE_URL")
 
-        if url and not url.startswith("sqlite"):
+        if not url:
+            raise RuntimeError(
+                "DATABASE_URL is not set. Configure it in .env or pass "
+                "database_url= to TestDatabase(). "
+                "See docs/TEST_DATABASE.md for details."
+            )
+
+        if url.startswith("sqlite"):
+            sqlite_path = url.replace("sqlite:///", "")
+            self._backend = _SQLiteBackend(sqlite_path)
+            self.db_path = sqlite_path
+        else:
             if not HAS_SQLALCHEMY:
                 raise ImportError(
                     "sqlalchemy and psycopg2-binary are required for "
@@ -1439,26 +1455,6 @@ class TestDatabase:
                 )
             self._backend = _SQLAlchemyBackend(url)
             self.db_path = url
-        else:
-            # SQLite path
-            sqlite_path: Optional[str] = None
-            if url and url.startswith("sqlite"):
-                # Extract path from sqlite:///path URL
-                sqlite_path = url.replace("sqlite:///", "")
-            if sqlite_path is None:
-                project_root = self._find_project_root()
-                sqlite_path = os.path.join(project_root, "data", "test_history.db")
-            self._backend = _SQLiteBackend(sqlite_path)
-            self.db_path = sqlite_path
-
-    @staticmethod
-    def _find_project_root() -> str:
-        current = Path.cwd()
-        while current != current.parent:
-            if (current / ".git").exists():
-                return str(current)
-            current = current.parent
-        return str(Path.cwd())
 
     def add_test_run(self, run: TestRun) -> int:
         return self._backend.add_test_run(run)

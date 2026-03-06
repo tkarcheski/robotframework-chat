@@ -60,12 +60,16 @@ def _uv_run(*args: str, check: bool = True) -> int:
 
 
 def _ensure_env() -> None:
-    """Copy ``.env.example`` → ``.env`` if ``.env`` doesn't exist."""
+    """Copy ``.env.example`` → ``.env`` if missing, then load into environ."""
     env_file = ROOT / ".env"
     example = ROOT / ".env.example"
     if not env_file.exists() and example.exists():
         shutil.copy2(str(example), str(env_file))
         print("  Created .env from .env.example — edit it if needed.")
+    if env_file.exists():
+        from dotenv import load_dotenv  # type: ignore[import-not-found]
+
+        load_dotenv(env_file, override=False)
 
 
 # ── Targets ──────────────────────────────────────────────────────────
@@ -84,16 +88,19 @@ def robot() -> None:
 
 def robot_math() -> None:
     """Run math tests (Robot Framework)."""
+    _ensure_env()
     _uv_run("robot", "-d", "results/math", *LISTENERS, "robot/math/tests/")
 
 
 def robot_safety() -> None:
     """Run safety tests (Robot Framework)."""
+    _ensure_env()
     _uv_run("robot", "-d", "results/safety", *LISTENERS, "robot/safety/")
 
 
 def robot_dryrun() -> None:
     """Validate all Robot tests (dry run, no execution)."""
+    _ensure_env()
     _uv_run(
         "robot",
         "--dryrun",
