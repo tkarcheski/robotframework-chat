@@ -9,7 +9,7 @@ description = "Robot Framework-based test harness for systematically testing LLM
 license = "Apache-2.0"
 readme = "readme.md"
 requires-python = ">=3.11"
-keywords = ["robotframework", "testing", "llm", "ollama", "benchmark"]
+keywords = ["robotframework", "testing", "llm", "ollama", "openai", "benchmark"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: Robot Framework",
