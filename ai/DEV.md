@@ -40,17 +40,89 @@ The `.env` file is loaded automatically by:
 - **pytest** — `python-dotenv` session fixture in `tests/conftest.py` (`override=False`, so `patch.dict` mocks still work)
 - **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, `GITLAB_API_URL`, `GITLAB_PROJECT_ID`) onto `config/test_suites.yaml`
 
-Key variables:
+### Core Variables
 
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | SQLite (`data/test_history.db`) |
-| `DEFAULT_MODEL` | LLM model for tests + dashboard | `qwen3.5:27b` |
-| `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` |
-| `OLLAMA_NODES_LIST` | Comma-separated Ollama hostnames | from `config/test_suites.yaml` |
-| `GITLAB_API_URL` | GitLab instance URL | (empty) |
-| `GITLAB_PROJECT_ID` | Numeric project ID | (empty) |
-| `GITLAB_TOKEN` | API token with `read_api` scope | (empty) |
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | SQLite fallback | db_listener, test_database, dry_run_listener |
+| `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | .gitlab-ci.yml |
+| `DEFAULT_MODEL` | LLM model for tests | `gpt-oss:20b` (CI: `qwen3.5:27b`) | ollama.py, keywords, listeners, scripts |
+| `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners, ci/test.sh |
+| `OLLAMA_TIMEOUT` | Request timeout in seconds | `120` (code), `300` (.env.example) | ollama.py, keywords, safety_keywords, Robot resources |
+
+### Node Discovery
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `OLLAMA_NODES_LIST` | Comma-separated hostnames | from `config/test_suites.yaml` | discover_nodes.py, run_local_models.py |
+| `OLLAMA_NODES` | Legacy: comma-separated `host:port` entries | (empty) | discover_ollama.py |
+| `OLLAMA_SUBNET` | CIDR notation for subnet scanning | (empty) | discover_ollama.py |
+| `RFC_HOSTNAME` | Override hostname in test results | `platform.node()` | host_info.py |
+
+### PostgreSQL & Superset
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `POSTGRES_USER` | Database user | `rfc` | docker-compose.yml, superset_config.py |
+| `POSTGRES_PASSWORD` | Database password | `changeme` | docker-compose.yml, superset_config.py |
+| `POSTGRES_DB` | Database name | `rfc` | docker-compose.yml, superset_config.py |
+| `POSTGRES_PORT` | Exposed port | `5433` | docker-compose.yml |
+| `SUPERSET_SECRET_KEY` | Flask secret key | (must generate) | docker-compose.yml |
+| `SUPERSET_PORT` | Web UI port | `8088` | docker-compose.yml |
+| `SUPERSET_ADMIN_USER` | Initial admin username | `admin` | docker-compose.yml |
+| `SUPERSET_ADMIN_PASSWORD` | Initial admin password | `changeme` | docker-compose.yml |
+| `SUPERSET_ADMIN_EMAIL` | Initial admin email | `admin@rfc.local` | docker-compose.yml |
+
+### GitLab Monitoring
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `GITLAB_API_URL` | GitLab instance URL | (empty) | suite_config.py |
+| `GITLAB_PROJECT_ID` | Numeric project ID | (empty) | suite_config.py, pipeline_summary.py |
+| `GITLAB_TOKEN` | API token (`read_api` scope) | (empty) | ci/review.sh, ci/report.sh, pipeline_summary.py |
+
+### AI Code Review
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `OPENROUTER_API_KEY` | OpenRouter API key for AI reviews | (empty) | ci/review.sh (via opencode) |
+| `REVIEW_MODEL` | Model for code review | `openrouter/moonshotai/kimi-k2.5` | ci/review.sh, ci/local_review.sh |
+| `AUDIT_MODEL` | Model for markdown audit | `ollama/qwen3-coder:30b-a3b-q4_K_M` | ci/audit_markdown.sh |
+| `BASE_BRANCH` | Base branch for diff reviews | auto-detected (main/master) | ci/audit_markdown.sh, ci/local_review.sh |
+| `COMMIT_DEPTH` | Recent commits for markdown audit | `20` | ci/audit_markdown.sh |
+
+### CI/Deploy (only needed in CI environments)
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `SUPERSET_DEPLOY_HOST` | Remote deploy target hostname | (required) | ci/deploy.sh |
+| `SUPERSET_DEPLOY_USER` | SSH user for deploy | (required) | ci/deploy.sh |
+| `SUPERSET_DEPLOY_PATH` | Remote path for deploy | (required) | ci/deploy.sh |
+| `RESULTS_SERVER` | Remote results server hostname | (required) | ci/send_results.sh |
+| `RESULTS_SERVER_USER` | SSH user for results server | (required) | ci/send_results.sh |
+| `RESULTS_SERVER_PATH` | Remote path for results | (required) | ci/send_results.sh |
+| `RESULTS_SERVER_PORT` | SSH port for results server | `22` | ci/send_results.sh |
+| `RESULTS_DIR` | Local results directory to send | `results/` | ci/send_results.sh |
+| `GITHUB_USER` | GitHub username for mirror sync | (required) | ci/sync.sh |
+| `GITHUB_TOKEN` | GitHub token for mirror sync | (required) | ci/sync.sh |
+
+### Auto-Set CI Variables (do not configure in `.env`)
+
+These are set automatically by GitLab CI or GitHub Actions:
+
+| Variable | Source | Purpose |
+|----------|--------|---------|
+| `CI`, `GITLAB_CI`, `GITHUB_ACTIONS` | CI runner | Platform detection |
+| `CI_COMMIT_SHA`, `GITHUB_SHA` | CI runner | Commit hash |
+| `CI_COMMIT_REF_NAME`, `GITHUB_REF_NAME` | CI runner | Branch name |
+| `CI_PIPELINE_URL`, `CI_PIPELINE_ID` | GitLab | Pipeline tracking |
+| `CI_JOB_URL`, `CI_JOB_ID`, `CI_JOB_NAME` | GitLab | Job tracking |
+| `CI_MERGE_REQUEST_IID` | GitLab | MR identification |
+| `CI_API_V4_URL`, `CI_PROJECT_ID` | GitLab | API access |
+| `CI_RUNNER_ID`, `CI_RUNNER_DESCRIPTION`, `CI_RUNNER_TAGS` | GitLab | Runner metadata |
+| `ROBOT_OUTPUT_DIR` | Robot Framework | Output directory |
+| `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY` | GitHub Actions | Repo identification |
+| `GITHUB_WORKSPACE`, `CI_PROJECT_DIR` | CI runner | Workspace path |
 
 ---
 
