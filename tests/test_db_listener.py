@@ -883,6 +883,16 @@ class TestDbListenerOllamaMetrics:
         listener.log_message({"message": "RFC_DATA:ollama_metrics:not-valid-json"})
         assert len(listener._ollama_metrics) == 0
 
+    def test_captures_llm_metrics_key(self):
+        """The new RFC_DATA:llm_metrics: key works the same as ollama_metrics."""
+        listener = DbListener()
+        listener.start_test("T", {})
+        metrics = {"model_name": "gpt-4o", "prompt_tokens": 10}
+        listener.log_message({"message": f"RFC_DATA:llm_metrics:{json.dumps(metrics)}"})
+        assert len(listener._ollama_metrics) == 1
+        assert listener._ollama_metrics[0]["model_name"] == "gpt-4o"
+        assert listener._ollama_metrics[0]["test_name"] == "T"
+
 
 class TestDbListenerHostInfo:
     """Tests for host identification metrics capture."""
