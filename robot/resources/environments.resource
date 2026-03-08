@@ -80,6 +80,96 @@ Setup Shell Environment
     Log    Shell environment ready: ${container_id} (${SHELL_CONTAINER_NAME})
     RETURN    ${container_id}
 
+Setup C Environment
+    [Documentation]    Setup GCC container for C code compilation and execution
+    [Arguments]    ${profile}=GCC_STANDARD    ${suite_name}=c-suite
+
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+
+    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
+    Create Directory    ${volume_path}
+
+    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
+
+    Set Global Variable    ${C_CONTAINER}    ${container_id}
+    Set Global Variable    ${C_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${C_CONTAINER_NAME}    rfc-${unique_name}
+
+    Log    C environment ready: ${container_id} (${C_CONTAINER_NAME})
+    RETURN    ${container_id}
+
+Setup Rust Environment
+    [Documentation]    Setup Rust container for Rust code compilation and execution
+    [Arguments]    ${profile}=RUST_STANDARD    ${suite_name}=rust-suite
+
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+
+    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
+    Create Directory    ${volume_path}
+
+    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
+
+    Set Global Variable    ${RUST_CONTAINER}    ${container_id}
+    Set Global Variable    ${RUST_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${RUST_CONTAINER_NAME}    rfc-${unique_name}
+
+    Log    Rust environment ready: ${container_id} (${RUST_CONTAINER_NAME})
+    RETURN    ${container_id}
+
+Setup Bash Environment
+    [Documentation]    Setup Bash container for bash script execution
+    [Arguments]    ${profile}=BASH_STANDARD    ${suite_name}=bash-suite
+
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
+
+    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
+    Create Directory    ${volume_path}
+
+    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
+
+    Set Global Variable    ${BASH_CONTAINER}    ${container_id}
+    Set Global Variable    ${BASH_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${BASH_CONTAINER_NAME}    rfc-${unique_name}
+
+    Log    Bash environment ready: ${container_id} (${BASH_CONTAINER_NAME})
+    RETURN    ${container_id}
+
+Write Source File In Container
+    [Documentation]    Write source code to a file inside a container using a heredoc approach
+    [Arguments]    ${container_var}    ${source_code}    ${dest_path}
+    ${container_id}=    Get Variable Value    ${${container_var}}
+    ${write_cmd}=    Catenate    SEPARATOR=
+    ...    cat > ${dest_path} << 'RFCEOF'\n${source_code}\nRFCEOF
+    ${result}=    Docker.Execute In Container    ${container_id}    ${write_cmd}    timeout=5
+    Should Be Equal As Integers    ${result}[exit_code]    0    Failed to write source file: ${result}[stderr]
+    RETURN    ${result}
+
+Compile And Run In Container
+    [Documentation]    Write source code, compile it, and run the binary in a container
+    [Arguments]    ${container_var}    ${source_code}    ${source_file}    ${compile_cmd}    ${run_cmd}    ${timeout}=${DEFAULT_TIMEOUT}
+    Write Source File In Container    ${container_var}    ${source_code}    /workspace/${source_file}
+    ${container_id}=    Get Variable Value    ${${container_var}}
+    # Compile
+    ${compile_result}=    Docker.Execute In Container    ${container_id}    cd /workspace && ${compile_cmd}    timeout=${timeout}
+    IF    ${compile_result}[exit_code] != 0
+        RETURN    ${compile_result}
+    END
+    # Run
+    ${run_result}=    Docker.Execute In Container    ${container_id}    cd /workspace && ${run_cmd}    timeout=${timeout}
+    RETURN    ${run_result}
+
 Teardown Environment
     [Documentation]    Cleanup container and remove shared volumes
     [Arguments]    ${container_var}    ${cleanup_volumes}=True

@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Python code generation and execution tests using Docker containers
 Resource          ../../../resources/environments.resource
+Resource          ../../../resources/code_extraction.resource
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
@@ -170,27 +171,3 @@ Custom Container Configuration (IQ:120)
 
     Should Be Equal As Integers    ${result.exit_code}    0
     Should Contain    ${result.stdout}    499999500000
-
-
-*** Keywords ***
-Extract Code Block
-    [Documentation]    Extract first fenced markdown code block (optionally matching language). Falls back to any block, then full text.
-    [Arguments]    ${text}    ${language}=python
-
-    ${pattern}=    Set Variable    (?s)```(?:${language})?\s*(.*?)\s*```
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${count}=      Get Length    ${matches}
-    IF    ${count} > 0
-        ${code}=    Set Variable    ${matches}[0]
-        RETURN    ${code}
-    END
-
-    ${pattern}=    Set Variable    (?s)```\s*(.*?)\s*```
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${count}=      Get Length    ${matches}
-    IF    ${count} > 0
-        ${code}=    Set Variable    ${matches}[0]
-        RETURN    ${code}
-    END
-
-    RETURN    ${text}

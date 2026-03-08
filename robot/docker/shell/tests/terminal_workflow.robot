@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Terminal workflow and shell command tests
 Resource          ../../../resources/environments.resource
+Resource          ../../../resources/code_extraction.resource
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
@@ -99,44 +100,3 @@ Container Preserves State Between Commands (IQ:130)
     ${result}=    Docker.Execute In Container    ${SHELL_CONTAINER}    cat /tmp/persist.txt
     Should Contain    ${result}[stdout]    test data
     Should Contain    ${result}[stdout]    more data
-
-*** Keywords ***
-Extract Shell Commands
-    [Documentation]    Extract shell commands from LLM response
-    [Arguments]    ${text}
-
-    ${commands}=    Create List
-
-    # Try to extract from markdown code block
-    # Match content between ``` markers (with or without language)
-    ${pattern}=    Set Variable    (?s)\`\`\`(?:bash|sh|shell)?\n(.*?)\n?\`\`\`
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-
-    ${has_matches}=    Get Length    ${matches}
-    IF    ${has_matches} > 0
-        # Extract lines from first match
-        ${content}=    Set Variable    ${matches}[0]
-        ${lines}=    Split String    ${content}    \n
-        FOR    ${line}    IN    @{lines}
-            ${stripped}=    Strip String    ${line}
-            # Skip empty lines and comments
-            IF    '${stripped}' != '' and not '${stripped}'.startswith('#')
-                Append To List    ${commands}    ${stripped}
-            END
-        END
-        RETURN    ${commands}
-    END
-
-    # If no code block, try to find lines that look like commands
-    # Lines starting with common shell commands
-    ${all_lines}=    Split String    ${text}    \n
-    FOR    ${line}    IN    @{all_lines}
-        ${stripped}=    Strip String    ${line}
-        # Look for common shell command patterns
-        ${is_command}=    Evaluate    bool(__import__('re').match(r'^(mkdir|cd|touch|echo|ls|cat|grep|awk|sed|wget|curl|pip|npm|python|node|docker)\s', '${stripped}'))
-        IF    ${is_command}
-            Append To List    ${commands}    ${stripped}
-        END
-    END
-
-    RETURN    ${commands}
