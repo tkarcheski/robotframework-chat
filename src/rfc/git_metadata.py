@@ -163,7 +163,7 @@ def collect_ci_metadata() -> Dict[str, str]:
 
     # Common fields (always present regardless of platform)
     metadata["Ollama_Endpoint"] = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    metadata["Default_Model"] = os.getenv("DEFAULT_MODEL", "gpt-oss:20b")
+    metadata["Default_Model"] = os.getenv("DEFAULT_MODEL", "phi4:14b")
     metadata["Timestamp"] = datetime.utcnow().isoformat() + "Z"
 
     return {k: v for k, v in metadata.items() if v}

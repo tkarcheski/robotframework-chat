@@ -239,7 +239,7 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "gpt-oss:20b"}):
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
             listener.start_suite("Suite", {})
             listener.end_test("T1", _test_attrs())
             # Simulate Robot variable override (as set by --variable flag)
@@ -882,6 +882,16 @@ class TestDbListenerOllamaMetrics:
         listener.start_test("T", {})
         listener.log_message({"message": "RFC_DATA:ollama_metrics:not-valid-json"})
         assert len(listener._ollama_metrics) == 0
+
+    def test_captures_llm_metrics_key(self):
+        """The new RFC_DATA:llm_metrics: key works the same as ollama_metrics."""
+        listener = DbListener()
+        listener.start_test("T", {})
+        metrics = {"model_name": "gpt-4o", "prompt_tokens": 10}
+        listener.log_message({"message": f"RFC_DATA:llm_metrics:{json.dumps(metrics)}"})
+        assert len(listener._ollama_metrics) == 1
+        assert listener._ollama_metrics[0]["model_name"] == "gpt-4o"
+        assert listener._ollama_metrics[0]["test_name"] == "T"
 
 
 class TestDbListenerHostInfo:
