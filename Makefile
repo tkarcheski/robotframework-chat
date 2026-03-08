@@ -18,6 +18,8 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 export
 
 .PHONY: help install update \
+        robot robot-math robot-docker robot-safety robot-dryrun \
+        robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
@@ -61,6 +63,17 @@ robot-docker: ## Run Docker tests (Robot Framework)
 
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+
+robot-bash: ## Run bash scripting tests (Robot Framework)
+	$(ROBOT) -d results/bash $(LISTENER) robot/docker/bash/
+
+robot-c: ## Run C programming tests (Robot Framework)
+	$(ROBOT) -d results/c $(LISTENER) robot/docker/c/
+
+robot-rust: ## Run Rust programming tests (Robot Framework)
+	$(ROBOT) -d results/rust $(LISTENER) robot/docker/rust/
+
+robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
