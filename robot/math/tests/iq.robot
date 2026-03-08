@@ -1,26 +1,9 @@
 *** Settings ***
-Documentation     Comprehensive Robot Framework Math Test Suite for robotframework-chat with unique, progressively harder IQ questions.
-Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
+Documentation     Progressive IQ-based math tests with randomized inputs
+Resource          ../math.resource
 Library           Collections
 Library           OperatingSystem
 Library           String
-
-*** Variables ***
-${REPEAT_COUNT}   1
-${SEED_START}     -10000
-${SEED_END}       10000
-
-*** Keywords ***
-Ask And Validate
-    [Arguments]    ${question}    ${expected}
-    ${answer}=     LLM.Ask LLM    ${question}
-    ${score}    ${reason}=    LLM.Grade Answer    ${question}    ${expected}    ${answer}
-    Should Be Equal As Integers    ${score}    1
-    Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
-
-Generate Random Integer
-    ${rand}=    Evaluate    random.randint(${SEED_START}, ${SEED_END})    modules=random
-    RETURN   ${rand}
 
 *** Test Cases ***
 IQ 100 Basic Addition
