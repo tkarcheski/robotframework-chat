@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
+from .llm_client import create_provider
 from .ollama import OllamaClient
 from .grader import Grader
 
@@ -18,13 +19,25 @@ class LLMKeywords:
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         if timeout is None:
             timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
-        self.client = OllamaClient(timeout=int(timeout), max_retries=int(max_retries))
+        self.client = create_provider(
+            timeout=int(timeout), max_retries=int(max_retries)
+        )
         self.grader = Grader(self.client)
 
     @keyword("Set LLM Endpoint")
     def set_llm_endpoint(self, endpoint: str):
+        """Set the LLM endpoint URL.
+
+        For Ollama providers, updates the base URL. For OpenAI-compatible
+        providers, updates the base_url used for API calls.
+        """
         logger.info(endpoint)
-        self.client.endpoint = endpoint
+        if isinstance(self.client, OllamaClient):
+            self.client.endpoint = endpoint
+        elif hasattr(self.client, "base_url"):
+            self.client.base_url = endpoint.rstrip("/")  # type: ignore[attr-defined]
+        else:
+            logger.warn("Set LLM Endpoint not supported for this provider")
 
     @keyword("Set LLM Model")
     def set_llm_model(self, model: str):
@@ -44,9 +57,7 @@ class LLMKeywords:
         logger.info(f"RFC_DATA:actual_answer:{response}")
         if self.client.last_metrics is not None:
             self.client.last_metrics["prompt_text"] = prompt
-            logger.info(
-                f"RFC_DATA:ollama_metrics:{json.dumps(self.client.last_metrics)}"
-            )
+            logger.info(f"RFC_DATA:llm_metrics:{json.dumps(self.client.last_metrics)}")
         return response
 
     @keyword("Grade Answer")
@@ -58,11 +69,11 @@ class LLMKeywords:
 
     @keyword("Wait For LLM")
     def wait_for_llm(self, timeout: int = 120, poll_interval: int = 2) -> bool:
-        """Wait until the Ollama LLM is available and not busy.
+        """Wait until the LLM is available and not busy.
 
-        Polls the /api/ps endpoint to detect when no models are actively
-        processing requests. Use this before Ask LLM when Ollama may be
-        busy serving another request to avoid timeout errors.
+        For Ollama providers, polls the /api/ps endpoint to detect when
+        no models are actively processing requests. For other providers,
+        returns True immediately (no queue detection available).
 
         Args:
             timeout: Maximum seconds to wait (default 120).
@@ -78,6 +89,9 @@ class LLMKeywords:
             | Wait For LLM | timeout=60 |
             | ${answer}= | Ask LLM | What is 2 + 2? |
         """
+        if not isinstance(self.client, OllamaClient):
+            logger.info("Non-Ollama provider — skipping wait (always ready)")
+            return True
         timeout = int(timeout)
         poll_interval = int(poll_interval)
         logger.info(
@@ -88,9 +102,10 @@ class LLMKeywords:
 
     @keyword("Get Running Models")
     def get_running_models(self) -> List[Dict[str, Any]]:
-        """Get the list of models currently loaded/running in Ollama.
+        """Get the list of models currently loaded/running.
 
-        Queries the /api/ps endpoint to see which models are active.
+        Only available for Ollama providers. Returns an empty list
+        for other providers.
 
         Returns:
             List of model info dicts from Ollama's /api/ps response.
@@ -99,13 +114,19 @@ class LLMKeywords:
             | ${models}= | Get Running Models |
             | Log | Currently running: ${models} |
         """
+        if not isinstance(self.client, OllamaClient):
+            logger.info("Non-Ollama provider — running models not available")
+            return []
         models = self.client.running_models()
         logger.info(f"Running models: {models}")
         return models
 
     @keyword("LLM Is Busy")
     def llm_is_busy(self) -> bool:
-        """Check if Ollama currently has models loaded and running.
+        """Check if the LLM currently has models loaded and running.
+
+        Only available for Ollama providers. Returns False for other
+        providers.
 
         Returns:
             True if Ollama has active models, False otherwise.
@@ -114,6 +135,9 @@ class LLMKeywords:
             | ${busy}= | LLM Is Busy |
             | Run Keyword If | ${busy} | Wait For LLM |
         """
+        if not isinstance(self.client, OllamaClient):
+            logger.info("Non-Ollama provider — busy check not available")
+            return False
         busy = self.client.is_busy()
         logger.info(f"Ollama busy: {busy}")
         return busy

@@ -169,7 +169,7 @@ DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 # ── Ollama ──────────────────────────────────────────────────────────
 OLLAMA_ENDPOINT=http://localhost:11434
-DEFAULT_MODEL=gpt-oss:20b
+DEFAULT_MODEL=phi4:14b
 OLLAMA_NODES_LIST=localhost
 ```
 

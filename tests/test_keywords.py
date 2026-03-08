@@ -5,48 +5,60 @@ import os
 from unittest.mock import MagicMock, patch
 
 from rfc.keywords import LLMKeywords
+from rfc.ollama import OllamaClient
 
 
 class TestLLMKeywordsInit:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_default_init(self, MockGrader, MockClient):
+    def test_default_init(self, MockGrader, mock_create):
         LLMKeywords()
-        MockClient.assert_called_once_with(timeout=120, max_retries=2)
-        MockGrader.assert_called_once_with(MockClient.return_value)
+        mock_create.assert_called_once_with(timeout=120, max_retries=2)
+        MockGrader.assert_called_once_with(mock_create.return_value)
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_custom_timeout_and_retries(self, MockGrader, MockClient):
+    def test_custom_timeout_and_retries(self, MockGrader, mock_create):
         LLMKeywords(timeout=60, max_retries=5)
-        MockClient.assert_called_once_with(timeout=60, max_retries=5)
+        mock_create.assert_called_once_with(timeout=60, max_retries=5)
 
     @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_default_timeout_from_env(self, MockGrader, MockClient):
+    def test_default_timeout_from_env(self, MockGrader, mock_create):
         LLMKeywords()
-        MockClient.assert_called_once_with(timeout=300, max_retries=2)
+        mock_create.assert_called_once_with(timeout=300, max_retries=2)
 
 
 class TestLLMKeywordsSetters:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_set_endpoint(self, MockGrader, MockClient):
+    def test_set_endpoint_ollama(self, MockGrader, mock_create):
+        """When provider is OllamaClient, sets endpoint property."""
+        mock_client = MagicMock(spec=OllamaClient)
+        mock_create.return_value = mock_client
         kw = LLMKeywords()
         kw.set_llm_endpoint("http://custom:11434")
         assert kw.client.endpoint == "http://custom:11434"
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_set_model(self, MockGrader, MockClient):
+    def test_set_endpoint_non_ollama(self, MockGrader, mock_create):
+        """When provider is non-Ollama, sets base_url."""
+        kw = LLMKeywords()
+        kw.set_llm_endpoint("https://api.openai.com/v1")
+        assert kw.client.base_url == "https://api.openai.com/v1"
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_set_model(self, MockGrader, mock_create):
         kw = LLMKeywords()
         kw.set_llm_model("mistral")
         assert kw.client.model == "mistral"
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_set_parameters(self, MockGrader, MockClient):
+    def test_set_parameters(self, MockGrader, mock_create):
         kw = LLMKeywords()
         kw.set_llm_parameters(temperature=0.7, max_tokens=512)
         assert kw.client.temperature == 0.7
@@ -54,9 +66,9 @@ class TestLLMKeywordsSetters:
 
 
 class TestLLMKeywordsAsk:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm(self, MockGrader, MockClient):
+    def test_ask_llm(self, MockGrader, mock_create):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
         kw.client.last_metrics = None
@@ -65,9 +77,9 @@ class TestLLMKeywordsAsk:
         assert result == "42"
 
     @patch("rfc.keywords.logger")
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm_emits_ollama_metrics(self, MockGrader, MockClient, mock_logger):
+    def test_ask_llm_emits_llm_metrics(self, MockGrader, mock_create, mock_logger):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
         kw.client.last_metrics = {
@@ -81,25 +93,27 @@ class TestLLMKeywordsAsk:
         # RFC_DATA messages must be emitted at INFO level so the
         # DbListener.log_message() receives them at the default --loglevel.
         info_calls = [str(c) for c in mock_logger.info.call_args_list]
-        metrics_calls = [c for c in info_calls if "RFC_DATA:ollama_metrics:" in c]
+        metrics_calls = [c for c in info_calls if "RFC_DATA:llm_metrics:" in c]
         assert len(metrics_calls) == 1
 
         # Parse and verify the JSON payload
         raw = [
             c.args[0]
             for c in mock_logger.info.call_args_list
-            if "RFC_DATA:ollama_metrics:" in str(c)
+            if "RFC_DATA:llm_metrics:" in str(c)
         ][0]
-        payload = raw.split("RFC_DATA:ollama_metrics:", 1)[1]
+        payload = raw.split("RFC_DATA:llm_metrics:", 1)[1]
         data = json.loads(payload)
         assert data["model_name"] == "llama3"
         assert data["total_duration_ns"] == 17607688368
         assert data["prompt_text"] == "What is 6 * 7?"
 
     @patch("rfc.keywords.logger")
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm_skips_metrics_when_none(self, MockGrader, MockClient, mock_logger):
+    def test_ask_llm_skips_metrics_when_none(
+        self, MockGrader, mock_create, mock_logger
+    ):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
         kw.client.last_metrics = None
@@ -107,14 +121,14 @@ class TestLLMKeywordsAsk:
         kw.ask_llm("test")
 
         info_calls = [str(c) for c in mock_logger.info.call_args_list]
-        metrics_calls = [c for c in info_calls if "RFC_DATA:ollama_metrics:" in c]
+        metrics_calls = [c for c in info_calls if "RFC_DATA:llm_metrics:" in c]
         assert len(metrics_calls) == 0
 
 
 class TestLLMKeywordsGrade:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_grade_answer(self, MockGrader, MockClient):
+    def test_grade_answer(self, MockGrader, mock_create):
         kw = LLMKeywords()
         mock_result = MagicMock()
         mock_result.score = 1
@@ -128,44 +142,68 @@ class TestLLMKeywordsGrade:
 
 
 class TestLLMKeywordsWait:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_wait_for_llm(self, MockGrader, MockClient):
+    def test_wait_for_llm_with_ollama(self, MockGrader, mock_create):
+        """When the provider is OllamaClient, delegates to wait_until_ready."""
+        mock_client = MagicMock(spec=OllamaClient)
+        mock_client.wait_until_ready.return_value = True
+        mock_create.return_value = mock_client
         kw = LLMKeywords()
-        kw.client.wait_until_ready.return_value = True
         result = kw.wait_for_llm(timeout=60, poll_interval=5)
         assert result is True
-        kw.client.wait_until_ready.assert_called_once_with(60, 5)
+        mock_client.wait_until_ready.assert_called_once_with(60, 5)
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_wait_for_llm_string_args(self, MockGrader, MockClient):
+    def test_wait_for_llm_string_args(self, MockGrader, mock_create):
         """Robot Framework passes all args as strings."""
+        mock_client = MagicMock(spec=OllamaClient)
+        mock_client.wait_until_ready.return_value = True
+        mock_create.return_value = mock_client
         kw = LLMKeywords()
-        kw.client.wait_until_ready.return_value = True
         kw.wait_for_llm(timeout="30", poll_interval="3")
-        kw.client.wait_until_ready.assert_called_once_with(30, 3)
+        mock_client.wait_until_ready.assert_called_once_with(30, 3)
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_wait_for_llm_non_ollama_returns_true(self, MockGrader, mock_create):
+        """Non-Ollama providers skip wait and return True."""
+        kw = LLMKeywords()
+        # mock_create returns a MagicMock (not OllamaClient spec)
+        result = kw.wait_for_llm()
+        assert result is True
 
 
 class TestLLMKeywordsRunningModels:
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_get_running_models(self, MockGrader, MockClient):
+    def test_get_running_models_with_ollama(self, MockGrader, mock_create):
+        mock_client = MagicMock(spec=OllamaClient)
+        mock_client.running_models.return_value = [{"name": "llama3"}]
+        mock_create.return_value = mock_client
         kw = LLMKeywords()
-        kw.client.running_models.return_value = [{"name": "llama3"}]
         result = kw.get_running_models()
         assert result == [{"name": "llama3"}]
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_llm_is_busy_true(self, MockGrader, MockClient):
+    def test_get_running_models_non_ollama_returns_empty(self, MockGrader, mock_create):
         kw = LLMKeywords()
-        kw.client.is_busy.return_value = True
+        result = kw.get_running_models()
+        assert result == []
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_llm_is_busy_with_ollama(self, MockGrader, mock_create):
+        mock_client = MagicMock(spec=OllamaClient)
+        mock_client.is_busy.return_value = True
+        mock_create.return_value = mock_client
+        kw = LLMKeywords()
         assert kw.llm_is_busy() is True
 
-    @patch("rfc.keywords.OllamaClient")
+    @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_llm_is_busy_false(self, MockGrader, MockClient):
+    def test_llm_is_busy_non_ollama_returns_false(self, MockGrader, mock_create):
         kw = LLMKeywords()
-        kw.client.is_busy.return_value = False
         assert kw.llm_is_busy() is False

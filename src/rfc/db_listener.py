@@ -219,7 +219,7 @@ class DbListener:
             return
         payload = text[len(RFC_DATA_PREFIX) :]
         key, _, value = payload.partition(":")
-        if key == "ollama_metrics":
+        if key in ("ollama_metrics", "llm_metrics"):
             try:
                 metrics = json.loads(value)
                 metrics["test_name"] = self._current_test_name or ""
