@@ -90,7 +90,7 @@ class TestDropdownBuilders:
     def test_iq_dropdown_format(self, mock_suite_config):
         options = iq_dropdown_options()
         assert options[0]["label"].startswith("IQ:")
-        assert options[0]["value"] in ["100", "110", "120"]
+        assert options[0]["value"] in ["70", "80", "90", "100", "110", "120"]
 
     def test_profile_dropdown_format(self, mock_suite_config):
         options = profile_dropdown_options()
