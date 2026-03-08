@@ -46,12 +46,6 @@ LICENSE
 # Dev tooling not needed in image
 .pre-commit-config.yaml
 .python-version
-tests/
-scripts/
-ci/
-Makefile
-tasks.py
-uv.lock
 requirements.txt
 metrics/
 opencode.json

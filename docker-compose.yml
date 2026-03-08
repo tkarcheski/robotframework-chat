@@ -12,6 +12,26 @@
 # See Makefile for all available targets.
 
 services:
+  # ── Application (test runner + dev tools) ────────────────────────────
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}
+      OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./results:/app/results
+    networks:
+      - rfc-net
+    stdin_open: true
+    tty: true
+
   # ── PostgreSQL ──────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
