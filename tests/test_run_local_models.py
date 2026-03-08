@@ -295,7 +295,9 @@ class TestRunModelSuites:
             },
         ]
         # Patch random.shuffle to reverse the list (deterministic non-alphabetical order)
-        with patch("scripts.run_local_models.random.shuffle", side_effect=lambda x: x.reverse()):
+        with patch(
+            "scripts.run_local_models.random.shuffle", side_effect=lambda x: x.reverse()
+        ):
             results = run_model_suites(config, nodes_with_models)
 
         # Models should have been run in reversed order
@@ -327,7 +329,9 @@ class TestRunModelSuites:
         ]
         original = copy.deepcopy(nodes_with_models)
         run_model_suites(config, nodes_with_models)
-        assert nodes_with_models == original, "Input nodes_with_models must not be mutated"
+        assert nodes_with_models == original, (
+            "Input nodes_with_models must not be mutated"
+        )
 
     @patch("scripts.run_local_models.subprocess.run")
     def test_no_models_no_runs(self, mock_run: MagicMock) -> None:
