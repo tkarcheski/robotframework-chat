@@ -72,7 +72,7 @@ Edit `.env` — the key variables for getting started:
 | Variable | Default | What It Does |
 |----------|---------|-------------|
 | `OLLAMA_ENDPOINT` | `http://localhost:11434` | Where your Ollama instance listens |
-| `DEFAULT_MODEL` | `gpt-oss:20b` | Default model for test execution |
+| `DEFAULT_MODEL` | `phi4:14b` | Default model for test execution |
 | `DATABASE_URL` | _(unset)_ | Leave unset for SQLite (simplest start) |
 
 ### Step 4: Start and Verify Ollama

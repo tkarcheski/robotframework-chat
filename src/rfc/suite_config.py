@@ -159,7 +159,7 @@ def node_dropdown_options() -> list[dict[str, str]]:
 
 
 def default_model() -> str:
-    return defaults().get("model", "gpt-oss:20b")
+    return defaults().get("model", "phi4:14b")
 
 
 def default_iq_levels() -> list[str]:

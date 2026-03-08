@@ -75,9 +75,7 @@ class TestOpenAIClientInit:
         assert client.max_retries == 0
 
     def test_custom_base_url(self):
-        client = OpenAIClient(
-            base_url="https://api.together.xyz/v1", api_key="sk-test"
-        )
+        client = OpenAIClient(base_url="https://api.together.xyz/v1", api_key="sk-test")
         assert client.base_url == "https://api.together.xyz/v1"
 
     @patch.dict(
