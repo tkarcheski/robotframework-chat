@@ -17,6 +17,11 @@ Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME   
 &{ALPINE_SHELL}     image=alpine:latest         command=sleep infinity    cpu_cores=0.25    memory_mb=128    scratch_mb=64     network_mode=none    read_only=True    user=nobody
 &{UBUNTU_DEV}       image=ubuntu:22.04          command=sleep infinity    cpu_cores=0.5     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=False   user=root
 
+# Compiled language profiles
+&{GCC_STANDARD}     image=gcc:14              command=sleep infinity    cpu_cores=0.5     memory_mb=512    scratch_mb=256    network_mode=none    read_only=False   user=root
+&{RUST_STANDARD}    image=rust:slim           command=sleep infinity    cpu_cores=1.0     memory_mb=1024   scratch_mb=512    network_mode=none    read_only=False   user=root
+&{BASH_STANDARD}    image=bash:latest         command=sleep infinity    cpu_cores=0.25    memory_mb=256    scratch_mb=128    network_mode=none    read_only=False   user=root
+
 # LLM Container Profiles (Ollama) - ports are assigned dynamically
 &{OLLAMA_CPU}       image=ollama/ollama:latest    cpu_cores=2.0     memory_mb=4096    scratch_mb=1024   network_mode=bridge    read_only=False    user=root
 &{OLLAMA_GPU}       image=ollama/ollama:latest    cpu_cores=4.0     memory_mb=8192    scratch_mb=2048   network_mode=bridge    read_only=False    user=root

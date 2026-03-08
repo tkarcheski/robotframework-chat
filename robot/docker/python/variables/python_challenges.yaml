@@ -1,0 +1,43 @@
+# Python programming challenges for LLM computer skills testing (YAML-driven)
+# Supplements the existing code_generation.robot tests with additional challenges
+
+PYTHON_CODE_CHALLENGES:
+  - name: "Hello World"
+    prompt: "Write a Python script that prints 'Hello, World!' to stdout."
+    language: python
+    expected_output: "Hello, World!"
+    expected_exit_code: 0
+    iq: 100
+    timeout: 10
+
+  - name: "List Comprehension"
+    prompt: "Write a Python script that uses a list comprehension to create a list of squares from 1 to 5 and prints the result as [1, 4, 9, 16, 25]."
+    language: python
+    expected_output: "[1, 4, 9, 16, 25]"
+    expected_exit_code: 0
+    iq: 110
+    timeout: 10
+
+  - name: "Dictionary Operations"
+    prompt: "Write a Python script that creates a dictionary mapping fruits to counts: apple=3, banana=1, cherry=2. Sort by count ascending and print each as 'fruit: count'. One per line."
+    language: python
+    expected_output: "banana: 1"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 10
+
+  - name: "Class Implementation"
+    prompt: "Write a Python script with a class 'Rectangle' that has width and height attributes, an area() method, and a perimeter() method. Create a Rectangle(5, 3) and print 'Area: 15' and 'Perimeter: 16'."
+    language: python
+    expected_output: "Area: 15"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 10
+
+  - name: "FizzBuzz"
+    prompt: "Write a Python script that prints FizzBuzz for numbers 1 to 15. For multiples of 3 print 'Fizz', multiples of 5 print 'Buzz', multiples of both print 'FizzBuzz', otherwise print the number. One output per line."
+    language: python
+    expected_output: "FizzBuzz"
+    expected_exit_code: 0
+    iq: 110
+    timeout: 10
