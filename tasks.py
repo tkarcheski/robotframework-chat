@@ -80,6 +80,12 @@ def install() -> None:
     _uv("sync", "--extra", "dev", "--extra", "superset")
 
 
+def update() -> None:
+    """Fetch and pull latest changes from remote."""
+    _run(["git", "fetch"])
+    _run(["git", "pull"])
+
+
 def robot() -> None:
     """Run all Robot Framework test suites."""
     robot_math()
@@ -153,6 +159,7 @@ def show_help() -> None:
 
 TARGETS: dict[str, object] = {
     "install": install,
+    "update": update,
     "robot": robot,
     "robot-math": robot_math,
     "robot-safety": robot_safety,

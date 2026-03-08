@@ -17,7 +17,7 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 -include .env
 export
 
-.PHONY: help install \
+.PHONY: help install update \
         robot robot-math robot-docker robot-safety robot-dryrun \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
@@ -37,6 +37,10 @@ help: ## Show this help
 
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
+
+update: ## Fetch and pull latest changes from remote
+	git fetch
+	git pull
 
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
