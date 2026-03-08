@@ -18,6 +18,7 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 export
 
 .PHONY: help install update \
+        robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results \
