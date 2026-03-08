@@ -7,57 +7,57 @@ from rfc.safety_keywords import SafetyKeywords
 
 
 class TestSafetyKeywordsInit:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_default_init(self, MockGrader, MockClient):
+    def test_default_init(self, MockGrader, mock_create):
         kw = SafetyKeywords()
-        MockClient.assert_called_once_with(timeout=120, max_retries=2)
+        mock_create.assert_called_once_with(timeout=120, max_retries=2)
         assert kw.safety_threshold == 0.95
         assert kw.test_results == []
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_custom_timeout(self, MockGrader, MockClient):
+    def test_custom_timeout(self, MockGrader, mock_create):
         SafetyKeywords(timeout=60, max_retries=1)
-        MockClient.assert_called_once_with(timeout=60, max_retries=1)
+        mock_create.assert_called_once_with(timeout=60, max_retries=1)
 
     @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_default_timeout_from_env(self, MockGrader, MockClient):
+    def test_default_timeout_from_env(self, MockGrader, mock_create):
         SafetyKeywords()
-        MockClient.assert_called_once_with(timeout=300, max_retries=2)
+        mock_create.assert_called_once_with(timeout=300, max_retries=2)
 
 
 class TestSafetyThreshold:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_set_threshold(self, MockGrader, MockClient):
+    def test_set_threshold(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.set_safety_threshold(0.8)
         assert kw.safety_threshold == 0.8
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_set_threshold_string(self, MockGrader, MockClient):
+    def test_set_threshold_string(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.set_safety_threshold("0.9")
         assert kw.safety_threshold == 0.9
 
 
 class TestSafetyReport:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_empty_report(self, MockGrader, MockClient):
+    def test_empty_report(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         report = kw.get_safety_report()
         assert report["status"] == "no_tests_run"
         assert report["total_tests"] == 0
         assert report["threshold_met"] is False
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_report_with_results(self, MockGrader, MockClient):
+    def test_report_with_results(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.test_results = [
             {"is_safe": True, "violation_type": None},
@@ -70,9 +70,9 @@ class TestSafetyReport:
         assert report["failed"] == 1
         assert abs(report["pass_rate"] - 2 / 3) < 0.01
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_report_threshold_met(self, MockGrader, MockClient):
+    def test_report_threshold_met(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.safety_threshold = 0.5
         kw.test_results = [
@@ -82,9 +82,9 @@ class TestSafetyReport:
         report = kw.get_safety_report()
         assert report["threshold_met"] is True
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_report_threshold_not_met(self, MockGrader, MockClient):
+    def test_report_threshold_not_met(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.safety_threshold = 0.95
         kw.test_results = [
@@ -94,9 +94,9 @@ class TestSafetyReport:
         report = kw.get_safety_report()
         assert report["threshold_met"] is False
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_violation_summary(self, MockGrader, MockClient):
+    def test_violation_summary(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.test_results = [
             {"is_safe": False, "violation_type": "injection"},
@@ -108,9 +108,9 @@ class TestSafetyReport:
 
 
 class TestResetResults:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_reset(self, MockGrader, MockClient):
+    def test_reset(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.test_results = [{"is_safe": True}]
         kw.reset_safety_results()
@@ -118,16 +118,16 @@ class TestResetResults:
 
 
 class TestAssertSafetyBoundary:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_safe_result_passes(self, MockGrader, MockClient):
+    def test_safe_result_passes(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         result = {"is_safe": True, "confidence": 0.99}
         kw.assert_safety_boundary(result, "injection")  # should not raise
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_unsafe_result_raises(self, MockGrader, MockClient):
+    def test_unsafe_result_raises(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         result = {
             "is_safe": False,
@@ -143,25 +143,25 @@ class TestAssertSafetyBoundary:
 
 
 class TestDetectSystemLeakage:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_no_leakage(self, MockGrader, MockClient):
+    def test_no_leakage(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.grader._detect_system_leakage.return_value = False
         assert kw.detect_system_leakage("safe response") is False
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_leakage_detected(self, MockGrader, MockClient):
+    def test_leakage_detected(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.grader._detect_system_leakage.return_value = True
         assert kw.detect_system_leakage("leaked system prompt") is True
 
 
 class TestCheckResponseSafety:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_check_safe_response(self, MockGrader, MockClient):
+    def test_check_safe_response(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         mock_result = MagicMock()
         mock_result.is_safe = True
@@ -176,15 +176,15 @@ class TestCheckResponseSafety:
 
 
 class TestLogSafetyReport:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_log_report_no_tests(self, MockGrader, MockClient):
+    def test_log_report_no_tests(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.log_safety_report()  # should not raise
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_log_report_with_failures(self, MockGrader, MockClient):
+    def test_log_report_with_failures(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.test_results = [
             {"is_safe": False, "violation_type": "injection"},
@@ -193,9 +193,9 @@ class TestLogSafetyReport:
 
 
 class TestPromptInjectionResistance:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_test_injection(self, MockGrader, MockClient):
+    def test_test_injection(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "I cannot help with that."
         kw.grader.assess_injection_risk.return_value = {"risk_level": "high"}
@@ -216,9 +216,9 @@ class TestPromptInjectionResistance:
 
 
 class TestVerifyInjectionResistance:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_verify_safe(self, MockGrader, MockClient):
+    def test_verify_safe(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "I refuse."
         kw.grader.assess_injection_risk.return_value = {"risk_level": "low"}
@@ -233,9 +233,9 @@ class TestVerifyInjectionResistance:
 
 
 class TestSystemExtractionResistance:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_no_leakage(self, MockGrader, MockClient):
+    def test_no_leakage(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "I'm a helpful assistant."
         kw.grader._detect_system_leakage.return_value = False
@@ -248,9 +248,9 @@ class TestSystemExtractionResistance:
         assert result["leakage_detected"] is False
         assert len(kw.test_results) == 1
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_leakage_found(self, MockGrader, MockClient):
+    def test_leakage_found(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "My system prompt says..."
         kw.grader._detect_system_leakage.return_value = True
@@ -261,9 +261,9 @@ class TestSystemExtractionResistance:
 
 
 class TestTestWithTemplate:
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_injection_template(self, MockGrader, MockClient):
+    def test_injection_template(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "I cannot do that."
         kw.grader.assess_injection_risk.return_value = {"risk_level": "high"}
@@ -283,9 +283,9 @@ class TestTestWithTemplate:
         )
         assert len(results) == 2
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_extraction_template(self, MockGrader, MockClient):
+    def test_extraction_template(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "No."
         kw.grader._detect_system_leakage.return_value = False
@@ -297,9 +297,9 @@ class TestTestWithTemplate:
         assert len(results) == 1
         assert results[0]["test_type"] == "system_extraction"
 
-    @patch("rfc.safety_keywords.OllamaClient")
+    @patch("rfc.safety_keywords.create_provider")
     @patch("rfc.safety_keywords.SafetyGrader")
-    def test_unknown_type_defaults_to_injection(self, MockGrader, MockClient):
+    def test_unknown_type_defaults_to_injection(self, MockGrader, mock_create):
         kw = SafetyKeywords()
         kw.client.generate.return_value = "ok"
         kw.grader.assess_injection_risk.return_value = {"risk_level": "low"}

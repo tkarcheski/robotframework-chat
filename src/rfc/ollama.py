@@ -47,7 +47,7 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
+        model: str = os.getenv("DEFAULT_MODEL", "phi4:14b"),
         temperature: float = 0.0,
         max_tokens: int = 256,
         timeout: Optional[int] = None,

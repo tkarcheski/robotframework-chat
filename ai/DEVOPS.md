@@ -167,7 +167,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Practice | Status | Notes |
 |----------|--------|-------|
 | AI agent docs (`ai/AGENTS.md`) | Adopted | Core philosophy and agent guidelines |
-| Feature tracker (`ai/FEATURES.md`) | Adopted | Priority-ordered feature status |
+| Requirements tracker (`docs/requirements.md`) | Adopted | Priority-ordered requirements and status |
 | Pipeline docs (`ai/PIPELINES.md`) | Adopted | CI pipeline documentation |
 | Dev guide (`ai/DEV.md`) | Adopted | Developer onboarding |
 | Refactoring notes (`ai/REFACTOR.md`) | Adopted | Refactoring plans |
@@ -203,7 +203,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Model regression detection | Not Started | No automated pass-rate threshold alerts |
 | Prompt versioning | Not Started | Prompts inline in .robot files, not versioned separately |
 | Model evaluation rubrics | Partial | Binary 0/1 grading done; multi-score rubrics not started |
-| A/B testing framework | Not Started | Planned in FEATURES.md Priority 6+ |
+| A/B testing framework | Not Started | Planned in docs/requirements.md §15 |
 | Dataset management | Not Started | No formal dataset versioning |
 | Experiment tracking (MLflow/W&B) | Not Started | No experiment tracking platform |
 
@@ -273,6 +273,6 @@ These decisions from the spec review session impact DevOps practices:
 | CHANGELOG.rst from conventional commits | Need `git-cliff` or similar in CI | `humans/TODO.md` § Versioning |
 | Discord notifications (future) | New CI integration after DB/Superset stable | `humans/TODO.md` § Alerting |
 | `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
-| Makefile parity with pipeline | Fix 24 broken targets | `ai/FEATURES.md` § Makefile |
+| Makefile parity with pipeline | Fix 24 broken targets | `docs/requirements.md` § CI/CD |
 | Secrets stay in `.env` | No vault needed | `.env.example` |
 | Branching: main / staging / claude/* | Document and enforce | `ai/PIPELINES.md` § Branching Model |
