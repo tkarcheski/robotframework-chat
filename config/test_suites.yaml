@@ -9,7 +9,7 @@
 
 defaults:
   model: "phi4:14b"
-  iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
+  iq_levels: ["70", "80", "90", "100", "110", "120", "130", "140", "150", "160"]
   profile: "STANDARD"
   timeout_seconds: 120
   max_retries: 2
