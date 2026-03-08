@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import re
 import subprocess
 import sys
@@ -267,7 +268,11 @@ def run_model_suites(
     for node_info in nodes_with_models:
         endpoint = node_info["endpoint"]
         hostname = node_info["hostname"]
-        models = node_info.get("models", [])
+        models = list(node_info.get("models", []))
+        random.shuffle(models)
+
+        if models:
+            print(f"  Model order (shuffled): {models}")
 
         for model in models:
             for suite in suites:

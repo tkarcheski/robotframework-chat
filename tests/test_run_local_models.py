@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -268,6 +269,65 @@ class TestRunModelSuites:
         assert env is not None, "subprocess.run must be called with env= keyword"
         assert env["DEFAULT_MODEL"] == "llama3"
         assert env["OLLAMA_ENDPOINT"] == "http://host1:11434"
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_shuffles_model_order(self, mock_run: MagicMock) -> None:
+        """Models are shuffled before execution (not always alphabetical)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        config = {
+            "test_suites": [
+                {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+            ],
+            "execution": {
+                "output_dir": "results/local/{node}/{model}",
+                "extra_args": [],
+                "listeners": [],
+                "continue_on_failure": True,
+                "parallel": 1,
+            },
+        }
+        models = ["alpha", "bravo", "charlie", "delta"]
+        nodes_with_models = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": list(models),
+            },
+        ]
+        # Patch random.shuffle to reverse the list (deterministic non-alphabetical order)
+        with patch("scripts.run_local_models.random.shuffle", side_effect=lambda x: x.reverse()):
+            results = run_model_suites(config, nodes_with_models)
+
+        # Models should have been run in reversed order
+        executed_models = [r.model for r in results]
+        assert executed_models == ["delta", "charlie", "bravo", "alpha"]
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_shuffle_does_not_mutate_input(self, mock_run: MagicMock) -> None:
+        """Shuffling models must not mutate the original nodes_with_models."""
+        mock_run.return_value = MagicMock(returncode=0)
+        config = {
+            "test_suites": [
+                {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+            ],
+            "execution": {
+                "output_dir": "results/local/{node}/{model}",
+                "extra_args": [],
+                "listeners": [],
+                "continue_on_failure": True,
+                "parallel": 1,
+            },
+        }
+        nodes_with_models = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["alpha", "bravo", "charlie"],
+            },
+        ]
+        original = copy.deepcopy(nodes_with_models)
+        run_model_suites(config, nodes_with_models)
+        assert nodes_with_models == original, "Input nodes_with_models must not be mutated"
 
     @patch("scripts.run_local_models.subprocess.run")
     def test_no_models_no_runs(self, mock_run: MagicMock) -> None:
