@@ -239,7 +239,7 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "gpt-oss:20b"}):
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
             listener.start_suite("Suite", {})
             listener.end_test("T1", _test_attrs())
             # Simulate Robot variable override (as set by --variable flag)

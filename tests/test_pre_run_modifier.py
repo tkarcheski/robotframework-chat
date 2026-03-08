@@ -17,7 +17,7 @@ class TestPreRunModifierInit:
             mod = ModelAwarePreRunModifier()
             assert mod.ollama_endpoint == "http://localhost:11434"
             assert mod.config_path == "robot/ci/models.yaml"
-            assert mod.default_model == "gpt-oss:20b"
+            assert mod.default_model == "phi4:14b"
             assert mod.available_models == []
             assert mod.model_config == {}
 
