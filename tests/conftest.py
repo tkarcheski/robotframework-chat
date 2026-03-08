@@ -22,13 +22,13 @@ def mock_suite_config():
     config_data = {
         "defaults": {
             "model": "llama3",
-            "iq_levels": ["100", "110"],
+            "iq_levels": ["70", "80", "90", "100", "110"],
             "profile": "STANDARD",
         },
         "test_suites": {
             "math": {"label": "Math Tests", "path": "robot/math/tests"},
         },
-        "iq_levels": ["100", "110", "120"],
+        "iq_levels": ["70", "80", "90", "100", "110", "120"],
         "container_profiles": {
             "STANDARD": {"label": "Standard", "cpu": 0.5, "memory_mb": 512},
         },
