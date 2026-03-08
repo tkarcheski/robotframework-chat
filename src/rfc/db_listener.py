@@ -147,7 +147,7 @@ class DbListener:
         if url and url.startswith("sqlite:///"):
             path = url.replace("sqlite:///", "")
             return f"SQLite: {path}"
-        return "SQLite: data/test_history.db (default)"
+        return "NOT CONFIGURED (DATABASE_URL is not set)"
 
     def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
         self._suite_depth += 1

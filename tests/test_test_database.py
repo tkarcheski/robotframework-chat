@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from rfc.test_database import (
     HostInfo,
     KeywordResult,
@@ -134,7 +136,7 @@ class TestSQLiteBackend:
 
 
 class TestTestDatabase:
-    def test_default_sqlite_backend(self, tmp_path):
+    def test_explicit_db_path_uses_sqlite(self, tmp_path):
         db = TestDatabase(db_path=str(tmp_path / "test.db"))
         assert db is not None
 
@@ -142,6 +144,12 @@ class TestTestDatabase:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))
         run_id = db.add_test_run(_make_run())
         assert run_id > 0
+
+    def test_no_database_url_raises_error(self, monkeypatch):
+        """TestDatabase() with no args and no DATABASE_URL must raise."""
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        with pytest.raises(RuntimeError, match="DATABASE_URL is not set"):
+            TestDatabase()
 
 
 class TestTestRunDataclass:

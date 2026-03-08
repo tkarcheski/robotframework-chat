@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS test_runs (
     failed INTEGER DEFAULT 0,
     skipped INTEGER DEFAULT 0,
     duration_seconds DOUBLE PRECISION,
-    rfc_version VARCHAR(50)
+    rfc_version VARCHAR(50),
+    hostname VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS test_results (
@@ -152,6 +153,22 @@ CREATE INDEX IF NOT EXISTS idx_ollama_metrics_run_id
     ON ollama_metrics(run_id);
 CREATE INDEX IF NOT EXISTS idx_ollama_metrics_model
     ON ollama_metrics(model_name);
+
+CREATE TABLE IF NOT EXISTS host_info (
+    id SERIAL PRIMARY KEY,
+    hostname VARCHAR(255) NOT NULL UNIQUE,
+    os_name VARCHAR(255),
+    os_version VARCHAR(255),
+    cpu_arch VARCHAR(255),
+    cpu_count INTEGER,
+    total_ram_gb DOUBLE PRECISION,
+    gpu_info TEXT,
+    last_seen TIMESTAMP,
+    rfc_version VARCHAR(50)
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
+CREATE INDEX IF NOT EXISTS idx_host_info_hostname ON host_info(hostname);
 """
 
 # ---------------------------------------------------------------------------
@@ -213,6 +230,29 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
             runs.rfc_version
         FROM keyword_results kw
         JOIN test_runs runs ON kw.run_id = runs.id
+    """,
+    "host_performance": """
+        SELECT
+            h.hostname,
+            h.os_name,
+            h.os_version,
+            h.cpu_arch,
+            h.cpu_count,
+            h.total_ram_gb,
+            h.gpu_info,
+            h.last_seen,
+            COUNT(r.id) AS total_runs,
+            SUM(r.total_tests) AS total_tests,
+            SUM(r.passed) AS total_passed,
+            SUM(r.failed) AS total_failed,
+            AVG(CAST(r.passed AS DOUBLE PRECISION)
+                / NULLIF(r.total_tests, 0) * 100) AS avg_pass_rate,
+            AVG(r.duration_seconds) AS avg_duration,
+            MAX(r.timestamp) AS last_run
+        FROM host_info h
+        LEFT JOIN test_runs r ON h.hostname = r.hostname
+        GROUP BY h.hostname, h.os_name, h.os_version, h.cpu_arch,
+                 h.cpu_count, h.total_ram_gb, h.gpu_info, h.last_seen
     """,
     "ollama_performance": """
         SELECT
@@ -973,6 +1013,134 @@ def _ollama_performance_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]
     ]
 
 
+def _host_metrics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Charts for the Host Metrics dashboard."""
+    return [
+        {
+            "name": "Host Inventory",
+            "viz_type": "table",
+            "datasource": datasets["host_info"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "hostname",
+                    "os_name",
+                    "os_version",
+                    "cpu_arch",
+                    "cpu_count",
+                    "total_ram_gb",
+                    "gpu_info",
+                    "last_seen",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["last_seen"]',
+            },
+        },
+        {
+            "name": "Pass Rate by Host",
+            "viz_type": "bar",
+            "datasource": datasets["host_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_pass_rate",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(avg_pass_rate)",
+                    }
+                ],
+                "groupby": ["hostname"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Pass Rate (%)",
+            },
+        },
+        {
+            "name": "Test Runs by Host",
+            "viz_type": "bar",
+            "datasource": datasets["host_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "total_runs",
+                        "expressionType": "SQL",
+                        "sqlExpression": "SUM(total_runs)",
+                    }
+                ],
+                "groupby": ["hostname"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Total Test Runs",
+            },
+        },
+        {
+            "name": "Avg Duration by Host",
+            "viz_type": "bar",
+            "datasource": datasets["host_performance"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "avg_duration",
+                        "expressionType": "SQL",
+                        "sqlExpression": "AVG(avg_duration)",
+                    }
+                ],
+                "groupby": ["hostname"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Avg Duration (s)",
+            },
+        },
+        {
+            "name": "Hosts by CPU Count",
+            "viz_type": "bar",
+            "datasource": datasets["host_info"],
+            "params": {
+                "viz_type": "bar",
+                "metrics": [
+                    {
+                        "label": "host_count",
+                        "expressionType": "SQL",
+                        "sqlExpression": "COUNT(*)",
+                    }
+                ],
+                "groupby": ["cpu_count"],
+                "row_limit": 50,
+                "color_scheme": "supersetColors",
+                "y_axis_label": "Number of Hosts",
+            },
+        },
+        {
+            "name": "Host Performance Summary",
+            "viz_type": "table",
+            "datasource": datasets["host_performance"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "hostname",
+                    "os_name",
+                    "cpu_arch",
+                    "cpu_count",
+                    "total_ram_gb",
+                    "gpu_info",
+                    "total_runs",
+                    "total_passed",
+                    "total_failed",
+                    "avg_pass_rate",
+                    "avg_duration",
+                    "last_run",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["last_run"]',
+            },
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1157,6 +1325,7 @@ def bootstrap() -> None:
             "robot_dry_run_results",
             "keyword_results",
             "ollama_metrics",
+            "host_info",
         ):
             ds = (
                 db.session.query(SqlaTable)
@@ -1245,6 +1414,10 @@ def bootstrap() -> None:
             _get_or_create_slice(db, Slice, cdef)
             for cdef in _ollama_performance_charts(datasets)
         ]
+        host_slices = [
+            _get_or_create_slice(db, Slice, cdef)
+            for cdef in _host_metrics_charts(datasets)
+        ]
 
         # ── 5. Dashboards ───────────────────────────────────────────
         _get_or_create_dashboard(
@@ -1275,9 +1448,16 @@ def bootstrap() -> None:
             "rfc-ollama",
             ollama_slices,
         )
+        _get_or_create_dashboard(
+            db,
+            Dashboard,
+            "Host Metrics",
+            "rfc-hosts",
+            host_slices,
+        )
 
         db.session.commit()
-        log.info("Bootstrap complete — 4 dashboards created")
+        log.info("Bootstrap complete — 5 dashboards created")
 
 
 if __name__ == "__main__":

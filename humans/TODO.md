@@ -90,7 +90,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 ## CI/CD & Pipeline
 
-- [ ] **Fix "Not Complete" Makefile targets.** 24 of 37 targets are marked "Not Complete" in FEATURES.md. Triage: which are actually broken vs. which just need environment setup?
+- [ ] **Fix "Not Complete" Makefile targets.** 24 of 37 targets are marked "Not Complete" in docs/requirements.md. Triage: which are actually broken vs. which just need environment setup?
 - [ ] **Add `make test-make` target.** A meta-target that runs a dry-run or smoke test of every other make target to verify they at least parse and start correctly. Could use `make -n` (dry-run) for dangerous targets and actual execution for safe ones.
 - [ ] **Pipeline node auto-discovery.** Pipelines should discover which nodes are online before scheduling jobs. Proposed flow: (1) ping each node's Ollama `/api/tags` endpoint, (2) build a live inventory of online nodes + available models, (3) schedule jobs only to reachable nodes. This replaces hardcoded node lists.
 - [ ] **Model-to-node assignment config.** Owner wants to control which models are loaded on which hosts. Short-term: a `config/model_assignments.yaml` file. Long-term: web UI to manage assignments. The pipeline reads this config and calls `ollama pull` / `ollama rm` to enforce the desired state.
