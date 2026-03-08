@@ -61,9 +61,7 @@ class OllamaTimestampListener:
         self._current_keyword: Optional[Dict[str, Any]] = None
         self._suite_depth: int = 0
         self._model: str = os.getenv("DEFAULT_MODEL", "unknown")
-        self._endpoint: str = os.getenv(
-            "OLLAMA_ENDPOINT", "http://localhost:11434"
-        )
+        self._endpoint: str = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
 
     def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
         """Track suite nesting depth."""
@@ -174,9 +172,7 @@ class OllamaTimestampListener:
                 )
                 f.write("#\n")
                 for chat in self._chats:
-                    prompt = (
-                        chat["prompt"].replace("\n", " ").replace("\r", "").strip()
-                    )
+                    prompt = chat["prompt"].replace("\n", " ").replace("\r", "").strip()
                     duration = chat.get("duration_seconds", 0)
                     f.write(
                         f"{chat['start_time']}\t"
