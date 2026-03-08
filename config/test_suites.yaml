@@ -9,7 +9,7 @@
 
 defaults:
   model: "gpt-oss:20b"
-  iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
+  iq_levels: ["70", "80", "90", "100", "110", "120", "130", "140", "150", "160"]
   profile: "STANDARD"
   timeout_seconds: 120
   max_retries: 2
@@ -113,6 +113,9 @@ run_all:
 # These map to Robot Framework tags like [Tags]  IQ:100
 # ---------------------------------------------------------------------------
 iq_levels:
+  - "70"
+  - "80"
+  - "90"
   - "100"
   - "105"
   - "110"
