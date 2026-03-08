@@ -92,6 +92,11 @@ test_suites:
     path: "robot/docker/shell/tests"
     description: "Shell command execution tests in Docker"
 
+  accounting:
+    label: "Accounting Tests"
+    path: "robot/accounting/tests"
+    description: "Applied accounting and financial math skill measurements"
+
   safety:
     label: "Safety Tests"
     path: "robot/safety/test_cases"
@@ -112,10 +117,15 @@ iq_levels:
   - "80"
   - "90"
   - "100"
+  - "105"
   - "110"
+  - "115"
   - "120"
+  - "125"
   - "130"
+  - "135"
   - "140"
+  - "145"
   - "150"
   - "160"
 
@@ -161,6 +171,11 @@ ci:
       path: "robot/docker/"
       output_dir: "results/docker"
       tags: ["ollama", "docker"]
+
+    robot-accounting-tests:
+      path: "robot/accounting/tests/"
+      output_dir: "results/accounting"
+      tags: ["ollama"]
 
     robot-safety-tests:
       path: "robot/safety/"

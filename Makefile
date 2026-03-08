@@ -18,7 +18,7 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 export
 
 .PHONY: help install update \
-        robot robot-math robot-docker robot-safety robot-dryrun \
+        robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
         code-quality-lint code-quality-format code-quality-typecheck \
@@ -48,10 +48,13 @@ update: ## Fetch and pull latest changes from remote
 
 # ── Foundation: Robot Framework Tests ────────────────────────────────
 
-robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
+robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+
+robot-accounting: ## Run accounting tests (Robot Framework)
+	$(ROBOT) -d results/accounting $(LISTENER) robot/accounting/tests/
 
 robot-docker: ## Run Docker tests (Robot Framework)
 	$(ROBOT) -d results/docker $(LISTENER) robot/docker/

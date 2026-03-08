@@ -89,6 +89,7 @@ def update() -> None:
 def robot() -> None:
     """Run all Robot Framework test suites."""
     robot_math()
+    robot_accounting()
     robot_safety()
 
 
@@ -96,6 +97,12 @@ def robot_math() -> None:
     """Run math tests (Robot Framework)."""
     _ensure_env()
     _uv_run("robot", "-d", "results/math", *LISTENERS, "robot/math/tests/")
+
+
+def robot_accounting() -> None:
+    """Run accounting tests (Robot Framework)."""
+    _ensure_env()
+    _uv_run("robot", "-d", "results/accounting", *LISTENERS, "robot/accounting/tests/")
 
 
 def robot_safety() -> None:
@@ -162,6 +169,7 @@ TARGETS: dict[str, object] = {
     "update": update,
     "robot": robot,
     "robot-math": robot_math,
+    "robot-accounting": robot_accounting,
     "robot-safety": robot_safety,
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
