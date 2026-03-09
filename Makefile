@@ -92,7 +92,7 @@ discover-local-models: ## Discover Ollama nodes and list their models
 run-local-models: ## Run test suites against every model on every local node (ITERATIONS=-1 forever, 0 stop-on-error)
 	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),)
 
-cron-install: ## Install hourly cron job for git pull + run-local-models
+cron-install: ## Install hourly cron job for update + sync-models + run-local-models
 	@scripts/cron_run_local_models.sh --install
 
 cron-uninstall: ## Remove hourly cron job

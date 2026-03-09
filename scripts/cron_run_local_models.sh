@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hourly cron job: pull latest code, sync models, and run test suites.
+# Hourly cron job: make update, sync models, and run test suites.
 #
 # Usage:
-#   scripts/cron_run_local_models.sh             # Run git pull + sync models + make run-local-models
+#   scripts/cron_run_local_models.sh             # Run make update + sync models + make run-local-models
 #   scripts/cron_run_local_models.sh --install    # Add hourly cron entry
 #   scripts/cron_run_local_models.sh --uninstall  # Remove cron entry
 #   scripts/cron_run_local_models.sh --sync-models # Only check/pull missing master models
@@ -127,8 +127,8 @@ mkdir -p "$(dirname "$LOGFILE")"
 
 {
     echo "=== $(date -Iseconds) ==="
-    echo "Pulling latest changes..."
-    git pull
+    echo "Updating repository..."
+    make update
     echo "Syncing master models..."
     sync_models
     echo "Running local models..."
