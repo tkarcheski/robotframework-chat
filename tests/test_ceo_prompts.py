@@ -86,9 +86,7 @@ class TestIPAnalysisPrompt:
 
 class TestPatentStrategyPrompt:
     def test_includes_ip_findings(self) -> None:
-        findings = [
-            {"idea_name": "Widget X", "patentability_score": 0.9}
-        ]
+        findings = [{"idea_name": "Widget X", "patentability_score": 0.9}]
         prompt = build_patent_strategy_prompt(ip_findings=findings)
         assert "Widget X" in prompt
 
@@ -108,9 +106,7 @@ class TestPatentStrategyPrompt:
 
 class TestLicensingStrategyPrompt:
     def test_includes_patent_strategies(self) -> None:
-        strategies = [
-            {"idea_name": "Widget X", "claim_type": "utility"}
-        ]
+        strategies = [{"idea_name": "Widget X", "claim_type": "utility"}]
         prompt = build_licensing_strategy_prompt(patent_strategies=strategies)
         assert "Widget X" in prompt
 
