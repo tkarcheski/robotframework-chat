@@ -23,6 +23,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
+        cron-install cron-uninstall \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
@@ -91,6 +92,12 @@ discover-local-models: ## Discover Ollama nodes and list their models
 
 run-local-models: ## Run test suites against every model on every local node (ITERATIONS=-1 forever, 0 stop-on-error)
 	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),)
+
+cron-install: ## Install hourly cron job for git pull + run-local-models
+	@scripts/cron_run_local_models.sh --install
+
+cron-uninstall: ## Remove hourly cron job
+	@scripts/cron_run_local_models.sh --uninstall
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 
