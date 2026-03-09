@@ -1,12 +1,14 @@
 """Configurable Docker keywords for Robot Framework."""
 
+import shutil
 import socket
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from robot.api import logger
 from robot.api.deco import keyword
 
-from .docker_config import ContainerConfig, ContainerResources, ContainerNetwork
 from .container_manager import ContainerManager
+from .docker_config import ContainerConfig, ContainerNetwork, ContainerResources
 
 
 class ConfigurableDockerKeywords:
@@ -35,6 +37,72 @@ class ConfigurableDockerKeywords:
             return True
         except RuntimeError:
             return False
+
+    @keyword("Check Docker Setup")
+    def check_docker_setup(self, raise_on_failure: bool = False) -> Dict[str, Any]:
+        """Check that Docker is installed and the daemon is running.
+
+        Performs three checks:
+        1. Docker CLI binary is on PATH
+        2. Docker Python SDK can connect to the daemon
+        3. Docker daemon responds to version query
+
+        Args:
+            raise_on_failure: If True, raise RuntimeError when any check fails.
+
+        Returns:
+            Dictionary with docker_cli, docker_cli_path, daemon_running,
+            docker_version, api_version, and errors list.
+        """
+        errors: List[str] = []
+        result: Dict[str, Any] = {
+            "docker_cli": False,
+            "docker_cli_path": "",
+            "daemon_running": False,
+            "docker_version": "",
+            "api_version": "",
+            "errors": errors,
+        }
+
+        # Check 1: Docker CLI on PATH
+        docker_path = shutil.which("docker")
+        if docker_path:
+            result["docker_cli"] = True
+            result["docker_cli_path"] = docker_path
+            logger.info(f"Docker CLI found at {docker_path}")
+        else:
+            errors.append(
+                "Docker CLI not found on PATH. "
+                "Please install Docker: https://docs.docker.com/get-docker/"
+            )
+            logger.warn("Docker CLI not installed or not on PATH")
+
+        # Check 2 & 3: Daemon connectivity and version
+        try:
+            mgr = self.manager  # triggers lazy init, pings daemon
+            version_info = mgr.client.version()
+            result["daemon_running"] = True
+            result["docker_version"] = version_info.get("Version", "")
+            result["api_version"] = version_info.get("ApiVersion", "")
+            logger.info(
+                f"Docker daemon running: v{result['docker_version']} "
+                f"(API v{result['api_version']})"
+            )
+        except RuntimeError:
+            result["daemon_running"] = False
+            errors.append(
+                "Docker daemon is not running. "
+                "Please start Docker and try again."
+            )
+            logger.warn("Docker daemon is not running or not accessible")
+
+        if errors and raise_on_failure:
+            msg = "Docker setup check failed:\n" + "\n".join(
+                f"  - {e}" for e in errors
+            )
+            raise RuntimeError(msg)
+
+        return result
 
     @keyword("Find Available Port")
     def find_available_port(
