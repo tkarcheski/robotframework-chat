@@ -159,10 +159,7 @@ class WebSearchCache:
             response.raise_for_status()
             data = response.json()
 
-            results = [
-                SearchResult.from_dict(item)
-                for item in data.get("results", [])
-            ]
+            results = [SearchResult.from_dict(item) for item in data.get("results", [])]
             self.put(query, results)
             return results
         except (requests.RequestException, KeyError, TypeError):

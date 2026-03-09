@@ -228,9 +228,7 @@ class PatentStrategyOutput:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> PatentStrategyOutput:
-        return cls(
-            strategies=[PatentStrategy.from_dict(s) for s in d["strategies"]]
-        )
+        return cls(strategies=[PatentStrategy.from_dict(s) for s in d["strategies"]])
 
 
 # ---------------------------------------------------------------------------

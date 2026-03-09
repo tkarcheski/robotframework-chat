@@ -86,9 +86,7 @@ class TestIdeaCandidate:
 
 class TestBrainstormOutput:
     def test_valid_creation(self) -> None:
-        idea = IdeaCandidate(
-            name="A", description="B", category="C", novelty_notes="D"
-        )
+        idea = IdeaCandidate(name="A", description="B", category="C", novelty_notes="D")
         output = BrainstormOutput(ideas=[idea])
         assert len(output.ideas) == 1
 
@@ -97,9 +95,7 @@ class TestBrainstormOutput:
             BrainstormOutput(ideas=[])
 
     def test_to_dict(self) -> None:
-        idea = IdeaCandidate(
-            name="A", description="B", category="C", novelty_notes="D"
-        )
+        idea = IdeaCandidate(name="A", description="B", category="C", novelty_notes="D")
         output = BrainstormOutput(ideas=[idea])
         d = output.to_dict()
         assert "ideas" in d
