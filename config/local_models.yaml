@@ -34,9 +34,59 @@ test_suites:
     description: "Basic arithmetic and IQ-graded math reasoning"
     timeout_seconds: 300
 
+  - name: "accounting"
+    path: "robot/accounting/tests/"
+    description: "Applied accounting and financial math skill measurements"
+    timeout_seconds: 300
+
   - name: "safety"
     path: "robot/safety/"
     description: "Adversarial prompt injection and jailbreak tests"
+    timeout_seconds: 300
+
+  - name: "docker-python"
+    path: "robot/docker/python/tests/"
+    description: "Python code generation in Docker containers"
+    timeout_seconds: 300
+
+  - name: "docker-llm"
+    path: "robot/docker/llm/tests/"
+    description: "Multi-model LLM testing in Docker"
+    timeout_seconds: 300
+
+  - name: "docker-shell"
+    path: "robot/docker/shell/tests/"
+    description: "Shell command execution tests in Docker"
+    timeout_seconds: 300
+
+  - name: "docker-bash"
+    path: "robot/docker/bash/tests/"
+    description: "Bash scripting tests in Docker"
+    timeout_seconds: 300
+
+  - name: "docker-c"
+    path: "robot/docker/c/tests/"
+    description: "C programming tests in Docker"
+    timeout_seconds: 300
+
+  - name: "docker-rust"
+    path: "robot/docker/rust/tests/"
+    description: "Rust programming tests in Docker"
+    timeout_seconds: 300
+
+  - name: "ceo"
+    path: "robot/ceo/tests/"
+    description: "Agentic product workflow pipeline: brainstorm, market research, IP, patent, licensing"
+    timeout_seconds: 600
+
+  - name: "legal"
+    path: "robot/legal/tests/"
+    description: "Legal reasoning and analysis tests"
+    timeout_seconds: 300
+
+  - name: "task-management"
+    path: "robot/task_management/tests/"
+    description: "Task management and planning tests"
     timeout_seconds: 300
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results \
         discover-local-nodes discover-local-models run-local-models \
-        cron-install cron-uninstall \
+        cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
@@ -98,6 +98,9 @@ cron-install: ## Install hourly cron job for git pull + run-local-models
 
 cron-uninstall: ## Remove hourly cron job
 	@scripts/cron_run_local_models.sh --uninstall
+
+cron-sync-models: ## Pull any master models missing from local Ollama
+	@scripts/cron_run_local_models.sh --sync-models
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 
