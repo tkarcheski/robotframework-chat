@@ -145,9 +145,7 @@ class TestCacheSearch:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "results": [
-                {"title": "Fetched", "url": "http://x.com", "snippet": "snip"}
-            ]
+            "results": [{"title": "Fetched", "url": "http://x.com", "snippet": "snip"}]
         }
 
         with patch("rfc.web_cache.requests.get", return_value=mock_response):

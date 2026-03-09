@@ -157,9 +157,7 @@ class CEOKeywords:
             if all_results:
                 web_context = self.web_cache.format_as_context(all_results)
 
-        prompt = build_market_research_prompt(
-            ideas=idea_list, web_context=web_context
-        )
+        prompt = build_market_research_prompt(ideas=idea_list, web_context=web_context)
         raw = self.client.generate(prompt)
         logger.info(f"RFC_DATA:market_research_raw:{raw}")
 
@@ -241,9 +239,7 @@ class CEOKeywords:
         else:
             findings_list = [ip_findings]
 
-        logger.info(
-            f"Developing patent strategy for {len(findings_list)} findings"
-        )
+        logger.info(f"Developing patent strategy for {len(findings_list)} findings")
 
         prompt = build_patent_strategy_prompt(ip_findings=findings_list)
         raw = self.client.generate(prompt)
@@ -279,13 +275,9 @@ class CEOKeywords:
         else:
             strategies_list = [patent_strategies]
 
-        logger.info(
-            f"Planning licensing strategy for {len(strategies_list)} patents"
-        )
+        logger.info(f"Planning licensing strategy for {len(strategies_list)} patents")
 
-        prompt = build_licensing_strategy_prompt(
-            patent_strategies=strategies_list
-        )
+        prompt = build_licensing_strategy_prompt(patent_strategies=strategies_list)
         raw = self.client.generate(prompt)
         logger.info(f"RFC_DATA:licensing_strategy_raw:{raw}")
 
@@ -331,8 +323,7 @@ class CEOKeywords:
         parser = parsers.get(stage_name)
         if parser is None:
             raise ValueError(
-                f"Unknown stage: {stage_name}. "
-                f"Valid stages: {list(parsers.keys())}"
+                f"Unknown stage: {stage_name}. Valid stages: {list(parsers.keys())}"
             )
 
         parser(output)

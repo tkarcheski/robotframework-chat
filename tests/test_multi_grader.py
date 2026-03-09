@@ -99,9 +99,7 @@ class TestMultiGrader:
             _mock_provider('{"score": 0, "reason": "invalid"}'),
         ]
         grader = MultiGrader(providers=providers)
-        result = grader.grade(
-            question="q", expected="e", actual="a", rubric="r"
-        )
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         assert result.majority_score == 0
         assert result.agreement_ratio == 1.0
 
@@ -112,9 +110,7 @@ class TestMultiGrader:
             _mock_provider('{"score": 0, "reason": "bad"}'),
         ]
         grader = MultiGrader(providers=providers)
-        result = grader.grade(
-            question="q", expected="e", actual="a", rubric="r"
-        )
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         assert result.majority_score == 1
         assert abs(result.agreement_ratio - 2 / 3) < 0.01
 
@@ -127,9 +123,7 @@ class TestMultiGrader:
             _mock_provider('{"score": 1, "reason": "e"}'),
         ]
         grader = MultiGrader(providers=providers)
-        result = grader.grade(
-            question="q", expected="e", actual="a", rubric="r"
-        )
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         assert result.majority_score == 1
         assert abs(result.agreement_ratio - 3 / 5) < 0.01
 
@@ -140,9 +134,7 @@ class TestMultiGrader:
             _mock_provider('<think>hmm</think>\n{"score": 1, "reason": "ok"}'),
         ]
         grader = MultiGrader(providers=providers)
-        result = grader.grade(
-            question="q", expected="e", actual="a", rubric="r"
-        )
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         assert result.majority_score == 1
 
     def test_invalid_json_from_one_grader_still_works(self) -> None:
@@ -152,9 +144,7 @@ class TestMultiGrader:
             _mock_provider('{"score": 1, "reason": "ok"}'),
         ]
         grader = MultiGrader(providers=providers)
-        result = grader.grade(
-            question="q", expected="e", actual="a", rubric="r"
-        )
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         # Invalid response counts as score=0
         assert result.scores[1] == 0
         assert result.majority_score == 1
