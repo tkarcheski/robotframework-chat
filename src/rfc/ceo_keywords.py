@@ -47,11 +47,26 @@ class CEOKeywords:
     ) -> None:
         if timeout is None:
             timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
-        self.client = create_provider(
-            provider="openai", timeout=int(timeout), max_retries=int(max_retries)
-        )
+        self._timeout = int(timeout)
+        self._max_retries = int(max_retries)
+        self._client: Optional[Any] = None
         self.web_cache = WebSearchCache()
         self._multi_grader: Optional[MultiGrader] = None
+
+    @property
+    def client(self) -> Any:
+        """Lazily create the LLM provider on first access.
+
+        This allows Robot Framework ``--dryrun`` to instantiate the library
+        and discover keywords without requiring API keys.
+        """
+        if self._client is None:
+            self._client = create_provider(
+                provider="openai",
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
+        return self._client
 
     def _get_multi_grader(self) -> MultiGrader:
         """Lazily initialize the multi-grader with configured models."""
