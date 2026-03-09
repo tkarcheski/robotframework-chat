@@ -97,6 +97,11 @@ test_suites:
     path: "robot/safety/test_cases"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
+  ceo:
+    label: "CEO Agent"
+    path: "robot/ceo/tests"
+    description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -166,6 +171,11 @@ ci:
       path: "robot/safety/"
       output_dir: "results/safety"
       tags: ["ollama"]
+
+    robot-ceo-tests:
+      path: "robot/ceo/"
+      output_dir: "results/ceo"
+      tags: ["openai", "agentic"]
 
 # ---------------------------------------------------------------------------
 # Monitoring Configuration

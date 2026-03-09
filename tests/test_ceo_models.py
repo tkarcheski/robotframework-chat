@@ -8,9 +8,7 @@ from rfc.ceo_models import (
     MarketAnalysis,
     MarketResearchOutput,
     IPFinding,
-    IPAnalysisOutput,
     PatentStrategy,
-    PatentStrategyOutput,
     LicensingPlan,
     LicensingStrategyOutput,
 )
