@@ -28,6 +28,69 @@ class TestDockerIsAvailable:
         assert kw.docker_is_available() is False
 
 
+class TestCheckDockerSetup:
+    @patch("rfc.docker_keywords.shutil.which")
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_all_checks_pass(self, MockMgr, mock_which):
+        mock_which.return_value = "/usr/bin/docker"
+        mock_mgr = MagicMock()
+        mock_mgr.client.version.return_value = {
+            "Version": "24.0.7",
+            "ApiVersion": "1.43",
+        }
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        result = kw.check_docker_setup()
+
+        assert result["docker_cli"] is True
+        assert result["docker_cli_path"] == "/usr/bin/docker"
+        assert result["daemon_running"] is True
+        assert result["docker_version"] == "24.0.7"
+        assert result["api_version"] == "1.43"
+        assert result["errors"] == []
+
+    @patch("rfc.docker_keywords.shutil.which")
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_docker_cli_missing(self, MockMgr, mock_which):
+        mock_which.return_value = None
+        MockMgr.side_effect = RuntimeError("Docker not available")
+
+        kw = ConfigurableDockerKeywords()
+        result = kw.check_docker_setup()
+
+        assert result["docker_cli"] is False
+        assert result["docker_cli_path"] == ""
+        assert result["daemon_running"] is False
+        assert len(result["errors"]) > 0
+        assert any("not found" in e.lower() or "not installed" in e.lower() for e in result["errors"])
+
+    @patch("rfc.docker_keywords.shutil.which")
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_cli_present_but_daemon_not_running(self, MockMgr, mock_which):
+        mock_which.return_value = "/usr/bin/docker"
+        MockMgr.side_effect = RuntimeError("Docker daemon not running")
+
+        kw = ConfigurableDockerKeywords()
+        result = kw.check_docker_setup()
+
+        assert result["docker_cli"] is True
+        assert result["daemon_running"] is False
+        assert len(result["errors"]) > 0
+        assert any("daemon" in e.lower() or "not running" in e.lower() for e in result["errors"])
+
+    @patch("rfc.docker_keywords.shutil.which")
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_raises_on_failure(self, MockMgr, mock_which):
+        """When raise_on_failure=True, should raise RuntimeError."""
+        mock_which.return_value = None
+        MockMgr.side_effect = RuntimeError("Docker not available")
+
+        kw = ConfigurableDockerKeywords()
+        with pytest.raises(RuntimeError, match="Docker setup check failed"):
+            kw.check_docker_setup(raise_on_failure=True)
+
+
 class TestFindAvailablePort:
     def test_finds_port(self):
         kw = ConfigurableDockerKeywords()
