@@ -91,15 +91,12 @@ class ConfigurableDockerKeywords:
         except RuntimeError:
             result["daemon_running"] = False
             errors.append(
-                "Docker daemon is not running. "
-                "Please start Docker and try again."
+                "Docker daemon is not running. Please start Docker and try again."
             )
             logger.warn("Docker daemon is not running or not accessible")
 
         if errors and raise_on_failure:
-            msg = "Docker setup check failed:\n" + "\n".join(
-                f"  - {e}" for e in errors
-            )
+            msg = "Docker setup check failed:\n" + "\n".join(f"  - {e}" for e in errors)
             raise RuntimeError(msg)
 
         return result
