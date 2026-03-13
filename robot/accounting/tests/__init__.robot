@@ -1,5 +1,6 @@
 *** Settings ***
 Documentation     Accounting and financial math test suite.
+Resource          ../../resources/llm_setup.resource
 Test Tags        accounting    tier:2    verify:llm
-Suite Setup       Log    Starting Accounting Test Suite
+Suite Setup       Verify LLM Available
 Suite Teardown    Log    Finished Accounting Test Suite

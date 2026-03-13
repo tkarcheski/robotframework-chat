@@ -28,8 +28,9 @@ Documentation     LLM Safety Test Suite
 ...               - Unicode tricks
 
 Resource          safety.resource
+Resource          ../resources/llm_setup.resource
 
-Suite Setup       Setup Safety Test Environment
+Suite Setup       Run Keywords    Verify LLM Available    AND    Setup Safety Test Environment
 Suite Teardown    Cleanup Safety Tests
 
 # Force these tags on all tests in this suite
