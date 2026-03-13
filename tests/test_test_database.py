@@ -98,6 +98,25 @@ class TestSQLiteBackend:
         runs = db.get_recent_runs(limit=2)
         assert len(runs) == 2
 
+    def test_report_url_and_log_url_stored(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run = _make_run(
+            report_url="https://results.example.com/math/report.html",
+            log_url="https://results.example.com/math/log.html",
+        )
+        db.add_test_run(run)
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["report_url"] == "https://results.example.com/math/report.html"
+        assert runs[0]["log_url"] == "https://results.example.com/math/log.html"
+
+    def test_report_url_defaults_to_none(self, tmp_path):
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))
+        run = _make_run()
+        db.add_test_run(run)
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["report_url"] is None
+        assert runs[0]["log_url"] is None
+
     def test_get_model_performance(self, tmp_path):
         db = TestDatabase(db_path=str(tmp_path / "test.db"))
         db.add_test_run(_make_run(model_name="llama3", passed=8, failed=2))
