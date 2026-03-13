@@ -299,6 +299,7 @@ class DbListener:
         )
 
         hostname = self._host_info.get("hostname")
+        report_url, log_url = _build_report_urls()
 
         run = TestRun(
             timestamp=self._start_time or end_time,
@@ -318,6 +319,8 @@ class DbListener:
             duration_seconds=duration,
             rfc_version=__version__,
             hostname=hostname,
+            report_url=report_url,
+            log_url=log_url,
         )
 
         try:
@@ -407,6 +410,32 @@ class DbListener:
             error_msg = f"DbListener: FAILED to archive results: {e}"
             logger.warn(error_msg)
             logger.console(error_msg)
+
+
+def _build_report_urls() -> tuple[Optional[str], Optional[str]]:
+    """Build report_url and log_url from environment variables.
+
+    Priority:
+    1. REPORT_BASE_URL — explicit base URL (e.g. https://results.example.com/math)
+    2. CI_JOB_URL — GitLab CI artifact URL pattern
+    3. ROBOT_OUTPUT_DIR — local file path fallback
+    """
+    base = os.getenv("REPORT_BASE_URL")
+    if base:
+        base = base.rstrip("/")
+        return f"{base}/report.html", f"{base}/log.html"
+
+    ci_job_url = os.getenv("CI_JOB_URL")
+    if ci_job_url:
+        artifact_base = f"{ci_job_url}/artifacts/browse"
+        return f"{artifact_base}/report.html", f"{artifact_base}/log.html"
+
+    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if output_dir:
+        output_dir = output_dir.rstrip("/")
+        return f"{output_dir}/report.html", f"{output_dir}/log.html"
+
+    return None, None
 
 
 def _compute_duration(start: str, end: str) -> Optional[float]:

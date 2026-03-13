@@ -63,6 +63,8 @@ class TestRun:
     duration_seconds: float
     rfc_version: Optional[str] = None
     hostname: Optional[str] = None
+    report_url: Optional[str] = None
+    log_url: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -268,7 +270,9 @@ class _SQLiteBackend(_Backend):
         skipped INTEGER DEFAULT 0,
         duration_seconds REAL,
         rfc_version TEXT,
-        hostname TEXT
+        hostname TEXT,
+        report_url TEXT,
+        log_url TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -406,6 +410,8 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE keyword_results ADD COLUMN rfc_version TEXT",
         "ALTER TABLE host_info ADD COLUMN rfc_version TEXT",
         "ALTER TABLE models ADD COLUMN rfc_version TEXT",
+        "ALTER TABLE test_runs ADD COLUMN report_url TEXT",
+        "ALTER TABLE test_runs ADD COLUMN log_url TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -427,8 +433,10 @@ class _SQLiteBackend(_Backend):
                 (timestamp, model_name, model_release_date, model_parameters,
                  test_suite, git_commit, git_branch, pipeline_url,
                  runner_id, runner_tags, total_tests, passed, failed, skipped,
-                 duration_seconds, rfc_version, hostname)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 duration_seconds, rfc_version, hostname,
+                 report_url, log_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -448,6 +456,8 @@ class _SQLiteBackend(_Backend):
                     run.duration_seconds,
                     run.rfc_version,
                     run.hostname,
+                    run.report_url,
+                    run.log_url,
                 ),
             )
             run_id = cursor.lastrowid
@@ -825,6 +835,8 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE keyword_results ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
         "ALTER TABLE host_info ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
         "ALTER TABLE models ADD COLUMN IF NOT EXISTS rfc_version VARCHAR(50)",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS report_url TEXT",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS log_url TEXT",
     ]
 
     def __init__(self, database_url: str):
@@ -870,6 +882,8 @@ class _SQLAlchemyBackend(_Backend):
             Column("duration_seconds", Float),
             Column("rfc_version", String(50)),
             Column("hostname", String(255)),
+            Column("report_url", Text),
+            Column("log_url", Text),
         )
 
         self.test_results = Table(
@@ -1039,6 +1053,8 @@ class _SQLAlchemyBackend(_Backend):
                     duration_seconds=run.duration_seconds,
                     rfc_version=run.rfc_version,
                     hostname=run.hostname,
+                    report_url=run.report_url,
+                    log_url=run.log_url,
                 )
             )
             assert result.inserted_primary_key is not None
