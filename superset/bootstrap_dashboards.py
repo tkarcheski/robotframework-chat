@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS test_runs (
     skipped INTEGER DEFAULT 0,
     duration_seconds DOUBLE PRECISION,
     rfc_version VARCHAR(50),
-    hostname VARCHAR(255)
+    hostname VARCHAR(255),
+    report_url TEXT,
+    log_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS test_results (
@@ -192,6 +194,10 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
             runs.test_suite,
             runs.git_branch,
             runs.git_commit,
+            runs.pipeline_url,
+            runs.hostname,
+            runs.report_url,
+            runs.log_url,
             runs.duration_seconds AS run_duration,
             runs.rfc_version
         FROM test_results tr
@@ -279,6 +285,35 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
             CAST(om.eval_duration_ns AS DOUBLE PRECISION) / 1e9 AS eval_duration_s
         FROM ollama_metrics om
         JOIN test_runs runs ON om.run_id = runs.id
+    """,
+    "test_run_context": """
+        SELECT
+            r.id AS run_id,
+            r.timestamp,
+            r.model_name,
+            r.test_suite,
+            SUBSTRING(r.git_commit FROM 1 FOR 8) AS git_commit_short,
+            r.git_commit,
+            r.git_branch,
+            r.pipeline_url,
+            r.report_url,
+            r.log_url,
+            r.hostname,
+            r.runner_id,
+            r.runner_tags,
+            r.total_tests,
+            r.passed,
+            r.failed,
+            r.skipped,
+            r.duration_seconds,
+            r.rfc_version,
+            h.os_name,
+            h.cpu_arch,
+            h.cpu_count,
+            h.total_ram_gb,
+            h.gpu_info
+        FROM test_runs r
+        LEFT JOIN host_info h ON r.hostname = h.hostname
     """,
 }
 
@@ -394,6 +429,9 @@ def _test_results_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "skipped",
                     "duration_seconds",
                     "git_branch",
+                    "git_commit",
+                    "hostname",
+                    "report_url",
                 ],
                 "order_desc": True,
                 "row_limit": 50,
@@ -513,9 +551,40 @@ def _test_results_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "score",
                     "actual_answer",
                     "grading_reason",
+                    "git_branch",
+                    "hostname",
+                    "report_url",
                 ],
                 "order_desc": True,
                 "row_limit": 100,
+                "order_by_cols": '["timestamp"]',
+            },
+        },
+        {
+            "name": "Run Provenance",
+            "viz_type": "table",
+            "datasource": datasets["test_run_context"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "timestamp",
+                    "model_name",
+                    "test_suite",
+                    "git_branch",
+                    "git_commit_short",
+                    "hostname",
+                    "os_name",
+                    "cpu_arch",
+                    "gpu_info",
+                    "passed",
+                    "failed",
+                    "duration_seconds",
+                    "report_url",
+                    "log_url",
+                    "pipeline_url",
+                ],
+                "order_desc": True,
+                "row_limit": 50,
                 "order_by_cols": '["timestamp"]',
             },
         },

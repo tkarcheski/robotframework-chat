@@ -958,3 +958,116 @@ class TestDbListenerHostInfo:
             assert row["cpu_arch"] == "arm64"
             assert row["cpu_count"] == 10
             assert row["total_ram_gb"] == 16.0
+
+
+class TestDbListenerReportUrls:
+    """Tests for report_url and log_url capture in end_suite."""
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_report_url_from_report_base_url_env(self, _mock_ci, tmp_path):
+        """REPORT_BASE_URL env var builds report/log URLs."""
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        env = {"REPORT_BASE_URL": "https://results.example.com/results/math"}
+        with patch.dict(os.environ, env, clear=False):
+            listener.start_suite("Suite", {})
+            listener.end_test("T", _test_attrs())
+            listener.end_suite("Suite", _suite_attrs())
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert (
+                row["report_url"]
+                == "https://results.example.com/results/math/report.html"
+            )
+            assert row["log_url"] == "https://results.example.com/results/math/log.html"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_report_url_from_ci_job_url(self, _mock_ci, tmp_path):
+        """Falls back to CI_JOB_URL artifact pattern."""
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        env = {"CI_JOB_URL": "https://gitlab.example.com/project/-/jobs/123"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            listener.start_suite("Suite", {})
+            listener.end_test("T", _test_attrs())
+            listener.end_suite("Suite", _suite_attrs())
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert "/artifacts/browse/" in row["report_url"]
+            assert row["report_url"].endswith("report.html")
+            assert "/artifacts/browse/" in row["log_url"]
+            assert row["log_url"].endswith("log.html")
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_report_url_from_output_dir(self, _mock_ci, tmp_path):
+        """Falls back to ROBOT_OUTPUT_DIR as local file path."""
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        env = {"ROBOT_OUTPUT_DIR": "/tmp/results/math"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
+            listener.start_suite("Suite", {})
+            listener.end_test("T", _test_attrs())
+            listener.end_suite("Suite", _suite_attrs())
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert row["report_url"] == "/tmp/results/math/report.html"
+            assert row["log_url"] == "/tmp/results/math/log.html"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_report_url_none_when_no_env(self, _mock_ci, tmp_path):
+        """report_url and log_url are None when no env vars are set."""
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            listener.start_suite("Suite", {})
+            listener.end_test("T", _test_attrs())
+            listener.end_suite("Suite", _suite_attrs())
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert row["report_url"] is None
+            assert row["log_url"] is None
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_report_base_url_trailing_slash_handled(self, _mock_ci, tmp_path):
+        """Trailing slash on REPORT_BASE_URL doesn't cause double slash."""
+        import sqlite3
+
+        db_path = str(tmp_path / "test.db")
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        env = {"REPORT_BASE_URL": "https://results.example.com/math/"}
+        with patch.dict(os.environ, env, clear=False):
+            listener.start_suite("Suite", {})
+            listener.end_test("T", _test_attrs())
+            listener.end_suite("Suite", _suite_attrs())
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_runs").fetchone()
+            assert "//" not in row["report_url"].replace("https://", "")

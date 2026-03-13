@@ -63,7 +63,10 @@ class TestCheckDockerSetup:
         assert result["docker_cli_path"] == ""
         assert result["daemon_running"] is False
         assert len(result["errors"]) > 0
-        assert any("not found" in e.lower() or "not installed" in e.lower() for e in result["errors"])
+        assert any(
+            "not found" in e.lower() or "not installed" in e.lower()
+            for e in result["errors"]
+        )
 
     @patch("rfc.docker_keywords.shutil.which")
     @patch("rfc.docker_keywords.ContainerManager")
@@ -77,7 +80,10 @@ class TestCheckDockerSetup:
         assert result["docker_cli"] is True
         assert result["daemon_running"] is False
         assert len(result["errors"]) > 0
-        assert any("daemon" in e.lower() or "not running" in e.lower() for e in result["errors"])
+        assert any(
+            "daemon" in e.lower() or "not running" in e.lower()
+            for e in result["errors"]
+        )
 
     @patch("rfc.docker_keywords.shutil.which")
     @patch("rfc.docker_keywords.ContainerManager")
