@@ -624,3 +624,74 @@ class TestImportResults:
             assert len(results) == 3
         finally:
             os.unlink(path)
+
+    def test_import_report_base_url_sets_urls(self):
+        """report_base_url parameter builds report_url and log_url."""
+        path = _write_xml(MINIMAL_OUTPUT_XML)
+        try:
+            db = MagicMock()
+            db.add_test_run.return_value = 1
+
+            import_results(path, db, report_base_url="https://results.example.com/math")
+
+            run = db.add_test_run.call_args[0][0]
+            assert run.report_url == "https://results.example.com/math/report.html"
+            assert run.log_url == "https://results.example.com/math/log.html"
+        finally:
+            os.unlink(path)
+
+    def test_import_report_base_url_trailing_slash(self):
+        """Trailing slash on report_base_url doesn't cause double slash."""
+        path = _write_xml(MINIMAL_OUTPUT_XML)
+        try:
+            db = MagicMock()
+            db.add_test_run.return_value = 1
+
+            import_results(
+                path, db, report_base_url="https://results.example.com/math/"
+            )
+
+            run = db.add_test_run.call_args[0][0]
+            assert "//" not in run.report_url.replace("https://", "")
+        finally:
+            os.unlink(path)
+
+    def test_import_detects_sibling_report_files(self):
+        """Auto-detects sibling report.html/log.html when no base URL given."""
+        path = _write_xml(MINIMAL_OUTPUT_XML)
+        try:
+            report_path = os.path.join(os.path.dirname(path), "report.html")
+            log_path = os.path.join(os.path.dirname(path), "log.html")
+            with open(report_path, "w") as f:
+                f.write("<html></html>")
+            with open(log_path, "w") as f:
+                f.write("<html></html>")
+
+            db = MagicMock()
+            db.add_test_run.return_value = 1
+
+            import_results(path, db)
+
+            run = db.add_test_run.call_args[0][0]
+            assert run.report_url == report_path
+            assert run.log_url == log_path
+        finally:
+            os.unlink(path)
+            for p in [report_path, log_path]:
+                if os.path.exists(p):
+                    os.unlink(p)
+
+    def test_import_no_report_files_urls_none(self):
+        """report_url and log_url are None when no sibling files exist."""
+        path = _write_xml(MINIMAL_OUTPUT_XML)
+        try:
+            db = MagicMock()
+            db.add_test_run.return_value = 1
+
+            import_results(path, db)
+
+            run = db.add_test_run.call_args[0][0]
+            assert run.report_url is None
+            assert run.log_url is None
+        finally:
+            os.unlink(path)
