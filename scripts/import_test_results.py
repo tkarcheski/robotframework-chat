@@ -147,7 +147,10 @@ def parse_output_xml(xml_path: str) -> dict:
 
 
 def import_results(
-    xml_path: str, db: TestDatabase, model_name: Optional[str] = None
+    xml_path: str,
+    db: TestDatabase,
+    model_name: Optional[str] = None,
+    report_base_url: Optional[str] = None,
 ) -> int:
     """Import a single output.xml file into database.
 
@@ -218,6 +221,23 @@ def import_results(
     else:
         timestamp = datetime.now()
 
+    # Build report URLs
+    report_url: Optional[str] = None
+    log_url: Optional[str] = None
+    if report_base_url:
+        base = report_base_url.rstrip("/")
+        report_url = f"{base}/report.html"
+        log_url = f"{base}/log.html"
+    else:
+        # Auto-detect sibling report.html/log.html files
+        xml_dir = os.path.dirname(os.path.abspath(xml_path))
+        sibling_report = os.path.join(xml_dir, "report.html")
+        sibling_log = os.path.join(xml_dir, "log.html")
+        if os.path.isfile(sibling_report):
+            report_url = sibling_report
+        if os.path.isfile(sibling_log):
+            log_url = sibling_log
+
     run = TestRun(
         timestamp=timestamp,
         model_name=model_name or "unknown",
@@ -235,6 +255,8 @@ def import_results(
         skipped=data["skipped"],
         duration_seconds=data["duration"],
         rfc_version=__version__,
+        report_url=report_url,
+        log_url=log_url,
     )
 
     run_id = db.add_test_run(run)
@@ -278,6 +300,10 @@ def main():
         action="store_true",
         help="Recursively search for output.xml files in directory",
     )
+    parser.add_argument(
+        "--report-base-url",
+        help="Base URL for report.html/log.html (e.g. https://results.example.com/math)",
+    )
 
     args = parser.parse_args()
 
@@ -306,7 +332,7 @@ def main():
     imported_count = 0
     for xml_file in xml_files:
         try:
-            run_id = import_results(xml_file, db, args.model)
+            run_id = import_results(xml_file, db, args.model, args.report_base_url)
             print(f"Imported {xml_file} (run_id={run_id})")
             imported_count += 1
         except Exception as e:
