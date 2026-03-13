@@ -13,12 +13,22 @@ from rfc.ollama import OllamaClient, LLMClient
 class TestOllamaClientInit:
     def test_defaults(self):
         client = OllamaClient()
-        assert client.base_url == "http://localhost:11434"
+        assert client.base_url == os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
         assert client.model == os.getenv("DEFAULT_MODEL", "phi4:14b")
         assert client.temperature == 0.0
         assert client.max_tokens == 256
         assert client.timeout == 120
         assert client.max_retries == 2
+
+    @patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"})
+    def test_default_base_url_from_env(self):
+        client = OllamaClient()
+        assert client.base_url == "http://gpu1:11434"
+
+    @patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"})
+    def test_explicit_base_url_overrides_env(self):
+        client = OllamaClient(base_url="http://myhost:1234")
+        assert client.base_url == "http://myhost:1234"
 
     @patch.dict(os.environ, {"OLLAMA_TIMEOUT": "300"})
     def test_default_timeout_from_env(self):
@@ -34,13 +44,15 @@ class TestOllamaClientInit:
         client = OllamaClient(base_url="http://example.com/")
         assert client.base_url == "http://example.com"
 
-    def test_empty_base_url(self):
-        with pytest.raises(ValueError, match="base_url must be a non-empty"):
-            OllamaClient(base_url="")
+    @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
+    def test_default_model_from_env(self):
+        client = OllamaClient()
+        assert client.model == "llama3"
 
-    def test_empty_model(self):
-        with pytest.raises(ValueError, match="model must be a non-empty"):
-            OllamaClient(model="")
+    @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
+    def test_explicit_model_overrides_env(self):
+        client = OllamaClient(model="mistral")
+        assert client.model == "mistral"
 
     def test_negative_temperature(self):
         with pytest.raises(ValueError, match="temperature must be >= 0"):

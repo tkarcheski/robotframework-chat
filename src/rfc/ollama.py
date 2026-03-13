@@ -46,13 +46,17 @@ class OllamaClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434",
-        model: str = os.getenv("DEFAULT_MODEL", "phi4:14b"),
+        base_url: str = "",
+        model: str = "",
         temperature: float = 0.0,
         max_tokens: int = 256,
         timeout: Optional[int] = None,
         max_retries: int = 2,
     ):
+        if not base_url:
+            base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+        if not model:
+            model = os.getenv("DEFAULT_MODEL", "phi4:14b")
         if timeout is None:
             timeout = int(os.getenv("OLLAMA_TIMEOUT", str(self._DEFAULT_TIMEOUT)))
         if not isinstance(base_url, str) or not base_url:
