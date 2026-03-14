@@ -99,9 +99,7 @@ class TestMergeOutputs:
         return d1, d2
 
     @patch("src.rfc.rebot_merger._run_rebot")
-    def test_merge_creates_result(
-        self, mock_rebot: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_merge_creates_result(self, mock_rebot: MagicMock, tmp_path: Path) -> None:
         d1, d2 = self._setup_results(tmp_path)
         output_dir = tmp_path / "combined"
         output_dir.mkdir()

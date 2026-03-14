@@ -126,11 +126,16 @@ def merge_outputs(config: MergeConfig) -> Optional[MergeResult]:
     report_path = os.path.join(config.output_dir, "report.html")
 
     rebot_args = [
-        "--name", config.name,
-        "--outputdir", config.output_dir,
-        "--output", "output.xml",
-        "--log", "log.html",
-        "--report", "report.html",
+        "--name",
+        config.name,
+        "--outputdir",
+        config.output_dir,
+        "--output",
+        "output.xml",
+        "--log",
+        "log.html",
+        "--report",
+        "report.html",
         "--nostatusrc",
     ] + source_files
 
@@ -150,9 +155,7 @@ def main() -> None:
     """CLI entry point for rebot merge."""
     import argparse
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Merge multiple Robot Framework output.xml files with rebot"
@@ -163,12 +166,14 @@ def main() -> None:
         help="Directories containing output.xml files",
     )
     parser.add_argument(
-        "--output-dir", "-o",
+        "--output-dir",
+        "-o",
         default="results/combined",
         help="Output directory for merged results (default: results/combined)",
     )
     parser.add_argument(
-        "--name", "-n",
+        "--name",
+        "-n",
         default="Combined Results",
         help="Name for the combined report (default: 'Combined Results')",
     )
