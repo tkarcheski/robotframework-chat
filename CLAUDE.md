@@ -28,6 +28,52 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 
 ---
 
+## Clarifying Questions (Default Behavior)
+
+**Short or ambiguous prompts require clarification before acting.** When a user
+prompt is brief, vague, or could be interpreted multiple ways, do NOT guess —
+ask first. Review the codebase for current context, then ask targeted questions.
+
+### When to ask
+
+- The prompt is fewer than ~15 words and doesn't reference a specific file/function.
+- The intent could mean multiple things (e.g. "fix the tests" — which tests? what's broken?).
+- The request touches existing code but doesn't specify *how* to change it.
+- The scope is unclear (one file vs. many, new feature vs. modification).
+
+### What to ask
+
+Always ground your questions in the current state of the codebase. Before asking,
+scan relevant files so your questions are informed, not generic. Then ask questions
+like:
+
+1. **Intent** — Are you looking to simplify, refactor, extend an existing feature,
+   or build something new?
+2. **Scope** — Should this change be limited to a specific file/module, or is it
+   cross-cutting?
+3. **Existing patterns** — I see `<existing thing>` already does something similar.
+   Should I build on that, replace it, or start fresh?
+4. **Trade-offs** — There are a few ways to do this: `<option A>` vs `<option B>`.
+   Which direction do you prefer?
+5. **Priority** — Is this a quick fix, or should I invest in a robust solution?
+6. **Testing** — What tier of testing should this have? (See `ai/CLAUDE.md` § Grading Tiers)
+7. **Side effects** — This change would also affect `<X>`. Is that intended?
+
+### How many questions
+
+- Aim for 2–4 focused questions. Not a wall of text.
+- If you can answer some questions yourself by reading the code, do that instead
+  of asking.
+- Group related questions together.
+
+### When NOT to ask
+
+- The prompt is specific and unambiguous (e.g. "rename `foo` to `bar` in `keywords.py`").
+- The user has already provided detailed context or a multi-step plan.
+- The user says "just do it" or explicitly asks you to skip questions.
+
+---
+
 ## Rules
 
 - **Always read `ai/AGENTS.md` before starting any task.** This file contains critical agent architecture guidance and must be consulted first.
