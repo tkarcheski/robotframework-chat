@@ -48,7 +48,7 @@ The `.env` file is loaded automatically by:
 | `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | .gitlab-ci.yml |
 | `DEFAULT_MODEL` | LLM model for tests | `gpt-oss:20b` (CI: `qwen3.5:27b`) | ollama.py, keywords, listeners, scripts |
 | `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners, ci/test.sh |
-| `OLLAMA_TIMEOUT` | Request timeout in seconds | `120` (code), `300` (.env.example) | ollama.py, keywords, safety_keywords, Robot resources |
+| `OLLAMA_TIMEOUT` | Request timeout in seconds | `5400` (90 min) | ollama.py, keywords, safety_keywords, Robot resources |
 
 ### Node Discovery
 

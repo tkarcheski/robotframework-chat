@@ -32,7 +32,7 @@ from .llm_client import create_provider
 from .multi_grader import MultiGrader
 from .web_cache import SearchResult, WebSearchCache
 
-_DEFAULT_TIMEOUT = 120
+_DEFAULT_TIMEOUT = 5400
 
 
 class CEOKeywords:

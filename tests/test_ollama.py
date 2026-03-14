@@ -17,7 +17,7 @@ class TestOllamaClientInit:
         assert client.model == os.getenv("DEFAULT_MODEL", "phi4:14b")
         assert client.temperature == 0.0
         assert client.max_tokens == 256
-        assert client.timeout == 120
+        assert client.timeout == 5400
         assert client.max_retries == 2
 
     @patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"})
@@ -356,6 +356,62 @@ class TestWaitUntilReady:
     def test_invalid_poll_interval(self):
         with pytest.raises(ValueError, match="poll_interval must be >= 1"):
             OllamaClient().wait_until_ready(poll_interval=0)
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.time.time")
+    @patch("rfc.ollama.requests.get")
+    def test_warns_after_one_minute(self, mock_get, mock_time, mock_sleep, mock_logger):
+        """Warning is logged after 60s of waiting, then every 5 minutes."""
+        # Simulate: endpoint available but busy, time advancing past 60s
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+
+        # First few calls: busy (models running), then idle (empty)
+        busy_resp = MagicMock()
+        busy_resp.status_code = 200
+        busy_resp.raise_for_status = MagicMock()
+        busy_resp.json.return_value = {"models": [{"name": "phi4:14b"}]}
+
+        idle_resp = MagicMock()
+        idle_resp.status_code = 200
+        idle_resp.raise_for_status = MagicMock()
+        idle_resp.json.return_value = {"models": []}
+
+        # is_available (tags) and running_models (ps) alternate per loop
+        # Each loop: GET /api/tags (available check), GET /api/ps (running check)
+        mock_get.side_effect = [
+            mock_resp,  # is_available → 200
+            busy_resp,  # running_models → busy
+            mock_resp,  # is_available → 200
+            busy_resp,  # running_models → busy
+            mock_resp,  # is_available → 200
+            idle_resp,  # running_models → idle → done
+        ]
+
+        # Time progression: 0, 30, 61, 61, 65, 65, 70, 70
+        # (each loop checks time twice: once for while condition, once for elapsed)
+        mock_time.side_effect = [
+            0,    # start
+            0, 0,    # loop 1: while check, elapsed check
+            30, 30,  # loop 2: while check, elapsed check
+            61, 61,  # loop 3: while check, elapsed check — triggers warning
+        ]
+
+        client = OllamaClient()
+        result = client.wait_until_ready(timeout=5400, poll_interval=2)
+
+        assert result is True
+        # Verify warn was called with the "Still waiting" message
+        warn_calls = [
+            str(c) for c in mock_logger.warn.call_args_list
+            if "Still waiting for Ollama" in str(c)
+        ]
+        assert len(warn_calls) >= 1, (
+            f"Expected at least one 'Still waiting' warning, got: "
+            f"{mock_logger.warn.call_args_list}"
+        )
 
 
 class TestGenerateMetrics:
