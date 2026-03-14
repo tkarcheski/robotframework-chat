@@ -42,7 +42,7 @@ class OllamaClient:
     integration point for all Ollama interactions.
     """
 
-    _DEFAULT_TIMEOUT = 120
+    _DEFAULT_TIMEOUT = 5400
 
     def __init__(
         self,
@@ -236,15 +236,18 @@ class OllamaClient:
         except Exception:
             return False
 
-    def wait_until_ready(self, timeout: int = 120, poll_interval: int = 2) -> bool:
+    def wait_until_ready(self, timeout: int = 5400, poll_interval: int = 2) -> bool:
         """Wait until Ollama is available and not busy processing another request.
 
         Polls the /api/ps endpoint to detect when the LLM is idle.
         This prevents timeout errors caused by sending a request while
         Ollama is still processing a previous one.
 
+        Logs a warning after 1 minute, then every 5 minutes, so long
+        waits are visible without flooding the log.
+
         Args:
-            timeout: Maximum seconds to wait.
+            timeout: Maximum seconds to wait (default 5400 / 90 min).
             poll_interval: Seconds between checks.
 
         Returns:
@@ -259,7 +262,17 @@ class OllamaClient:
             raise ValueError(f"poll_interval must be >= 1, got {poll_interval}")
 
         start = time.time()
+        next_warn_at = 60  # first warning after 1 minute
+        warn_interval = 300  # then every 5 minutes
         while time.time() - start < timeout:
+            elapsed = int(time.time() - start)
+            if elapsed >= next_warn_at:
+                logger.warn(
+                    f"Still waiting for Ollama after {elapsed}s — "
+                    f"timeout in {timeout - elapsed}s"
+                )
+                next_warn_at += warn_interval
+
             if not self.is_available():
                 logger.info("Ollama endpoint not available yet, waiting...")
                 time.sleep(poll_interval)
