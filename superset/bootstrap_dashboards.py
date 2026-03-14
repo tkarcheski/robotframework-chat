@@ -1364,7 +1364,8 @@ def bootstrap() -> None:
         pg_user = os.getenv("POSTGRES_USER", "rfc")
         pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
         pg_db = os.getenv("POSTGRES_DB", "rfc")
-        pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:5432/{pg_db}"
+        pg_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
+        pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:{pg_port}/{pg_db}"
 
         # ── 0. Create RFC tables in PostgreSQL ────────────────────────
         _ensure_tables(pg_uri)

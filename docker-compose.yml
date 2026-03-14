@@ -41,7 +41,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5433}:${POSTGRES_INTERNAL_PORT:-5432}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -78,6 +78,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
       SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
@@ -120,6 +121,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
     ports:
       - "${SUPERSET_PORT:-8088}:8088"
     volumes:
