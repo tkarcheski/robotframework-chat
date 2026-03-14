@@ -10,9 +10,12 @@ import os
 _pg_user = os.getenv("POSTGRES_USER", "rfc")
 _pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
 _pg_db = os.getenv("POSTGRES_DB", "rfc")
+_pg_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
 
 # Superset metadata database (its own tables, same PG instance)
-SQLALCHEMY_DATABASE_URI = f"postgresql://{_pg_user}:{_pg_pass}@postgres:5432/{_pg_db}"
+SQLALCHEMY_DATABASE_URI = (
+    f"postgresql://{_pg_user}:{_pg_pass}@postgres:{_pg_port}/{_pg_db}"
+)
 
 SECRET_KEY = os.getenv(
     "SUPERSET_SECRET_KEY",

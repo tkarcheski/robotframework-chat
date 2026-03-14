@@ -28,7 +28,8 @@ variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
   DEFAULT_MODEL: "qwen3.5:27b"
   DATABASE_HOST: "localhost"
-  DATABASE_URL: "postgresql://rfc:changeme@${DATABASE_HOST}:5433/rfc"
+  POSTGRES_PORT: "5433"
+  DATABASE_URL: "postgresql://rfc:changeme@${DATABASE_HOST}:${POSTGRES_PORT}/rfc"
   ROBOT_OPTIONS: "--metadata CI:true"
 
 # ── Lint ─────────────────────────────────────────────────────────────
