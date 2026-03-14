@@ -172,6 +172,84 @@ CREATE TABLE IF NOT EXISTS host_info (
 
 CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
 CREATE INDEX IF NOT EXISTS idx_host_info_hostname ON host_info(hostname);
+
+-- Analytics metadata layer tables
+CREATE TABLE IF NOT EXISTS analytics_model_trends (
+    id SERIAL PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL,
+    test_suite VARCHAR(255) NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    run_count INTEGER,
+    avg_pass_rate DOUBLE PRECISION,
+    pass_rate_delta DOUBLE PRECISION,
+    avg_duration DOUBLE PRECISION,
+    duration_delta DOUBLE PRECISION,
+    trend_direction VARCHAR(20),
+    computed_at TEXT NOT NULL,
+    UNIQUE(model_name, test_suite)
+);
+
+CREATE TABLE IF NOT EXISTS analytics_test_stability (
+    id SERIAL PRIMARY KEY,
+    test_name VARCHAR(255) NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    window_runs INTEGER,
+    pass_count INTEGER,
+    fail_count INTEGER,
+    flip_count INTEGER,
+    stability_score DOUBLE PRECISION,
+    classification VARCHAR(20),
+    last_status VARCHAR(10),
+    computed_at TEXT NOT NULL,
+    UNIQUE(test_name, model_name)
+);
+
+CREATE TABLE IF NOT EXISTS analytics_model_comparison (
+    id SERIAL PRIMARY KEY,
+    test_suite VARCHAR(255) NOT NULL,
+    model_a VARCHAR(255) NOT NULL,
+    model_b VARCHAR(255) NOT NULL,
+    pass_rate_a DOUBLE PRECISION,
+    pass_rate_b DOUBLE PRECISION,
+    pass_rate_diff DOUBLE PRECISION,
+    duration_a DOUBLE PRECISION,
+    duration_b DOUBLE PRECISION,
+    speed_ratio DOUBLE PRECISION,
+    winner VARCHAR(255),
+    computed_at TEXT NOT NULL,
+    UNIQUE(test_suite, model_a, model_b)
+);
+
+CREATE TABLE IF NOT EXISTS analytics_regression_alerts (
+    id SERIAL PRIMARY KEY,
+    detected_at TEXT NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    test_suite VARCHAR(255),
+    test_name VARCHAR(255),
+    alert_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    current_value DOUBLE PRECISION,
+    previous_value DOUBLE PRECISION,
+    threshold DOUBLE PRECISION,
+    message TEXT,
+    run_id INTEGER,
+    acknowledged INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS analytics_performance_fingerprints (
+    id SERIAL PRIMARY KEY,
+    test_name VARCHAR(255) NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255),
+    avg_duration DOUBLE PRECISION,
+    p50_duration DOUBLE PRECISION,
+    p95_duration DOUBLE PRECISION,
+    sample_count INTEGER,
+    tokens_per_second DOUBLE PRECISION,
+    computed_at TEXT NOT NULL,
+    UNIQUE(test_name, model_name, hostname)
+);
 """
 
 # ---------------------------------------------------------------------------
@@ -316,6 +394,15 @@ _VIRTUAL_DATASETS: Dict[str, str] = {
         FROM test_runs r
         LEFT JOIN host_info h ON r.hostname = h.hostname
     """,
+    # ── Analytics metadata layer datasets ────────────────────────────
+    "model_trends": "SELECT * FROM analytics_model_trends",
+    "test_stability": "SELECT * FROM analytics_test_stability",
+    "regression_alerts": """
+        SELECT * FROM analytics_regression_alerts
+        WHERE acknowledged = 0
+    """,
+    "model_comparison": "SELECT * FROM analytics_model_comparison",
+    "performance_fingerprints": "SELECT * FROM analytics_performance_fingerprints",
 }
 
 
@@ -1211,6 +1298,147 @@ def _host_metrics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _intelligence_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Charts for the Intelligence dashboard (analytics metadata layer)."""
+    return [
+        {
+            "name": "Model Trends",
+            "viz_type": "table",
+            "datasource": datasets["model_trends"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "model_name",
+                    "test_suite",
+                    "run_count",
+                    "avg_pass_rate",
+                    "pass_rate_delta",
+                    "avg_duration",
+                    "duration_delta",
+                    "trend_direction",
+                    "computed_at",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["computed_at"]',
+            },
+        },
+        {
+            "name": "Flaky Tests Heatmap",
+            "viz_type": "table",
+            "datasource": datasets["test_stability"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "test_name",
+                    "model_name",
+                    "classification",
+                    "stability_score",
+                    "flip_count",
+                    "pass_count",
+                    "fail_count",
+                    "last_status",
+                ],
+                "adhoc_filters": [
+                    {
+                        "clause": "WHERE",
+                        "expressionType": "SIMPLE",
+                        "subject": "classification",
+                        "operator": "==",
+                        "comparator": "flaky",
+                    }
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["stability_score"]',
+            },
+        },
+        {
+            "name": "Model Comparison Matrix",
+            "viz_type": "table",
+            "datasource": datasets["model_comparison"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "test_suite",
+                    "model_a",
+                    "model_b",
+                    "pass_rate_a",
+                    "pass_rate_b",
+                    "pass_rate_diff",
+                    "speed_ratio",
+                    "winner",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["pass_rate_diff"]',
+            },
+        },
+        {
+            "name": "Active Regression Alerts",
+            "viz_type": "table",
+            "datasource": datasets["regression_alerts"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "detected_at",
+                    "severity",
+                    "model_name",
+                    "test_suite",
+                    "alert_type",
+                    "current_value",
+                    "previous_value",
+                    "message",
+                ],
+                "order_desc": True,
+                "row_limit": 50,
+                "order_by_cols": '["detected_at"]',
+            },
+        },
+        {
+            "name": "Performance Fingerprints",
+            "viz_type": "table",
+            "datasource": datasets["performance_fingerprints"],
+            "params": {
+                "viz_type": "table",
+                "all_columns": [
+                    "test_name",
+                    "model_name",
+                    "hostname",
+                    "avg_duration",
+                    "p50_duration",
+                    "p95_duration",
+                    "sample_count",
+                    "tokens_per_second",
+                ],
+                "order_desc": True,
+                "row_limit": 100,
+                "order_by_cols": '["avg_duration"]',
+            },
+        },
+        {
+            "name": "Test Stability Distribution",
+            "viz_type": "pie",
+            "datasource": datasets["test_stability"],
+            "params": {
+                "viz_type": "pie",
+                "metrics": [
+                    {
+                        "label": "count",
+                        "expressionType": "SIMPLE",
+                        "aggregate": "COUNT",
+                        "column": {"column_name": "id"},
+                    }
+                ],
+                "groupby": ["classification"],
+                "color_scheme": "supersetColors",
+                "show_legend": True,
+                "show_labels": True,
+            },
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1408,6 +1636,11 @@ def bootstrap() -> None:
             "keyword_results",
             "ollama_metrics",
             "host_info",
+            "analytics_model_trends",
+            "analytics_test_stability",
+            "analytics_model_comparison",
+            "analytics_regression_alerts",
+            "analytics_performance_fingerprints",
         ):
             ds = (
                 db.session.query(SqlaTable)
@@ -1500,6 +1733,10 @@ def bootstrap() -> None:
             _get_or_create_slice(db, Slice, cdef)
             for cdef in _host_metrics_charts(datasets)
         ]
+        intelligence_slices = [
+            _get_or_create_slice(db, Slice, cdef)
+            for cdef in _intelligence_charts(datasets)
+        ]
 
         # ── 5. Load theme CSS ──────────────────────────────────────
         _tron_css_path = Path(__file__).parent / "themes" / "tron.css"
@@ -1549,6 +1786,14 @@ def bootstrap() -> None:
             "Host Metrics",
             "rfc-hosts",
             host_slices,
+            css=_tron_css,
+        )
+        _get_or_create_dashboard(
+            db,
+            Dashboard,
+            "Intelligence",
+            "rfc-intelligence",
+            intelligence_slices,
             css=_tron_css,
         )
 
