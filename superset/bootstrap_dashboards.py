@@ -1570,10 +1570,13 @@ def _get_or_create_dashboard(
         db.session.add(dashboard)
         log.info("Created dashboard: %s", title)
     else:
-        # Update CSS on existing dashboards
-        if css and dashboard.css != css:
+        # Sync CSS on existing dashboards (apply or clear)
+        if dashboard.css != css:
             dashboard.css = css
-            log.info("Updated CSS for dashboard: %s", title)
+            if css:
+                log.info("Applied theme CSS to dashboard: %s", title)
+            else:
+                log.info("Cleared theme CSS from dashboard: %s", title)
     return dashboard
 
 
