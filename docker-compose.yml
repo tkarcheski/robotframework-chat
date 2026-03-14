@@ -82,6 +82,7 @@ services:
       SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
+      SUPERSET_TRON_CSS: ${SUPERSET_TRON_CSS:-false}
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
       - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
