@@ -64,6 +64,8 @@ dev = [
     "pip-audit",
     "build",
     "twine",
+    "paramiko",
+    "types-paramiko",
 ]
 
 [tool.pytest.ini_options]

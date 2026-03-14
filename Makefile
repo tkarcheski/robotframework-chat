@@ -21,7 +21,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
-        send-results \
+        send-results send-results-ftp \
         discover-local-nodes discover-local-models run-local-models \
         cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
@@ -81,6 +81,9 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
+
+send-results-ftp: ## Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)
+	bash ci/send_results_ftp.sh
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 

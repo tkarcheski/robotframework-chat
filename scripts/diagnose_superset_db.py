@@ -103,10 +103,7 @@ def check_connection(url: str) -> bool:
     try:
         from sqlalchemy import create_engine, text
     except ImportError:
-        fail(
-            "sqlalchemy not installed.\n"
-            "        → Run: uv sync --extra superset"
-        )
+        fail("sqlalchemy not installed.\n        → Run: uv sync --extra superset")
         return False
 
     try:
@@ -131,7 +128,7 @@ def check_schema(url: str) -> bool:
     """Check that RFC tables exist and have the expected schema."""
     heading("Schema")
 
-    from sqlalchemy import create_engine, inspect, text
+    from sqlalchemy import create_engine, inspect
 
     engine = create_engine(url, connect_args={"connect_timeout": 5})
     inspector = inspect(engine)
@@ -158,7 +155,9 @@ def check_schema(url: str) -> bool:
             all_ok = False
 
     # Check for Superset metadata tables (indicates bootstrap ran).
-    superset_tables = [t for t in all_tables if t.startswith("ab_") or t == "dashboards"]
+    superset_tables = [
+        t for t in all_tables if t.startswith("ab_") or t == "dashboards"
+    ]
     if superset_tables:
         ok(f"Superset metadata tables found ({len(superset_tables)} tables)")
     else:
@@ -238,7 +237,9 @@ def check_superset_database_connection(url: str) -> None:
                         "        → Superset runs inside Docker and needs 'postgres:5432'."
                     )
                 else:
-                    warn(f"URI: {uri} — verify this resolves correctly from Superset's container")
+                    warn(
+                        f"URI: {uri} — verify this resolves correctly from Superset's container"
+                    )
             else:
                 fail(
                     "No 'Robot Framework Results' database connection in Superset.\n"
