@@ -15,19 +15,23 @@ body {
 
 /* ── Dashboard background ────────────────────────────────────────────── */
 
-.dashboard {
-  background-color: #0c0c1d !important;
-}
-
-.dashboard-content {
-  background-color: #0c0c1d !important;
-}
-
-.grid-container {
-  background-color: #0c0c1d !important;
-}
-
-.gridComponent {
+.dashboard,
+.dashboard-content,
+.grid-container,
+.gridComponent,
+.dashboard-builder,
+.dashboard-component,
+.dashboard-component-tabs,
+.dashboard-component-tabs-content,
+.grid-row,
+.dragdroppable-column,
+.ant-layout,
+.ant-layout-content,
+.ant-layout-sider,
+#app,
+#app-menu,
+#root,
+[data-test="grid-container"] {
   background-color: #0c0c1d !important;
 }
 
@@ -70,7 +74,11 @@ body {
               inset 0 0 20px rgba(0, 255, 249, 0.05) !important;
 }
 
-.dashboard-component-chart-holder {
+.dashboard-component-chart-holder,
+.slice-cell,
+.chart-slice,
+.superset-chart,
+[class*="superset-chart-"] {
   background-color: #12122a !important;
 }
 
@@ -92,7 +100,8 @@ body {
 /* ── Row backgrounds ─────────────────────────────────────────────────── */
 
 .grid-row,
-.dragdroppable-row {
+.dragdroppable-row,
+.dragdroppable {
   background-color: transparent !important;
 }
 
@@ -123,7 +132,10 @@ body {
 /* ── Filter bar ──────────────────────────────────────────────────────── */
 
 .filter-bar,
-.dashboard-filters-panel {
+.dashboard-filters-panel,
+[data-test="filter-bar"],
+.filter-scope-pane,
+.filter-scope-selector {
   background-color: #0e0e24 !important;
   border-right: 1px solid rgba(0, 255, 249, 0.2) !important;
 }
@@ -324,4 +336,164 @@ a:hover {
 .dashboard-markdown h2,
 .dashboard-markdown h3 {
   color: #00fff9 !important;
+}
+
+/* ── Ant Design components with white defaults ─────────────────────── */
+
+.ant-popover-inner {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+  color: #c0fff8 !important;
+}
+
+.ant-popover-arrow-content,
+.ant-popover-arrow::before {
+  background-color: #12122a !important;
+}
+
+.ant-tooltip-inner {
+  background-color: #0e0e24 !important;
+  color: #c0fff8 !important;
+}
+
+.ant-tooltip-arrow-content {
+  background-color: #0e0e24 !important;
+}
+
+.ant-menu {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+.ant-menu-item,
+.ant-menu-submenu-title {
+  color: #c0fff8 !important;
+}
+
+.ant-menu-item:hover,
+.ant-menu-item-active,
+.ant-menu-item-selected {
+  background-color: rgba(0, 255, 249, 0.1) !important;
+  color: #00fff9 !important;
+}
+
+.ant-collapse {
+  background-color: #12122a !important;
+  border-color: rgba(0, 255, 249, 0.15) !important;
+  color: #c0fff8 !important;
+}
+
+.ant-collapse-header {
+  color: #c0fff8 !important;
+}
+
+.ant-collapse-content {
+  background-color: #0e0e24 !important;
+  border-color: rgba(0, 255, 249, 0.1) !important;
+  color: #c0fff8 !important;
+}
+
+.ant-dropdown-menu {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+}
+
+.ant-dropdown-menu-item {
+  color: #c0fff8 !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: rgba(0, 255, 249, 0.1) !important;
+}
+
+.ant-empty-description {
+  color: #4dc9c0 !important;
+}
+
+.ant-pagination-item {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.2) !important;
+}
+
+.ant-pagination-item a {
+  color: #c0fff8 !important;
+}
+
+.ant-pagination-item-active {
+  border-color: #00fff9 !important;
+}
+
+.ant-pagination-item-active a {
+  color: #00fff9 !important;
+}
+
+/* ── Table plugin variants ─────────────────────────────────────────── */
+
+.pvtTable,
+.pvtTable td,
+.pvtTable th {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+  border-color: rgba(0, 255, 249, 0.1) !important;
+}
+
+[class*="virtual-table"],
+[class*="cell-text"] {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+/* ── Header action buttons & menus ─────────────────────────────────── */
+
+.header-with-actions,
+.right-button-panel,
+[data-test="header-actions-trigger"] {
+  background-color: transparent !important;
+}
+
+/* ── Superset embedded & explore views ─────────────────────────────── */
+
+.panel,
+.panel-body {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+.well {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.15) !important;
+  color: #c0fff8 !important;
+}
+
+/* ── SVG/Canvas chart backgrounds ──────────────────────────────────── */
+
+.chart-container svg,
+.slice_container svg {
+  background-color: transparent !important;
+}
+
+.chart-container canvas,
+.slice_container canvas {
+  background-color: transparent !important;
+}
+
+/* ── Superset native filter bar (v2) ───────────────────────────────── */
+
+[class*="FilterBar"],
+[class*="filter-bar"] {
+  background-color: #0e0e24 !important;
+}
+
+/* ── Toast / notifications ─────────────────────────────────────────── */
+
+.ant-notification-notice {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+  color: #c0fff8 !important;
+}
+
+.ant-message-notice-content {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+  color: #c0fff8 !important;
 }
