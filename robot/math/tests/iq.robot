@@ -1,6 +1,9 @@
 *** Settings ***
-Documentation     Comprehensive Robot Framework Math Test Suite for robotframework-chat with unique, progressively harder IQ questions.
-Resource          ../../resources/ask_and_validate.resource
+Documentation     Progressive IQ-based math tests with randomized inputs
+Resource          ../math.resource
+Library           Collections
+Library           OperatingSystem
+Library           String
 
 *** Test Cases ***
 IQ 70 Basic Addition

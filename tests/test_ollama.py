@@ -393,11 +393,15 @@ class TestWaitUntilReady:
 
         # Time progression: warning triggers when elapsed >= 60
         mock_time.side_effect = [
-            0,        # start
-            0, 0,     # loop 1: while check, elapsed check
-            30, 30,   # loop 2: while check, elapsed check
-            61, 61,   # loop 3: while check, elapsed — triggers warning
-            65, 65,   # loop 4: while check, elapsed — idle, returns
+            0,  # start
+            0,
+            0,  # loop 1: while check, elapsed check
+            30,
+            30,  # loop 2: while check, elapsed check
+            61,
+            61,  # loop 3: while check, elapsed — triggers warning
+            65,
+            65,  # loop 4: while check, elapsed — idle, returns
         ]
 
         client = OllamaClient(model="gemma3:27b")
@@ -406,7 +410,8 @@ class TestWaitUntilReady:
         assert result is True
         # Verify warn includes loaded models and next model
         warn_calls = [
-            str(c) for c in mock_logger.warn.call_args_list
+            str(c)
+            for c in mock_logger.warn.call_args_list
             if "Still waiting for Ollama" in str(c)
         ]
         assert len(warn_calls) >= 1, (

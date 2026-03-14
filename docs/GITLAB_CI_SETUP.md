@@ -112,7 +112,7 @@ To archive test results to PostgreSQL (for Superset dashboards):
 
 1. Set `DATABASE_URL` as a CI/CD variable:
    ```
-   postgresql://rfc:password@postgres-host:5432/rfc
+   postgresql://rfc:password@postgres-host:5433/rfc
    ```
 2. Both the `DbListener` (test stage) and `import_test_results.py` (report stage) will use it
 

@@ -12,6 +12,26 @@
 # See Makefile for all available targets.
 
 services:
+  # ── Application (test runner + dev tools) ────────────────────────────
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:${POSTGRES_INTERNAL_PORT:-5432}/${POSTGRES_DB:-rfc}
+      OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./results:/app/results
+    networks:
+      - rfc-net
+    stdin_open: true
+    tty: true
+
   # ── PostgreSQL ──────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
@@ -21,7 +41,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5433}:${POSTGRES_INTERNAL_PORT:-5432}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -58,6 +78,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
       SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
@@ -100,6 +121,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
     ports:
       - "${SUPERSET_PORT:-8088}:8088"
     volumes:

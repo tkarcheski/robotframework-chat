@@ -44,6 +44,7 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 - **Every Robot test must be tagged** with exactly one `tier:*` (0–6) and one `verify:*` tag per `ai/CLAUDE.md` § Tagging Rules.
 - **When adding a new Robot test suite**, register it in both `config/test_suites.yaml` (CI) and `config/local_models.yaml` (local cron). The hourly cron job (`scripts/cron_run_local_models.sh`) runs every suite listed in `local_models.yaml`.
 - **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
+- **Always rebase onto `claude-code-staging`**, not `main`. This is the integration branch for all Claude Code work.
 
 ---
 
