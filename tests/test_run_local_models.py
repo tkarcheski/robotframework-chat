@@ -9,12 +9,14 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from scripts.run_local_models import (
+    RunResult,
     _build_robot_command,
     _sanitize_name,
     discover_local_models,
     load_local_config,
     run_iteration_loop,
     run_model_suites,
+    verify_db_results,
 )
 
 
@@ -550,3 +552,78 @@ class TestRunIterationLoop:
         """Each iteration re-discovers nodes/models (nodes may change)."""
         run_iteration_loop(_ITER_CONFIG, iterations=3)
         assert mock_discover.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# verify_db_results
+# ---------------------------------------------------------------------------
+
+_SAMPLE_RESULTS = [
+    RunResult(node="host1", model="llama3", suite="math", returncode=0, output_dir="r/h/m"),
+    RunResult(node="host1", model="mistral", suite="math", returncode=0, output_dir="r/h/m2"),
+]
+
+
+def _recent_timestamp() -> str:
+    """Return an ISO timestamp from a few minutes ago."""
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(tz=timezone.utc) - timedelta(minutes=2)).isoformat()
+
+
+class TestVerifyDbResults:
+    """Tests for verify_db_results() — post-run DB confirmation."""
+
+    def test_skips_on_dry_run(self) -> None:
+        """Dry-run mode should skip DB check entirely and return True."""
+        assert verify_db_results(_SAMPLE_RESULTS, dry_run=True) is True
+
+    def test_skips_when_no_results(self) -> None:
+        """No results means nothing to verify."""
+        assert verify_db_results([], dry_run=False) is True
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_skips_when_no_database_url(self) -> None:
+        """Without DATABASE_URL, skip gracefully and return True."""
+        # Ensure DATABASE_URL is not set
+        import os
+
+        os.environ.pop("DATABASE_URL", None)
+        assert verify_db_results(_SAMPLE_RESULTS) is True
+
+    @patch("rfc.test_database.TestDatabase")
+    @patch.dict("os.environ", {"DATABASE_URL": "postgresql://rfc:pass@db:5433/rfc"})
+    def test_passes_when_recent_runs_found(self, mock_db_cls: MagicMock) -> None:
+        """Returns True when DB has recent runs matching expected count."""
+        mock_db = mock_db_cls.return_value
+        mock_db.get_recent_runs.return_value = [
+            {"id": 1, "timestamp": _recent_timestamp(), "model_name": "llama3"},
+            {"id": 2, "timestamp": _recent_timestamp(), "model_name": "mistral"},
+        ]
+        assert verify_db_results(_SAMPLE_RESULTS) is True
+
+    @patch("rfc.test_database.TestDatabase")
+    @patch.dict("os.environ", {"DATABASE_URL": "postgresql://rfc:pass@db:5433/rfc"})
+    def test_fails_when_no_recent_runs(self, mock_db_cls: MagicMock) -> None:
+        """Returns False (hard failure) when DB has zero recent runs."""
+        mock_db = mock_db_cls.return_value
+        mock_db.get_recent_runs.return_value = []
+        assert verify_db_results(_SAMPLE_RESULTS) is False
+
+    @patch("rfc.test_database.TestDatabase")
+    @patch.dict("os.environ", {"DATABASE_URL": "postgresql://rfc:pass@db:5433/rfc"})
+    def test_warns_on_partial_archival(self, mock_db_cls: MagicMock) -> None:
+        """Partial archival (some rows, not all) returns True with warning."""
+        mock_db = mock_db_cls.return_value
+        mock_db.get_recent_runs.return_value = [
+            {"id": 1, "timestamp": _recent_timestamp(), "model_name": "llama3"},
+        ]
+        # 2 results expected but only 1 in DB — still True (partial is not hard fail)
+        assert verify_db_results(_SAMPLE_RESULTS) is True
+
+    @patch("rfc.test_database.TestDatabase")
+    @patch.dict("os.environ", {"DATABASE_URL": "postgresql://rfc:pass@db:5433/rfc"})
+    def test_handles_db_connection_error(self, mock_db_cls: MagicMock) -> None:
+        """DB connection failure returns False (hard failure)."""
+        mock_db_cls.side_effect = Exception("Connection refused")
+        assert verify_db_results(_SAMPLE_RESULTS) is False
