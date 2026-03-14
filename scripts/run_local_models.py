@@ -38,6 +38,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -372,6 +373,131 @@ def _print_summary(results: list[RunResult]) -> None:
     print()
 
 
+# ---------------------------------------------------------------------------
+# ANSI helpers (mirroring diagnose_superset_db.py)
+# ---------------------------------------------------------------------------
+
+_GREEN = "\033[92m"
+_RED = "\033[91m"
+_YELLOW = "\033[93m"
+_BOLD = "\033[1m"
+_RESET = "\033[0m"
+
+
+def _db_ok(msg: str) -> None:
+    print(f"  {_GREEN}OK{_RESET}  {msg}")
+
+
+def _db_fail(msg: str) -> None:
+    print(f"  {_RED}FAIL{_RESET}  {msg}")
+
+
+def _db_warn(msg: str) -> None:
+    print(f"  {_YELLOW}WARN{_RESET}  {msg}")
+
+
+def _db_heading(msg: str) -> None:
+    print(f"\n{_BOLD}── {msg} ──{_RESET}")
+
+
+# ---------------------------------------------------------------------------
+# Post-run database verification
+# ---------------------------------------------------------------------------
+
+
+def verify_db_results(
+    results: list[RunResult],
+    *,
+    dry_run: bool = False,
+) -> bool:
+    """Check that test runs were recorded in the database.
+
+    Returns True if verification passed or was skipped, False on failure.
+    """
+    if dry_run:
+        return True
+
+    if not results:
+        return True
+
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        _db_heading("Database Verification")
+        _db_warn(
+            "DATABASE_URL not set — skipping DB verification.\n"
+            "        → Results may have been written to local SQLite instead.\n"
+            "        → Set DATABASE_URL in .env for PostgreSQL archival."
+        )
+        return True
+
+    _db_heading("Database Verification")
+    expected_count = len(results)
+
+    try:
+        from rfc.test_database import TestDatabase
+
+        db = TestDatabase(database_url=database_url)
+    except Exception as e:
+        _db_fail(
+            f"Cannot connect to database: {e}\n"
+            "        → Check DATABASE_URL and database connectivity.\n"
+            "        → Run: make superset-diagnose"
+        )
+        return False
+
+    try:
+        recent_runs = db.get_recent_runs(limit=expected_count * 2)
+    except Exception as e:
+        _db_fail(f"Failed to query recent runs: {e}")
+        return False
+
+    # Count runs within the last 30 minutes.
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(minutes=30)
+    recent_count = 0
+    for run in recent_runs:
+        ts = run.get("timestamp", "")
+        if isinstance(ts, str):
+            try:
+                run_time = datetime.fromisoformat(ts)
+                if run_time.tzinfo is None:
+                    run_time = run_time.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+        elif isinstance(ts, datetime):
+            run_time = ts
+            if run_time.tzinfo is None:
+                run_time = run_time.replace(tzinfo=timezone.utc)
+        else:
+            continue
+
+        if run_time >= cutoff:
+            recent_count += 1
+
+    if recent_count >= expected_count:
+        _db_ok(
+            f"Found {recent_count} recent test run(s) in database "
+            f"(expected {expected_count})"
+        )
+        return True
+    elif recent_count > 0:
+        _db_warn(
+            f"Found {recent_count} of {expected_count} expected test run(s) "
+            f"in database (partial archival).\n"
+            "        → Some runs may not have been archived.\n"
+            "        → Check Robot output for 'DbListener: FAILED to archive results'."
+        )
+        return True
+    else:
+        _db_fail(
+            f"Found 0 of {expected_count} expected test run(s) in database.\n"
+            "        → Data pipeline failure: no results were archived.\n"
+            "        → Check DATABASE_URL is correct.\n"
+            "        → Check Robot output for DbListener errors.\n"
+            "        → Run: make superset-diagnose"
+        )
+        return False
+
+
 def run_iteration_loop(
     config: dict[str, Any],
     *,
@@ -443,6 +569,12 @@ def run_iteration_loop(
 
             results = run_model_suites(config, nodes_with_models, dry_run=dry_run)
             _print_summary(results)
+
+            # Verify data landed in the database.
+            if not dry_run:
+                db_ok = verify_db_results(results)
+                if not db_ok:
+                    had_failure = True
 
             pass_had_failure = any(r.returncode != 0 for r in results)
             if pass_had_failure:
