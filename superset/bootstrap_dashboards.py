@@ -1374,7 +1374,7 @@ def bootstrap() -> None:
 
         # Build connection URI from env (same vars docker-compose sets)
         pg_user = os.getenv("POSTGRES_USER", "rfc")
-        pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
+        pg_pass = os.getenv("POSTGRES_PASSWORD", "changeme")
         pg_db = os.getenv("POSTGRES_DB", "rfc")
         pg_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
         pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:{pg_port}/{pg_db}"

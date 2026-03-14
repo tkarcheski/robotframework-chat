@@ -8,7 +8,7 @@ read from environment variables set by docker-compose.
 import os
 
 _pg_user = os.getenv("POSTGRES_USER", "rfc")
-_pg_pass = os.getenv("POSTGRES_PASSWORD", "rfc")
+_pg_pass = os.getenv("POSTGRES_PASSWORD", "changeme")
 _pg_db = os.getenv("POSTGRES_DB", "rfc")
 _pg_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
 
