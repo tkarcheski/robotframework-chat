@@ -168,9 +168,7 @@ class TestUploadResults:
         assert "chat.log" not in filenames
 
     @patch("src.rfc.ftp_sender._upload_ftps")
-    def test_empty_results_dir(
-        self, mock_upload: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_empty_results_dir(self, mock_upload: MagicMock, tmp_path: Path) -> None:
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         cfg = TransferConfig(host="h", user="u", password="p")
