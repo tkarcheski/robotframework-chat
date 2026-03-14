@@ -1,0 +1,326 @@
+/*
+ * Tron Theme for Apache Superset Dashboards
+ *
+ * Dark background with neon cyan accents inspired by the Tron aesthetic.
+ * Applied via the Dashboard.css field during bootstrap.
+ */
+
+/* ── Global / Body ───────────────────────────────────────────────────── */
+
+body {
+  background-color: #0c0c1d !important;
+  color: #e0e0e0 !important;
+}
+
+/* ── Dashboard background ────────────────────────────────────────────── */
+
+.dashboard {
+  background-color: #0c0c1d !important;
+}
+
+.dashboard-content {
+  background-color: #0c0c1d !important;
+}
+
+.grid-container {
+  background-color: #0c0c1d !important;
+}
+
+.gridComponent {
+  background-color: #0c0c1d !important;
+}
+
+/* ── Dashboard header ────────────────────────────────────────────────── */
+
+.dashboard-header {
+  background-color: #0a0a1a !important;
+  border-bottom: 1px solid #00fff9 !important;
+  box-shadow: 0 2px 12px rgba(0, 255, 249, 0.15) !important;
+}
+
+.header-title,
+.dashboard-title {
+  color: #00fff9 !important;
+  text-shadow: 0 0 8px rgba(0, 255, 249, 0.6) !important;
+  font-weight: 600 !important;
+}
+
+.editable-title input,
+.editable-title span {
+  color: #00fff9 !important;
+}
+
+/* ── Chart cards / containers ────────────────────────────────────────── */
+
+.chart-container,
+.slice_container,
+.dashboard-chart {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.25) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 10px rgba(0, 255, 249, 0.08),
+              inset 0 0 20px rgba(0, 255, 249, 0.03) !important;
+}
+
+.chart-container:hover,
+.slice_container:hover {
+  border-color: rgba(0, 255, 249, 0.5) !important;
+  box-shadow: 0 0 18px rgba(0, 255, 249, 0.15),
+              inset 0 0 20px rgba(0, 255, 249, 0.05) !important;
+}
+
+.dashboard-component-chart-holder {
+  background-color: #12122a !important;
+}
+
+/* ── Chart headers / titles ──────────────────────────────────────────── */
+
+.chart-header,
+.header-title .editable-title,
+.slice_container .header {
+  background-color: #0e0e24 !important;
+  color: #00fff9 !important;
+  border-bottom: 1px solid rgba(0, 255, 249, 0.15) !important;
+}
+
+.chart-header span,
+.slice-header .header-title span {
+  color: #b0e0e0 !important;
+}
+
+/* ── Row backgrounds ─────────────────────────────────────────────────── */
+
+.grid-row,
+.dragdroppable-row {
+  background-color: transparent !important;
+}
+
+/* ── Tabs & navigation ───────────────────────────────────────────────── */
+
+.ant-tabs {
+  color: #e0e0e0 !important;
+}
+
+.ant-tabs-tab {
+  color: #7a7a9e !important;
+}
+
+.ant-tabs-tab-active,
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #00fff9 !important;
+}
+
+.ant-tabs-ink-bar {
+  background-color: #00fff9 !important;
+  box-shadow: 0 0 6px rgba(0, 255, 249, 0.5) !important;
+}
+
+.ant-tabs-nav {
+  background-color: #0a0a1a !important;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────── */
+
+.filter-bar,
+.dashboard-filters-panel {
+  background-color: #0e0e24 !important;
+  border-right: 1px solid rgba(0, 255, 249, 0.2) !important;
+}
+
+.filter-bar .filter-item-wrapper {
+  border-bottom: 1px solid rgba(0, 255, 249, 0.1) !important;
+}
+
+/* ── Form controls & inputs ──────────────────────────────────────────── */
+
+.ant-select,
+.ant-input,
+.ant-picker {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.3) !important;
+  color: #e0e0e0 !important;
+}
+
+.ant-select-selector {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.3) !important;
+  color: #e0e0e0 !important;
+}
+
+.ant-select-dropdown {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+}
+
+.ant-select-item {
+  color: #e0e0e0 !important;
+}
+
+.ant-select-item-option-active,
+.ant-select-item-option-selected {
+  background-color: rgba(0, 255, 249, 0.1) !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.ant-btn-primary {
+  background-color: rgba(0, 255, 249, 0.15) !important;
+  border-color: #00fff9 !important;
+  color: #00fff9 !important;
+}
+
+.ant-btn-primary:hover {
+  background-color: rgba(0, 255, 249, 0.25) !important;
+  box-shadow: 0 0 8px rgba(0, 255, 249, 0.3) !important;
+}
+
+.ant-btn-default {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.2) !important;
+  color: #b0e0e0 !important;
+}
+
+/* ── Table charts ────────────────────────────────────────────────────── */
+
+.superset-legacy-chart table,
+table.table {
+  color: #e0e0e0 !important;
+}
+
+.superset-legacy-chart th,
+table.table th {
+  background-color: #0e0e24 !important;
+  color: #00fff9 !important;
+  border-bottom: 2px solid rgba(0, 255, 249, 0.3) !important;
+}
+
+.superset-legacy-chart td,
+table.table td {
+  background-color: #12122a !important;
+  border-bottom: 1px solid rgba(0, 255, 249, 0.08) !important;
+}
+
+.superset-legacy-chart tr:hover td,
+table.table tbody tr:hover td {
+  background-color: rgba(0, 255, 249, 0.06) !important;
+}
+
+/* Pivot table and data table overrides */
+.dt-is-filter {
+  background-color: rgba(0, 255, 249, 0.1) !important;
+}
+
+/* ── ECharts overrides ───────────────────────────────────────────────── */
+
+/* Tooltip */
+.echarts-tooltip {
+  background-color: #0e0e24 !important;
+  border: 1px solid rgba(0, 255, 249, 0.4) !important;
+  color: #e0e0e0 !important;
+  box-shadow: 0 0 12px rgba(0, 255, 249, 0.15) !important;
+}
+
+/* ── Big Number charts ───────────────────────────────────────────────── */
+
+.superset-legacy-chart-big-number .header-line,
+.big-number .header-line {
+  color: #00fff9 !important;
+  text-shadow: 0 0 6px rgba(0, 255, 249, 0.4) !important;
+}
+
+.superset-legacy-chart-big-number .subheader-line,
+.big-number .subheader-line {
+  color: #7a9e9e !important;
+}
+
+/* ── Modals & popups ─────────────────────────────────────────────────── */
+
+.ant-modal-content {
+  background-color: #12122a !important;
+  border: 1px solid rgba(0, 255, 249, 0.2) !important;
+  color: #e0e0e0 !important;
+}
+
+.ant-modal-header {
+  background-color: #0e0e24 !important;
+  border-bottom: 1px solid rgba(0, 255, 249, 0.15) !important;
+}
+
+.ant-modal-title {
+  color: #00fff9 !important;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0c0c1d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 249, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 249, 0.4);
+}
+
+/* ── Loading indicators ──────────────────────────────────────────────── */
+
+.loading-indicator {
+  border-color: rgba(0, 255, 249, 0.3) !important;
+  border-top-color: #00fff9 !important;
+}
+
+/* ── Miscellaneous ───────────────────────────────────────────────────── */
+
+.ant-card {
+  background-color: #12122a !important;
+  border-color: rgba(0, 255, 249, 0.15) !important;
+  color: #e0e0e0 !important;
+}
+
+.ant-divider {
+  border-color: rgba(0, 255, 249, 0.12) !important;
+}
+
+/* Alert and info boxes */
+.ant-alert {
+  background-color: #1a1a35 !important;
+  border-color: rgba(0, 255, 249, 0.2) !important;
+  color: #e0e0e0 !important;
+}
+
+/* Links */
+a {
+  color: #00d4ce !important;
+}
+
+a:hover {
+  color: #00fff9 !important;
+  text-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
+}
+
+/* Breadcrumbs */
+.ant-breadcrumb,
+.ant-breadcrumb a {
+  color: #7a9e9e !important;
+}
+
+/* ── Markdown components ─────────────────────────────────────────────── */
+
+.dashboard-markdown .markdown-container {
+  background-color: #12122a !important;
+  color: #e0e0e0 !important;
+}
+
+.dashboard-markdown h1,
+.dashboard-markdown h2,
+.dashboard-markdown h3 {
+  color: #00fff9 !important;
+}
