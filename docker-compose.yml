@@ -19,7 +19,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:${POSTGRES_INTERNAL_PORT:-5432}/${POSTGRES_DB:-rfc}
       OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
