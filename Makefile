@@ -29,7 +29,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush superset-export superset-import diagnose-superset \
+        cache-flush superset-export superset-import superset-diagnose \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -169,7 +169,7 @@ superset-export: ## Export Superset dashboards to backups/ directory
 		"./backups/superset_export_$${TIMESTAMP}.zip" && \
 	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
 
-diagnose-superset: ## Diagnose Superset database connectivity and data pipeline
+superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py
 
 superset-import: ## Import Superset dashboards from ZIP: make superset-import FILE=backups/export.zip
