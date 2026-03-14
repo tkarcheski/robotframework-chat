@@ -497,3 +497,217 @@ a:hover {
   border: 1px solid rgba(0, 255, 249, 0.2) !important;
   color: #c0fff8 !important;
 }
+
+/* ── Superset v2/v3 styled-component wrappers ────────────────────────── */
+
+/* Emotion/styled-components often render divs with inline white backgrounds.
+   Target the structural wrappers that Superset generates around charts. */
+.dashboard-component-chart-holder > div,
+.dashboard-component-chart-holder > div > div,
+.slice_container > div,
+.slice_container > div > div,
+.chart-container > div,
+.chart-container > div > div {
+  background-color: transparent !important;
+}
+
+/* Superset chart wrapper (catches dynamically-generated class names) */
+[data-test="chart-container"],
+[data-test="slice-container"],
+[data-test="dashboard-content"],
+[data-test="dashboard-content-wrapper"],
+[data-test="dashboard-builder-sidepane"],
+[data-test="dashboard-charts-container"],
+[data-test="grid-content"],
+[data-test="grid-row-background"],
+[data-test="dragdroppable-object"] {
+  background-color: #0c0c1d !important;
+}
+
+/* ── ECharts internal containers ─────────────────────────────────────── */
+
+div[_echarts_instance_],
+div[class*="echarts-for"],
+.echarts {
+  background-color: transparent !important;
+}
+
+/* ── Superset native table plugin (not legacy) ───────────────────────── */
+
+[class*="TableChart"],
+[class*="table-chart"],
+.superset-chart-table {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+.superset-chart-table thead th,
+[class*="table-chart"] th,
+[class*="TableChart"] th {
+  background-color: #0e0e24 !important;
+  color: #00fff9 !important;
+  border-color: rgba(0, 255, 249, 0.2) !important;
+}
+
+.superset-chart-table tbody td,
+[class*="table-chart"] td,
+[class*="TableChart"] td {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+  border-color: rgba(0, 255, 249, 0.08) !important;
+}
+
+.superset-chart-table tbody tr:hover td {
+  background-color: rgba(0, 255, 249, 0.06) !important;
+}
+
+/* Virtualized table rows (used in larger datasets) */
+[class*="virtual-table"] div,
+[class*="cell-text"],
+[class*="cell-bar"],
+[class*="header-cell"],
+[class*="row-cell"] {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+[class*="header-cell"] {
+  background-color: #0e0e24 !important;
+  color: #00fff9 !important;
+}
+
+/* ── Superset chart action menus & overlays ───────────────────────────── */
+
+.chart-controls-wrapper,
+.chart-header-wrapper {
+  background-color: transparent !important;
+}
+
+.ant-dropdown,
+.ant-dropdown-menu-submenu {
+  background-color: #12122a !important;
+}
+
+/* ── Empty / no-results states ───────────────────────────────────────── */
+
+.ant-empty,
+.ant-result,
+[class*="noResults"],
+[class*="no-results"],
+[class*="EmptyState"],
+.empty-state {
+  background-color: transparent !important;
+  color: #4dc9c0 !important;
+}
+
+/* ── Superset native filter bar v2 expanded ──────────────────────────── */
+
+[class*="FiltersPanel"],
+[class*="filter-scope"],
+[class*="FilterControl"],
+[class*="FilterValue"],
+[class*="FilterConfigForm"] {
+  background-color: #0e0e24 !important;
+  color: #c0fff8 !important;
+}
+
+/* ── Ant Design tag, badge, and misc components ──────────────────────── */
+
+.ant-tag {
+  background-color: rgba(0, 255, 249, 0.08) !important;
+  border-color: rgba(0, 255, 249, 0.2) !important;
+  color: #c0fff8 !important;
+}
+
+.ant-badge-count {
+  background-color: rgba(0, 255, 249, 0.15) !important;
+  color: #00fff9 !important;
+  box-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
+}
+
+.ant-spin-container,
+.ant-spin-nested-loading {
+  background-color: transparent !important;
+}
+
+/* ── Ant Design drawer (filter config panels) ────────────────────────── */
+
+.ant-drawer-content,
+.ant-drawer-body,
+.ant-drawer-header {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+  border-color: rgba(0, 255, 249, 0.15) !important;
+}
+
+.ant-drawer-title {
+  color: #00fff9 !important;
+}
+
+/* ── Ant Design form labels and descriptions ─────────────────────────── */
+
+.ant-form-item-label > label,
+.ant-form-item-explain,
+.ant-form-item-extra {
+  color: #c0fff8 !important;
+}
+
+/* ── Catch-all for white backgrounds in nested chart wrappers ────────── */
+
+.superset-legacy-chart,
+[class*="superset-legacy-chart-"],
+[class*="SuperChart"],
+[class*="ChartContainer"],
+[class*="ChartBody"],
+[class*="ChartHolder"],
+[class*="chart-body"],
+[class*="chart-holder"] {
+  background-color: #12122a !important;
+  color: #c0fff8 !important;
+}
+
+/* ── Dashboard tab content and tab switcher backgrounds ──────────────── */
+
+.ant-tabs-content,
+.ant-tabs-tabpane,
+.ant-tabs-content-holder {
+  background-color: #0c0c1d !important;
+}
+
+/* ── Superset column and row dividers ────────────────────────────────── */
+
+.dashboard-component-tabs > div,
+.dashboard-component-tabs > div > div,
+[class*="DragDroppable"],
+[class*="WithPopoverMenu"] {
+  background-color: transparent !important;
+}
+
+/* ── Pie / donut chart legend and label ───────────────────────────────── */
+
+.echarts-legend,
+[class*="legend-container"],
+[class*="legend-item"] {
+  background-color: transparent !important;
+  color: #c0fff8 !important;
+}
+
+/* ── Superset explore view panel backgrounds ─────────────────────────── */
+
+.control-panel-section,
+.control-label,
+.ant-form label {
+  color: #c0fff8 !important;
+}
+
+/* ── Global wildcard: force dark on any remaining white backgrounds ─── */
+
+.dashboard * {
+  border-color: rgba(0, 255, 249, 0.1);
+}
+
+/* Catch stray white backgrounds from styled-components with hash classes */
+.css-0,
+div[class^="css-"] {
+  background-color: inherit;
+}
