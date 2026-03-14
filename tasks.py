@@ -152,6 +152,18 @@ def import_results() -> None:
     _uv_run(*cmd)
 
 
+def analytics_refresh() -> None:
+    """Recompute all analytics (trends, stability, regressions)."""
+    _ensure_env()
+    _uv_run("python", "-m", "rfc.analytics", "--refresh-all")
+
+
+def analytics_regressions() -> None:
+    """Check for regressions and print alerts."""
+    _ensure_env()
+    _uv_run("python", "-m", "rfc.analytics", "--detect-regressions")
+
+
 def rebot_merge() -> None:
     """Merge multiple output.xml files with rebot."""
     _ensure_env()
@@ -208,6 +220,8 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
     "import-results": import_results,
+    "analytics-refresh": analytics_refresh,
+    "analytics-regressions": analytics_regressions,
     "rebot-merge": rebot_merge,
     "send-results-ftp": send_results_ftp,
     "docker-build-app": docker_build_app,

@@ -23,6 +23,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         send-results send-results-ftp \
         rebot-merge rebot-merge-all \
+        analytics-refresh analytics-regressions \
         discover-local-nodes discover-local-models run-local-models \
         cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
@@ -91,6 +92,12 @@ rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/math resu
 
 rebot-merge-all: ## Merge all output.xml in results/
 	uv run python -m rfc.rebot_merger results/
+
+analytics-refresh: ## Recompute all analytics (trends, stability, regressions)
+	uv run python -m rfc.analytics --refresh-all
+
+analytics-regressions: ## Check for regressions and print alerts
+	uv run python -m rfc.analytics --detect-regressions
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
