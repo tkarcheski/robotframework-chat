@@ -88,9 +88,8 @@ def check_env() -> str | None:
     else:
         warn(
             "POSTGRES_PASSWORD is not set.\n"
-            "        → docker-compose defaults to 'changeme'\n"
-            "        → superset_config.py defaults to 'rfc' (MISMATCH!)\n"
-            "        → Set POSTGRES_PASSWORD in .env to avoid confusion."
+            "        → docker-compose and superset_config.py both default to 'changeme'.\n"
+            "        → Set POSTGRES_PASSWORD in .env to be explicit."
         )
 
     return url
@@ -297,22 +296,38 @@ def check_docker() -> None:
         warn(f"Docker check failed: {e}")
 
 
+def _parse_db_host_port() -> tuple[str, int]:
+    """Extract host and port from DATABASE_URL, DATABASE_HOST, or defaults."""
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url and "@" in database_url:
+        # Parse host:port from postgresql://user:pass@host:port/db
+        after_at = database_url.split("@", 1)[1]
+        host_port_part = after_at.split("/", 1)[0]
+        if ":" in host_port_part:
+            host, port_str = host_port_part.rsplit(":", 1)
+            return host, int(port_str)
+        return host_port_part, int(os.getenv("POSTGRES_PORT", "5433"))
+
+    host = os.getenv("DATABASE_HOST", "localhost")
+    port = int(os.getenv("POSTGRES_PORT", "5433"))
+    return host, port
+
+
 def check_port_mapping() -> None:
     """Verify the port mapping is working."""
     heading("Port Mapping")
 
     import socket
 
-    # Check if port 5433 is listening on localhost.
-    host_port = int(os.getenv("POSTGRES_PORT", "5433"))
+    db_host, db_port = _parse_db_host_port()
     try:
-        sock = socket.create_connection(("localhost", host_port), timeout=3)
+        sock = socket.create_connection((db_host, db_port), timeout=3)
         sock.close()
-        ok(f"localhost:{host_port} is accepting connections")
+        ok(f"{db_host}:{db_port} is accepting connections")
     except (ConnectionRefusedError, TimeoutError, OSError):
         fail(
-            f"localhost:{host_port} is NOT reachable.\n"
-            f"        → Is PostgreSQL container running?\n"
+            f"{db_host}:{db_port} is NOT reachable.\n"
+            f"        → Is PostgreSQL running on {db_host}?\n"
             f"        → Check: docker compose ps postgres\n"
             f"        → Check: docker compose logs postgres"
         )
