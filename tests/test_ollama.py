@@ -362,7 +362,7 @@ class TestWaitUntilReady:
     @patch("rfc.ollama.time.time")
     @patch("rfc.ollama.requests.get")
     def test_warns_after_one_minute(self, mock_get, mock_time, mock_sleep, mock_logger):
-        """Warning is logged after 60s of waiting, then every 5 minutes."""
+        """Warning includes loaded models and next model after 60s."""
         # Simulate: endpoint available but busy, time advancing past 60s
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -379,31 +379,32 @@ class TestWaitUntilReady:
         idle_resp.raise_for_status = MagicMock()
         idle_resp.json.return_value = {"models": []}
 
-        # is_available (tags) and running_models (ps) alternate per loop
         # Each loop: GET /api/tags (available check), GET /api/ps (running check)
         mock_get.side_effect = [
-            mock_resp,  # is_available → 200
-            busy_resp,  # running_models → busy
-            mock_resp,  # is_available → 200
-            busy_resp,  # running_models → busy
-            mock_resp,  # is_available → 200
-            idle_resp,  # running_models → idle → done
+            mock_resp,  # loop 1: is_available → 200
+            busy_resp,  # loop 1: running_models → busy
+            mock_resp,  # loop 2: is_available → 200
+            busy_resp,  # loop 2: running_models → busy
+            mock_resp,  # loop 3: is_available → 200
+            busy_resp,  # loop 3: running_models → busy — triggers warning
+            mock_resp,  # loop 4: is_available → 200
+            idle_resp,  # loop 4: running_models → idle → done
         ]
 
-        # Time progression: 0, 30, 61, 61, 65, 65, 70, 70
-        # (each loop checks time twice: once for while condition, once for elapsed)
+        # Time progression: warning triggers when elapsed >= 60
         mock_time.side_effect = [
-            0,    # start
-            0, 0,    # loop 1: while check, elapsed check
-            30, 30,  # loop 2: while check, elapsed check
-            61, 61,  # loop 3: while check, elapsed check — triggers warning
+            0,        # start
+            0, 0,     # loop 1: while check, elapsed check
+            30, 30,   # loop 2: while check, elapsed check
+            61, 61,   # loop 3: while check, elapsed — triggers warning
+            65, 65,   # loop 4: while check, elapsed — idle, returns
         ]
 
-        client = OllamaClient()
+        client = OllamaClient(model="gemma3:27b")
         result = client.wait_until_ready(timeout=5400, poll_interval=2)
 
         assert result is True
-        # Verify warn was called with the "Still waiting" message
+        # Verify warn includes loaded models and next model
         warn_calls = [
             str(c) for c in mock_logger.warn.call_args_list
             if "Still waiting for Ollama" in str(c)
@@ -412,6 +413,9 @@ class TestWaitUntilReady:
             f"Expected at least one 'Still waiting' warning, got: "
             f"{mock_logger.warn.call_args_list}"
         )
+        warn_msg = warn_calls[0]
+        assert "phi4:14b" in warn_msg, "Warning should list loaded models"
+        assert "gemma3:27b" in warn_msg, "Warning should list next model"
 
 
 class TestGenerateMetrics:

@@ -266,14 +266,16 @@ class OllamaClient:
         warn_interval = 300  # then every 5 minutes
         while time.time() - start < timeout:
             elapsed = int(time.time() - start)
-            if elapsed >= next_warn_at:
-                logger.warn(
-                    f"Still waiting for Ollama after {elapsed}s — "
-                    f"timeout in {timeout - elapsed}s"
-                )
-                next_warn_at += warn_interval
 
             if not self.is_available():
+                if elapsed >= next_warn_at:
+                    logger.warn(
+                        f"Still waiting for Ollama after {elapsed}s "
+                        f"(endpoint unavailable) — "
+                        f"timeout in {timeout - elapsed}s "
+                        f"| next: {self.model}"
+                    )
+                    next_warn_at += warn_interval
                 logger.info("Ollama endpoint not available yet, waiting...")
                 time.sleep(poll_interval)
                 continue
@@ -292,6 +294,14 @@ class OllamaClient:
 
             # Log what's running
             names = [m.get("name", "unknown") for m in models]
+            if elapsed >= next_warn_at:
+                logger.warn(
+                    f"Still waiting for Ollama after {elapsed}s — "
+                    f"timeout in {timeout - elapsed}s "
+                    f"| loaded: [{', '.join(names)}] "
+                    f"| next: {self.model}"
+                )
+                next_warn_at += warn_interval
             logger.info(f"Ollama busy with models: {', '.join(names)} - waiting...")
             time.sleep(poll_interval)
 
