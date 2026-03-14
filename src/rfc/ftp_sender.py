@@ -73,9 +73,7 @@ def config_from_env() -> TransferConfig:
     }
     for name, value in required.items():
         if not value:
-            raise ValueError(
-                f"{name} is required. Set it in .env or export it."
-            )
+            raise ValueError(f"{name} is required. Set it in .env or export it.")
 
     protocol = os.environ.get("FTP_RESULTS_PROTOCOL", "ftps").lower()
     if protocol not in VALID_PROTOCOLS:
@@ -129,9 +127,7 @@ def _ensure_remote_dir(ftp: ftplib.FTP, path: str) -> None:
         pass
 
 
-def _upload_ftp(
-    config: TransferConfig, files: list[str], local_dir: str
-) -> list[str]:
+def _upload_ftp(config: TransferConfig, files: list[str], local_dir: str) -> list[str]:
     """Upload files via plain FTP (unencrypted)."""
     uploaded: list[str] = []
     ftp = ftplib.FTP()
@@ -149,9 +145,7 @@ def _upload_ftp(
     return uploaded
 
 
-def _upload_ftps(
-    config: TransferConfig, files: list[str], local_dir: str
-) -> list[str]:
+def _upload_ftps(config: TransferConfig, files: list[str], local_dir: str) -> list[str]:
     """Upload files via FTPS (FTP over TLS)."""
     uploaded: list[str] = []
     ftp = ftplib.FTP_TLS()
@@ -183,9 +177,7 @@ def _upload_files_ftp(
         remote_dir = os.path.join(
             config.remote_path, os.path.dirname(rel_path)
         ).replace("\\", "/")
-        remote_file = os.path.join(
-            config.remote_path, rel_path
-        ).replace("\\", "/")
+        remote_file = os.path.join(config.remote_path, rel_path).replace("\\", "/")
 
         _ensure_remote_dir(ftp, remote_dir)
         ftp.cwd(remote_dir)
@@ -197,9 +189,7 @@ def _upload_files_ftp(
         logger.info("  OK: %s", remote_file)
 
 
-def _upload_sftp(
-    config: TransferConfig, files: list[str], local_dir: str
-) -> list[str]:
+def _upload_sftp(config: TransferConfig, files: list[str], local_dir: str) -> list[str]:
     """Upload files via SFTP (SSH-based file transfer)."""
     try:
         import paramiko  # type: ignore[import-untyped]
@@ -219,9 +209,7 @@ def _upload_sftp(
 
         for filepath in files:
             rel_path = os.path.relpath(filepath, local_dir)
-            remote_file = os.path.join(
-                config.remote_path, rel_path
-            ).replace("\\", "/")
+            remote_file = os.path.join(config.remote_path, rel_path).replace("\\", "/")
             remote_dir = os.path.dirname(remote_file)
 
             # Create remote directories
@@ -306,9 +294,7 @@ def main() -> None:
     """CLI entry point — reads config from env vars and uploads results."""
     import argparse
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Upload Robot Framework results via FTP/FTPS/SFTP"
