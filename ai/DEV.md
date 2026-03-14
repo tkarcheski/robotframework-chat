@@ -66,7 +66,8 @@ The `.env` file is loaded automatically by:
 | `POSTGRES_USER` | Database user | `rfc` | docker-compose.yml, superset_config.py |
 | `POSTGRES_PASSWORD` | Database password | `changeme` | docker-compose.yml, superset_config.py |
 | `POSTGRES_DB` | Database name | `rfc` | docker-compose.yml, superset_config.py |
-| `POSTGRES_PORT` | Exposed port | `5433` | docker-compose.yml |
+| `POSTGRES_PORT` | Exposed host port | `5433` | docker-compose.yml |
+| `POSTGRES_INTERNAL_PORT` | Container-internal PG port | `5432` | docker-compose.yml, superset_config.py |
 | `SUPERSET_SECRET_KEY` | Flask secret key | (must generate) | docker-compose.yml |
 | `SUPERSET_PORT` | Web UI port | `8088` | docker-compose.yml |
 | `SUPERSET_ADMIN_USER` | Initial admin username | `admin` | docker-compose.yml |

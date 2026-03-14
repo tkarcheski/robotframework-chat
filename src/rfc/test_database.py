@@ -5,7 +5,7 @@ and PostgreSQL (for Superset integration). Backend is selected
 via DATABASE_URL environment variable or constructor parameter.
 
 SQLite:      sqlite:///data/test_history.db  (default)
-PostgreSQL:  postgresql://user:pass@host:5432/dbname
+PostgreSQL:  postgresql://user:pass@host:5433/dbname
 """
 
 import abc
