@@ -9,7 +9,8 @@
 
 body {
   background-color: #0c0c1d !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
+  text-shadow: 0 0 2px rgba(0, 255, 249, 0.15) !important;
 }
 
 /* ── Dashboard background ────────────────────────────────────────────── */
@@ -85,7 +86,7 @@ body {
 
 .chart-header span,
 .slice-header .header-title span {
-  color: #b0e0e0 !important;
+  color: #66fffa !important;
 }
 
 /* ── Row backgrounds ─────────────────────────────────────────────────── */
@@ -98,11 +99,11 @@ body {
 /* ── Tabs & navigation ───────────────────────────────────────────────── */
 
 .ant-tabs {
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-tabs-tab {
-  color: #7a7a9e !important;
+  color: #4dc9c0 !important;
 }
 
 .ant-tabs-tab-active,
@@ -138,13 +139,13 @@ body {
 .ant-picker {
   background-color: #1a1a35 !important;
   border-color: rgba(0, 255, 249, 0.3) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-select-selector {
   background-color: #1a1a35 !important;
   border-color: rgba(0, 255, 249, 0.3) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-select-dropdown {
@@ -153,7 +154,7 @@ body {
 }
 
 .ant-select-item {
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-select-item-option-active,
@@ -177,14 +178,14 @@ body {
 .ant-btn-default {
   background-color: #1a1a35 !important;
   border-color: rgba(0, 255, 249, 0.2) !important;
-  color: #b0e0e0 !important;
+  color: #66fffa !important;
 }
 
 /* ── Table charts ────────────────────────────────────────────────────── */
 
 .superset-legacy-chart table,
 table.table {
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .superset-legacy-chart th,
@@ -216,7 +217,7 @@ table.table tbody tr:hover td {
 .echarts-tooltip {
   background-color: #0e0e24 !important;
   border: 1px solid rgba(0, 255, 249, 0.4) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
   box-shadow: 0 0 12px rgba(0, 255, 249, 0.15) !important;
 }
 
@@ -230,7 +231,7 @@ table.table tbody tr:hover td {
 
 .superset-legacy-chart-big-number .subheader-line,
 .big-number .subheader-line {
-  color: #7a9e9e !important;
+  color: #4dc9c0 !important;
 }
 
 /* ── Modals & popups ─────────────────────────────────────────────────── */
@@ -238,7 +239,7 @@ table.table tbody tr:hover td {
 .ant-modal-content {
   background-color: #12122a !important;
   border: 1px solid rgba(0, 255, 249, 0.2) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-modal-header {
@@ -282,7 +283,7 @@ table.table tbody tr:hover td {
 .ant-card {
   background-color: #12122a !important;
   border-color: rgba(0, 255, 249, 0.15) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .ant-divider {
@@ -293,12 +294,12 @@ table.table tbody tr:hover td {
 .ant-alert {
   background-color: #1a1a35 !important;
   border-color: rgba(0, 255, 249, 0.2) !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 /* Links */
 a {
-  color: #00d4ce !important;
+  color: #00fff9 !important;
 }
 
 a:hover {
@@ -309,14 +310,14 @@ a:hover {
 /* Breadcrumbs */
 .ant-breadcrumb,
 .ant-breadcrumb a {
-  color: #7a9e9e !important;
+  color: #4dc9c0 !important;
 }
 
 /* ── Markdown components ─────────────────────────────────────────────── */
 
 .dashboard-markdown .markdown-container {
   background-color: #12122a !important;
-  color: #e0e0e0 !important;
+  color: #c0fff8 !important;
 }
 
 .dashboard-markdown h1,
