@@ -18,9 +18,9 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 export
 
 .PHONY: help install update \
-        robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         robot-bash robot-c robot-rust robot-computer-skills \
-        robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         send-results send-results-ftp \
         rebot-merge rebot-merge-all \
         analytics-refresh analytics-regressions \
@@ -77,6 +77,9 @@ robot-rust: ## Run Rust programming tests (Robot Framework)
 	$(ROBOT) -d results/rust $(LISTENER) robot/docker/rust/
 
 robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
+
+robot-superset: ## Test PostgreSQL connection and push host info to database
+	$(ROBOT) -d results/superset $(LISTENER) robot/superset/tests/
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/

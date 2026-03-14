@@ -79,6 +79,11 @@ test_suites:
     description: "Agentic product workflow pipeline: brainstorm, market research, IP, patent, licensing"
     timeout_seconds: 600
 
+  - name: "superset"
+    path: "robot/superset/tests/"
+    description: "PostgreSQL connectivity check and host info registration"
+    timeout_seconds: 60
+
   - name: "legal"
     path: "robot/legal/tests/"
     description: "Legal reasoning and analysis tests"
