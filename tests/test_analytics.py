@@ -321,6 +321,48 @@ class TestComputePerformanceFingerprints:
         assert count == 0
 
 
+    def test_no_hostname_column(self, db_conn: sqlite3.Connection) -> None:
+        """Fingerprints work when test_runs lacks a hostname column."""
+        # Create a schema without hostname
+        db_conn.executescript("""
+            DROP TABLE IF EXISTS test_runs;
+            CREATE TABLE test_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                model_name TEXT NOT NULL,
+                test_suite TEXT NOT NULL,
+                total_tests INTEGER DEFAULT 0,
+                passed INTEGER DEFAULT 0,
+                failed INTEGER DEFAULT 0,
+                skipped INTEGER DEFAULT 0,
+                duration_seconds REAL,
+                git_commit TEXT,
+                git_branch TEXT,
+                pipeline_url TEXT,
+                runner_id TEXT,
+                runner_tags TEXT,
+                rfc_version TEXT
+            );
+        """)
+        now = datetime.now()
+        for day in range(3):
+            ts = now - timedelta(days=2 - day)
+            cursor = db_conn.execute(
+                """INSERT INTO test_runs
+                   (timestamp, model_name, test_suite, total_tests,
+                    passed, failed, duration_seconds)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (ts.isoformat(), "llama3", "math", 2, 2, 0, 10.0),
+            )
+            run_id = cursor.lastrowid
+            _insert_result(db_conn, run_id, "test_0", "PASS")
+            _insert_result(db_conn, run_id, "test_1", "PASS")
+        db_conn.commit()
+
+        count = compute_performance_fingerprints(db_conn)
+        assert count >= 1
+
+
 class TestRefreshAll:
     def test_runs_all_computations(
         self, populated_db: sqlite3.Connection
