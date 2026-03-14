@@ -1501,14 +1501,17 @@ def bootstrap() -> None:
             for cdef in _host_metrics_charts(datasets)
         ]
 
-        # ── 5. Load theme CSS ──────────────────────────────────────
-        _tron_css_path = Path(__file__).parent / "themes" / "tron.css"
-        if _tron_css_path.exists():
-            _tron_css = _tron_css_path.read_text()
-            log.info("Loaded Tron theme CSS from %s", _tron_css_path)
+        # ── 5. Load theme CSS (opt-in via SUPERSET_TRON_CSS=true) ──
+        _tron_css = ""
+        if os.getenv("SUPERSET_TRON_CSS", "false").lower() in ("1", "true", "yes"):
+            _tron_css_path = Path(__file__).parent / "themes" / "tron.css"
+            if _tron_css_path.exists():
+                _tron_css = _tron_css_path.read_text()
+                log.info("Loaded Tron theme CSS from %s", _tron_css_path)
+            else:
+                log.warning("Tron theme CSS not found at %s", _tron_css_path)
         else:
-            _tron_css = ""
-            log.warning("Tron theme CSS not found at %s", _tron_css_path)
+            log.info("Tron theme disabled (set SUPERSET_TRON_CSS=true to enable)")
 
         # ── 6. Dashboards ───────────────────────────────────────────
         _get_or_create_dashboard(
