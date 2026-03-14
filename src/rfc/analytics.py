@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS analytics_performance_fingerprints (
 """
 
 
+def _has_column(
+    conn: sqlite3.Connection, table: str, column: str
+) -> bool:
+    """Check whether *table* has a column named *column*."""
+    cursor = conn.execute(f"PRAGMA table_info({table})")  # noqa: S608
+    return any(row[1] == column for row in cursor.fetchall())
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Create analytics tables if they don't exist."""
     conn.executescript(ANALYTICS_SCHEMA)
@@ -507,14 +515,28 @@ def compute_performance_fingerprints(conn: sqlite3.Connection) -> int:
     _ensure_schema(conn)
     now = datetime.now().isoformat()
 
+    has_hostname = _has_column(conn, "test_runs", "hostname")
+
     # Get all test/model/host combos with durations
-    combos = conn.execute(
-        """SELECT tr.test_name, r.model_name, r.hostname
-           FROM test_results tr
-           JOIN test_runs r ON tr.run_id = r.id
-           GROUP BY tr.test_name, r.model_name, r.hostname
-           HAVING COUNT(*) >= 2"""
-    ).fetchall()
+    if has_hostname:
+        combos = conn.execute(
+            """SELECT tr.test_name, r.model_name, r.hostname
+               FROM test_results tr
+               JOIN test_runs r ON tr.run_id = r.id
+               GROUP BY tr.test_name, r.model_name, r.hostname
+               HAVING COUNT(*) >= 2"""
+        ).fetchall()
+    else:
+        combos = [
+            (row[0], row[1], None)
+            for row in conn.execute(
+                """SELECT tr.test_name, r.model_name
+                   FROM test_results tr
+                   JOIN test_runs r ON tr.run_id = r.id
+                   GROUP BY tr.test_name, r.model_name
+                   HAVING COUNT(*) >= 2"""
+            ).fetchall()
+        ]
 
     if not combos:
         return 0
@@ -522,14 +544,23 @@ def compute_performance_fingerprints(conn: sqlite3.Connection) -> int:
     count = 0
     for test_name, model_name, hostname in combos:
         # Get per-run durations for this test
-        durations = conn.execute(
-            """SELECT r.duration_seconds / NULLIF(r.total_tests, 0)
-               FROM test_results tr
-               JOIN test_runs r ON tr.run_id = r.id
-               WHERE tr.test_name = ? AND r.model_name = ?
-               AND (r.hostname = ? OR (r.hostname IS NULL AND ? IS NULL))""",
-            (test_name, model_name, hostname, hostname),
-        ).fetchall()
+        if has_hostname:
+            durations = conn.execute(
+                """SELECT r.duration_seconds / NULLIF(r.total_tests, 0)
+                   FROM test_results tr
+                   JOIN test_runs r ON tr.run_id = r.id
+                   WHERE tr.test_name = ? AND r.model_name = ?
+                   AND (r.hostname = ? OR (r.hostname IS NULL AND ? IS NULL))""",
+                (test_name, model_name, hostname, hostname),
+            ).fetchall()
+        else:
+            durations = conn.execute(
+                """SELECT r.duration_seconds / NULLIF(r.total_tests, 0)
+                   FROM test_results tr
+                   JOIN test_runs r ON tr.run_id = r.id
+                   WHERE tr.test_name = ? AND r.model_name = ?""",
+                (test_name, model_name),
+            ).fetchall()
 
         dur_values = [d[0] for d in durations if d[0] is not None]
         if not dur_values:
