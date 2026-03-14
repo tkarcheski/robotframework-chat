@@ -152,6 +152,32 @@ def import_results() -> None:
     _uv_run(*cmd)
 
 
+def analytics_refresh() -> None:
+    """Recompute all analytics (trends, stability, regressions)."""
+    _ensure_env()
+    _uv_run("python", "-m", "rfc.analytics", "--refresh-all")
+
+
+def analytics_regressions() -> None:
+    """Check for regressions and print alerts."""
+    _ensure_env()
+    _uv_run("python", "-m", "rfc.analytics", "--detect-regressions")
+
+
+def rebot_merge() -> None:
+    """Merge multiple output.xml files with rebot."""
+    _ensure_env()
+    dirs = os.environ.get("DIRS", "results/")
+    _uv_run("python", "-m", "rfc.rebot_merger", *dirs.split())
+
+
+def send_results_ftp() -> None:
+    """Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)."""
+    _ensure_env()
+    results_dir = os.environ.get("RESULTS_DIR", "results/")
+    _uv_run("python", "-m", "rfc.ftp_sender", results_dir)
+
+
 def docker_build_app() -> None:
     """Build the application Docker image locally."""
     _run(["docker", "build", "-t", "ghcr.io/tkarcheski/robotframework-chat:local", "."])
@@ -194,6 +220,10 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
     "import-results": import_results,
+    "analytics-refresh": analytics_refresh,
+    "analytics-regressions": analytics_regressions,
+    "rebot-merge": rebot_merge,
+    "send-results-ftp": send_results_ftp,
     "docker-build-app": docker_build_app,
     "docker-test-app": docker_test_app,
     "help": show_help,

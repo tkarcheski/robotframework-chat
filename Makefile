@@ -21,7 +21,9 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-dryrun \
-        send-results \
+        send-results send-results-ftp \
+        rebot-merge rebot-merge-all \
+        analytics-refresh analytics-regressions \
         discover-local-nodes discover-local-models run-local-models \
         cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
@@ -81,6 +83,21 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
+
+send-results-ftp: ## Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)
+	bash ci/send_results_ftp.sh
+
+rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/math results/docker"
+	uv run python -m rfc.rebot_merger $(DIRS)
+
+rebot-merge-all: ## Merge all output.xml in results/
+	uv run python -m rfc.rebot_merger results/
+
+analytics-refresh: ## Recompute all analytics (trends, stability, regressions)
+	uv run python -m rfc.analytics --refresh-all
+
+analytics-regressions: ## Check for regressions and print alerts
+	uv run python -m rfc.analytics --detect-regressions
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
