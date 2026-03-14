@@ -152,6 +152,13 @@ def import_results() -> None:
     _uv_run(*cmd)
 
 
+def rebot_merge() -> None:
+    """Merge multiple output.xml files with rebot."""
+    _ensure_env()
+    dirs = os.environ.get("DIRS", "results/")
+    _uv_run("python", "-m", "rfc.rebot_merger", *dirs.split())
+
+
 def send_results_ftp() -> None:
     """Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)."""
     _ensure_env()
@@ -201,6 +208,7 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
     "import-results": import_results,
+    "rebot-merge": rebot_merge,
     "send-results-ftp": send_results_ftp,
     "docker-build-app": docker_build_app,
     "docker-test-app": docker_test_app,

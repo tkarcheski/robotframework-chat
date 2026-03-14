@@ -101,9 +101,7 @@ def parse_keywords_from_xml(xml_path: str) -> list[dict[str, Any]]:
                 start_str = status_elem.get("start", "") or status_elem.get(
                     "starttime", ""
                 )
-                end_str = status_elem.get("end", "") or status_elem.get(
-                    "endtime", ""
-                )
+                end_str = status_elem.get("end", "") or status_elem.get("endtime", "")
                 start_dt = _parse_rf_timestamp(start_str)
                 end_dt = _parse_rf_timestamp(end_str)
                 if start_dt and end_dt:
@@ -240,9 +238,7 @@ def main() -> None:
     """CLI entry point for extended import."""
     import argparse
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Import Robot Framework results (extended) into database"
@@ -251,19 +247,22 @@ def main() -> None:
         "output_xml",
         help="Path to output.xml or directory containing output.xml files",
     )
+    parser.add_argument("--model", help="Model name override")
     parser.add_argument(
-        "--model", help="Model name override"
-    )
-    parser.add_argument(
-        "--recursive", "-r", action="store_true",
+        "--recursive",
+        "-r",
+        action="store_true",
         help="Recursively search for output.xml files",
     )
     parser.add_argument(
-        "--source", default="local", choices=["local", "ftp", "ci"],
+        "--source",
+        default="local",
+        choices=["local", "ftp", "ci"],
         help="Import source identifier (default: local)",
     )
     parser.add_argument(
-        "--dedup", action="store_true",
+        "--dedup",
+        action="store_true",
         help="Skip files already imported (by SHA-256 hash)",
     )
     parser.add_argument(
@@ -297,7 +296,8 @@ def main() -> None:
     for xml_file in xml_files:
         try:
             result = import_results_extended(
-                xml_file, db,
+                xml_file,
+                db,
                 model_name=args.model,
                 source=args.source,
                 check_dedup=args.dedup,
