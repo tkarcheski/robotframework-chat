@@ -247,6 +247,12 @@ class _Backend(abc.ABC):
     @abc.abstractmethod
     def get_hosts(self) -> List[Dict[str, Any]]: ...
 
+    @abc.abstractmethod
+    def get_version(self) -> str: ...
+
+    @abc.abstractmethod
+    def get_table_row_count(self, table_name: str) -> int: ...
+
 
 class _SQLiteBackend(_Backend):
     """SQLite backend using the stdlib sqlite3 module."""
@@ -814,6 +820,18 @@ class _SQLiteBackend(_Backend):
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM host_info ORDER BY hostname")
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_version(self) -> str:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT sqlite_version()")
+            return f"SQLite {cursor.fetchone()[0]}"
+
+    def get_table_row_count(self, table_name: str) -> int:
+        if not table_name.isidentifier():
+            raise ValueError(f"Invalid table name: {table_name}")
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(f"SELECT COUNT(*) FROM {table_name}")  # noqa: S608
+            return int(cursor.fetchone()[0])
 
 
 class _SQLAlchemyBackend(_Backend):
@@ -1408,6 +1426,18 @@ class _SQLAlchemyBackend(_Backend):
             result = conn.execute(text("SELECT * FROM host_info ORDER BY hostname"))
             return [dict(row._mapping) for row in result.fetchall()]
 
+    def get_version(self) -> str:
+        with self.engine.connect() as conn:
+            result = conn.execute(text("SELECT version()"))
+            return str(result.scalar())
+
+    def get_table_row_count(self, table_name: str) -> int:
+        if not table_name.isidentifier():
+            raise ValueError(f"Invalid table name: {table_name}")
+        with self.engine.connect() as conn:
+            result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))  # noqa: S608
+            return int(result.scalar())  # type: ignore[arg-type]
+
 
 class TestDatabase:
     """Manager for test results database.
@@ -1524,6 +1554,12 @@ class TestDatabase:
 
     def get_hosts(self) -> List[Dict[str, Any]]:
         return self._backend.get_hosts()
+
+    def get_version(self) -> str:
+        return self._backend.get_version()
+
+    def get_table_row_count(self, table_name: str) -> int:
+        return self._backend.get_table_row_count(table_name)
 
 
 def main():
