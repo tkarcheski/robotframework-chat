@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, List
 
 logging.basicConfig(level=logging.INFO)
@@ -1320,7 +1321,12 @@ def _get_or_create_slice(db: Any, Slice: Any, cdef: Dict[str, Any]) -> Any:
 
 
 def _get_or_create_dashboard(
-    db: Any, Dashboard: Any, title: str, slug: str, slices: list
+    db: Any,
+    Dashboard: Any,
+    title: str,
+    slug: str,
+    slices: list,
+    css: str = "",
 ) -> Any:
     """Get an existing dashboard or create a new one with charts."""
     dashboard = db.session.query(Dashboard).filter_by(dashboard_title=title).first()
@@ -1330,10 +1336,16 @@ def _get_or_create_dashboard(
             slug=slug,
             position_json=_build_position_json(slices, title),
             published=True,
+            css=css,
         )
         dashboard.slices = slices
         db.session.add(dashboard)
         log.info("Created dashboard: %s", title)
+    else:
+        # Update CSS on existing dashboards
+        if css and dashboard.css != css:
+            dashboard.css = css
+            log.info("Updated CSS for dashboard: %s", title)
     return dashboard
 
 
@@ -1489,13 +1501,23 @@ def bootstrap() -> None:
             for cdef in _host_metrics_charts(datasets)
         ]
 
-        # ── 5. Dashboards ───────────────────────────────────────────
+        # ── 5. Load theme CSS ──────────────────────────────────────
+        _tron_css_path = Path(__file__).parent / "themes" / "tron.css"
+        if _tron_css_path.exists():
+            _tron_css = _tron_css_path.read_text()
+            log.info("Loaded Tron theme CSS from %s", _tron_css_path)
+        else:
+            _tron_css = ""
+            log.warning("Tron theme CSS not found at %s", _tron_css_path)
+
+        # ── 6. Dashboards ───────────────────────────────────────────
         _get_or_create_dashboard(
             db,
             Dashboard,
             "Robot Framework Test Results",
             "rfc-results",
             test_result_slices,
+            css=_tron_css,
         )
         _get_or_create_dashboard(
             db,
@@ -1503,6 +1525,7 @@ def bootstrap() -> None:
             "Pipeline Health",
             "rfc-pipelines",
             pipeline_slices,
+            css=_tron_css,
         )
         _get_or_create_dashboard(
             db,
@@ -1510,6 +1533,7 @@ def bootstrap() -> None:
             "Model Analytics",
             "rfc-models",
             model_slices,
+            css=_tron_css,
         )
         _get_or_create_dashboard(
             db,
@@ -1517,6 +1541,7 @@ def bootstrap() -> None:
             "Ollama Performance",
             "rfc-ollama",
             ollama_slices,
+            css=_tron_css,
         )
         _get_or_create_dashboard(
             db,
@@ -1524,6 +1549,7 @@ def bootstrap() -> None:
             "Host Metrics",
             "rfc-hosts",
             host_slices,
+            css=_tron_css,
         )
 
         db.session.commit()

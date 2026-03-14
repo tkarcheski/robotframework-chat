@@ -85,6 +85,7 @@ services:
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
       - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
+      - ./superset/themes:/app/themes:ro
     networks:
       - rfc-net
     entrypoint: /bin/bash
