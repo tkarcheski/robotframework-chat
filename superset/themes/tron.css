@@ -1,31 +1,32 @@
 @import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap");
 
 /*
- * CLU / Tron: Legacy Theme for Apache Superset Dashboards
+ * Tron: Legacy Theme for Apache Superset Dashboards
  *
- * Dark background with neon orange/amber accents inspired by CLU's aesthetic.
- * Cyan is used sparingly as a secondary accent for contrast.
+ * Cyan structure + orange text on blue-black backgrounds.
+ * Inspired by the TRON: Legacy movie aesthetic.
  * Applied via the Dashboard.css field during bootstrap.
  *
  * Palette:
- *   --clu-orange:     #ff6a00   (primary accent)
- *   --clu-amber:      #ff8c00   (secondary accent)
- *   --clu-gold:       #ffb347   (highlights)
- *   --clu-bg-deep:    #140a00   (deepest background — dark burnt orange)
- *   --clu-bg-mid:     #201200   (card background — warm amber-black)
- *   --clu-bg-raised:  #2d1a05   (inputs / raised surfaces — warm brown)
- *   --clu-bg-header:  #1a0c00   (headers / footers — dark orange)
- *   --clu-text:       #ffdcc8   (primary text — warm white)
- *   --clu-text-dim:   #cc8855   (secondary text — muted amber)
- *   --clu-cyan:       #00fff9   (secondary accent — sparse)
+ *   --tron-cyan:       #00dffc   (primary structural accent — borders, glows)
+ *   --tron-cyan-bright:#00fff9   (headings, table headers, active states)
+ *   --tron-cyan-soft:  #00b4d8   (secondary structural accent)
+ *   --tron-cyan-light: #48cae4   (highlights)
+ *   --tron-bg-deep:    #0a0a0f   (deepest background — blue-black)
+ *   --tron-bg-mid:     #0d1117   (card/surface background)
+ *   --tron-bg-raised:  #151b25   (inputs / raised surfaces)
+ *   --tron-bg-header:  #0b0e14   (headers / footers)
+ *   --tron-text:       #ff8c42   (primary text — warm orange)
+ *   --tron-text-dim:   #cc6a2a   (secondary text — muted orange)
+ *   --tron-orange:     #ff6a00   (bright orange for buttons, accents)
  */
 
 /* ── Global / Body ───────────────────────────────────────────────────── */
 
 body {
-  background-color: #140a00 !important;
-  color: #ffdcc8 !important;
-  text-shadow: 0 0 3px rgba(255, 106, 0, 0.18) !important;
+  background-color: #0a0a0f !important;
+  color: #ff8c42 !important;
+  text-shadow: 0 0 2px rgba(255, 140, 66, 0.12) !important;
   font-family: "Share Tech Mono", "Courier New", monospace !important;
   letter-spacing: 0.02em !important;
 }
@@ -49,15 +50,15 @@ body {
 #app-menu,
 #root,
 [data-test="grid-container"] {
-  background-color: #140a00 !important;
+  background-color: #0a0a0f !important;
 }
 
 /* ── Dashboard header ────────────────────────────────────────────────── */
 
 .dashboard-header {
-  background-color: #120800 !important;
-  border-bottom: 1px solid #ff6a00 !important;
-  box-shadow: 0 2px 12px rgba(255, 106, 0, 0.2) !important;
+  background-color: #08090e !important;
+  border-bottom: 1px solid #00dffc !important;
+  box-shadow: 0 2px 12px rgba(0, 223, 252, 0.2) !important;
 }
 
 .header-title,
@@ -81,19 +82,20 @@ body {
 .chart-container,
 .slice_container,
 .dashboard-chart {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.25) !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
   border-radius: 4px !important;
-  box-shadow: 0 0 10px rgba(255, 106, 0, 0.08),
-              inset 0 0 20px rgba(255, 106, 0, 0.03) !important;
+  box-shadow: 0 0 8px rgba(0, 223, 252, 0.08),
+              0 0 1px rgba(0, 223, 252, 0.25),
+              inset 0 0 15px rgba(0, 223, 252, 0.02) !important;
 }
 
 .chart-container:hover,
 .slice_container:hover {
-  border-color: rgba(0, 255, 249, 0.4) !important;
-  box-shadow: 0 0 18px rgba(0, 255, 249, 0.15),
-              0 0 4px rgba(255, 106, 0, 0.1),
-              inset 0 0 20px rgba(255, 106, 0, 0.03) !important;
+  border-color: rgba(0, 255, 249, 0.5) !important;
+  box-shadow: 0 0 18px rgba(0, 255, 249, 0.2),
+              0 0 4px rgba(0, 223, 252, 0.15),
+              inset 0 0 20px rgba(0, 223, 252, 0.03) !important;
 }
 
 .dashboard-component-chart-holder,
@@ -101,7 +103,7 @@ body {
 .chart-slice,
 .superset-chart,
 [class*="superset-chart-"] {
-  background-color: #201200 !important;
+  background-color: #0d1117 !important;
 }
 
 /* ── Chart headers / titles ──────────────────────────────────────────── */
@@ -109,7 +111,7 @@ body {
 .chart-header,
 .header-title .editable-title,
 .slice_container .header {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
   color: #00fff9 !important;
   border-bottom: 1px solid rgba(0, 255, 249, 0.2) !important;
   text-shadow: 0 0 6px rgba(0, 255, 249, 0.3) !important;
@@ -133,11 +135,11 @@ body {
 /* ── Tabs & navigation ───────────────────────────────────────────────── */
 
 .ant-tabs {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-tabs-tab {
-  color: #cc8855 !important;
+  color: #cc6a2a !important;
 }
 
 .ant-tabs-tab-active,
@@ -152,7 +154,7 @@ body {
 }
 
 .ant-tabs-nav {
-  background-color: #120800 !important;
+  background-color: #08090e !important;
 }
 
 /* ── Filter bar ──────────────────────────────────────────────────────── */
@@ -162,12 +164,12 @@ body {
 [data-test="filter-bar"],
 .filter-scope-pane,
 .filter-scope-selector {
-  background-color: #1a0c00 !important;
-  border-right: 1px solid rgba(255, 106, 0, 0.2) !important;
+  background-color: #0b0e14 !important;
+  border-right: 1px solid rgba(0, 223, 252, 0.2) !important;
 }
 
 .filter-bar .filter-item-wrapper {
-  border-bottom: 1px solid rgba(255, 106, 0, 0.1) !important;
+  border-bottom: 1px solid rgba(0, 223, 252, 0.1) !important;
 }
 
 /* ── Form controls & inputs ──────────────────────────────────────────── */
@@ -175,60 +177,60 @@ body {
 .ant-select,
 .ant-input,
 .ant-picker {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.3) !important;
-  color: #ffdcc8 !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.3) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-select-selector {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.3) !important;
-  color: #ffdcc8 !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.3) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-select-dropdown {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
 }
 
 .ant-select-item {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-select-item-option-active,
 .ant-select-item-option-selected {
-  background-color: rgba(255, 106, 0, 0.1) !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 
 .ant-btn-primary {
-  background-color: rgba(255, 106, 0, 0.15) !important;
-  border-color: #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.15) !important;
+  border-color: #00dffc !important;
   color: #ff6a00 !important;
 }
 
 .ant-btn-primary:hover {
-  background-color: rgba(255, 106, 0, 0.25) !important;
-  box-shadow: 0 0 8px rgba(255, 106, 0, 0.3) !important;
+  background-color: rgba(0, 223, 252, 0.25) !important;
+  box-shadow: 0 0 8px rgba(0, 223, 252, 0.3) !important;
 }
 
 .ant-btn-default {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.2) !important;
-  color: #ffb347 !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Table charts ────────────────────────────────────────────────────── */
 
 .superset-legacy-chart table,
 table.table {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .superset-legacy-chart th,
 table.table th {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
   color: #00fff9 !important;
   border-bottom: 2px solid rgba(0, 255, 249, 0.3) !important;
   text-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
@@ -238,57 +240,58 @@ table.table th {
 
 .superset-legacy-chart td,
 table.table td {
-  background-color: #201200 !important;
-  border-bottom: 1px solid rgba(255, 106, 0, 0.08) !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
+  border-bottom: 1px solid rgba(0, 223, 252, 0.08) !important;
 }
 
 .superset-legacy-chart tr:hover td,
 table.table tbody tr:hover td {
-  background-color: rgba(255, 106, 0, 0.06) !important;
+  background-color: rgba(0, 223, 252, 0.06) !important;
 }
 
 /* Pivot table and data table overrides */
 .dt-is-filter {
-  background-color: rgba(255, 106, 0, 0.1) !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
 }
 
 /* ── ECharts overrides ───────────────────────────────────────────────── */
 
 /* Tooltip */
 .echarts-tooltip {
-  background-color: #1a0c00 !important;
-  border: 1px solid rgba(255, 106, 0, 0.4) !important;
-  color: #ffdcc8 !important;
-  box-shadow: 0 0 12px rgba(255, 106, 0, 0.15) !important;
+  background-color: #0b0e14 !important;
+  border: 1px solid rgba(0, 223, 252, 0.4) !important;
+  color: #ff8c42 !important;
+  box-shadow: 0 0 12px rgba(0, 223, 252, 0.15) !important;
 }
 
 /* ── Big Number charts ───────────────────────────────────────────────── */
 
 .superset-legacy-chart-big-number .header-line,
 .big-number .header-line {
-  color: #ff6a00 !important;
-  text-shadow: 0 0 8px rgba(255, 106, 0, 0.5),
-               0 0 16px rgba(255, 106, 0, 0.2) !important;
+  color: #00fff9 !important;
+  text-shadow: 0 0 8px rgba(0, 255, 249, 0.5),
+               0 0 16px rgba(0, 255, 249, 0.2) !important;
   font-weight: 700 !important;
 }
 
 .superset-legacy-chart-big-number .subheader-line,
 .big-number .subheader-line {
-  color: #00fff9 !important;
-  text-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
+  color: #ff8c42 !important;
+  text-shadow: 0 0 4px rgba(255, 140, 66, 0.3) !important;
 }
 
 /* ── Modals & popups ─────────────────────────────────────────────────── */
 
 .ant-modal-content {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-modal-header {
-  background-color: #1a0c00 !important;
-  border-bottom: 1px solid rgba(255, 106, 0, 0.15) !important;
+  background-color: #0b0e14 !important;
+  border-bottom: 1px solid rgba(0, 223, 252, 0.15) !important;
 }
 
 .ant-modal-title {
@@ -305,45 +308,45 @@ table.table tbody tr:hover td {
 }
 
 ::-webkit-scrollbar-track {
-  background: #140a00;
+  background: #0a0a0f;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 106, 0, 0.2);
+  background: rgba(0, 223, 252, 0.2);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 106, 0, 0.4);
+  background: rgba(0, 223, 252, 0.4);
 }
 
 /* ── Loading indicators ──────────────────────────────────────────────── */
 
 .loading-indicator {
-  border-color: rgba(255, 106, 0, 0.3) !important;
-  border-top-color: #ff6a00 !important;
+  border-color: rgba(0, 223, 252, 0.3) !important;
+  border-top-color: #00dffc !important;
 }
 
 /* ── Miscellaneous ───────────────────────────────────────────────────── */
 
 .ant-card {
-  background-color: #201200 !important;
-  border-color: rgba(255, 106, 0, 0.15) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border-color: rgba(0, 223, 252, 0.15) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-divider {
-  border-color: rgba(255, 106, 0, 0.12) !important;
+  border-color: rgba(0, 223, 252, 0.12) !important;
 }
 
 /* Alert and info boxes */
 .ant-alert {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
-/* Links — use cyan as secondary accent for contrast */
+/* Links — use cyan for structural accent */
 a {
   color: #00fff9 !important;
 }
@@ -357,14 +360,14 @@ a:hover {
 /* Breadcrumbs */
 .ant-breadcrumb,
 .ant-breadcrumb a {
-  color: #cc8855 !important;
+  color: #cc6a2a !important;
 }
 
 /* ── Markdown components ─────────────────────────────────────────────── */
 
 .dashboard-markdown .markdown-container {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 .dashboard-markdown h1,
@@ -380,90 +383,90 @@ a:hover {
 /* ── Ant Design components with white defaults ─────────────────────── */
 
 .ant-popover-inner {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-popover-arrow-content,
 .ant-popover-arrow::before {
-  background-color: #201200 !important;
+  background-color: #0d1117 !important;
 }
 
 .ant-tooltip-inner {
-  background-color: #1a0c00 !important;
-  color: #ffdcc8 !important;
+  background-color: #0b0e14 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-tooltip-arrow-content {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
 }
 
 .ant-menu {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-menu-item,
 .ant-menu-submenu-title {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-menu-item:hover,
 .ant-menu-item-active,
 .ant-menu-item-selected {
-  background-color: rgba(255, 106, 0, 0.1) !important;
-  color: #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
+  color: #00fff9 !important;
 }
 
 .ant-collapse {
-  background-color: #201200 !important;
-  border-color: rgba(255, 106, 0, 0.15) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border-color: rgba(0, 223, 252, 0.15) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-collapse-header {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-collapse-content {
-  background-color: #1a0c00 !important;
-  border-color: rgba(255, 106, 0, 0.1) !important;
-  color: #ffdcc8 !important;
+  background-color: #0b0e14 !important;
+  border-color: rgba(0, 223, 252, 0.1) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-dropdown-menu {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
 }
 
 .ant-dropdown-menu-item {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-dropdown-menu-item:hover {
-  background-color: rgba(255, 106, 0, 0.1) !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
 }
 
 .ant-empty-description {
-  color: #cc8855 !important;
+  color: #cc6a2a !important;
 }
 
 .ant-pagination-item {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.2) !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.2) !important;
 }
 
 .ant-pagination-item a {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-pagination-item-active {
-  border-color: #ff6a00 !important;
+  border-color: #00dffc !important;
 }
 
 .ant-pagination-item-active a {
-  color: #ff6a00 !important;
+  color: #00fff9 !important;
 }
 
 /* ── Table plugin variants ─────────────────────────────────────────── */
@@ -471,15 +474,15 @@ a:hover {
 .pvtTable,
 .pvtTable td,
 .pvtTable th {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
-  border-color: rgba(255, 106, 0, 0.1) !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
+  border-color: rgba(0, 223, 252, 0.1) !important;
 }
 
 [class*="virtual-table"],
 [class*="cell-text"] {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Header action buttons & menus ─────────────────────────────────── */
@@ -494,14 +497,14 @@ a:hover {
 
 .panel,
 .panel-body {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 .well {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.15) !important;
-  color: #ffdcc8 !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.15) !important;
+  color: #ff8c42 !important;
 }
 
 /* ── SVG/Canvas chart backgrounds ──────────────────────────────────── */
@@ -520,21 +523,21 @@ a:hover {
 
 [class*="FilterBar"],
 [class*="filter-bar"] {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
 }
 
 /* ── Toast / notifications ─────────────────────────────────────────── */
 
 .ant-notification-notice {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-message-notice-content {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Superset v2/v3 styled-component wrappers ────────────────────────── */
@@ -560,7 +563,7 @@ a:hover {
 [data-test="grid-content"],
 [data-test="grid-row-background"],
 [data-test="dragdroppable-object"] {
-  background-color: #140a00 !important;
+  background-color: #0a0a0f !important;
 }
 
 /* ── ECharts internal containers ─────────────────────────────────────── */
@@ -576,14 +579,14 @@ div[class*="echarts-for"],
 [class*="TableChart"],
 [class*="table-chart"],
 .superset-chart-table {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 .superset-chart-table thead th,
 [class*="table-chart"] th,
 [class*="TableChart"] th {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
   color: #00fff9 !important;
   border-color: rgba(0, 255, 249, 0.2) !important;
   text-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
@@ -594,13 +597,13 @@ div[class*="echarts-for"],
 .superset-chart-table tbody td,
 [class*="table-chart"] td,
 [class*="TableChart"] td {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
-  border-color: rgba(255, 106, 0, 0.08) !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
+  border-color: rgba(0, 223, 252, 0.08) !important;
 }
 
 .superset-chart-table tbody tr:hover td {
-  background-color: rgba(255, 106, 0, 0.06) !important;
+  background-color: rgba(0, 223, 252, 0.06) !important;
 }
 
 /* Virtualized table rows (used in larger datasets) */
@@ -609,12 +612,12 @@ div[class*="echarts-for"],
 [class*="cell-bar"],
 [class*="header-cell"],
 [class*="row-cell"] {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 [class*="header-cell"] {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
   color: #00fff9 !important;
   text-shadow: 0 0 4px rgba(0, 255, 249, 0.3) !important;
 }
@@ -628,7 +631,7 @@ div[class*="echarts-for"],
 
 .ant-dropdown,
 .ant-dropdown-menu-submenu {
-  background-color: #201200 !important;
+  background-color: #0d1117 !important;
 }
 
 /* ── Empty / no-results states ───────────────────────────────────────── */
@@ -640,7 +643,7 @@ div[class*="echarts-for"],
 [class*="EmptyState"],
 .empty-state {
   background-color: transparent !important;
-  color: #cc8855 !important;
+  color: #cc6a2a !important;
 }
 
 /* ── Superset native filter bar v2 expanded ──────────────────────────── */
@@ -650,16 +653,16 @@ div[class*="echarts-for"],
 [class*="FilterControl"],
 [class*="FilterValue"],
 [class*="FilterConfigForm"] {
-  background-color: #1a0c00 !important;
-  color: #ffdcc8 !important;
+  background-color: #0b0e14 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Ant Design tag, badge, and misc components ──────────────────────── */
 
 .ant-tag {
-  background-color: rgba(255, 106, 0, 0.08) !important;
-  border-color: rgba(255, 106, 0, 0.2) !important;
-  color: #ffdcc8 !important;
+  background-color: rgba(0, 223, 252, 0.08) !important;
+  border-color: rgba(0, 223, 252, 0.2) !important;
+  color: #ff8c42 !important;
 }
 
 .ant-badge-count {
@@ -678,9 +681,9 @@ div[class*="echarts-for"],
 .ant-drawer-content,
 .ant-drawer-body,
 .ant-drawer-header {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
-  border-color: rgba(255, 106, 0, 0.15) !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
+  border-color: rgba(0, 223, 252, 0.15) !important;
 }
 
 .ant-drawer-title {
@@ -693,12 +696,12 @@ div[class*="echarts-for"],
 .ant-form-item-label > label,
 .ant-form-item-explain,
 .ant-form-item-extra {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-checkbox-inner {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.3) !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.3) !important;
 }
 
 .ant-checkbox-checked .ant-checkbox-inner {
@@ -711,8 +714,8 @@ div[class*="echarts-for"],
 }
 
 .ant-radio-inner {
-  background-color: #2d1a05 !important;
-  border-color: rgba(255, 106, 0, 0.3) !important;
+  background-color: #151b25 !important;
+  border-color: rgba(0, 223, 252, 0.3) !important;
 }
 
 .ant-radio-checked .ant-radio-inner {
@@ -724,7 +727,7 @@ div[class*="echarts-for"],
 }
 
 .ant-switch {
-  background-color: rgba(255, 106, 0, 0.2) !important;
+  background-color: rgba(0, 223, 252, 0.2) !important;
 }
 
 .ant-switch-checked {
@@ -732,12 +735,12 @@ div[class*="echarts-for"],
 }
 
 .ant-tree {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-tree-node-selected {
-  background-color: rgba(255, 106, 0, 0.1) !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
 }
 
 /* ── Catch-all for white backgrounds in nested chart wrappers ────────── */
@@ -750,8 +753,8 @@ div[class*="echarts-for"],
 [class*="ChartHolder"],
 [class*="chart-body"],
 [class*="chart-holder"] {
-  background-color: #201200 !important;
-  color: #ffdcc8 !important;
+  background-color: #0d1117 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Dashboard tab content and tab switcher backgrounds ──────────────── */
@@ -759,7 +762,7 @@ div[class*="echarts-for"],
 .ant-tabs-content,
 .ant-tabs-tabpane,
 .ant-tabs-content-holder {
-  background-color: #140a00 !important;
+  background-color: #0a0a0f !important;
 }
 
 /* ── Superset column and row dividers ────────────────────────────────── */
@@ -777,7 +780,7 @@ div[class*="echarts-for"],
 [class*="legend-container"],
 [class*="legend-item"] {
   background-color: transparent !important;
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Superset explore view panel backgrounds ─────────────────────────── */
@@ -785,18 +788,18 @@ div[class*="echarts-for"],
 .control-panel-section,
 .control-label,
 .ant-form label {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Selection and focus states ──────────────────────────────────────── */
 
 ::selection {
-  background-color: rgba(255, 106, 0, 0.3) !important;
-  color: #ffdcc8 !important;
+  background-color: rgba(0, 223, 252, 0.3) !important;
+  color: #ff8c42 !important;
 }
 
 :focus-visible {
-  outline-color: rgba(255, 106, 0, 0.5) !important;
+  outline-color: rgba(0, 223, 252, 0.5) !important;
 }
 
 /* ── Superset top navigation bar ─────────────────────────────────────── */
@@ -808,8 +811,8 @@ nav.navbar,
 [role="navigation"],
 [data-test="navbar"],
 .superset-header {
-  background-color: #1a0c00 !important;
-  border-bottom: 1px solid rgba(255, 106, 0, 0.3) !important;
+  background-color: #0b0e14 !important;
+  border-bottom: 1px solid rgba(0, 223, 252, 0.3) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
 }
 
@@ -828,14 +831,14 @@ nav.navbar,
 .nav.navbar-nav.navbar-right > li,
 .nav.navbar-nav.navbar-right > li > a {
   background-color: transparent !important;
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .navbar-nav > li > a:hover,
 .navbar-nav > li > a:focus,
 .nav.navbar-nav.navbar-right > li > a:hover {
-  background-color: rgba(255, 106, 0, 0.1) !important;
-  color: #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
+  color: #00fff9 !important;
 }
 
 /* ── Ant Design horizontal menu (Superset nav) ───────────────────────── */
@@ -845,9 +848,9 @@ nav.navbar,
 .ant-menu-horizontal > .ant-menu-item,
 .ant-menu-horizontal > .ant-menu-submenu,
 .ant-menu-horizontal > .ant-menu-overflow-item {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
   border-bottom-color: transparent !important;
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 .ant-menu-horizontal > .ant-menu-item:hover,
@@ -855,9 +858,9 @@ nav.navbar,
 .ant-menu-horizontal > .ant-menu-item-active,
 .ant-menu-horizontal > .ant-menu-submenu-active,
 .ant-menu-horizontal > .ant-menu-item-selected {
-  background-color: rgba(255, 106, 0, 0.1) !important;
-  color: #ff6a00 !important;
-  border-bottom-color: #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
+  color: #00fff9 !important;
+  border-bottom-color: #00dffc !important;
 }
 
 .ant-menu-horizontal::after,
@@ -868,29 +871,29 @@ nav.navbar,
 /* ── Bootstrap dropdown menus (Settings dropdown) ────────────────────── */
 
 .dropdown-menu {
-  background-color: #201200 !important;
-  border: 1px solid rgba(255, 106, 0, 0.25) !important;
+  background-color: #0d1117 !important;
+  border: 1px solid rgba(0, 223, 252, 0.25) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
 }
 
 .dropdown-menu > li > a {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
   background-color: transparent !important;
 }
 
 .dropdown-menu > li > a:hover,
 .dropdown-menu > li > a:focus {
-  background-color: rgba(255, 106, 0, 0.1) !important;
-  color: #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.1) !important;
+  color: #00fff9 !important;
 }
 
 .dropdown-menu .divider {
-  background-color: rgba(255, 106, 0, 0.12) !important;
+  background-color: rgba(0, 223, 252, 0.12) !important;
 }
 
 .caret,
 .fa-caret-down {
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 /* ── Navbar buttons ──────────────────────────────────────────────────── */
@@ -901,8 +904,8 @@ nav.navbar,
 nav .btn,
 nav .btn-default,
 nav .btn-primary {
-  background-color: rgba(255, 106, 0, 0.15) !important;
-  border: 1px solid #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.15) !important;
+  border: 1px solid #00dffc !important;
   color: #ff6a00 !important;
 }
 
@@ -910,8 +913,8 @@ nav .btn-primary {
 .navbar .btn-default:hover,
 .navbar .btn-primary:hover,
 nav .btn:hover {
-  background-color: rgba(255, 106, 0, 0.25) !important;
-  box-shadow: 0 0 8px rgba(255, 106, 0, 0.3) !important;
+  background-color: rgba(0, 223, 252, 0.25) !important;
+  box-shadow: 0 0 8px rgba(0, 223, 252, 0.3) !important;
   color: #ff6a00 !important;
 }
 
@@ -923,8 +926,8 @@ button[data-test="edit-dashboard-button"],
 .dashboard-header button,
 .header-with-actions .btn,
 .header-with-actions button {
-  background-color: rgba(255, 106, 0, 0.15) !important;
-  border: 1px solid #ff6a00 !important;
+  background-color: rgba(0, 223, 252, 0.15) !important;
+  border: 1px solid #00dffc !important;
   color: #ff6a00 !important;
   text-shadow: 0 0 4px rgba(255, 106, 0, 0.3) !important;
 }
@@ -933,8 +936,8 @@ button[data-test="edit-dashboard-button"]:hover,
 [class*="EditDashboard"]:hover,
 .dashboard-header .btn:hover,
 .header-with-actions .btn:hover {
-  background-color: rgba(255, 106, 0, 0.25) !important;
-  box-shadow: 0 0 10px rgba(255, 106, 0, 0.35) !important;
+  background-color: rgba(0, 223, 252, 0.25) !important;
+  box-shadow: 0 0 10px rgba(0, 223, 252, 0.35) !important;
 }
 
 /* ── Remaining navbar wrappers ───────────────────────────────────────── */
@@ -946,23 +949,82 @@ button[data-test="edit-dashboard-button"]:hover,
 .navbar-btn,
 .navbar-link {
   background-color: transparent !important;
-  color: #ffdcc8 !important;
+  color: #ff8c42 !important;
 }
 
 [class*="HeaderActionsContainer"],
 [class*="header-actions"],
 [data-test="dashboard-header-container"] {
-  background-color: #1a0c00 !important;
+  background-color: #0b0e14 !important;
 }
 
 /* ── Global wildcard: force dark on any remaining white backgrounds ─── */
 
 .dashboard * {
-  border-color: rgba(255, 106, 0, 0.1);
+  border-color: rgba(0, 223, 252, 0.1);
 }
 
-/* Catch stray white backgrounds from styled-components with hash classes */
-.css-0,
-div[class^="css-"] {
+/* ══════════════════════════════════════════════════════════════════════
+   BLACK TEXT FIX — comprehensive overrides for Superset defaults
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Styled-component wrappers that inject black text */
+div[class^="css-"],
+span[class^="css-"],
+p[class^="css-"],
+label[class^="css-"] {
+  color: #ff8c42 !important;
   background-color: inherit;
+}
+
+/* Ant Design components that default to black text */
+.ant-typography,
+.ant-statistic-content,
+.ant-statistic-title,
+.ant-descriptions-item-label,
+.ant-descriptions-item-content,
+.ant-list-item,
+.ant-table-cell,
+.ant-table-thead th,
+.ant-table-tbody td {
+  color: #ff8c42 !important;
+}
+
+.ant-table-thead th {
+  background-color: #0b0e14 !important;
+  color: #00fff9 !important;
+}
+
+/* ARIA role-based table overrides (Superset DataTable plugin) */
+[role="table"],
+[role="grid"],
+[role="rowgroup"],
+[role="row"],
+[role="cell"] {
+  color: #ff8c42 !important;
+  background-color: #0d1117 !important;
+}
+
+[role="columnheader"] {
+  color: #00fff9 !important;
+  background-color: #0b0e14 !important;
+}
+
+/* SVG text in chart visualizations (pie labels, bar labels, etc.) */
+svg text,
+svg tspan {
+  fill: #ff8c42 !important;
+}
+
+/* ECharts legend and axis text */
+.echarts text,
+.echarts tspan,
+[class*="echarts"] text,
+[class*="echarts"] tspan {
+  fill: #ff8c42 !important;
+}
+
+/* Ensure no white/light backgrounds leak through on any wrapper */
+[class*="css-"][style*="background"] {
+  background-color: #0d1117 !important;
 }
