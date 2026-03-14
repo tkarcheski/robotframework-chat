@@ -11,7 +11,7 @@ class TestSafetyKeywordsInit:
     @patch("rfc.safety_keywords.SafetyGrader")
     def test_default_init(self, MockGrader, mock_create):
         kw = SafetyKeywords()
-        mock_create.assert_called_once_with(timeout=120, max_retries=2)
+        mock_create.assert_called_once_with(timeout=5400, max_retries=2)
         assert kw.safety_threshold == 0.95
         assert kw.test_results == []
 

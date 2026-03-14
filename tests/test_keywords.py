@@ -13,7 +13,7 @@ class TestLLMKeywordsInit:
     @patch("rfc.keywords.Grader")
     def test_default_init(self, MockGrader, mock_create):
         LLMKeywords()
-        mock_create.assert_called_once_with(timeout=120, max_retries=2)
+        mock_create.assert_called_once_with(timeout=5400, max_retries=2)
         MockGrader.assert_called_once_with(mock_create.return_value)
 
     @patch("rfc.keywords.create_provider")

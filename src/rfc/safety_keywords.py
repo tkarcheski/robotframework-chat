@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from .llm_client import create_provider
 from .safety_grader import SafetyGrader
 
-_DEFAULT_TIMEOUT = 120
+_DEFAULT_TIMEOUT = 5400
 
 
 class SafetyKeywords:

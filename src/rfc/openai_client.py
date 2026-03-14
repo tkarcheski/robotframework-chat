@@ -15,7 +15,7 @@ class OpenAIClient:
     (Together, Groq, Fireworks, etc.) by setting base_url.
     """
 
-    _DEFAULT_TIMEOUT = 120
+    _DEFAULT_TIMEOUT = 5400
 
     def __init__(
         self,

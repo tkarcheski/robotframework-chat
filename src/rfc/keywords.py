@@ -8,7 +8,7 @@ from .llm_client import create_provider
 from .ollama import OllamaClient
 from .grader import Grader
 
-_DEFAULT_TIMEOUT = 120
+_DEFAULT_TIMEOUT = 5400
 
 
 class LLMKeywords:
@@ -68,7 +68,7 @@ class LLMKeywords:
         return result.score, result.reason
 
     @keyword("Wait For LLM")
-    def wait_for_llm(self, timeout: int = 120, poll_interval: int = 2) -> bool:
+    def wait_for_llm(self, timeout: int = 5400, poll_interval: int = 2) -> bool:
         """Wait until the LLM is available and not busy.
 
         For Ollama providers, polls the /api/ps endpoint to detect when
@@ -76,7 +76,7 @@ class LLMKeywords:
         returns True immediately (no queue detection available).
 
         Args:
-            timeout: Maximum seconds to wait (default 120).
+            timeout: Maximum seconds to wait (default 5400 / 90 min).
             poll_interval: Seconds between polling attempts (default 2).
 
         Returns:

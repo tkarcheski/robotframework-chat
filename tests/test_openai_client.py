@@ -18,7 +18,7 @@ class TestOpenAIClientInit:
         assert client.model == os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
         assert client.temperature == 0.0
         assert client.max_tokens == 256
-        assert client.timeout == 120
+        assert client.timeout == 5400
         assert client.max_retries == 2
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test", "OPENAI_TIMEOUT": "300"})
