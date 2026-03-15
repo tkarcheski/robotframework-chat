@@ -195,6 +195,7 @@ class DbListener:
         # Read and gzip output.xml
         output_xml_gz = _read_and_compress_output_xml()
         output_xml_url = _build_output_xml_url()
+        output_xml_source = _build_output_xml_source()
 
         run = TestRun(
             timestamp=self._start_time or end_time,
@@ -211,6 +212,7 @@ class DbListener:
             rfc_version=__version__,
             output_xml_url=output_xml_url,
             output_xml_gz=output_xml_gz,
+            output_xml_source=output_xml_source,
         )
 
         try:
@@ -261,6 +263,21 @@ def _read_and_compress_output_xml() -> Optional[bytes]:
             return gzip.compress(f.read())
     except OSError:
         return None
+
+
+def _build_output_xml_source() -> Optional[str]:
+    """Return the filesystem path to the Robot Framework output.xml.
+
+    This traces the test run back to the original output.xml that was
+    produced by Robot Framework, enabling audit and replay.
+    """
+    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if output_dir:
+        candidate = os.path.join(output_dir, "output.xml")
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+        return candidate
+    return None
 
 
 def _build_output_xml_url() -> Optional[str]:
