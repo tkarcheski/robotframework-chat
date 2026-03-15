@@ -63,6 +63,7 @@ class LLMKeywords:
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
         result = self.grader.grade(question, expected, actual)
+        logger.info(f"RFC_DATA:score:{result.score}")
         logger.info(f"RFC_DATA:expected_answer:{expected}")
         logger.info(f"RFC_DATA:grading_reason:{result.reason}")
         return result.score, result.reason

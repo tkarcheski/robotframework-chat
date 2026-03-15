@@ -379,9 +379,7 @@ class TestResultsFullView:
 
     def test_view_returns_joined_data(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        run_id = db.add_test_run(
-            _make_run(model_name="qwen3", hostname="dev1")
-        )
+        run_id = db.add_test_run(_make_run(model_name="qwen3", hostname="dev1"))
         db.add_test_results(
             [
                 TestResult(
@@ -405,6 +403,38 @@ class TestResultsFullView:
             assert row["model_name"] == "qwen3"
             assert row["hostname"] == "dev1"
             assert row["test_suite"] == "math"
+
+    def test_view_includes_all_expected_columns(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(
+            _make_run(
+                output_xml_url="https://example.com/output.xml",
+                output_xml_source="/tmp/output.xml",
+            )
+        )
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Full Data Test",
+                    test_status="PASS",
+                    score=1,
+                    tags="tier:1,verify:math",
+                    expected_answer="4",
+                    actual_answer="4",
+                    grading_reason="Correct numeric answer",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            assert row["score"] == 1
+            assert row["tags"] == "tier:1,verify:math"
+            assert row["expected_answer"] == "4"
+            assert row["grading_reason"] == "Correct numeric answer"
+            assert row["output_xml_url"] == "https://example.com/output.xml"
+            assert row["output_xml_source"] == "/tmp/output.xml"
 
     def test_view_excludes_output_xml_gz(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
