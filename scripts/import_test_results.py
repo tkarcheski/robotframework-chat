@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rfc import __version__
+from rfc.db_listener import _parse_tags
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -116,7 +117,8 @@ def parse_output_xml(xml_path: str) -> dict:
                             score = int(tag.text.split(":")[1])
                         except (ValueError, IndexError):
                             pass
-            tags_str = ",".join(tag_texts) if tag_texts else None
+            parsed_tags = _parse_tags(tag_texts)
+            tags_str = parsed_tags["tags_sorted"]
 
             actual_answer = None
             expected_answer = None
@@ -144,6 +146,9 @@ def parse_output_xml(xml_path: str) -> dict:
                     "expected_answer": expected_answer,
                     "actual_answer": actual_answer,
                     "grading_reason": grading_reason,
+                    "tag_severity": parsed_tags["tag_severity"],
+                    "tag_tier": parsed_tags["tag_tier"],
+                    "tag_verify": parsed_tags["tag_verify"],
                 }
             )
 
@@ -258,6 +263,9 @@ def import_results(
             actual_answer=td["actual_answer"],
             grading_reason=td["grading_reason"],
             rfc_version=__version__,
+            tag_severity=td.get("tag_severity"),
+            tag_tier=td.get("tag_tier"),
+            tag_verify=td.get("tag_verify"),
         )
         for td in data["test_results"]
     ]
