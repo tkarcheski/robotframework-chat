@@ -107,12 +107,16 @@ def parse_output_xml(xml_path: str) -> dict:
 
             score = None
             grading_reason = None
+            tag_texts: list[str] = []
             for tag in test.findall("tags/tag"):
-                if tag.text and tag.text.startswith("score:"):
-                    try:
-                        score = int(tag.text.split(":")[1])
-                    except (ValueError, IndexError):
-                        pass
+                if tag.text:
+                    tag_texts.append(tag.text)
+                    if tag.text.startswith("score:"):
+                        try:
+                            score = int(tag.text.split(":")[1])
+                        except (ValueError, IndexError):
+                            pass
+            tags_str = ",".join(tag_texts) if tag_texts else None
 
             actual_answer = None
             expected_answer = None
@@ -128,6 +132,7 @@ def parse_output_xml(xml_path: str) -> dict:
                     "name": test_name,
                     "status": test_status,
                     "score": score,
+                    "tags": tags_str,
                     "question": question,
                     "expected_answer": expected_answer,
                     "actual_answer": actual_answer,
@@ -240,6 +245,7 @@ def import_results(
             test_name=td["name"],
             test_status=td["status"],
             score=td["score"],
+            tags=td.get("tags"),
             question=td["question"],
             expected_answer=td["expected_answer"],
             actual_answer=td["actual_answer"],

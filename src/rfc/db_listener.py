@@ -134,11 +134,14 @@ class DbListener:
                 except (ValueError, IndexError):
                     pass
 
+        tags_str = ",".join(tags) if tags else None
+
         self._test_cases.append(
             {
                 "name": name,
                 "status": attributes.get("status", "UNKNOWN"),
                 "score": score,
+                "tags": tags_str,
                 "question": doc if doc else None,
                 "message": attributes.get("message", ""),
                 "actual_answer": self._current_test_data.get("actual_answer"),
@@ -225,6 +228,7 @@ class DbListener:
                     test_name=tc["name"],
                     test_status=tc["status"],
                     score=tc["score"],
+                    tags=tc.get("tags"),
                     question=tc["question"],
                     expected_answer=tc.get("expected_answer"),
                     actual_answer=tc.get("actual_answer"),
