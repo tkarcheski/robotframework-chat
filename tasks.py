@@ -198,6 +198,11 @@ def docker_test_app() -> None:
     )
 
 
+def robot_autopilot() -> None:
+    """Poll for git updates → update + install + run-local-models; idle 6h → re-run."""
+    _run(["bash", str(ROOT / "scripts" / "robot_autopilot.sh")])
+
+
 def superset_sanitize() -> None:
     """Truncate all RFC data tables (preserves dashboards/charts)."""
     _ensure_env()
@@ -225,6 +230,7 @@ TARGETS: dict[str, object] = {
     "robot-safety": robot_safety,
     "robot-dryrun": robot_dryrun,
     "run-local-models": run_local_models,
+    "robot-autopilot": robot_autopilot,
     "import-results": import_results,
     "analytics-refresh": analytics_refresh,
     "analytics-regressions": analytics_regressions,
