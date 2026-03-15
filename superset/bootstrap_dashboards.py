@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS test_runs (
     hostname VARCHAR(255),
     rfc_version VARCHAR(50),
     output_xml_url TEXT,
-    output_xml_gz BYTEA
+    output_xml_gz BYTEA,
+    output_xml_source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS test_results (
@@ -253,7 +254,8 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                     "columns": [
                         "timestamp", "model_name", "hostname",
                         "test_suite", "passed", "failed",
-                        "duration_seconds", "output_xml_url",
+                        "duration_seconds", "output_xml_source",
+                        "output_xml_url",
                     ],
                     "order_desc": True,
                     "row_limit": 100,

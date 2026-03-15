@@ -71,20 +71,19 @@ One row per test suite execution (or per pipeline-level combined run):
 | `id` | INTEGER PK | Auto-incrementing primary key |
 | `timestamp` | DATETIME | When the test ran |
 | `model_name` | TEXT | LLM model used (e.g., llama3, mistral) |
-| `model_release_date` | TEXT | Model release date from metadata |
-| `model_parameters` | TEXT | Model size (e.g., 8B, 70B) |
 | `test_suite` | TEXT | Test suite name (math, docker, safety) |
 | `git_commit` | TEXT | Git commit SHA |
 | `git_branch` | TEXT | Git branch name |
-| `pipeline_url` | TEXT | Link to CI pipeline |
-| `runner_id` | TEXT | CI runner identifier |
-| `runner_tags` | TEXT | Runner capabilities |
+| `hostname` | TEXT | Machine name where tests ran |
 | `total_tests` | INTEGER | Total test count |
 | `passed` | INTEGER | Passed test count |
 | `failed` | INTEGER | Failed test count |
 | `skipped` | INTEGER | Skipped test count |
 | `duration_seconds` | REAL | Test execution time in seconds |
 | `rfc_version` | TEXT | Version of robotframework-chat |
+| `output_xml_url` | TEXT | URL for web access to output.xml |
+| `output_xml_gz` | BLOB | Gzip-compressed output.xml blob |
+| `output_xml_source` | TEXT | Filesystem path to source output.xml |
 
 #### `test_results`
 Individual test case results:
@@ -100,18 +99,6 @@ Individual test case results:
 | `expected_answer` | TEXT | Expected correct answer |
 | `actual_answer` | TEXT | Model's response |
 | `grading_reason` | TEXT | Explanation from grader |
-
-#### `models`
-Model metadata:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `name` | TEXT PK | Model identifier |
-| `full_name` | TEXT | Human-readable name |
-| `organization` | TEXT | Model creator |
-| `release_date` | TEXT | Model release date |
-| `parameters` | TEXT | Model size |
-| `last_tested` | DATETIME | Timestamp of last test |
 
 ### Planned Schema Changes (Owner-Confirmed 2026-02-19)
 

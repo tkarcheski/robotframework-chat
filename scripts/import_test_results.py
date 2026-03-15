@@ -229,6 +229,7 @@ def import_results(
         rfc_version=__version__,
         output_xml_url=output_xml_url,
         output_xml_gz=output_xml_gz,
+        output_xml_source=os.path.abspath(xml_path),
     )
 
     run_id = db.add_test_run(run)

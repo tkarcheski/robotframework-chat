@@ -64,6 +64,7 @@ class TestRun:
     rfc_version: Optional[str] = None
     output_xml_url: Optional[str] = None
     output_xml_gz: Optional[bytes] = None
+    output_xml_source: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -127,7 +128,8 @@ class _SQLiteBackend(_Backend):
         hostname TEXT,
         rfc_version TEXT,
         output_xml_url TEXT,
-        output_xml_gz BLOB
+        output_xml_gz BLOB,
+        output_xml_source TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -163,8 +165,9 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_runs
                 (timestamp, model_name, test_suite, total_tests, passed,
                  failed, skipped, duration_seconds, git_commit, git_branch,
-                 hostname, rfc_version, output_xml_url, output_xml_gz)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hostname, rfc_version, output_xml_url, output_xml_gz,
+                 output_xml_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -181,6 +184,7 @@ class _SQLiteBackend(_Backend):
                     run.rfc_version,
                     run.output_xml_url,
                     run.output_xml_gz,
+                    run.output_xml_source,
                 ),
             )
             run_id = cursor.lastrowid
@@ -292,6 +296,7 @@ class _SQLAlchemyBackend(_Backend):
         # Add columns that may be missing from pre-existing test_runs tables.
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_url TEXT",
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_gz BYTEA",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_source TEXT",
     ]
 
     def __init__(self, database_url: str):
@@ -325,6 +330,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("rfc_version", Text),
             Column("output_xml_url", Text),
             Column("output_xml_gz", LargeBinary),
+            Column("output_xml_source", Text),
             Index("idx_test_runs_model", "model_name"),
             Index("idx_test_runs_timestamp", "timestamp"),
             Index("idx_test_runs_suite", "test_suite"),
@@ -377,6 +383,7 @@ class _SQLAlchemyBackend(_Backend):
                     rfc_version=run.rfc_version,
                     output_xml_url=run.output_xml_url,
                     output_xml_gz=run.output_xml_gz,
+                    output_xml_source=run.output_xml_source,
                 )
             )
             return int(result.inserted_primary_key[0])
