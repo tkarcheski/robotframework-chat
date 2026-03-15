@@ -81,9 +81,10 @@ def install() -> None:
 
 
 def update() -> None:
-    """Fetch and pull latest changes from remote."""
+    """Fetch, pull latest changes, and sync dependencies."""
     _run(["git", "fetch"])
     _run(["git", "pull"])
+    _uv("sync", "--extra", "dev", "--extra", "superset")
 
 
 def robot() -> None:
