@@ -33,7 +33,7 @@ from bootstrap_dashboards import _probe_columns  # noqa: E402
 
 @pytest.fixture()
 def empty_db(tmp_path: Path) -> str:
-    """SQLite database with empty tables mirroring the RFC schema."""
+    """SQLite database with empty tables mirroring the RFC 2-table schema."""
     db_path = tmp_path / "test.db"
     uri = f"sqlite:///{db_path}"
     engine = create_engine(uri)
@@ -42,38 +42,37 @@ def empty_db(tmp_path: Path) -> str:
             text("""
             CREATE TABLE test_runs (
                 id INTEGER PRIMARY KEY,
-                timestamp TEXT,
-                model_name TEXT,
-                test_suite TEXT,
-                git_branch TEXT,
-                git_commit TEXT,
-                duration_seconds REAL,
-                rfc_version TEXT,
+                timestamp TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                test_suite TEXT NOT NULL,
                 total_tests INTEGER DEFAULT 0,
                 passed INTEGER DEFAULT 0,
                 failed INTEGER DEFAULT 0,
-                skipped INTEGER DEFAULT 0
+                skipped INTEGER DEFAULT 0,
+                duration_seconds REAL,
+                git_commit TEXT,
+                git_branch TEXT,
+                hostname TEXT,
+                rfc_version TEXT,
+                output_xml_url TEXT,
+                output_xml_source TEXT
             )
         """)
         )
         conn.execute(
             text("""
-            CREATE TABLE ollama_metrics (
+            CREATE TABLE test_results (
                 id INTEGER PRIMARY KEY,
-                run_id INTEGER REFERENCES test_runs(id),
-                test_name TEXT,
-                model_name TEXT,
-                prompt_text TEXT,
-                total_duration_ns INTEGER,
-                load_duration_ns INTEGER,
-                prompt_eval_count INTEGER,
-                prompt_eval_duration_ns INTEGER,
-                prompt_eval_rate REAL,
-                eval_count INTEGER,
-                eval_duration_ns INTEGER,
-                eval_rate REAL,
-                rfc_version TEXT,
-                timestamp TEXT
+                run_id INTEGER NOT NULL REFERENCES test_runs(id),
+                test_name TEXT NOT NULL,
+                test_status TEXT NOT NULL,
+                score INTEGER,
+                tags TEXT,
+                question TEXT,
+                expected_answer TEXT,
+                actual_answer TEXT,
+                grading_reason TEXT,
+                rfc_version TEXT
             )
         """)
         )
@@ -91,27 +90,27 @@ class TestProbeColumns:
 
     def test_simple_table_returns_column_names(self, empty_db: str) -> None:
         """Probing a simple SELECT on an empty table returns column names."""
-        sql = "SELECT id, test_name, model_name FROM ollama_metrics"
+        sql = "SELECT id, test_name, test_status FROM test_results"
         cols = _probe_columns(empty_db, sql)
-        assert cols == ["id", "test_name", "model_name"]
+        assert cols == ["id", "test_name", "test_status"]
 
     def test_join_on_empty_tables(self, empty_db: str) -> None:
         """Probing a JOIN across two empty tables still returns columns."""
         sql = """
             SELECT
-                om.id AS metrics_id,
-                om.test_name,
-                om.model_name,
-                runs.timestamp,
-                runs.test_suite
-            FROM ollama_metrics om
-            JOIN test_runs runs ON om.run_id = runs.id
+                tr.id AS result_id,
+                tr.test_name,
+                tr.test_status,
+                r.timestamp,
+                r.test_suite
+            FROM test_results tr
+            JOIN test_runs r ON tr.run_id = r.id
         """
         cols = _probe_columns(empty_db, sql)
         assert cols == [
-            "metrics_id",
+            "result_id",
             "test_name",
-            "model_name",
+            "test_status",
             "timestamp",
             "test_suite",
         ]
@@ -120,45 +119,26 @@ class TestProbeColumns:
         """Computed/CAST columns use the AS alias as column name."""
         sql = """
             SELECT
-                om.total_duration_ns,
-                CAST(om.total_duration_ns AS REAL) / 1e9 AS total_duration_s
-            FROM ollama_metrics om
+                duration_seconds,
+                CAST(duration_seconds AS REAL) * 1000 AS duration_ms
+            FROM test_runs
         """
         cols = _probe_columns(empty_db, sql)
-        assert cols == ["total_duration_ns", "total_duration_s"]
+        assert cols == ["duration_seconds", "duration_ms"]
 
-    def test_full_ollama_performance_query(self, empty_db: str) -> None:
-        """The actual ollama_performance virtual dataset SQL returns all expected columns."""
-        from bootstrap_dashboards import _VIRTUAL_DATASETS
-
-        # Adapt the SQL slightly for SQLite (no DOUBLE PRECISION, use REAL)
-        sql = _VIRTUAL_DATASETS["ollama_performance"].replace(
-            "DOUBLE PRECISION", "REAL"
-        )
+    def test_aggregation_query(self, empty_db: str) -> None:
+        """Aggregate queries with aliases return column names correctly."""
+        sql = """
+            SELECT
+                hostname,
+                SUM(passed) AS total_passed,
+                SUM(failed) AS total_failed,
+                COUNT(*) AS run_count
+            FROM test_runs
+            GROUP BY hostname
+        """
         cols = _probe_columns(empty_db, sql)
-        expected = [
-            "metrics_id",
-            "test_name",
-            "model_name",
-            "prompt_text",
-            "total_duration_ns",
-            "load_duration_ns",
-            "prompt_eval_count",
-            "prompt_eval_duration_ns",
-            "prompt_eval_rate",
-            "eval_count",
-            "eval_duration_ns",
-            "eval_rate",
-            "rfc_version",
-            "timestamp",
-            "test_suite",
-            "git_branch",
-            "total_duration_s",
-            "load_duration_s",
-            "prompt_eval_duration_s",
-            "eval_duration_s",
-        ]
-        assert cols == expected
+        assert cols == ["hostname", "total_passed", "total_failed", "run_count"]
 
     def test_invalid_sql_raises(self, empty_db: str) -> None:
         """Bad SQL should propagate the exception (not be swallowed)."""
