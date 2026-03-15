@@ -1,88 +1,172 @@
-# Plan: Fix Superset Upload — Where Is The Data?
+# Plan: Database Redesign — Output.xml as Source of Truth
 
-## Root Cause Analysis
+## Problem
 
-**The data is going NOWHERE.** It's collected in memory during the test run, then silently discarded.
+The current database has 13 tables and 48+ charts that duplicate what Robot
+Framework already provides in `output.xml`. Data isn't reaching Superset because
+`DATABASE_URL` is silently unset, but even when it works, the schema is bloated
+and disconnected from RF fundamentals.
 
-Here's the chain of failure:
+## Design Principle
 
-1. **No `.env` file exists** on this machine (confirmed: `cat .env` → file not found)
-2. **`DATABASE_URL` is empty** in the current environment (confirmed: `echo $DATABASE_URL` → blank)
-3. When `DbListener.end_suite()` runs, it calls `TestDatabase()` with no URL
-4. `TestDatabase.__init__` raises `RuntimeError("DATABASE_URL is not set...")`
-5. **The exception is silently swallowed** at `db_listener.py:409-412`:
-   ```python
-   except Exception as e:
-       error_msg = f"DbListener: FAILED to archive results: {e}"
-       logger.warn(error_msg)
-       logger.console(error_msg)
-   ```
-   The test run completes successfully. The data just... vanishes.
+**The database is an index into Robot Framework runs, not a replacement for RF
+reporting.** `output.xml` is the source of truth. The database stores:
 
-### Why previous fixes didn't help
+1. A compressed copy of `output.xml` (self-contained, always accessible)
+2. An HTTP URL to the original `output.xml` (for web access)
+3. Run-level and test-level summaries for Superset charting
 
-The git history shows 8+ commits addressing symptoms, but never this root cause:
-
-| Commit | What it did | Why it didn't help |
-|--------|------------|-------------------|
-| `8bd6fff` | Aligned POSTGRES_PASSWORD defaults | Password doesn't matter if DATABASE_URL is never set |
-| `0ff5483` | Fixed host parsing in diagnostic tool | Diagnostics don't fix missing config |
-| `c0f29b5` | Added post-run DB verification | Verification warns, but still says "skipping" when DATABASE_URL is unset |
-| `5f4aecb` | Added `make robot-superset` connection tests | Tests can't pass if DB isn't configured |
-
-### The cron script is also broken
-
-`scripts/cron_run_local_models.sh` **never sources `.env`**. Even if `.env` existed, the hourly cron job wouldn't see `DATABASE_URL`. The Makefile does `-include .env` + `export`, so `make run-local-models` would work — but the cron script bypasses Make and calls `run_local_models.py` directly.
+Everything else — keyword timing, messages, tags, metadata — lives in `output.xml`
+and can be extracted on demand.
 
 ---
 
-## The Fix (3 changes)
+## New Schema (2 tables)
 
-### 1. Fail loudly, not silently (`db_listener.py`)
+### `test_runs`
 
-The `DbListener` must **fail the suite** (or at minimum produce a highly visible
-error) when it can't connect to the database. The current behavior of swallowing
-the exception means test runs appear successful while silently losing all data.
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | Auto-increment |
+| `timestamp` | DATETIME NOT NULL | When the suite started |
+| `model_name` | TEXT NOT NULL | LLM model under test |
+| `test_suite` | TEXT NOT NULL | Robot Framework suite name |
+| `total_tests` | INTEGER | Count |
+| `passed` | INTEGER | Count |
+| `failed` | INTEGER | Count |
+| `skipped` | INTEGER | Count |
+| `duration_seconds` | REAL | Wall-clock suite duration |
+| `git_commit` | TEXT | SHA at time of run |
+| `git_branch` | TEXT | Branch at time of run |
+| `hostname` | TEXT | Machine that ran the tests |
+| `rfc_version` | TEXT | Version of rfc package |
+| `output_xml_url` | TEXT | HTTP URL to output.xml (nullable) |
+| `output_xml_gz` | BLOB | gzip-compressed output.xml |
 
-**Change:** In `end_suite()`, when database write fails due to missing config,
-raise a clear `RuntimeError` or log at `ERROR` level + set a suite message so
-the Robot output shows the failure. Don't let a missing DATABASE_URL silently
-drop data.
+**Indexes:** `(model_name)`, `(timestamp)`, `(test_suite)`
 
-Also: In `start_suite()`, **eagerly validate** the database connection instead of
-waiting until `end_suite()`. If DATABASE_URL is unset, fail immediately with a
-clear message rather than running all tests and then losing the results.
+### `test_results`
 
-### 2. Source `.env` in the cron script (`scripts/cron_run_local_models.sh`)
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | Auto-increment |
+| `run_id` | INTEGER FK | → test_runs.id ON DELETE CASCADE |
+| `test_name` | TEXT NOT NULL | Test case name |
+| `test_status` | TEXT NOT NULL | PASS / FAIL / SKIP |
+| `score` | INTEGER | From `score:N` tag (nullable) |
+| `question` | TEXT | Test documentation / prompt |
+| `expected_answer` | TEXT | Expected LLM response |
+| `actual_answer` | TEXT | Actual LLM response |
+| `grading_reason` | TEXT | Why the grade was given |
+| `rfc_version` | TEXT | Version of rfc package |
 
-Add `.env` loading at the top of the cron script:
+**Indexes:** `(run_id)`
 
-```bash
-ENV_FILE="${REPO_DIR}/.env"
-if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    source "$ENV_FILE"
-    set +a
-fi
+---
+
+## Tables Being Dropped (11 tables)
+
+| Table | Reason |
+|-------|--------|
+| `keyword_results` | Fully in output.xml |
+| `ollama_metrics` | Extractable from output.xml |
+| `host_info` | hostname column on test_runs suffices |
+| `models` | model_name column on test_runs suffices |
+| `pipeline_results` | GitLab CI metadata, not core RF |
+| `robot_dry_run_results` | Not core |
+| `analytics_model_trends` | Recomputable / Superset can do this |
+| `analytics_test_stability` | Recomputable |
+| `analytics_model_comparison` | Recomputable |
+| `analytics_regression_alerts` | Recomputable |
+| `analytics_performance_fingerprints` | Recomputable |
+
+---
+
+## Files to Change
+
+### Core (rewrite)
+
+| File | Action | Details |
+|------|--------|---------|
+| `src/rfc/test_database.py` | **Rewrite** | 2 tables only. Both SQLite and SQLAlchemy backends. Add `output_xml_gz` BLOB column. Remove all dropped-table methods. |
+| `src/rfc/db_listener.py` | **Rewrite** | Capture output.xml at end_suite, gzip it, store blob + URL. Remove keyword tracking, ollama metrics accumulation. **Fail loudly** if DATABASE_URL is unset (eager validation in start_suite). |
+| `superset/bootstrap_dashboards.py` | **Rewrite** | 2 core tables, simplified virtual datasets, rebuilt charts/dashboards. |
+
+### Delete
+
+| File | Reason |
+|------|--------|
+| `src/rfc/analytics.py` | Dropped entirely |
+| `tests/test_analytics.py` (if exists) | No module to test |
+| `src/rfc/result_importer.py` | Rewrite to match new schema (no keyword/ollama import) |
+
+### Simplify
+
+| File | Change |
+|------|--------|
+| `src/rfc/superset_keywords.py` | Remove references to dropped tables |
+| `scripts/run_local_models.py` | Remove DB verification for dropped tables; add pre-flight DATABASE_URL check |
+| `scripts/cron_run_local_models.sh` | Source `.env` before running |
+| `scripts/diagnose_superset_db.py` | Update table list |
+| `Makefile` | Remove analytics targets |
+
+### Tests
+
+| File | Change |
+|------|--------|
+| `tests/test_db_listener.py` | Update for new schema, test output.xml blob capture |
+| `tests/test_test_database.py` | Update for 2-table schema |
+| `tests/test_result_importer.py` | Update for simplified import |
+| `robot/superset/tests/connection.robot` | Update table expectations |
+
+---
+
+## Migration Strategy
+
+**Purge and rebuild.** No migration — the user explicitly asked to purge previous
+data. The bootstrap script will `DROP TABLE IF EXISTS` all old tables and create
+the new 2-table schema fresh.
+
+---
+
+## Data Flow (New)
+
+```
+Robot Test Execution
+│
+├─→ DbListener.start_suite()
+│   └─→ Validate DATABASE_URL exists → FAIL LOUDLY if not
+│
+├─→ Tests run normally, DbListener captures RFC_DATA: messages
+│
+├─→ DbListener.end_suite()
+│   ├─→ Read output.xml from Robot's output directory
+│   ├─→ gzip compress it
+│   ├─→ INSERT into test_runs (with output_xml_gz blob + URL)
+│   ├─→ INSERT into test_results (one per test case)
+│   └─→ Log: "archived N results + output.xml (XMB) to PostgreSQL"
+│
+└─→ Superset queries test_runs + test_results for dashboards
+    └─→ output.xml accessible via URL column or by decompressing blob
 ```
 
-This ensures `DATABASE_URL` is available when the cron job runs
-`run_local_models.py` outside of Make.
-
-### 3. Early validation in `run_local_models.py`
-
-The script already has post-run verification that warns when `DATABASE_URL` is
-unset. But this warning comes AFTER tests run and data is lost. Move the check
-to BEFORE the test loop begins, and make it a hard error (or at least a very
-prominent warning with a y/N confirmation) so the user knows data won't be
-archived.
-
 ---
 
-## Summary
+## Superset Dashboards (Rebuilt)
 
-| # | File | Change | Why |
-|---|------|--------|-----|
-| 1 | `src/rfc/db_listener.py` | Eagerly validate DB in `start_suite()`; fail visibly on write error | Stop silently losing data |
-| 2 | `scripts/cron_run_local_models.sh` | Source `.env` before running | Cron jobs need DATABASE_URL too |
-| 3 | `scripts/run_local_models.py` | Pre-flight DATABASE_URL check before test loop | Don't run tests if data can't be saved |
+### Dashboard 1: Test Results
+- Pass rate over time by model (line chart)
+- Model comparison — pass rate (bar chart)
+- Test status breakdown (pie chart)
+- Suite duration trend (line chart)
+- Recent test runs (table — includes output_xml_url as clickable link)
+- Failures by test name (bar chart)
+
+### Dashboard 2: Model Performance
+- Pass rate by model (bar chart)
+- Avg duration by model (bar chart)
+- Tests per model (bar chart)
+- Score distribution (bar chart)
+- Test results detail (table with output_xml_url link)
+
+That's it. 2 dashboards, ~11 charts. Not 6 dashboards and 48 charts.
