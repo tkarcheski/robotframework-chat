@@ -43,9 +43,10 @@ help: ## Show this help
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
 
-update: ## Fetch and pull latest changes from remote
+update: ## Fetch, pull latest changes, and sync dependencies
 	git fetch
 	git pull
+	uv sync --extra dev --extra superset
 
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
