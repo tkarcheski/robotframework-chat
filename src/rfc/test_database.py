@@ -82,6 +82,9 @@ class TestResult:
     actual_answer: Optional[str] = None
     grading_reason: Optional[str] = None
     rfc_version: Optional[str] = None
+    tag_severity: Optional[str] = None
+    tag_tier: Optional[int] = None
+    tag_verify: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -145,6 +148,9 @@ class _SQLiteBackend(_Backend):
         actual_answer TEXT,
         grading_reason TEXT,
         rfc_version TEXT,
+        tag_severity TEXT,
+        tag_tier INTEGER,
+        tag_verify TEXT,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -166,6 +172,9 @@ class _SQLiteBackend(_Backend):
         tr.actual_answer,
         tr.grading_reason,
         tr.rfc_version,
+        tr.tag_severity,
+        tr.tag_tier,
+        tr.tag_verify,
         r.timestamp,
         r.model_name,
         r.test_suite,
@@ -230,8 +239,8 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_results
                 (run_id, test_name, test_status, score, tags, question,
                  expected_answer, actual_answer, grading_reason,
-                 rfc_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 rfc_version, tag_severity, tag_tier, tag_verify)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -245,6 +254,9 @@ class _SQLiteBackend(_Backend):
                         r.actual_answer,
                         r.grading_reason,
                         r.rfc_version,
+                        r.tag_severity,
+                        r.tag_tier,
+                        r.tag_verify,
                     )
                     for r in results
                 ],
@@ -331,6 +343,10 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_source TEXT",
         # Add tags column to test_results.
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT",
+        # Add structured tag columns.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20)",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50)",
         # Joined view for Superset — one flat dataset with all columns.
         """CREATE OR REPLACE VIEW test_results_full AS
         SELECT
@@ -345,6 +361,9 @@ class _SQLAlchemyBackend(_Backend):
             tr.actual_answer,
             tr.grading_reason,
             tr.rfc_version,
+            tr.tag_severity,
+            tr.tag_tier,
+            tr.tag_verify,
             r.timestamp,
             r.model_name,
             r.test_suite,
@@ -418,6 +437,9 @@ class _SQLAlchemyBackend(_Backend):
             Column("actual_answer", Text),
             Column("grading_reason", Text),
             Column("rfc_version", Text),
+            Column("tag_severity", String(20)),
+            Column("tag_tier", Integer),
+            Column("tag_verify", String(50)),
             Index("idx_test_results_run_id", "run_id"),
         )
 
@@ -470,6 +492,9 @@ class _SQLAlchemyBackend(_Backend):
                         "actual_answer": r.actual_answer,
                         "grading_reason": r.grading_reason,
                         "rfc_version": r.rfc_version,
+                        "tag_severity": r.tag_severity,
+                        "tag_tier": r.tag_tier,
+                        "tag_verify": r.tag_verify,
                     }
                     for r in results
                 ],
