@@ -126,11 +126,8 @@ ci:
   artifact_retention_days: 30
   metadata_includes:
     - model_name
-    - release_date
-    - parameters
     - git_commit
     - git_branch
-    - pipeline_url
-    - runner_id
-    - runner_description
+    - hostname
     - timestamp
+    - output_xml_source
