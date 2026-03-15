@@ -3,13 +3,14 @@
 Run inside the Superset container after ``superset init`` to create:
   - The 2 PostgreSQL tables (test_runs, test_results)
   - A database connection to the RFC PostgreSQL tables
-  - Datasets for both tables
-  - Charts covering test results and model performance
-  - Two dashboards: Test Results, Model Performance
+  - Virtual datasets for KPIs, host health, model performance
+  - Charts covering KPIs, host health, model performance, git/version context
+  - One consolidated dashboard: RFC Test Health
 
 Redesigned schema: 2 tables only. output.xml is the source of truth.
 """
 
+import json
 import logging
 import os
 import sys
@@ -114,6 +115,718 @@ FROM test_results tr
 JOIN test_runs r ON tr.run_id = r.id;
 """
 
+# ---------------------------------------------------------------------------
+# Status colors — consistent across all charts.
+# ---------------------------------------------------------------------------
+STATUS_COLORS: dict[str, str] = {
+    "PASS": "#2ECC71",
+    "FAIL": "#E74C3C",
+    "ERROR": "#E74C3C",
+    "SKIP": "#95A5A6",
+}
+
+# Threshold for pass-rate alerting (percent).
+PASS_RATE_THRESHOLD = 95.0
+
+# ---------------------------------------------------------------------------
+# Virtual datasets — SQL for computed views.
+# ---------------------------------------------------------------------------
+_VIRTUAL_DATASETS: dict[str, str] = {
+    "kpi_overall_pass_rate": """
+        SELECT
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct,
+            SUM(total_tests) AS total_tests,
+            SUM(passed) AS total_passed,
+            SUM(failed) AS total_failed
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+    """,
+    "kpi_failing_hosts": """
+        SELECT
+            hostname,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY hostname
+        HAVING 100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0) < 95
+    """,
+    "kpi_slowest_host": """
+        SELECT
+            hostname,
+            PERCENTILE_CONT(0.5)
+                WITHIN GROUP (ORDER BY duration_seconds) AS median_runtime
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY hostname
+        ORDER BY median_runtime DESC
+        LIMIT 1
+    """,
+    "kpi_worst_model": """
+        SELECT
+            model_name,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY model_name
+        ORDER BY pass_rate_pct ASC
+        LIMIT 1
+    """,
+    "host_pass_rate_timeseries": """
+        SELECT
+            DATE_TRUNC('hour', timestamp) AS time_bucket,
+            hostname,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct,
+            SUM(total_tests) AS total_tests,
+            SUM(failed) AS total_failed
+        FROM test_runs
+        GROUP BY DATE_TRUNC('hour', timestamp), hostname
+        ORDER BY time_bucket
+    """,
+    "host_current_pass_rate": """
+        SELECT
+            hostname,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct,
+            SUM(total_tests) AS total_tests,
+            SUM(passed) AS total_passed,
+            SUM(failed) AS total_failed,
+            COUNT(*) AS run_count
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY hostname
+        ORDER BY pass_rate_pct ASC
+    """,
+    "model_runtime_percentiles": """
+        SELECT
+            model_name,
+            COUNT(*) AS run_count,
+            ROUND(PERCENTILE_CONT(0.25)
+                WITHIN GROUP (ORDER BY duration_seconds)::numeric, 2)
+                AS p25_runtime,
+            ROUND(PERCENTILE_CONT(0.50)
+                WITHIN GROUP (ORDER BY duration_seconds)::numeric, 2)
+                AS p50_runtime,
+            ROUND(PERCENTILE_CONT(0.75)
+                WITHIN GROUP (ORDER BY duration_seconds)::numeric, 2)
+                AS p75_runtime,
+            ROUND(PERCENTILE_CONT(0.95)
+                WITHIN GROUP (ORDER BY duration_seconds)::numeric, 2)
+                AS p95_runtime,
+            ROUND(AVG(duration_seconds)::numeric, 2) AS avg_runtime
+        FROM test_runs
+        WHERE timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY model_name
+    """,
+    "model_pass_rate_timeseries": """
+        SELECT
+            DATE_TRUNC('hour', timestamp) AS time_bucket,
+            model_name,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct,
+            SUM(total_tests) AS total_tests
+        FROM test_runs
+        GROUP BY DATE_TRUNC('hour', timestamp), model_name
+        ORDER BY time_bucket
+    """,
+    "version_pass_rate": """
+        SELECT
+            COALESCE(rfc_version, 'unknown') AS rfc_version,
+            ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)
+                AS pass_rate_pct,
+            SUM(total_tests) AS total_tests,
+            COUNT(*) AS run_count
+        FROM test_runs
+        GROUP BY COALESCE(rfc_version, 'unknown')
+        ORDER BY run_count DESC
+    """,
+    "host_recent_failures": """
+        SELECT
+            r.hostname,
+            tr.test_name,
+            tr.test_status,
+            r.model_name,
+            r.timestamp
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE tr.test_status IN ('FAIL', 'ERROR')
+          AND r.timestamp >= NOW() - INTERVAL '24 hours'
+        ORDER BY r.timestamp DESC
+    """,
+}
+
+# ---------------------------------------------------------------------------
+# Chart definitions — datasource_id_key maps to dataset name at runtime.
+# ---------------------------------------------------------------------------
+_CHART_DEFS: list[dict[str, Any]] = [
+    # --- KPI Row ---
+    {
+        "slice_name": "Overall Pass Rate (24h)",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_overall_pass_rate",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "pass_rate_pct"},
+                "aggregate": "MAX",
+                "label": "Pass Rate %",
+            },
+            "subheader": "Last 24 hours",
+            "y_axis_format": ".1f",
+            "conditional_formatting": [
+                {
+                    "operator": ">=",
+                    "targetValue": PASS_RATE_THRESHOLD,
+                    "color": STATUS_COLORS["PASS"],
+                },
+                {
+                    "operator": "<",
+                    "targetValue": PASS_RATE_THRESHOLD,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Failing Hosts",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_failing_hosts",
+        "params": {
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "Failing Hosts",
+            },
+            "subheader": f"Pass rate < {PASS_RATE_THRESHOLD}%",
+            "conditional_formatting": [
+                {
+                    "operator": ">",
+                    "targetValue": 0,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+                {
+                    "operator": "==",
+                    "targetValue": 0,
+                    "color": STATUS_COLORS["PASS"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Slowest Host",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_slowest_host",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "median_runtime"},
+                "aggregate": "MAX",
+                "label": "Median Runtime (s)",
+            },
+            "subheader": "Slowest host by median duration",
+            "y_axis_format": ".1f",
+        },
+    },
+    {
+        "slice_name": "Worst Model Today",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_worst_model",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "pass_rate_pct"},
+                "aggregate": "MIN",
+                "label": "Worst Pass Rate %",
+            },
+            "subheader": "Lowest pass rate model (24h)",
+            "y_axis_format": ".1f",
+            "conditional_formatting": [
+                {
+                    "operator": "<",
+                    "targetValue": PASS_RATE_THRESHOLD,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+            ],
+        },
+    },
+    # --- Host Health Section ---
+    {
+        "slice_name": "Host Pass Rate Over Time",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "host_pass_rate_timeseries",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "pass_rate_pct"},
+                    "aggregate": "AVG",
+                    "label": "Pass Rate %",
+                },
+            ],
+            "groupby": ["hostname"],
+            "x_axis": "time_bucket",
+            "granularity_sqla": "time_bucket",
+            "rolling_type": "mean",
+            "rolling_periods": 6,
+            "y_axis_bounds": [0, 100],
+            "annotation_layers": [
+                {
+                    "name": f"{PASS_RATE_THRESHOLD}% Threshold",
+                    "annotationType": "FORMULA",
+                    "value": str(PASS_RATE_THRESHOLD),
+                    "style": "dashed",
+                    "color": STATUS_COLORS["FAIL"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Current Pass Rate by Host",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "host_current_pass_rate",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "pass_rate_pct"},
+                    "aggregate": "MAX",
+                    "label": "Pass Rate %",
+                },
+            ],
+            "groupby": ["hostname"],
+            "order_desc": False,
+            "y_axis_bounds": [0, 100],
+            "conditional_formatting": [
+                {
+                    "operator": "<",
+                    "targetValue": 90.0,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+                {
+                    "operator": "<",
+                    "targetValue": PASS_RATE_THRESHOLD,
+                    "color": "#F39C12",
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Recent Failures by Host",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "host_recent_failures",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SQL",
+                    "sqlExpression": "COUNT(*)",
+                    "label": "Failure Count",
+                },
+            ],
+            "groupby": ["hostname"],
+            "color_scheme": "supersetColors",
+            "series_colors": {"Failure Count": STATUS_COLORS["FAIL"]},
+        },
+    },
+    # --- Model Performance Section ---
+    {
+        "slice_name": "Pass Trends by Model",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "model_pass_rate_timeseries",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "pass_rate_pct"},
+                    "aggregate": "AVG",
+                    "label": "Pass Rate %",
+                },
+            ],
+            "groupby": ["model_name"],
+            "x_axis": "time_bucket",
+            "granularity_sqla": "time_bucket",
+            "rolling_type": "mean",
+            "rolling_periods": 6,
+            "y_axis_bounds": [0, 100],
+        },
+    },
+    {
+        "slice_name": "Model Runtime Distribution",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "model_runtime_percentiles",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "p25_runtime"},
+                    "aggregate": "MAX",
+                    "label": "P25",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "p50_runtime"},
+                    "aggregate": "MAX",
+                    "label": "P50 (Median)",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "p75_runtime"},
+                    "aggregate": "MAX",
+                    "label": "P75",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "p95_runtime"},
+                    "aggregate": "MAX",
+                    "label": "P95",
+                },
+            ],
+            "groupby": ["model_name"],
+        },
+    },
+    {
+        "slice_name": "Model Comparison \u2014 Pass Rate",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "test_runs",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SQL",
+                    "sqlExpression": (
+                        "ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)"
+                    ),
+                    "label": "Pass Rate %",
+                },
+            ],
+            "groupby": ["model_name"],
+            "order_desc": True,
+            "y_axis_bounds": [0, 100],
+        },
+    },
+    # --- Git / Version Context ---
+    {
+        "slice_name": "RFC Version Distribution",
+        "viz_type": "pie",
+        "datasource_id_key": "version_pass_rate",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "run_count"},
+                    "aggregate": "MAX",
+                    "label": "Run Count",
+                },
+            ],
+            "groupby": ["rfc_version"],
+            "row_limit": 10,
+        },
+    },
+    {
+        "slice_name": "Pass Rate by RFC Version",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "test_runs",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SQL",
+                    "sqlExpression": (
+                        "ROUND(100.0 * SUM(passed) / NULLIF(SUM(total_tests), 0), 1)"
+                    ),
+                    "label": "Pass Rate %",
+                },
+            ],
+            "groupby": ["rfc_version"],
+            "time_column": "timestamp",
+            "granularity_sqla": "timestamp",
+            "y_axis_bounds": [0, 100],
+        },
+    },
+    # --- Status Breakdown ---
+    {
+        "slice_name": "Test Status Breakdown",
+        "viz_type": "pie",
+        "datasource_id_key": "test_results_full",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SQL",
+                    "sqlExpression": "COUNT(*)",
+                    "label": "Count",
+                },
+            ],
+            "groupby": ["test_status"],
+            "color_map": STATUS_COLORS,
+        },
+    },
+    # --- Drill-Down Tables ---
+    {
+        "slice_name": "Recent Test Runs",
+        "viz_type": "table",
+        "datasource_id_key": "test_runs",
+        "params": {
+            "columns": [
+                "timestamp",
+                "hostname",
+                "model_name",
+                "rfc_version",
+                "test_suite",
+                "passed",
+                "failed",
+                "skipped",
+                "duration_seconds",
+                "git_branch",
+            ],
+            "order_desc": True,
+            "row_limit": 100,
+        },
+    },
+    {
+        "slice_name": "Test Results Detail",
+        "viz_type": "table",
+        "datasource_id_key": "test_results_full",
+        "params": {
+            "columns": [
+                "timestamp",
+                "hostname",
+                "model_name",
+                "rfc_version",
+                "test_suite",
+                "test_name",
+                "test_status",
+                "duration_seconds",
+                "score",
+                "grading_reason",
+            ],
+            "order_desc": True,
+            "row_limit": 200,
+        },
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Native filter configurations — wired to all charts.
+# ---------------------------------------------------------------------------
+_FILTER_CONFIGS: list[dict[str, Any]] = [
+    {
+        "id": "NATIVE_FILTER-TIME",
+        "name": "Time Range",
+        "filterType": "filter_time",
+        "targets": [{"datasetId": "__TEST_RUNS_ID__"}],
+        "defaultDataMask": {"filterState": {"value": "Last day"}},
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "NATIVE_FILTER-HOST",
+        "name": "Host",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "hostname"},
+                "datasetId": "__TEST_RUNS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "NATIVE_FILTER-MODEL",
+        "name": "Model",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "model_name"},
+                "datasetId": "__TEST_RUNS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "NATIVE_FILTER-VERSION",
+        "name": "RFC Version",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "rfc_version"},
+                "datasetId": "__TEST_RUNS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Dashboard layout sections — maps chart names to grid positions.
+# Superset uses a 12-column grid.  height is in grid units (1 unit ~ 8px).
+# ---------------------------------------------------------------------------
+_LAYOUT_SECTIONS: list[dict[str, Any]] = [
+    {
+        "label": "KPI Row",
+        "charts": [
+            {"name": "Overall Pass Rate (24h)", "width": 3, "height": 10},
+            {"name": "Failing Hosts", "width": 3, "height": 10},
+            {"name": "Slowest Host", "width": 3, "height": 10},
+            {"name": "Worst Model Today", "width": 3, "height": 10},
+        ],
+    },
+    {
+        "label": "Host Health",
+        "charts": [
+            {"name": "Host Pass Rate Over Time", "width": 8, "height": 50},
+            {"name": "Current Pass Rate by Host", "width": 4, "height": 50},
+        ],
+    },
+    {
+        "label": "Host Failures",
+        "charts": [
+            {"name": "Recent Failures by Host", "width": 6, "height": 40},
+            {"name": "Test Status Breakdown", "width": 6, "height": 40},
+        ],
+    },
+    {
+        "label": "Model Performance",
+        "charts": [
+            {"name": "Pass Trends by Model", "width": 6, "height": 50},
+            {"name": "Model Runtime Distribution", "width": 6, "height": 50},
+        ],
+    },
+    {
+        "label": "Model Comparison",
+        "charts": [
+            {"name": "Model Comparison \u2014 Pass Rate", "width": 12, "height": 40},
+        ],
+    },
+    {
+        "label": "Git / Version Context",
+        "charts": [
+            {"name": "RFC Version Distribution", "width": 4, "height": 40},
+            {"name": "Pass Rate by RFC Version", "width": 8, "height": 40},
+        ],
+    },
+    {
+        "label": "Drill-Down",
+        "charts": [
+            {"name": "Recent Test Runs", "width": 12, "height": 50},
+            {"name": "Test Results Detail", "width": 12, "height": 50},
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _probe_columns(database_uri: str, sql: str) -> list[str]:
+    """Discover column names by running ``sql`` with LIMIT 0.
+
+    When Superset's ``fetch_metadata()`` fails on virtual datasets with
+    empty underlying tables, this function discovers column names by
+    executing the SQL with LIMIT 0 — the database infers types from
+    the query plan without scanning any rows.
+    """
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(database_uri)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT * FROM ({sql}) sq LIMIT 0"))
+            return list(result.keys())
+    finally:
+        engine.dispose()
+
+
+def _build_position_json(chart_id_map: dict[str, int]) -> dict[str, Any]:
+    """Build Superset dashboard ``position_json`` from _LAYOUT_SECTIONS.
+
+    Args:
+        chart_id_map: mapping of chart slice_name -> Superset slice ID.
+
+    Returns:
+        Dict suitable for ``Dashboard.position_json``.
+    """
+    layout: dict[str, Any] = {
+        "DASHBOARD_VERSION_KEY": "v2",
+        "ROOT_ID": {
+            "type": "ROOT",
+            "id": "ROOT_ID",
+            "children": ["GRID_ID"],
+        },
+        "GRID_ID": {
+            "type": "GRID",
+            "id": "GRID_ID",
+            "children": [],
+        },
+        "HEADER_ID": {
+            "type": "HEADER",
+            "id": "HEADER_ID",
+            "meta": {"text": "RFC Test Health"},
+        },
+    }
+
+    row_counter = 0
+    for section in _LAYOUT_SECTIONS:
+        row_id = f"ROW-{row_counter}"
+        row: dict[str, Any] = {
+            "type": "ROW",
+            "id": row_id,
+            "children": [],
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+        }
+        layout["GRID_ID"]["children"].append(row_id)
+
+        for chart_spec in section["charts"]:
+            chart_name = chart_spec["name"]
+            chart_db_id = chart_id_map.get(chart_name, 0)
+            chart_key = f"CHART-{chart_db_id}"
+            row["children"].append(chart_key)
+            layout[chart_key] = {
+                "type": "CHART",
+                "id": chart_key,
+                "children": [],
+                "meta": {
+                    "chartId": chart_db_id,
+                    "width": chart_spec["width"],
+                    "height": chart_spec["height"],
+                    "sliceName": chart_name,
+                },
+            }
+
+        layout[row_id] = row
+        row_counter += 1
+
+    return layout
+
+
+def _build_json_metadata(
+    test_runs_dataset_id: int,
+) -> dict[str, Any]:
+    """Build dashboard ``json_metadata`` with native filters.
+
+    Substitutes the placeholder dataset IDs in _FILTER_CONFIGS with the
+    actual ``test_runs`` dataset ID at runtime.
+    """
+    filters = []
+    for fconf in _FILTER_CONFIGS:
+        f = json.loads(json.dumps(fconf))  # deep copy
+        # Replace placeholder dataset IDs
+        for target in f.get("targets", []):
+            if target.get("datasetId") == "__TEST_RUNS_ID__":
+                target["datasetId"] = test_runs_dataset_id
+        filters.append(f)
+
+    return {
+        "native_filter_configuration": filters,
+        "chart_configuration": {},
+        "cross_filters_enabled": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap functions
+# ---------------------------------------------------------------------------
+
 
 def _get_database_uri() -> str:
     """Build the internal PostgreSQL URI for Superset (Docker-internal)."""
@@ -142,7 +855,7 @@ def bootstrap() -> None:
             log.error("Failed to create database connection.")
             sys.exit(1)
         _create_datasets(db_id)
-        _create_charts_and_dashboards(db_id)
+        _create_charts_and_dashboard(db_id)
 
     log.info("Bootstrap complete.")
 
@@ -191,12 +904,12 @@ def _ensure_database_connection() -> int | None:
 
 
 def _create_datasets(db_id: int) -> None:
-    """Create Superset datasets for the 2 tables."""
+    """Create Superset datasets for tables, views, and virtual datasets."""
     from superset import db as superset_db
     from superset.connectors.sqla.models import SqlaTable
 
-    tables = ["test_runs", "test_results", "test_results_full"]
-    for table_name in tables:
+    # Physical tables and views
+    for table_name in ["test_runs", "test_results", "test_results_full"]:
         existing = (
             superset_db.session.query(SqlaTable)
             .filter_by(table_name=table_name, database_id=db_id)
@@ -214,7 +927,6 @@ def _create_datasets(db_id: int) -> None:
         superset_db.session.add(dataset)
         superset_db.session.commit()
 
-        # Fetch metadata to populate columns
         try:
             dataset.fetch_metadata()
             superset_db.session.commit()
@@ -223,17 +935,60 @@ def _create_datasets(db_id: int) -> None:
 
         log.info(f"Created dataset: {table_name} (id={dataset.id})")
 
+    # Virtual datasets (SQL-based)
+    uri = _get_database_uri()
+    for vds_name, vds_sql in _VIRTUAL_DATASETS.items():
+        existing = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=vds_name, database_id=db_id)
+            .first()
+        )
+        if existing:
+            log.info(f"Virtual dataset already exists: {vds_name}")
+            continue
 
-def _create_charts_and_dashboards(db_id: int) -> None:
-    """Create charts and 2 dashboards for the 2-table schema."""
+        dataset = SqlaTable(
+            table_name=vds_name,
+            database_id=db_id,
+            schema=None,
+            sql=vds_sql,
+        )
+        superset_db.session.add(dataset)
+        superset_db.session.commit()
+
+        try:
+            dataset.fetch_metadata()
+            superset_db.session.commit()
+        except Exception:
+            log.warning(
+                f"fetch_metadata failed for {vds_name}, "
+                "trying _probe_columns fallback: {e}"
+            )
+            try:
+                cols = _probe_columns(uri, vds_sql)
+                log.info(f"Probed {len(cols)} columns for {vds_name}: {cols}")
+            except Exception as probe_err:
+                log.warning(f"_probe_columns also failed for {vds_name}: {probe_err}")
+
+        log.info(f"Created virtual dataset: {vds_name} (id={dataset.id})")
+
+
+def _create_charts_and_dashboard(db_id: int) -> None:
+    """Create charts and the consolidated RFC Test Health dashboard."""
     from superset import db as superset_db
     from superset.connectors.sqla.models import SqlaTable
     from superset.models.dashboard import Dashboard
     from superset.models.slice import Slice
 
-    # Get dataset IDs
+    # Build dataset name -> ID map (includes physical + virtual datasets)
     datasets: dict[str, int] = {}
-    for table_name in ["test_runs", "test_results", "test_results_full"]:
+    all_dataset_names = [
+        "test_runs",
+        "test_results",
+        "test_results_full",
+    ] + list(_VIRTUAL_DATASETS.keys())
+
+    for table_name in all_dataset_names:
         ds = (
             superset_db.session.query(SqlaTable)
             .filter_by(table_name=table_name, database_id=db_id)
@@ -246,258 +1001,76 @@ def _create_charts_and_dashboards(db_id: int) -> None:
         log.warning("No datasets found; skipping chart creation.")
         return
 
-    # Chart definitions
-    charts: list[dict[str, Any]] = []
+    # Create charts from _CHART_DEFS
+    chart_id_map: dict[str, int] = {}
+    for chart_def in _CHART_DEFS:
+        ds_key = chart_def["datasource_id_key"]
+        if ds_key not in datasets:
+            log.warning(
+                f"Skipping chart '{chart_def['slice_name']}': "
+                f"dataset '{ds_key}' not found."
+            )
+            continue
 
-    if "test_runs" in datasets:
-        ds_id = datasets["test_runs"]
-        charts.extend(
-            [
-                {
-                    "slice_name": "Pass Rate Over Time by Model",
-                    "viz_type": "echarts_timeseries_line",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["passed"],
-                        "groupby": ["model_name"],
-                        "time_column": "timestamp",
-                    },
-                },
-                {
-                    "slice_name": "Model Comparison — Pass Rate",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["passed", "failed"],
-                        "groupby": ["model_name"],
-                    },
-                },
-                {
-                    "slice_name": "Suite Duration Trend",
-                    "viz_type": "echarts_timeseries_line",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["duration_seconds"],
-                        "groupby": ["model_name"],
-                        "time_column": "timestamp",
-                    },
-                },
-                {
-                    "slice_name": "Recent Test Runs",
-                    "viz_type": "table",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "columns": [
-                            "timestamp",
-                            "model_name",
-                            "hostname",
-                            "test_suite",
-                            "passed",
-                            "failed",
-                            "duration_seconds",
-                            "output_xml_source",
-                            "output_xml_url",
-                        ],
-                        "order_desc": True,
-                        "row_limit": 100,
-                    },
-                },
-                {
-                    "slice_name": "Avg Duration by Model",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["duration_seconds"],
-                        "groupby": ["model_name"],
-                    },
-                },
-                {
-                    "slice_name": "Tests Per Model",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["total_tests"],
-                        "groupby": ["model_name"],
-                    },
-                },
-                {
-                    "slice_name": "Pass Rate by Hostname",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["passed", "failed"],
-                        "groupby": ["hostname"],
-                    },
-                },
-                {
-                    "slice_name": "Model Performance by Host",
-                    "viz_type": "echarts_timeseries_line",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["passed"],
-                        "groupby": ["model_name", "hostname"],
-                        "time_column": "timestamp",
-                    },
-                },
-                {
-                    "slice_name": "Tests Per Host",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["total_tests"],
-                        "groupby": ["hostname"],
-                    },
-                },
-            ]
-        )
+        ds_id = datasets[ds_key]
+        slice_name = chart_def["slice_name"]
 
-    if "test_results_full" in datasets:
-        ds_id = datasets["test_results_full"]
-        charts.extend(
-            [
-                {
-                    "slice_name": "Test Status Breakdown",
-                    "viz_type": "pie",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["count"],
-                        "groupby": ["test_status"],
-                    },
-                },
-                {
-                    "slice_name": "Failures by Test Name",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["count"],
-                        "groupby": ["test_name", "model_name"],
-                        "adhoc_filters": [
-                            {
-                                "clause": "WHERE",
-                                "expressionType": "SIMPLE",
-                                "subject": "test_status",
-                                "operator": "==",
-                                "comparator": "FAIL",
-                            },
-                        ],
-                    },
-                },
-                {
-                    "slice_name": "Score Distribution",
-                    "viz_type": "echarts_bar",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "metrics": ["count"],
-                        "groupby": ["score", "model_name"],
-                    },
-                },
-                {
-                    "slice_name": "Test Results Detail",
-                    "viz_type": "table",
-                    "datasource_id": ds_id,
-                    "datasource_type": "table",
-                    "params": {
-                        "columns": [
-                            "timestamp",
-                            "model_name",
-                            "hostname",
-                            "test_name",
-                            "test_status",
-                            "score",
-                            "tag_severity",
-                            "tag_tier",
-                            "tag_verify",
-                            "tags",
-                            "question",
-                            "expected_answer",
-                            "actual_answer",
-                            "grading_reason",
-                            "output_xml_url",
-                            "output_xml_source",
-                        ],
-                        "order_desc": True,
-                        "row_limit": 200,
-                    },
-                },
-            ]
-        )
-
-    # Create charts
-    import json
-
-    chart_ids: list[int] = []
-    for chart_def in charts:
         existing = (
-            superset_db.session.query(Slice)
-            .filter_by(slice_name=chart_def["slice_name"])
-            .first()
+            superset_db.session.query(Slice).filter_by(slice_name=slice_name).first()
         )
         if existing:
-            chart_ids.append(existing.id)
-            log.info(f"Chart already exists: {chart_def['slice_name']}")
+            chart_id_map[slice_name] = existing.id
+            log.info(f"Chart already exists: {slice_name}")
             continue
 
         chart = Slice(
-            slice_name=chart_def["slice_name"],
+            slice_name=slice_name,
             viz_type=chart_def["viz_type"],
-            datasource_id=chart_def["datasource_id"],
-            datasource_type=chart_def["datasource_type"],
+            datasource_id=ds_id,
+            datasource_type="table",
             params=json.dumps(chart_def["params"]),
         )
         superset_db.session.add(chart)
         superset_db.session.commit()
-        chart_ids.append(chart.id)
-        log.info(f"Created chart: {chart_def['slice_name']} (id={chart.id})")
+        chart_id_map[slice_name] = chart.id
+        log.info(f"Created chart: {slice_name} (id={chart.id})")
 
-    # Create dashboards
-    _dashboards = [
-        {
-            "dashboard_title": "Test Results",
-            "slug": "test-results",
-        },
-        {
-            "dashboard_title": "Model Performance",
-            "slug": "model-performance",
-        },
-    ]
-    for dash_def in _dashboards:
-        existing = (
-            superset_db.session.query(Dashboard)
-            .filter_by(slug=dash_def["slug"])
-            .first()
-        )
-        if existing:
-            log.info(f"Dashboard already exists: {dash_def['dashboard_title']}")
-            continue
+    # Build layout and metadata
+    position = _build_position_json(chart_id_map)
+    test_runs_ds_id = datasets.get("test_runs", 0)
+    metadata = _build_json_metadata(test_runs_ds_id)
 
-        dashboard = Dashboard(
-            dashboard_title=dash_def["dashboard_title"],
-            slug=dash_def["slug"],
-            published=True,
-        )
-        # Associate all charts with both dashboards
-        dashboard.slices = [
+    # Create consolidated dashboard
+    slug = "rfc-test-health"
+    existing_dash = superset_db.session.query(Dashboard).filter_by(slug=slug).first()
+    if existing_dash:
+        # Update layout and metadata on existing dashboard
+        existing_dash.position_json = json.dumps(position)
+        existing_dash.json_metadata = json.dumps(metadata)
+        existing_dash.slices = [
             superset_db.session.query(Slice).get(cid)
-            for cid in chart_ids
+            for cid in chart_id_map.values()
             if superset_db.session.query(Slice).get(cid)
         ]
-        superset_db.session.add(dashboard)
         superset_db.session.commit()
-        log.info(
-            f"Created dashboard: {dash_def['dashboard_title']} (id={dashboard.id})"
-        )
+        log.info(f"Updated dashboard: RFC Test Health (id={existing_dash.id})")
+        return
+
+    dashboard = Dashboard(
+        dashboard_title="RFC Test Health",
+        slug=slug,
+        published=True,
+        position_json=json.dumps(position),
+        json_metadata=json.dumps(metadata),
+    )
+    dashboard.slices = [
+        superset_db.session.query(Slice).get(cid)
+        for cid in chart_id_map.values()
+        if superset_db.session.query(Slice).get(cid)
+    ]
+    superset_db.session.add(dashboard)
+    superset_db.session.commit()
+    log.info(f"Created dashboard: RFC Test Health (id={dashboard.id})")
 
 
 if __name__ == "__main__":
