@@ -64,8 +64,6 @@ check_for_updates() {
 run_full_cycle() {
     log "Running: make update"
     make update 2>&1 | tee -a "$LOGFILE"
-    log "Running: make install"
-    make install 2>&1 | tee -a "$LOGFILE"
     log "Running: make run-local-models"
     make run-local-models 2>&1 | tee -a "$LOGFILE"
     log "Full cycle complete."

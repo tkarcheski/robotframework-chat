@@ -91,6 +91,7 @@ like:
 - **When adding a new Robot test suite**, register it in both `config/test_suites.yaml` (CI) and `config/local_models.yaml` (local cron). The hourly cron job (`scripts/cron_run_local_models.sh`) runs every suite listed in `local_models.yaml`.
 - **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
 - **Always rebase onto `claude-code-staging`**, not `main`. This is the integration branch for all Claude Code work.
+- **Always include a version bump when submitting a PR.** Ask the user what the next version should be before bumping. Update the version in both `pyproject.toml` and `src/rfc/__init__.py`.
 
 ---
 
