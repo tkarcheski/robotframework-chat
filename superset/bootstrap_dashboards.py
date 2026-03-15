@@ -65,7 +65,10 @@ CREATE TABLE IF NOT EXISTS test_results (
     expected_answer TEXT,
     actual_answer TEXT,
     grading_reason TEXT,
-    rfc_version VARCHAR(50)
+    rfc_version VARCHAR(50),
+    tag_severity VARCHAR(20),
+    tag_tier INTEGER,
+    tag_verify VARCHAR(50)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
@@ -74,6 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
 CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
 
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20);
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50);
 
 CREATE OR REPLACE VIEW test_results_full AS
 SELECT
@@ -88,6 +94,9 @@ SELECT
     tr.actual_answer,
     tr.grading_reason,
     tr.rfc_version,
+    tr.tag_severity,
+    tr.tag_tier,
+    tr.tag_verify,
     r.timestamp,
     r.model_name,
     r.test_suite,
@@ -407,6 +416,9 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                             "test_name",
                             "test_status",
                             "score",
+                            "tag_severity",
+                            "tag_tier",
+                            "tag_verify",
                             "tags",
                             "question",
                             "expected_answer",
