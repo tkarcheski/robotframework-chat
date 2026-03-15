@@ -251,9 +251,9 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                 "datasource_type": "table",
                 "params": {
                     "columns": [
-                        "timestamp", "model_name", "test_suite",
-                        "passed", "failed", "duration_seconds",
-                        "output_xml_url",
+                        "timestamp", "model_name", "hostname",
+                        "test_suite", "passed", "failed",
+                        "duration_seconds", "output_xml_url",
                     ],
                     "order_desc": True,
                     "row_limit": 100,
@@ -277,6 +277,37 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                 "params": {
                     "metrics": ["total_tests"],
                     "groupby": ["model_name"],
+                },
+            },
+            {
+                "slice_name": "Pass Rate by Hostname",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["passed", "failed"],
+                    "groupby": ["hostname"],
+                },
+            },
+            {
+                "slice_name": "Model Performance by Host",
+                "viz_type": "echarts_timeseries_line",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["passed"],
+                    "groupby": ["model_name", "hostname"],
+                    "time_column": "timestamp",
+                },
+            },
+            {
+                "slice_name": "Tests Per Host",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["total_tests"],
+                    "groupby": ["hostname"],
                 },
             },
         ])
