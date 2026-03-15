@@ -1,7 +1,7 @@
 """Robot Framework keywords for Superset/PostgreSQL connectivity checks.
 
-Provides keywords to verify database connectivity, push host information,
-and validate the data pipeline from test execution through to Superset.
+Provides keywords to verify database connectivity and validate the
+data pipeline from test execution through to Superset.
 
 Usage in Robot Framework::
 
@@ -11,18 +11,16 @@ Usage in Robot Framework::
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from typing import Dict
 
 from robot.api import logger
 from robot.api.deco import keyword
 
-from rfc import __version__
-from rfc.host_info import collect_host_info
-from rfc.test_database import HostInfo, TestDatabase
+from rfc.test_database import TestDatabase
 
 
 class SupersetKeywords:
-    """Keywords for verifying Superset/PostgreSQL connectivity and pushing host info."""
+    """Keywords for verifying Superset/PostgreSQL connectivity."""
 
     ROBOT_LIBRARY_SCOPE = "SUITE"
 
@@ -57,45 +55,6 @@ class SupersetKeywords:
         logger.console(f"  Database: {version}")
         return version
 
-    @keyword("Push Host Info")
-    def push_host_info(self) -> Dict[str, Any]:
-        """Collect and push host hardware/OS info to the database.
-
-        Performs an upsert on the ``host_info`` table keyed by hostname.
-
-        Returns:
-            Dictionary of collected host metrics.
-        """
-        db = self._get_db()
-        info = collect_host_info()
-        host = HostInfo(
-            hostname=info["hostname"],
-            os_name=info["os_name"],
-            os_version=info["os_version"],
-            cpu_arch=info["cpu_arch"],
-            cpu_count=info["cpu_count"],
-            total_ram_gb=info["total_ram_gb"],
-            gpu_info=info.get("gpu_info"),
-            rfc_version=__version__,
-        )
-        db.add_or_update_host(host)
-        logger.info(f"Host info pushed: {info['hostname']}")
-        logger.console(f"  Host registered: {info['hostname']}")
-        return info
-
-    @keyword("Get All Hosts")
-    def get_all_hosts(self) -> List[Dict[str, Any]]:
-        """Return all registered hosts from the database.
-
-        Returns:
-            List of host info dictionaries.
-        """
-        db = self._get_db()
-        hosts = db.get_hosts()
-        for h in hosts:
-            logger.info(f"  {h.get('hostname', '?')}: {h}")
-        return hosts
-
     @keyword("Get Table Row Counts")
     def get_table_row_counts(self) -> Dict[str, int]:
         """Return row counts for all RFC tables.
@@ -107,12 +66,6 @@ class SupersetKeywords:
         tables = [
             "test_runs",
             "test_results",
-            "models",
-            "pipeline_results",
-            "robot_dry_run_results",
-            "keyword_results",
-            "ollama_metrics",
-            "host_info",
         ]
         counts: Dict[str, int] = {}
         for table in tables:

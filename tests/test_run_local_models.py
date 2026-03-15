@@ -559,8 +559,12 @@ class TestRunIterationLoop:
 # ---------------------------------------------------------------------------
 
 _SAMPLE_RESULTS = [
-    RunResult(node="host1", model="llama3", suite="math", returncode=0, output_dir="r/h/m"),
-    RunResult(node="host1", model="mistral", suite="math", returncode=0, output_dir="r/h/m2"),
+    RunResult(
+        node="host1", model="llama3", suite="math", returncode=0, output_dir="r/h/m"
+    ),
+    RunResult(
+        node="host1", model="mistral", suite="math", returncode=0, output_dir="r/h/m2"
+    ),
 ]
 
 

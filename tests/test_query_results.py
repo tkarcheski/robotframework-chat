@@ -3,10 +3,8 @@
 from unittest.mock import MagicMock
 
 from scripts.query_results import (
-    cmd_compare,
     cmd_export,
     cmd_history,
-    cmd_performance,
     cmd_recent,
     print_table,
 )
@@ -31,35 +29,6 @@ class TestPrintTable:
         print_table(["X"], [["very long cell content"]])
         out = capsys.readouterr().out
         assert "very long cell content" in out
-
-
-class TestCmdPerformance:
-    def test_no_data(self, capsys):
-        db = MagicMock()
-        db.get_model_performance.return_value = []
-        args = MagicMock()
-        args.model = None
-        cmd_performance(db, args)
-        assert "No test data found" in capsys.readouterr().out
-
-    def test_with_data(self, capsys):
-        db = MagicMock()
-        db.get_model_performance.return_value = [
-            {
-                "model_name": "llama3",
-                "total_runs": 5,
-                "avg_pass_rate": 85.0,
-                "total_passed": 42,
-                "total_failed": 8,
-                "avg_duration": 120.5,
-            }
-        ]
-        args = MagicMock()
-        args.model = "llama3"
-        cmd_performance(db, args)
-        out = capsys.readouterr().out
-        assert "llama3" in out
-        assert "85.0%" in out
 
 
 class TestCmdRecent:
@@ -133,39 +102,6 @@ class TestCmdHistory:
         args.test_name = "test1"
         cmd_history(db, args)
         assert "N/A" in capsys.readouterr().out
-
-
-class TestCmdCompare:
-    def test_fewer_than_two_models(self, capsys):
-        db = MagicMock()
-        db.get_model_performance.return_value = [
-            {"model_name": "llama3", "avg_pass_rate": 90}
-        ]
-        args = MagicMock()
-        cmd_compare(db, args)
-        assert "Need at least 2 models" in capsys.readouterr().out
-
-    def test_comparison(self, capsys):
-        db = MagicMock()
-        db.get_model_performance.return_value = [
-            {
-                "model_name": "llama3",
-                "avg_pass_rate": 90.0,
-                "total_passed": 45,
-                "total_failed": 5,
-            },
-            {
-                "model_name": "mistral",
-                "avg_pass_rate": 80.0,
-                "total_passed": 40,
-                "total_failed": 10,
-            },
-        ]
-        args = MagicMock()
-        cmd_compare(db, args)
-        out = capsys.readouterr().out
-        assert "Best Performing: llama3" in out
-        assert "mistral" in out
 
 
 class TestCmdExport:

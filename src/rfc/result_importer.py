@@ -1,10 +1,8 @@
-"""Extended result importer with deduplication and keyword/metrics import.
+"""Result importer with deduplication and output.xml blob storage.
 
-Extends the basic import_test_results script with:
-- SHA-256 deduplication via import_log table
-- Keyword timing extraction from output.xml ``<kw>`` elements
-- Ollama metrics import from sibling ``ollama_timestamps.json``
-- Source tracking (local, ftp, ci)
+Imports output.xml files into the 2-table database schema (test_runs +
+test_results), storing a gzip-compressed copy of the output.xml as a
+BLOB for later retrieval.
 
 Usage::
 
@@ -14,17 +12,14 @@ Usage::
 
 from __future__ import annotations
 
+import gzip
 import hashlib
-import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Optional
-from xml.etree import ElementTree as ET
+from typing import Optional
 
-from rfc import __version__
-from rfc.test_database import KeywordResult, OllamaMetrics, TestDatabase
+from rfc.test_database import TestDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +33,6 @@ class ImportResult:
     file_path: str
     skipped: bool = False
     source: str = "local"
-    keyword_count: int = 0
-    ollama_metrics_count: int = 0
 
 
 def compute_file_hash(file_path: str) -> str:
@@ -51,90 +44,7 @@ def compute_file_hash(file_path: str) -> str:
     return sha256.hexdigest()
 
 
-def _parse_rf_timestamp(ts: str) -> Optional[datetime]:
-    """Parse a Robot Framework timestamp (RF 7.x ISO or older format)."""
-    if not ts:
-        return None
-    try:
-        return datetime.fromisoformat(ts)
-    except ValueError:
-        pass
-    try:
-        return datetime.strptime(ts.split(".")[0], "%Y%m%d %H:%M:%S")
-    except ValueError:
-        return None
-
-
-def parse_keywords_from_xml(xml_path: str) -> list[dict[str, Any]]:
-    """Extract keyword timing data from output.xml.
-
-    Finds all ``<kw>`` elements inside ``<test>`` elements that have
-    a ``library`` attribute, extracting name, status, and timing.
-
-    Returns:
-        List of dicts with keyword_name, library_name, test_name,
-        status, start_time, end_time, duration_seconds.
-    """
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-    suite = root.find("suite")
-    if suite is None:
-        return []
-
-    keywords: list[dict[str, Any]] = []
-    for test in suite.findall(".//test"):
-        test_name = test.get("name", "unknown")
-        for kw in test.findall(".//kw"):
-            kw_name = kw.get("name", "")
-            library = kw.get("library", "")
-            if not library:
-                continue  # skip non-library keywords
-
-            status_elem = kw.find("status")
-            status = "UNKNOWN"
-            start_str = ""
-            end_str = ""
-            duration = None
-
-            if status_elem is not None:
-                status = status_elem.get("status", "UNKNOWN")
-                start_str = status_elem.get("start", "") or status_elem.get(
-                    "starttime", ""
-                )
-                end_str = status_elem.get("end", "") or status_elem.get("endtime", "")
-                start_dt = _parse_rf_timestamp(start_str)
-                end_dt = _parse_rf_timestamp(end_str)
-                if start_dt and end_dt:
-                    duration = (end_dt - start_dt).total_seconds()
-
-            keywords.append(
-                {
-                    "test_name": test_name,
-                    "keyword_name": kw_name,
-                    "library_name": library,
-                    "status": status,
-                    "start_time": start_str,
-                    "end_time": end_str,
-                    "duration_seconds": duration,
-                }
-            )
-
-    return keywords
-
-
-def _parse_ollama_timestamps(json_path: str) -> list[dict[str, Any]]:
-    """Parse ollama_timestamps.json sibling file."""
-    try:
-        with open(json_path) as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return data
-    except (json.JSONDecodeError, OSError):
-        pass
-    return []
-
-
-def import_results_extended(
+def import_results(
     xml_path: str,
     db: TestDatabase,
     model_name: Optional[str] = None,
@@ -143,7 +53,7 @@ def import_results_extended(
     report_base_url: Optional[str] = None,
     _existing_hash: Optional[str] = None,
 ) -> ImportResult:
-    """Import output.xml with extended keyword/metrics extraction.
+    """Import output.xml with gzip blob storage.
 
     Args:
         xml_path: Path to output.xml file.
@@ -151,14 +61,13 @@ def import_results_extended(
         model_name: Optional model name override.
         source: Import source identifier (local, ftp, ci).
         check_dedup: If True, skip files already imported (by hash).
-        report_base_url: Base URL for report.html/log.html links.
+        report_base_url: Base URL for output.xml web access.
         _existing_hash: For testing — pretend this hash already exists.
 
     Returns:
-        ImportResult with run_id, hash, and counts.
+        ImportResult with run_id and hash.
     """
-    # Lazy import to avoid circular dependency
-    from scripts.import_test_results import import_results
+    from scripts.import_test_results import import_results as _base_import
 
     file_hash = compute_file_hash(xml_path)
 
@@ -173,75 +82,45 @@ def import_results_extended(
             source=source,
         )
 
+    # Build output_xml_url
+    output_xml_url = None
+    if report_base_url:
+        output_xml_url = f"{report_base_url.rstrip('/')}/output.xml"
+
+    # Read and gzip the output.xml
+    output_xml_gz = None
+    try:
+        with open(xml_path, "rb") as f:
+            output_xml_gz = gzip.compress(f.read())
+    except OSError:
+        logger.warning("Failed to read output.xml for compression: %s", xml_path)
+
     # Use existing import logic for core TestRun + TestResult
-    run_id = import_results(xml_path, db, model_name, report_base_url)
-
-    # Extended: extract and import keyword timing
-    keywords_data = parse_keywords_from_xml(xml_path)
-    keyword_results = [
-        KeywordResult(
-            run_id=run_id,
-            test_name=kw["test_name"],
-            keyword_name=kw["keyword_name"],
-            library_name=kw["library_name"],
-            status=kw["status"],
-            start_time=kw["start_time"],
-            end_time=kw["end_time"],
-            duration_seconds=kw["duration_seconds"],
-            rfc_version=__version__,
-        )
-        for kw in keywords_data
-    ]
-    if keyword_results:
-        db.add_keyword_results(keyword_results)
-        logger.info("  Imported %d keyword result(s)", len(keyword_results))
-
-    # Extended: import Ollama metrics from sibling file
-    ollama_count = 0
-    ollama_json = os.path.join(os.path.dirname(xml_path), "ollama_timestamps.json")
-    if os.path.isfile(ollama_json):
-        timestamps = _parse_ollama_timestamps(ollama_json)
-        ollama_metrics = [
-            OllamaMetrics(
-                run_id=run_id,
-                test_name=ts.get("keyword", "unknown"),
-                model_name=ts.get("model", "unknown"),
-                prompt_text=ts.get("prompt"),
-                total_duration_ns=None,
-                load_duration_ns=None,
-                prompt_eval_count=None,
-                prompt_eval_duration_ns=None,
-                prompt_eval_rate=None,
-                eval_count=None,
-                eval_duration_ns=None,
-                eval_rate=None,
-                rfc_version=__version__,
-            )
-            for ts in timestamps
-        ]
-        if ollama_metrics:
-            db.add_ollama_metrics(ollama_metrics)
-            ollama_count = len(ollama_metrics)
-            logger.info("  Imported %d Ollama metric(s)", ollama_count)
+    run_id = _base_import(
+        xml_path,
+        db,
+        model_name,
+        report_base_url,
+        output_xml_gz=output_xml_gz,
+        output_xml_url=output_xml_url,
+    )
 
     return ImportResult(
         run_id=run_id,
         file_hash=file_hash,
         file_path=xml_path,
         source=source,
-        keyword_count=len(keyword_results),
-        ollama_metrics_count=ollama_count,
     )
 
 
 def main() -> None:
-    """CLI entry point for extended import."""
+    """CLI entry point for result import."""
     import argparse
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
-        description="Import Robot Framework results (extended) into database"
+        description="Import Robot Framework results into database"
     )
     parser.add_argument(
         "output_xml",
@@ -267,7 +146,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--report-base-url",
-        help="Base URL for report.html/log.html links",
+        help="Base URL for output.xml web access",
     )
 
     args = parser.parse_args()
@@ -295,7 +174,7 @@ def main() -> None:
     skipped = 0
     for xml_file in xml_files:
         try:
-            result = import_results_extended(
+            result = import_results(
                 xml_file,
                 db,
                 model_name=args.model,
@@ -307,11 +186,7 @@ def main() -> None:
                 print(f"Skipped (duplicate): {xml_file}")
                 skipped += 1
             else:
-                print(
-                    f"Imported {xml_file} (run_id={result.run_id}, "
-                    f"keywords={result.keyword_count}, "
-                    f"ollama_metrics={result.ollama_metrics_count})"
-                )
+                print(f"Imported {xml_file} (run_id={result.run_id})")
                 imported += 1
         except Exception as e:
             print(f"Failed to import {xml_file}: {e}")
