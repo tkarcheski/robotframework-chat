@@ -289,6 +289,32 @@ class TestSQLAlchemyMigrations:
         assert len(executed_sql) == remaining
 
 
+class TestOutputXmlColumnMigrations:
+    """Verify migrations add output_xml_url and output_xml_gz columns."""
+
+    def test_migrations_include_output_xml_url_alter(self) -> None:
+        """Ensure ALTER TABLE for output_xml_url is in PG migrations."""
+        alter_sqls = [
+            s
+            for s in _SQLAlchemyBackend._PG_MIGRATIONS
+            if "output_xml_url" in s and "ALTER" in s.upper()
+        ]
+        assert len(alter_sqls) == 1, (
+            "Expected exactly one ALTER TABLE migration for output_xml_url"
+        )
+
+    def test_migrations_include_output_xml_gz_alter(self) -> None:
+        """Ensure ALTER TABLE for output_xml_gz is in PG migrations."""
+        alter_sqls = [
+            s
+            for s in _SQLAlchemyBackend._PG_MIGRATIONS
+            if "output_xml_gz" in s and "ALTER" in s.upper()
+        ]
+        assert len(alter_sqls) == 1, (
+            "Expected exactly one ALTER TABLE migration for output_xml_gz"
+        )
+
+
 class TestTableRowCount:
     def test_get_table_row_count(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
