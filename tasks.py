@@ -198,6 +198,12 @@ def docker_test_app() -> None:
     )
 
 
+def superset_sanitize() -> None:
+    """Truncate all RFC data tables (preserves dashboards/charts)."""
+    _ensure_env()
+    _uv_run("python", "scripts/sanitize_superset_db.py")
+
+
 def show_help() -> None:
     """Show available targets."""
     print("\nAvailable targets:\n")
@@ -224,6 +230,7 @@ TARGETS: dict[str, object] = {
     "analytics-regressions": analytics_regressions,
     "rebot-merge": rebot_merge,
     "send-results-ftp": send_results_ftp,
+    "superset-sanitize": superset_sanitize,
     "docker-build-app": docker_build_app,
     "docker-test-app": docker_test_app,
     "help": show_help,
