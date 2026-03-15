@@ -1,7 +1,7 @@
 """Tests for rfc.safety_keywords.SafetyKeywords."""
 
 import os
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from rfc.safety_keywords import SafetyKeywords
 
