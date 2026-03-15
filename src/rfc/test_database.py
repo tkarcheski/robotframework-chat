@@ -76,6 +76,7 @@ class TestResult:
     test_name: str
     test_status: str
     score: Optional[int] = None
+    tags: Optional[str] = None
     question: Optional[str] = None
     expected_answer: Optional[str] = None
     actual_answer: Optional[str] = None
@@ -138,6 +139,7 @@ class _SQLiteBackend(_Backend):
         test_name TEXT NOT NULL,
         test_status TEXT NOT NULL,
         score INTEGER,
+        tags TEXT,
         question TEXT,
         expected_answer TEXT,
         actual_answer TEXT,
@@ -150,6 +152,35 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+
+    CREATE VIEW IF NOT EXISTS test_results_full AS
+    SELECT
+        tr.id AS result_id,
+        tr.run_id,
+        tr.test_name,
+        tr.test_status,
+        tr.score,
+        tr.tags,
+        tr.question,
+        tr.expected_answer,
+        tr.actual_answer,
+        tr.grading_reason,
+        tr.rfc_version,
+        r.timestamp,
+        r.model_name,
+        r.test_suite,
+        r.total_tests,
+        r.passed,
+        r.failed,
+        r.skipped,
+        r.duration_seconds,
+        r.git_commit,
+        r.git_branch,
+        r.hostname,
+        r.output_xml_url,
+        r.output_xml_source
+    FROM test_results tr
+    JOIN test_runs r ON tr.run_id = r.id;
     """
 
     def __init__(self, db_path: str):
@@ -197,10 +228,10 @@ class _SQLiteBackend(_Backend):
             conn.executemany(
                 """
                 INSERT INTO test_results
-                (run_id, test_name, test_status, score, question,
+                (run_id, test_name, test_status, score, tags, question,
                  expected_answer, actual_answer, grading_reason,
                  rfc_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -208,6 +239,7 @@ class _SQLiteBackend(_Backend):
                         r.test_name,
                         r.test_status,
                         r.score,
+                        r.tags,
                         r.question,
                         r.expected_answer,
                         r.actual_answer,
@@ -297,6 +329,37 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_url TEXT",
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_gz BYTEA",
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_source TEXT",
+        # Add tags column to test_results.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT",
+        # Joined view for Superset — one flat dataset with all columns.
+        """CREATE OR REPLACE VIEW test_results_full AS
+        SELECT
+            tr.id AS result_id,
+            tr.run_id,
+            tr.test_name,
+            tr.test_status,
+            tr.score,
+            tr.tags,
+            tr.question,
+            tr.expected_answer,
+            tr.actual_answer,
+            tr.grading_reason,
+            tr.rfc_version,
+            r.timestamp,
+            r.model_name,
+            r.test_suite,
+            r.total_tests,
+            r.passed,
+            r.failed,
+            r.skipped,
+            r.duration_seconds,
+            r.git_commit,
+            r.git_branch,
+            r.hostname,
+            r.output_xml_url,
+            r.output_xml_source
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id""",
     ]
 
     def __init__(self, database_url: str):
@@ -349,6 +412,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("test_name", String, nullable=False),
             Column("test_status", String, nullable=False),
             Column("score", Integer),
+            Column("tags", Text),
             Column("question", Text),
             Column("expected_answer", Text),
             Column("actual_answer", Text),
@@ -400,6 +464,7 @@ class _SQLAlchemyBackend(_Backend):
                         "test_name": r.test_name,
                         "test_status": r.test_status,
                         "score": r.score,
+                        "tags": r.tags,
                         "question": r.question,
                         "expected_answer": r.expected_answer,
                         "actual_answer": r.actual_answer,

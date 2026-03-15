@@ -332,3 +332,95 @@ class TestEmptyResults:
     def test_add_empty_results_is_noop(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         db.add_test_results([])
+
+
+class TestTagsColumn:
+    """Verify tags are stored and retrieved in test_results."""
+
+    def test_tags_stored_on_test_result(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Tagged Test",
+                    test_status="PASS",
+                    score=1,
+                    tags="tier:1,verify:math,score:1",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT tags FROM test_results").fetchone()
+            assert row["tags"] == "tier:1,verify:math,score:1"
+
+    def test_tags_defaults_to_none(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="No Tags",
+                    test_status="PASS",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT tags FROM test_results").fetchone()
+            assert row["tags"] is None
+
+
+class TestResultsFullView:
+    """Verify test_results_full SQL view joins both tables."""
+
+    def test_view_returns_joined_data(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(
+            _make_run(model_name="qwen3", hostname="dev1")
+        )
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Math Addition",
+                    test_status="PASS",
+                    score=1,
+                    tags="tier:1,verify:math",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            # test_results columns
+            assert row["test_name"] == "Math Addition"
+            assert row["test_status"] == "PASS"
+            assert row["score"] == 1
+            assert row["tags"] == "tier:1,verify:math"
+            # test_runs columns (joined)
+            assert row["model_name"] == "qwen3"
+            assert row["hostname"] == "dev1"
+            assert row["test_suite"] == "math"
+
+    def test_view_excludes_output_xml_gz(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        compressed = gzip.compress(b"<robot/>")
+        run_id = db.add_test_run(_make_run(output_xml_gz=compressed))
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="T",
+                    test_status="PASS",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            columns = row.keys()
+            assert "output_xml_gz" not in columns
