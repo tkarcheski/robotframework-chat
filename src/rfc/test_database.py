@@ -289,6 +289,9 @@ class _SQLAlchemyBackend(_Backend):
         "DROP TABLE IF EXISTS analytics_model_comparison CASCADE",
         "DROP TABLE IF EXISTS analytics_regression_alerts CASCADE",
         "DROP TABLE IF EXISTS analytics_performance_fingerprints CASCADE",
+        # Add columns that may be missing from pre-existing test_runs tables.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_url TEXT",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_gz BYTEA",
     ]
 
     def __init__(self, database_url: str):
