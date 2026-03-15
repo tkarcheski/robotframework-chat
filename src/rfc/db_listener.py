@@ -37,6 +37,45 @@ from .test_database import (
 RFC_DATA_PREFIX = "RFC_DATA:"
 
 
+def _parse_tags(tags: list[str]) -> Dict[str, Any]:
+    """Parse structured tag prefixes and sort remaining tags.
+
+    Extracts ``severity:<val>``, ``tier:<int>``, and ``verify:<val>`` into
+    dedicated fields.  Remaining tags are sorted alphabetically and joined
+    with commas.  The structured prefixes are removed from the remaining
+    tag string to avoid duplication.
+
+    Args:
+        tags: List of tag strings from Robot Framework test attributes.
+
+    Returns:
+        Dict with keys ``tag_severity``, ``tag_tier``, ``tag_verify``,
+        and ``tags_sorted`` (comma-separated remaining tags or None).
+    """
+    severity: Optional[str] = None
+    tier: Optional[int] = None
+    verify: Optional[str] = None
+    other: list[str] = []
+    for tag in sorted(tags):
+        if tag.startswith("severity:"):
+            severity = tag.split(":", 1)[1]
+        elif tag.startswith("tier:"):
+            try:
+                tier = int(tag.split(":", 1)[1])
+            except ValueError:
+                other.append(tag)
+        elif tag.startswith("verify:"):
+            verify = tag.split(":", 1)[1]
+        else:
+            other.append(tag)
+    return {
+        "tag_severity": severity,
+        "tag_tier": tier,
+        "tag_verify": verify,
+        "tags_sorted": ",".join(other) if other else None,
+    }
+
+
 class DbListener:
     """Listener that archives Robot Framework results to a SQL database.
 
@@ -142,7 +181,8 @@ class DbListener:
                 except (ValueError, TypeError):
                     pass
 
-        tags_str = ",".join(tags) if tags else None
+        parsed = _parse_tags(tags)
+        tags_str = parsed["tags_sorted"]
 
         self._test_cases.append(
             {
@@ -155,6 +195,9 @@ class DbListener:
                 "actual_answer": self._current_test_data.get("actual_answer"),
                 "expected_answer": self._current_test_data.get("expected_answer"),
                 "grading_reason": self._current_test_data.get("grading_reason"),
+                "tag_severity": parsed["tag_severity"],
+                "tag_tier": parsed["tag_tier"],
+                "tag_verify": parsed["tag_verify"],
             }
         )
         self._current_test_data = {}
@@ -242,6 +285,9 @@ class DbListener:
                     actual_answer=tc.get("actual_answer"),
                     grading_reason=tc.get("grading_reason"),
                     rfc_version=__version__,
+                    tag_severity=tc.get("tag_severity"),
+                    tag_tier=tc.get("tag_tier"),
+                    tag_verify=tc.get("tag_verify"),
                 )
                 for tc in self._test_cases
             ]
