@@ -24,6 +24,7 @@ export
         send-results send-results-ftp \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
+        robot-autopilot \
         cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
@@ -105,6 +106,9 @@ discover-local-models: ## Discover Ollama nodes and list their models
 
 run-local-models: ## Run test suites against every model on every local node (ITERATIONS=-1 forever, 0 stop-on-error)
 	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),)
+
+robot-autopilot: ## Poll for git updates → update + install + run-local-models; idle 6h → re-run
+	@scripts/robot_autopilot.sh
 
 cron-install: ## Install hourly cron job for update + sync-models + run-local-models
 	@scripts/cron_run_local_models.sh --install
