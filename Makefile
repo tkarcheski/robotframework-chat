@@ -28,7 +28,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush superset-export superset-import superset-diagnose \
+        cache-flush superset-sanitize superset-export superset-import superset-diagnose \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -155,6 +155,9 @@ cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query Postgr
 	@echo "Flushing Redis cache..."
 	$(COMPOSE) exec redis redis-cli FLUSHALL
 	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+
+superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
+	uv run python scripts/sanitize_superset_db.py
 
 superset-export: ## Export Superset dashboards to backups/ directory
 	@mkdir -p backups
