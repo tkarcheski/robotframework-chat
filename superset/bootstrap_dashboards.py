@@ -162,9 +162,7 @@ def _ensure_database_connection() -> int | None:
     uri = _get_database_uri()
 
     existing = (
-        superset_db.session.query(Database)
-        .filter_by(database_name=db_name)
-        .first()
+        superset_db.session.query(Database).filter_by(database_name=db_name).first()
     )
     if existing:
         existing.sqlalchemy_uri = uri
@@ -244,162 +242,185 @@ def _create_charts_and_dashboards(db_id: int) -> None:
 
     if "test_runs" in datasets:
         ds_id = datasets["test_runs"]
-        charts.extend([
-            {
-                "slice_name": "Pass Rate Over Time by Model",
-                "viz_type": "echarts_timeseries_line",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["passed"],
-                    "groupby": ["model_name"],
-                    "time_column": "timestamp",
+        charts.extend(
+            [
+                {
+                    "slice_name": "Pass Rate Over Time by Model",
+                    "viz_type": "echarts_timeseries_line",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["passed"],
+                        "groupby": ["model_name"],
+                        "time_column": "timestamp",
+                    },
                 },
-            },
-            {
-                "slice_name": "Model Comparison — Pass Rate",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["passed", "failed"],
-                    "groupby": ["model_name"],
+                {
+                    "slice_name": "Model Comparison — Pass Rate",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["passed", "failed"],
+                        "groupby": ["model_name"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Suite Duration Trend",
-                "viz_type": "echarts_timeseries_line",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["duration_seconds"],
-                    "groupby": ["model_name"],
-                    "time_column": "timestamp",
+                {
+                    "slice_name": "Suite Duration Trend",
+                    "viz_type": "echarts_timeseries_line",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["duration_seconds"],
+                        "groupby": ["model_name"],
+                        "time_column": "timestamp",
+                    },
                 },
-            },
-            {
-                "slice_name": "Recent Test Runs",
-                "viz_type": "table",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "columns": [
-                        "timestamp", "model_name", "hostname",
-                        "test_suite", "passed", "failed",
-                        "duration_seconds", "output_xml_source",
-                        "output_xml_url",
-                    ],
-                    "order_desc": True,
-                    "row_limit": 100,
+                {
+                    "slice_name": "Recent Test Runs",
+                    "viz_type": "table",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "columns": [
+                            "timestamp",
+                            "model_name",
+                            "hostname",
+                            "test_suite",
+                            "passed",
+                            "failed",
+                            "duration_seconds",
+                            "output_xml_source",
+                            "output_xml_url",
+                        ],
+                        "order_desc": True,
+                        "row_limit": 100,
+                    },
                 },
-            },
-            {
-                "slice_name": "Avg Duration by Model",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["duration_seconds"],
-                    "groupby": ["model_name"],
+                {
+                    "slice_name": "Avg Duration by Model",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["duration_seconds"],
+                        "groupby": ["model_name"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Tests Per Model",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["total_tests"],
-                    "groupby": ["model_name"],
+                {
+                    "slice_name": "Tests Per Model",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["total_tests"],
+                        "groupby": ["model_name"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Pass Rate by Hostname",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["passed", "failed"],
-                    "groupby": ["hostname"],
+                {
+                    "slice_name": "Pass Rate by Hostname",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["passed", "failed"],
+                        "groupby": ["hostname"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Model Performance by Host",
-                "viz_type": "echarts_timeseries_line",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["passed"],
-                    "groupby": ["model_name", "hostname"],
-                    "time_column": "timestamp",
+                {
+                    "slice_name": "Model Performance by Host",
+                    "viz_type": "echarts_timeseries_line",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["passed"],
+                        "groupby": ["model_name", "hostname"],
+                        "time_column": "timestamp",
+                    },
                 },
-            },
-            {
-                "slice_name": "Tests Per Host",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["total_tests"],
-                    "groupby": ["hostname"],
+                {
+                    "slice_name": "Tests Per Host",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["total_tests"],
+                        "groupby": ["hostname"],
+                    },
                 },
-            },
-        ])
+            ]
+        )
 
     if "test_results_full" in datasets:
         ds_id = datasets["test_results_full"]
-        charts.extend([
-            {
-                "slice_name": "Test Status Breakdown",
-                "viz_type": "pie",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["count"],
-                    "groupby": ["test_status"],
+        charts.extend(
+            [
+                {
+                    "slice_name": "Test Status Breakdown",
+                    "viz_type": "pie",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["count"],
+                        "groupby": ["test_status"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Failures by Test Name",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["count"],
-                    "groupby": ["test_name", "model_name"],
-                    "adhoc_filters": [
-                        {"clause": "WHERE", "expressionType": "SIMPLE",
-                         "subject": "test_status", "operator": "==",
-                         "comparator": "FAIL"},
-                    ],
+                {
+                    "slice_name": "Failures by Test Name",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["count"],
+                        "groupby": ["test_name", "model_name"],
+                        "adhoc_filters": [
+                            {
+                                "clause": "WHERE",
+                                "expressionType": "SIMPLE",
+                                "subject": "test_status",
+                                "operator": "==",
+                                "comparator": "FAIL",
+                            },
+                        ],
+                    },
                 },
-            },
-            {
-                "slice_name": "Score Distribution",
-                "viz_type": "echarts_bar",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "metrics": ["count"],
-                    "groupby": ["score", "model_name"],
+                {
+                    "slice_name": "Score Distribution",
+                    "viz_type": "echarts_bar",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "metrics": ["count"],
+                        "groupby": ["score", "model_name"],
+                    },
                 },
-            },
-            {
-                "slice_name": "Test Results Detail",
-                "viz_type": "table",
-                "datasource_id": ds_id,
-                "datasource_type": "table",
-                "params": {
-                    "columns": [
-                        "timestamp", "model_name", "hostname",
-                        "test_name", "test_status", "score", "tags",
-                        "question", "actual_answer", "grading_reason",
-                    ],
-                    "order_desc": True,
-                    "row_limit": 200,
+                {
+                    "slice_name": "Test Results Detail",
+                    "viz_type": "table",
+                    "datasource_id": ds_id,
+                    "datasource_type": "table",
+                    "params": {
+                        "columns": [
+                            "timestamp",
+                            "model_name",
+                            "hostname",
+                            "test_name",
+                            "test_status",
+                            "score",
+                            "tags",
+                            "question",
+                            "expected_answer",
+                            "actual_answer",
+                            "grading_reason",
+                            "output_xml_url",
+                            "output_xml_source",
+                        ],
+                        "order_desc": True,
+                        "row_limit": 200,
+                    },
                 },
-            },
-        ])
+            ]
+        )
 
     # Create charts
     import json

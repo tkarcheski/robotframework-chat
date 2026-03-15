@@ -134,6 +134,14 @@ class DbListener:
                 except (ValueError, IndexError):
                     pass
 
+        if score is None:
+            rfc_score = self._current_test_data.get("score")
+            if rfc_score is not None:
+                try:
+                    score = int(rfc_score)
+                except (ValueError, TypeError):
+                    pass
+
         tags_str = ",".join(tags) if tags else None
 
         self._test_cases.append(

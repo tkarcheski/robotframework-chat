@@ -117,6 +117,22 @@ class TestDbListenerEndTest:
         listener.end_test("Test One", _test_attrs(tags=["IQ:100"]))
         assert listener._test_cases[0]["score"] is None
 
+    def test_score_from_rfc_data_fallback(self) -> None:
+        """Score captured from RFC_DATA when no score: tag exists."""
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:score:1"})
+        listener.end_test("T", _test_attrs(tags=["tier:1"]))
+        assert listener._test_cases[0]["score"] == 1
+
+    def test_score_tag_takes_precedence_over_rfc_data(self) -> None:
+        """Tag-based score wins when both tag and RFC_DATA are present."""
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:score:0"})
+        listener.end_test("T", _test_attrs(tags=["score:1"]))
+        assert listener._test_cases[0]["score"] == 1
+
     def test_score_none_for_invalid_score_tag(self) -> None:
         listener = DbListener()
         listener.end_test("Test One", _test_attrs(tags=["score:abc"]))
@@ -350,6 +366,27 @@ class TestDbListenerLogMessage:
             assert row["actual_answer"] == "4"
             assert row["expected_answer"] == "4"
             assert row["grading_reason"] == "Correct"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_rfc_data_score_archived_to_database(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        """Score from RFC_DATA flows through to the database."""
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Graded Test", {})
+        listener.log_message({"message": "RFC_DATA:score:1"})
+        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
+        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
+        listener.end_test("Graded Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["score"] == 1
 
 
 class TestDbListenerStartTest:
