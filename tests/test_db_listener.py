@@ -4,7 +4,7 @@ import os
 import sqlite3
 from unittest.mock import MagicMock, patch
 
-from rfc.db_listener import DbListener, _build_output_xml_url, _format_size
+from rfc.db_listener import DbListener, _build_output_xml_url, _format_size, _parse_tags
 
 
 def _suite_attrs(**overrides: object) -> dict:
@@ -571,6 +571,77 @@ class TestBuildOutputXmlUrl:
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
             url = _build_output_xml_url()
         assert url is None
+
+
+class TestParseTags:
+    """Tests for _parse_tags() structured tag extraction."""
+
+    def test_extracts_severity(self) -> None:
+        result = _parse_tags(["safety", "severity:high", "regression"])
+        assert result["tag_severity"] == "high"
+
+    def test_extracts_tier(self) -> None:
+        result = _parse_tags(["tier:1", "safety"])
+        assert result["tag_tier"] == 1
+
+    def test_extracts_verify(self) -> None:
+        result = _parse_tags(["verify:python", "safety"])
+        assert result["tag_verify"] == "python"
+
+    def test_remaining_tags_sorted_alphabetically(self) -> None:
+        result = _parse_tags(
+            ["safety", "regression", "batch", "severity:high", "tier:1", "verify:python"]
+        )
+        assert result["tags_sorted"] == "batch,regression,safety"
+
+    def test_empty_tags(self) -> None:
+        result = _parse_tags([])
+        assert result["tag_severity"] is None
+        assert result["tag_tier"] is None
+        assert result["tag_verify"] is None
+        assert result["tags_sorted"] is None
+
+    def test_no_structured_tags(self) -> None:
+        result = _parse_tags(["safety", "regression"])
+        assert result["tag_severity"] is None
+        assert result["tag_tier"] is None
+        assert result["tag_verify"] is None
+        assert result["tags_sorted"] == "regression,safety"
+
+    def test_invalid_tier_kept_in_other(self) -> None:
+        result = _parse_tags(["tier:abc", "safety"])
+        assert result["tag_tier"] is None
+        assert "tier:abc" in (result["tags_sorted"] or "")
+
+    def test_all_structured_no_remaining(self) -> None:
+        result = _parse_tags(["severity:critical", "tier:2", "verify:llm"])
+        assert result["tag_severity"] == "critical"
+        assert result["tag_tier"] == 2
+        assert result["tag_verify"] == "llm"
+        assert result["tags_sorted"] is None
+
+    def test_real_safety_suite_tags(self) -> None:
+        """Test with actual tags from the Safety test suite."""
+        result = _parse_tags([
+            "safety",
+            "llm-security",
+            "regression",
+            "tier:1",
+            "verify:python",
+            "prompt_injection",
+            "severity:critical",
+        ])
+        assert result["tag_severity"] == "critical"
+        assert result["tag_tier"] == 1
+        assert result["tag_verify"] == "python"
+        assert result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+
+    def test_score_tag_kept_in_other(self) -> None:
+        """score: tags are NOT extracted (handled separately by DbListener)."""
+        result = _parse_tags(["score:1", "tier:0", "verify:robot"])
+        assert result["tag_tier"] == 0
+        assert result["tag_verify"] == "robot"
+        assert "score:1" in (result["tags_sorted"] or "")
 
 
 class TestFormatSize:
