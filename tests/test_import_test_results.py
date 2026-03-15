@@ -425,9 +425,6 @@ class TestImportResults:
             assert run.total_tests == 2
             assert run.git_commit == "abc123"
             assert run.git_branch == "main"
-            assert run.pipeline_url == "https://gl.test/p/500"
-            assert run.runner_id == "runner-1"
-            assert run.runner_tags == "ollama,gpu"
         finally:
             os.unlink(path)
 
@@ -493,9 +490,6 @@ class TestImportResults:
             run = db.add_test_run.call_args[0][0]
             assert run.git_commit == "def456"
             assert run.git_branch == "feature-x"
-            assert run.pipeline_url == "https://gl.test/p/600"
-            assert run.runner_id == "runner-2"
-            assert run.runner_tags == "docker"
         finally:
             os.unlink(path)
 
@@ -522,9 +516,6 @@ class TestImportResults:
             run = db.add_test_run.call_args[0][0]
             assert run.git_commit == "env-sha"
             assert run.git_branch == "env-branch"
-            assert run.pipeline_url == "https://gl.test/env-pipeline"
-            assert run.runner_id == "env-runner"
-            assert run.runner_tags == "env-tags"
         finally:
             os.unlink(path)
 
@@ -625,8 +616,8 @@ class TestImportResults:
         finally:
             os.unlink(path)
 
-    def test_import_report_base_url_sets_urls(self):
-        """report_base_url parameter builds report_url and log_url."""
+    def test_import_report_base_url_sets_output_xml_url(self):
+        """report_base_url parameter builds output_xml_url."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
             db = MagicMock()
@@ -635,8 +626,7 @@ class TestImportResults:
             import_results(path, db, report_base_url="https://results.example.com/math")
 
             run = db.add_test_run.call_args[0][0]
-            assert run.report_url == "https://results.example.com/math/report.html"
-            assert run.log_url == "https://results.example.com/math/log.html"
+            assert run.output_xml_url == "https://results.example.com/math/output.xml"
         finally:
             os.unlink(path)
 
@@ -652,37 +642,12 @@ class TestImportResults:
             )
 
             run = db.add_test_run.call_args[0][0]
-            assert "//" not in run.report_url.replace("https://", "")
+            assert "//" not in run.output_xml_url.replace("https://", "")
         finally:
             os.unlink(path)
 
-    def test_import_detects_sibling_report_files(self):
-        """Auto-detects sibling report.html/log.html when no base URL given."""
-        path = _write_xml(MINIMAL_OUTPUT_XML)
-        try:
-            report_path = os.path.join(os.path.dirname(path), "report.html")
-            log_path = os.path.join(os.path.dirname(path), "log.html")
-            with open(report_path, "w") as f:
-                f.write("<html></html>")
-            with open(log_path, "w") as f:
-                f.write("<html></html>")
-
-            db = MagicMock()
-            db.add_test_run.return_value = 1
-
-            import_results(path, db)
-
-            run = db.add_test_run.call_args[0][0]
-            assert run.report_url == report_path
-            assert run.log_url == log_path
-        finally:
-            os.unlink(path)
-            for p in [report_path, log_path]:
-                if os.path.exists(p):
-                    os.unlink(p)
-
-    def test_import_no_report_files_urls_none(self):
-        """report_url and log_url are None when no sibling files exist."""
+    def test_import_compresses_output_xml(self):
+        """output.xml is gzip-compressed when output_xml_gz not provided."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
             db = MagicMock()
@@ -691,7 +656,21 @@ class TestImportResults:
             import_results(path, db)
 
             run = db.add_test_run.call_args[0][0]
-            assert run.report_url is None
-            assert run.log_url is None
+            assert run.output_xml_gz is not None
+            assert isinstance(run.output_xml_gz, bytes)
+        finally:
+            os.unlink(path)
+
+    def test_import_no_base_url_output_xml_url_none(self):
+        """output_xml_url is None when no report_base_url given."""
+        path = _write_xml(MINIMAL_OUTPUT_XML)
+        try:
+            db = MagicMock()
+            db.add_test_run.return_value = 1
+
+            import_results(path, db)
+
+            run = db.add_test_run.call_args[0][0]
+            assert run.output_xml_url is None
         finally:
             os.unlink(path)

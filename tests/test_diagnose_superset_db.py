@@ -36,7 +36,9 @@ def diag():
 class TestCheckPortMapping:
     """Tests for the check_port_mapping function."""
 
-    def test_port_reachable(self, diag: object, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_port_reachable(
+        self, diag: object, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """When port is reachable, should print OK."""
         with patch("socket.create_connection") as mock_conn:
             mock_sock = MagicMock()

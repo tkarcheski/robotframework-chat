@@ -135,12 +135,6 @@ def check_schema(url: str) -> bool:
     expected_tables = [
         "test_runs",
         "test_results",
-        "models",
-        "pipeline_results",
-        "robot_dry_run_results",
-        "keyword_results",
-        "ollama_metrics",
-        "host_info",
     ]
 
     all_tables = inspector.get_table_names()
@@ -181,12 +175,6 @@ def check_data(url: str) -> None:
     tables = [
         "test_runs",
         "test_results",
-        "models",
-        "pipeline_results",
-        "robot_dry_run_results",
-        "keyword_results",
-        "ollama_metrics",
-        "host_info",
     ]
 
     with engine.connect() as conn:
