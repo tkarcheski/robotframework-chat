@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS test_results (
     test_name VARCHAR(500) NOT NULL,
     test_status VARCHAR(20) NOT NULL,
     score INTEGER,
+    tags TEXT,
     question TEXT,
     expected_answer TEXT,
     actual_answer TEXT,
@@ -71,6 +72,37 @@ CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
 CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
 CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT;
+
+CREATE OR REPLACE VIEW test_results_full AS
+SELECT
+    tr.id AS result_id,
+    tr.run_id,
+    tr.test_name,
+    tr.test_status,
+    tr.score,
+    tr.tags,
+    tr.question,
+    tr.expected_answer,
+    tr.actual_answer,
+    tr.grading_reason,
+    tr.rfc_version,
+    r.timestamp,
+    r.model_name,
+    r.test_suite,
+    r.total_tests,
+    r.passed,
+    r.failed,
+    r.skipped,
+    r.duration_seconds,
+    r.git_commit,
+    r.git_branch,
+    r.hostname,
+    r.output_xml_url,
+    r.output_xml_source
+FROM test_results tr
+JOIN test_runs r ON tr.run_id = r.id;
 """
 
 
@@ -156,7 +188,7 @@ def _create_datasets(db_id: int) -> None:
     from superset import db as superset_db
     from superset.connectors.sqla.models import SqlaTable
 
-    tables = ["test_runs", "test_results"]
+    tables = ["test_runs", "test_results", "test_results_full"]
     for table_name in tables:
         existing = (
             superset_db.session.query(SqlaTable)
@@ -194,7 +226,7 @@ def _create_charts_and_dashboards(db_id: int) -> None:
 
     # Get dataset IDs
     datasets: dict[str, int] = {}
-    for table_name in ["test_runs", "test_results"]:
+    for table_name in ["test_runs", "test_results", "test_results_full"]:
         ds = (
             superset_db.session.query(SqlaTable)
             .filter_by(table_name=table_name, database_id=db_id)
@@ -314,8 +346,8 @@ def _create_charts_and_dashboards(db_id: int) -> None:
             },
         ])
 
-    if "test_results" in datasets:
-        ds_id = datasets["test_results"]
+    if "test_results_full" in datasets:
+        ds_id = datasets["test_results_full"]
         charts.extend([
             {
                 "slice_name": "Test Status Breakdown",
@@ -334,7 +366,7 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                 "datasource_type": "table",
                 "params": {
                     "metrics": ["count"],
-                    "groupby": ["test_name"],
+                    "groupby": ["test_name", "model_name"],
                     "adhoc_filters": [
                         {"clause": "WHERE", "expressionType": "SIMPLE",
                          "subject": "test_status", "operator": "==",
@@ -349,7 +381,7 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                 "datasource_type": "table",
                 "params": {
                     "metrics": ["count"],
-                    "groupby": ["score"],
+                    "groupby": ["score", "model_name"],
                 },
             },
             {
@@ -359,7 +391,8 @@ def _create_charts_and_dashboards(db_id: int) -> None:
                 "datasource_type": "table",
                 "params": {
                     "columns": [
-                        "test_name", "test_status", "score",
+                        "timestamp", "model_name", "hostname",
+                        "test_name", "test_status", "score", "tags",
                         "question", "actual_answer", "grading_reason",
                     ],
                     "order_desc": True,
