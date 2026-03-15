@@ -7,6 +7,7 @@ Respects DATABASE_URL for PostgreSQL; defaults to SQLite.
 """
 
 import argparse
+import gzip
 import os
 import sys
 from datetime import datetime
@@ -151,6 +152,8 @@ def import_results(
     db: TestDatabase,
     model_name: Optional[str] = None,
     report_base_url: Optional[str] = None,
+    output_xml_gz: Optional[bytes] = None,
+    output_xml_url: Optional[str] = None,
 ) -> int:
     """Import a single output.xml file into database.
 
@@ -158,6 +161,9 @@ def import_results(
         xml_path: Path to output.xml file
         db: TestDatabase instance
         model_name: Optional model name override
+        report_base_url: Base URL for report links
+        output_xml_gz: Pre-compressed output.xml blob (optional)
+        output_xml_url: URL to output.xml (optional)
 
     Returns:
         Run ID of the inserted record
@@ -166,11 +172,6 @@ def import_results(
     metadata = data["metadata"]
 
     if model_name is None:
-        # Try metadata keys in priority order:
-        # "Default_Model" — set by git_metadata_listener (always present)
-        # "Model" — may be set manually or by older output.xml files
-        # "Model_Name" — set by the pre-run modifier (from models.yaml)
-        # "Selected_Model" — set by model-aware filtering
         model_name = (
             metadata.get("Default_Model")
             or metadata.get("Model")
@@ -179,10 +180,6 @@ def import_results(
             or os.getenv("DEFAULT_MODEL", "unknown")
         )
 
-    model_release_date = metadata.get("Model_Release_Date")
-    model_parameters = metadata.get("Model_Parameters")
-
-    # Canonical keys first, then legacy GitLab-specific keys, then env vars
     git_commit = (
         metadata.get("Commit_SHA")
         or metadata.get("GitLab Commit")
@@ -195,22 +192,6 @@ def import_results(
         or os.getenv("CI_COMMIT_REF_NAME")
         or os.getenv("GITHUB_REF_NAME", "")
     )
-    pipeline_url = (
-        metadata.get("Pipeline_URL")
-        or metadata.get("GitLab Pipeline")
-        or os.getenv("CI_PIPELINE_URL", "")
-    )
-    runner_id = (
-        metadata.get("Runner_ID")
-        or metadata.get("Runner ID")
-        or os.getenv("CI_RUNNER_ID")
-        or os.getenv("RUNNER_NAME", "")
-    )
-    runner_tags = (
-        metadata.get("Runner_Tags")
-        or metadata.get("Runner Tags")
-        or os.getenv("CI_RUNNER_TAGS", "")
-    )
 
     timestamp_str = metadata.get("Timestamp")
     if timestamp_str:
@@ -221,42 +202,33 @@ def import_results(
     else:
         timestamp = datetime.now()
 
-    # Build report URLs
-    report_url: Optional[str] = None
-    log_url: Optional[str] = None
-    if report_base_url:
-        base = report_base_url.rstrip("/")
-        report_url = f"{base}/report.html"
-        log_url = f"{base}/log.html"
-    else:
-        # Auto-detect sibling report.html/log.html files
-        xml_dir = os.path.dirname(os.path.abspath(xml_path))
-        sibling_report = os.path.join(xml_dir, "report.html")
-        sibling_log = os.path.join(xml_dir, "log.html")
-        if os.path.isfile(sibling_report):
-            report_url = sibling_report
-        if os.path.isfile(sibling_log):
-            log_url = sibling_log
+    # Build output_xml_url from report_base_url if not provided
+    if output_xml_url is None and report_base_url:
+        output_xml_url = f"{report_base_url.rstrip('/')}/output.xml"
+
+    # Compress output.xml if not already provided
+    if output_xml_gz is None:
+        try:
+            with open(xml_path, "rb") as f:
+                output_xml_gz = gzip.compress(f.read())
+        except OSError:
+            pass
 
     run = TestRun(
         timestamp=timestamp,
         model_name=model_name or "unknown",
-        model_release_date=model_release_date,
-        model_parameters=model_parameters,
         test_suite=data["suite_name"],
-        git_commit=git_commit,
-        git_branch=git_branch,
-        pipeline_url=pipeline_url,
-        runner_id=runner_id,
-        runner_tags=runner_tags,
         total_tests=data["total_tests"],
         passed=data["passed"],
         failed=data["failed"],
         skipped=data["skipped"],
         duration_seconds=data["duration"],
+        git_commit=git_commit,
+        git_branch=git_branch,
+        hostname=os.getenv("HOSTNAME"),
         rfc_version=__version__,
-        report_url=report_url,
-        log_url=log_url,
+        output_xml_url=output_xml_url,
+        output_xml_gz=output_xml_gz,
     )
 
     run_id = db.add_test_run(run)
@@ -281,7 +253,7 @@ def import_results(
     return run_id
 
 
-def main():
+def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Import Robot Framework results into test database"
@@ -302,15 +274,13 @@ def main():
     )
     parser.add_argument(
         "--report-base-url",
-        help="Base URL for report.html/log.html (e.g. https://results.example.com/math)",
+        help="Base URL for output.xml web access",
     )
 
     args = parser.parse_args()
 
-    # Initialize database (requires DATABASE_URL env var)
     db = TestDatabase()
 
-    # Find output.xml files
     xml_files: list[str] = []
     if os.path.isfile(args.output_xml):
         xml_files.append(args.output_xml)
@@ -338,7 +308,7 @@ def main():
         except Exception as e:
             print(f"Failed to import {xml_file}: {e}")
 
-    print(f"\nImported {imported_count} test run(s) into database at {db.db_path}")
+    print(f"\nImported {imported_count} test run(s)")
 
 
 if __name__ == "__main__":

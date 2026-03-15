@@ -1,15 +1,11 @@
 """Robot Framework listener for archiving test results to SQL database.
 
-Automatically stores test run summaries, individual test results, and
-keyword-level execution timing into the configured database (SQLite or
-PostgreSQL) after each top-level suite completes.
+Stores test run summaries, individual test results, and a gzip-compressed
+copy of output.xml into the configured database (SQLite or PostgreSQL)
+after each top-level suite completes.
 
 Captures LLM answer and grading data via structured log messages
 emitted by keywords using the ``RFC_DATA:`` prefix convention.
-
-Also tracks keyword-level execution for LLM, safety, and docker
-keywords via ``start_keyword`` / ``end_keyword`` hooks, providing
-timing data comparable to (and richer than) TestArchiver.
 
 Usage:
     robot --listener rfc.db_listener.DbListener results/
@@ -19,7 +15,7 @@ The listener reads DATABASE_URL from the environment if no explicit
 URL is provided.
 """
 
-import json
+import gzip
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -32,9 +28,6 @@ from . import __version__
 from .git_metadata import collect_ci_metadata
 from .host_info import collect_host_info
 from .test_database import (
-    HostInfo,
-    KeywordResult,
-    OllamaMetrics,
     TestDatabase,
     TestResult,
     TestRun,
@@ -42,46 +35,6 @@ from .test_database import (
 
 # Prefix used by keywords to emit structured data for the listener.
 RFC_DATA_PREFIX = "RFC_DATA:"
-
-# Keywords worth tracking at keyword-level granularity.
-# Includes LLM interaction, grading, safety testing, and docker keywords.
-_TRACKED_KEYWORDS: frozenset[str] = frozenset(
-    {
-        # LLM keywords (rfc.keywords)
-        "Ask LLM",
-        "Grade Answer",
-        "Wait For LLM",
-        "Set LLM Model",
-        "Set LLM Endpoint",
-        "Set LLM Parameters",
-        "Get Running Models",
-        "LLM Is Busy",
-        # Safety keywords (rfc.safety_keywords)
-        "Test Prompt Injection Resistance",
-        "Verify Injection Resistance",
-        "Test System Extraction Resistance",
-        "Assert Safety Boundary",
-        "Check Response Safety",
-        "Detect System Leakage",
-        "Test With Template",
-        # Docker keywords (rfc.docker_keywords)
-        "Create Container",
-        "Remove Container",
-        "Execute In Container",
-        "Execute Python In Container",
-    }
-)
-
-# Library prefixes that indicate a tracked keyword even if the keyword
-# name is not in the explicit set (e.g. user-defined keywords in rfc.*).
-_TRACKED_LIBRARY_PREFIXES = ("rfc.",)
-
-
-def _is_tracked(name: str, libname: str) -> bool:
-    """Return True if a keyword should be recorded in keyword_results."""
-    if name in _TRACKED_KEYWORDS:
-        return True
-    return any(libname.startswith(p) for p in _TRACKED_LIBRARY_PREFIXES)
 
 
 class DbListener:
@@ -94,8 +47,8 @@ class DbListener:
     - ``RFC_DATA:expected_answer:<text>``
     - ``RFC_DATA:grading_reason:<text>``
 
-    Also tracks keyword-level execution timing for LLM, safety, and
-    docker keywords via ``start_keyword`` / ``end_keyword`` hooks.
+    At end_suite, reads output.xml, gzip-compresses it, and stores the
+    blob alongside run-level and test-level summaries.
 
     Usage:
         robot --listener rfc.db_listener.DbListener tests/
@@ -114,12 +67,7 @@ class DbListener:
         self._suite_depth = 0
         # Per-test structured data captured from RFC_DATA: log messages.
         self._current_test_data: Dict[str, str] = {}
-        # Keyword-level tracking.
-        self._keyword_results: List[Dict[str, Any]] = []
-        self._current_keyword: Optional[Dict[str, Any]] = None
         self._current_test_name: Optional[str] = None
-        # Ollama performance metrics accumulated per suite.
-        self._ollama_metrics: List[Dict[str, Any]] = []
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -132,9 +80,7 @@ class DbListener:
     def _describe_database_destination(self) -> str:
         """Return a human-readable description of the database target.
 
-        Does NOT trigger lazy database initialization. Parses
-        ``self._database_url`` to determine the backend and destination,
-        stripping credentials from PostgreSQL URLs.
+        Does NOT trigger lazy database initialization.
         """
         url = self._database_url
         if url and url.startswith("postgresql"):
@@ -156,8 +102,6 @@ class DbListener:
             self._ci_info = collect_ci_metadata()
             self._host_info = collect_host_info()
             self._test_cases = []
-            self._keyword_results = []
-            self._ollama_metrics = []
             dest = self._describe_database_destination()
             banner = f"DbListener: archiving results to {dest}"
             logger.info(banner)
@@ -168,50 +112,6 @@ class DbListener:
         self._current_test_data = {}
         self._current_test_name = name
 
-    def start_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
-        """Begin tracking a keyword if it matches the tracked set."""
-        kwname = attributes.get("kwname", name)
-        libname = attributes.get("libname", "")
-        if not _is_tracked(kwname, libname):
-            return
-
-        args = attributes.get("args", [])
-        first_arg = str(args[0])[:500] if args else ""
-
-        self._current_keyword = {
-            "keyword_name": kwname,
-            "library_name": libname,
-            "start_time": attributes.get("starttime", ""),
-            "args": first_arg,
-        }
-
-    def end_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
-        """Finish tracking a keyword and record the result."""
-        if self._current_keyword is None:
-            return
-
-        kwname = attributes.get("kwname", name)
-        if kwname != self._current_keyword["keyword_name"]:
-            return
-
-        end_time = attributes.get("endtime", "")
-        start_time = self._current_keyword["start_time"]
-        duration = _compute_duration(start_time, end_time)
-
-        self._keyword_results.append(
-            {
-                "test_name": self._current_test_name or "",
-                "keyword_name": kwname,
-                "library_name": self._current_keyword["library_name"],
-                "status": attributes.get("status", "UNKNOWN"),
-                "start_time": start_time,
-                "end_time": end_time,
-                "duration_seconds": duration,
-                "args": self._current_keyword["args"],
-            }
-        )
-        self._current_keyword = None
-
     def log_message(self, message: Dict[str, Any]) -> None:
         """Capture structured data from ``RFC_DATA:`` log messages."""
         text = message.get("message", "")
@@ -219,14 +119,7 @@ class DbListener:
             return
         payload = text[len(RFC_DATA_PREFIX) :]
         key, _, value = payload.partition(":")
-        if key in ("ollama_metrics", "llm_metrics"):
-            try:
-                metrics = json.loads(value)
-                metrics["test_name"] = self._current_test_name or ""
-                self._ollama_metrics.append(metrics)
-            except (json.JSONDecodeError, TypeError):
-                pass  # Skip malformed metrics JSON
-        elif key:
+        if key:
             self._current_test_data[key] = value
 
     def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
@@ -283,8 +176,7 @@ class DbListener:
             total = len(self._test_cases)
 
         # Prefer the Robot variable (set via --variable DEFAULT_MODEL:<model>)
-        # over env-var / CI metadata so that run_local_models correctly
-        # records the actual model under test.
+        # over env-var / CI metadata.
         robot_model: Optional[str] = None
         try:
             robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
@@ -299,48 +191,31 @@ class DbListener:
         )
 
         hostname = self._host_info.get("hostname")
-        report_url, log_url = _build_report_urls()
+
+        # Read and gzip output.xml
+        output_xml_gz = _read_and_compress_output_xml()
+        output_xml_url = _build_output_xml_url()
 
         run = TestRun(
             timestamp=self._start_time or end_time,
             model_name=model_name,
-            model_release_date=self._ci_info.get("Model_Release_Date"),
-            model_parameters=self._ci_info.get("Model_Parameters"),
             test_suite=name,
-            git_commit=self._ci_info.get("Commit_SHA", ""),
-            git_branch=self._ci_info.get("Branch", ""),
-            pipeline_url=self._ci_info.get("Pipeline_URL", ""),
-            runner_id=self._ci_info.get("Runner_ID", ""),
-            runner_tags=self._ci_info.get("Runner_Tags", ""),
             total_tests=total,
             passed=pass_count,
             failed=fail_count,
             skipped=skip_count,
             duration_seconds=duration,
-            rfc_version=__version__,
+            git_commit=self._ci_info.get("Commit_SHA", ""),
+            git_branch=self._ci_info.get("Branch", ""),
             hostname=hostname,
-            report_url=report_url,
-            log_url=log_url,
+            rfc_version=__version__,
+            output_xml_url=output_xml_url,
+            output_xml_gz=output_xml_gz,
         )
 
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
-
-            # Upsert host identification metrics.
-            if hostname and self._host_info:
-                db.add_or_update_host(
-                    HostInfo(
-                        hostname=hostname,
-                        os_name=self._host_info.get("os_name", ""),
-                        os_version=self._host_info.get("os_version", ""),
-                        cpu_arch=self._host_info.get("cpu_arch", ""),
-                        cpu_count=self._host_info.get("cpu_count", 0),
-                        total_ram_gb=self._host_info.get("total_ram_gb", 0.0),
-                        gpu_info=self._host_info.get("gpu_info"),
-                        rfc_version=__version__,
-                    )
-                )
 
             results = [
                 TestResult(
@@ -358,50 +233,11 @@ class DbListener:
             ]
             db.add_test_results(results)
 
-            kw_results = [
-                KeywordResult(
-                    run_id=run_id,
-                    test_name=kw["test_name"],
-                    keyword_name=kw["keyword_name"],
-                    library_name=kw["library_name"],
-                    status=kw["status"],
-                    start_time=kw["start_time"],
-                    end_time=kw["end_time"],
-                    duration_seconds=kw["duration_seconds"],
-                    args=kw["args"],
-                    rfc_version=__version__,
-                )
-                for kw in self._keyword_results
-            ]
-            db.add_keyword_results(kw_results)
-
-            om_results = [
-                OllamaMetrics(
-                    run_id=run_id,
-                    test_name=om.get("test_name", ""),
-                    model_name=om.get("model_name", "unknown"),
-                    prompt_text=om.get("prompt_text", "")[:500]
-                    if om.get("prompt_text")
-                    else None,
-                    total_duration_ns=om.get("total_duration_ns"),
-                    load_duration_ns=om.get("load_duration_ns"),
-                    prompt_eval_count=om.get("prompt_eval_count"),
-                    prompt_eval_duration_ns=om.get("prompt_eval_duration_ns"),
-                    prompt_eval_rate=om.get("prompt_eval_rate"),
-                    eval_count=om.get("eval_count"),
-                    eval_duration_ns=om.get("eval_duration_ns"),
-                    eval_rate=om.get("eval_rate"),
-                    rfc_version=__version__,
-                )
-                for om in self._ollama_metrics
-            ]
-            db.add_ollama_metrics(om_results)
-
             dest = self._describe_database_destination()
+            blob_size = _format_size(len(output_xml_gz)) if output_xml_gz else "none"
             summary = (
-                f"DbListener: archived {len(results)} test result(s), "
-                f"{len(kw_results)} keyword result(s), "
-                f"and {len(om_results)} ollama metric(s) "
+                f"DbListener: archived {len(results)} test result(s) "
+                f"+ output.xml ({blob_size}) "
                 f"to {dest} (run_id={run_id})"
             )
             logger.info(summary)
@@ -412,41 +248,49 @@ class DbListener:
             logger.console(error_msg)
 
 
-def _build_report_urls() -> tuple[Optional[str], Optional[str]]:
-    """Build report_url and log_url from environment variables.
+def _read_and_compress_output_xml() -> Optional[bytes]:
+    """Read output.xml from Robot's output directory and gzip-compress it."""
+    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if not output_dir:
+        return None
+    output_xml = os.path.join(output_dir, "output.xml")
+    if not os.path.isfile(output_xml):
+        return None
+    try:
+        with open(output_xml, "rb") as f:
+            return gzip.compress(f.read())
+    except OSError:
+        return None
+
+
+def _build_output_xml_url() -> Optional[str]:
+    """Build a URL to the output.xml file from environment variables.
 
     Priority:
-    1. REPORT_BASE_URL — explicit base URL (e.g. https://results.example.com/math)
+    1. REPORT_BASE_URL — explicit base URL
     2. CI_JOB_URL — GitLab CI artifact URL pattern
     3. ROBOT_OUTPUT_DIR — local file path fallback
     """
     base = os.getenv("REPORT_BASE_URL")
     if base:
-        base = base.rstrip("/")
-        return f"{base}/report.html", f"{base}/log.html"
+        return f"{base.rstrip('/')}/output.xml"
 
     ci_job_url = os.getenv("CI_JOB_URL")
     if ci_job_url:
-        artifact_base = f"{ci_job_url}/artifacts/browse"
-        return f"{artifact_base}/report.html", f"{artifact_base}/log.html"
+        return f"{ci_job_url}/artifacts/browse/output.xml"
 
     output_dir = os.getenv("ROBOT_OUTPUT_DIR")
     if output_dir:
-        output_dir = output_dir.rstrip("/")
-        return f"{output_dir}/report.html", f"{output_dir}/log.html"
+        return f"{output_dir.rstrip('/')}/output.xml"
 
-    return None, None
+    return None
 
 
-def _compute_duration(start: str, end: str) -> Optional[float]:
-    """Parse RF timestamps and return duration in seconds, or None."""
-    if not start or not end:
-        return None
-    try:
-        # RF timestamps: "2026-01-01 12:00:00.000"
-        fmt = "%Y-%m-%d %H:%M:%S.%f"
-        s = datetime.strptime(start.strip(), fmt)
-        e = datetime.strptime(end.strip(), fmt)
-        return round((e - s).total_seconds(), 3)
-    except (ValueError, TypeError):
-        return None
+def _format_size(size_bytes: int) -> str:
+    """Format a byte count as a human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f}KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f}MB"

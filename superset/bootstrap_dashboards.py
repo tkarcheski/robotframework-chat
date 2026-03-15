@@ -1,58 +1,63 @@
 """Bootstrap Superset with Robot Framework test result dashboards.
 
 Run inside the Superset container after ``superset init`` to create:
-  - The actual PostgreSQL tables (test_runs, test_results, etc.)
-  - SQL views for cross-table analysis
+  - The 2 PostgreSQL tables (test_runs, test_results)
   - A database connection to the RFC PostgreSQL tables
-  - Datasets for all tables and virtual datasets for JOINed views
-  - Charts covering test results, pipelines, models, dry runs, keyword timing
-  - Three dashboards: Test Results, Pipeline Health, Model Analytics
+  - Datasets for both tables
+  - Charts covering test results and model performance
+  - Two dashboards: Test Results, Model Performance
+
+Redesigned schema: 2 tables only. output.xml is the source of truth.
 """
 
-import json
 import logging
 import os
 import sys
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# SQL DDL for the Robot Framework result tables.
-# Mirrors the schema from src/rfc/test_database.py so tables exist
-# before Superset tries to fetch_metadata() on them.
+# SQL DDL — 2 tables only.
 # ---------------------------------------------------------------------------
 _TABLE_DDL = """
+-- Drop old tables from pre-redesign schema
+DROP TABLE IF EXISTS keyword_results CASCADE;
+DROP TABLE IF EXISTS ollama_metrics CASCADE;
+DROP TABLE IF EXISTS host_info CASCADE;
+DROP TABLE IF EXISTS models CASCADE;
+DROP TABLE IF EXISTS pipeline_results CASCADE;
+DROP TABLE IF EXISTS robot_dry_run_results CASCADE;
+DROP TABLE IF EXISTS analytics_model_trends CASCADE;
+DROP TABLE IF EXISTS analytics_test_stability CASCADE;
+DROP TABLE IF EXISTS analytics_model_comparison CASCADE;
+DROP TABLE IF EXISTS analytics_regression_alerts CASCADE;
+DROP TABLE IF EXISTS analytics_performance_fingerprints CASCADE;
+
 CREATE TABLE IF NOT EXISTS test_runs (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMP NOT NULL,
     model_name VARCHAR(255) NOT NULL,
-    model_release_date VARCHAR(255),
-    model_parameters VARCHAR(255),
     test_suite VARCHAR(255) NOT NULL,
-    git_commit VARCHAR(255),
-    git_branch VARCHAR(255),
-    pipeline_url TEXT,
-    runner_id VARCHAR(255),
-    runner_tags TEXT,
     total_tests INTEGER DEFAULT 0,
     passed INTEGER DEFAULT 0,
     failed INTEGER DEFAULT 0,
     skipped INTEGER DEFAULT 0,
     duration_seconds DOUBLE PRECISION,
-    rfc_version VARCHAR(50),
+    git_commit VARCHAR(255),
+    git_branch VARCHAR(255),
     hostname VARCHAR(255),
-    report_url TEXT,
-    log_url TEXT
+    rfc_version VARCHAR(50),
+    output_xml_url TEXT,
+    output_xml_gz BYTEA
 );
 
 CREATE TABLE IF NOT EXISTS test_results (
     id SERIAL PRIMARY KEY,
     run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
-    test_name VARCHAR(255) NOT NULL,
-    test_status VARCHAR(50) NOT NULL,
+    test_name VARCHAR(500) NOT NULL,
+    test_status VARCHAR(20) NOT NULL,
     score INTEGER,
     question TEXT,
     expected_answer TEXT,
@@ -61,1755 +66,340 @@ CREATE TABLE IF NOT EXISTS test_results (
     rfc_version VARCHAR(50)
 );
 
-CREATE TABLE IF NOT EXISTS models (
-    name VARCHAR(255) PRIMARY KEY,
-    full_name VARCHAR(255),
-    organization VARCHAR(255),
-    release_date VARCHAR(255),
-    parameters VARCHAR(255),
-    last_tested TIMESTAMP,
-    rfc_version VARCHAR(50)
-);
-
-CREATE TABLE IF NOT EXISTS pipeline_results (
-    id SERIAL PRIMARY KEY,
-    pipeline_id BIGINT NOT NULL UNIQUE,
-    status VARCHAR(50) NOT NULL,
-    ref VARCHAR(255) NOT NULL,
-    sha VARCHAR(255) NOT NULL,
-    web_url TEXT NOT NULL,
-    created_at VARCHAR(255),
-    updated_at VARCHAR(255),
-    source VARCHAR(255),
-    duration_seconds DOUBLE PRECISION,
-    queued_duration_seconds DOUBLE PRECISION,
-    tag INTEGER,
-    jobs_fetched INTEGER DEFAULT 0,
-    artifacts_found INTEGER DEFAULT 0,
-    synced_at TIMESTAMP,
-    rfc_version VARCHAR(50)
-);
-
-CREATE TABLE IF NOT EXISTS robot_dry_run_results (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP NOT NULL,
-    test_suite VARCHAR(255) NOT NULL,
-    total_tests INTEGER DEFAULT 0,
-    passed INTEGER DEFAULT 0,
-    failed INTEGER DEFAULT 0,
-    skipped INTEGER DEFAULT 0,
-    duration_seconds DOUBLE PRECISION,
-    git_commit VARCHAR(255),
-    git_branch VARCHAR(255),
-    rfc_version VARCHAR(50),
-    errors TEXT
-);
-
-CREATE TABLE IF NOT EXISTS keyword_results (
-    id SERIAL PRIMARY KEY,
-    run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
-    test_name VARCHAR(255) NOT NULL,
-    keyword_name VARCHAR(255) NOT NULL,
-    library_name VARCHAR(255),
-    status VARCHAR(50) NOT NULL,
-    start_time VARCHAR(255),
-    end_time VARCHAR(255),
-    duration_seconds DOUBLE PRECISION,
-    args TEXT,
-    rfc_version VARCHAR(50)
-);
-
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
 CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
 CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
-CREATE INDEX IF NOT EXISTS idx_keyword_results_run_id ON keyword_results(run_id);
-CREATE INDEX IF NOT EXISTS idx_keyword_results_name ON keyword_results(keyword_name);
-CREATE INDEX IF NOT EXISTS idx_pipeline_results_pipeline_id
-    ON pipeline_results(pipeline_id);
-CREATE INDEX IF NOT EXISTS idx_pipeline_results_ref ON pipeline_results(ref);
-CREATE INDEX IF NOT EXISTS idx_pipeline_results_status
-    ON pipeline_results(status);
-CREATE TABLE IF NOT EXISTS ollama_metrics (
-    id SERIAL PRIMARY KEY,
-    run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
-    test_name VARCHAR(255) NOT NULL,
-    model_name VARCHAR(255) NOT NULL,
-    prompt_text TEXT,
-    total_duration_ns BIGINT,
-    load_duration_ns BIGINT,
-    prompt_eval_count INTEGER,
-    prompt_eval_duration_ns BIGINT,
-    prompt_eval_rate DOUBLE PRECISION,
-    eval_count INTEGER,
-    eval_duration_ns BIGINT,
-    eval_rate DOUBLE PRECISION,
-    rfc_version VARCHAR(50),
-    timestamp TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_dry_run_results_timestamp
-    ON robot_dry_run_results(timestamp);
-CREATE INDEX IF NOT EXISTS idx_dry_run_results_suite
-    ON robot_dry_run_results(test_suite);
-CREATE INDEX IF NOT EXISTS idx_ollama_metrics_run_id
-    ON ollama_metrics(run_id);
-CREATE INDEX IF NOT EXISTS idx_ollama_metrics_model
-    ON ollama_metrics(model_name);
-
-CREATE TABLE IF NOT EXISTS host_info (
-    id SERIAL PRIMARY KEY,
-    hostname VARCHAR(255) NOT NULL UNIQUE,
-    os_name VARCHAR(255),
-    os_version VARCHAR(255),
-    cpu_arch VARCHAR(255),
-    cpu_count INTEGER,
-    total_ram_gb DOUBLE PRECISION,
-    gpu_info TEXT,
-    last_seen TIMESTAMP,
-    rfc_version VARCHAR(50)
-);
-
-CREATE INDEX IF NOT EXISTS idx_test_runs_hostname ON test_runs(hostname);
-CREATE INDEX IF NOT EXISTS idx_host_info_hostname ON host_info(hostname);
-
--- Analytics metadata layer tables
-CREATE TABLE IF NOT EXISTS analytics_model_trends (
-    id SERIAL PRIMARY KEY,
-    model_name VARCHAR(255) NOT NULL,
-    test_suite VARCHAR(255) NOT NULL,
-    period_start TEXT NOT NULL,
-    period_end TEXT NOT NULL,
-    run_count INTEGER,
-    avg_pass_rate DOUBLE PRECISION,
-    pass_rate_delta DOUBLE PRECISION,
-    avg_duration DOUBLE PRECISION,
-    duration_delta DOUBLE PRECISION,
-    trend_direction VARCHAR(20),
-    computed_at TEXT NOT NULL,
-    UNIQUE(model_name, test_suite)
-);
-
-CREATE TABLE IF NOT EXISTS analytics_test_stability (
-    id SERIAL PRIMARY KEY,
-    test_name VARCHAR(255) NOT NULL,
-    model_name VARCHAR(255) NOT NULL,
-    window_runs INTEGER,
-    pass_count INTEGER,
-    fail_count INTEGER,
-    flip_count INTEGER,
-    stability_score DOUBLE PRECISION,
-    classification VARCHAR(20),
-    last_status VARCHAR(10),
-    computed_at TEXT NOT NULL,
-    UNIQUE(test_name, model_name)
-);
-
-CREATE TABLE IF NOT EXISTS analytics_model_comparison (
-    id SERIAL PRIMARY KEY,
-    test_suite VARCHAR(255) NOT NULL,
-    model_a VARCHAR(255) NOT NULL,
-    model_b VARCHAR(255) NOT NULL,
-    pass_rate_a DOUBLE PRECISION,
-    pass_rate_b DOUBLE PRECISION,
-    pass_rate_diff DOUBLE PRECISION,
-    duration_a DOUBLE PRECISION,
-    duration_b DOUBLE PRECISION,
-    speed_ratio DOUBLE PRECISION,
-    winner VARCHAR(255),
-    computed_at TEXT NOT NULL,
-    UNIQUE(test_suite, model_a, model_b)
-);
-
-CREATE TABLE IF NOT EXISTS analytics_regression_alerts (
-    id SERIAL PRIMARY KEY,
-    detected_at TEXT NOT NULL,
-    model_name VARCHAR(255) NOT NULL,
-    test_suite VARCHAR(255),
-    test_name VARCHAR(255),
-    alert_type VARCHAR(50) NOT NULL,
-    severity VARCHAR(20) NOT NULL,
-    current_value DOUBLE PRECISION,
-    previous_value DOUBLE PRECISION,
-    threshold DOUBLE PRECISION,
-    message TEXT,
-    run_id INTEGER,
-    acknowledged INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS analytics_performance_fingerprints (
-    id SERIAL PRIMARY KEY,
-    test_name VARCHAR(255) NOT NULL,
-    model_name VARCHAR(255) NOT NULL,
-    hostname VARCHAR(255),
-    avg_duration DOUBLE PRECISION,
-    p50_duration DOUBLE PRECISION,
-    p95_duration DOUBLE PRECISION,
-    sample_count INTEGER,
-    tokens_per_second DOUBLE PRECISION,
-    computed_at TEXT NOT NULL,
-    UNIQUE(test_name, model_name, hostname)
-);
 """
 
-# ---------------------------------------------------------------------------
-# SQL for virtual datasets (JOINed views for cross-table analysis).
-# These are registered as Superset virtual datasets, not DB views,
-# so they work without DDL privileges.
-# ---------------------------------------------------------------------------
-_VIRTUAL_DATASETS: Dict[str, str] = {
-    "test_results_detail": """
-        SELECT
-            tr.id AS result_id,
-            tr.test_name,
-            tr.test_status,
-            tr.score,
-            tr.question,
-            tr.expected_answer,
-            tr.actual_answer,
-            tr.grading_reason,
-            runs.timestamp,
-            runs.model_name,
-            runs.test_suite,
-            runs.git_branch,
-            runs.git_commit,
-            runs.pipeline_url,
-            runs.hostname,
-            runs.report_url,
-            runs.log_url,
-            runs.duration_seconds AS run_duration,
-            runs.rfc_version
-        FROM test_results tr
-        JOIN test_runs runs ON tr.run_id = runs.id
-    """,
-    "model_suite_performance": """
-        SELECT
-            model_name,
-            test_suite,
-            COUNT(*) AS run_count,
-            AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)
-                AS avg_pass_rate,
-            AVG(duration_seconds) AS avg_duration,
-            SUM(passed) AS total_passed,
-            SUM(failed) AS total_failed,
-            MAX(timestamp) AS last_run
-        FROM test_runs
-        WHERE total_tests > 0
-        GROUP BY model_name, test_suite
-    """,
-    "keyword_timing": """
-        SELECT
-            kw.id AS kw_id,
-            kw.keyword_name,
-            kw.library_name,
-            kw.test_name,
-            kw.status AS kw_status,
-            kw.duration_seconds AS kw_duration,
-            kw.args,
-            kw.start_time,
-            kw.end_time,
-            runs.timestamp,
-            runs.model_name,
-            runs.test_suite,
-            runs.git_branch,
-            runs.rfc_version
-        FROM keyword_results kw
-        JOIN test_runs runs ON kw.run_id = runs.id
-    """,
-    "host_performance": """
-        SELECT
-            h.hostname,
-            h.os_name,
-            h.os_version,
-            h.cpu_arch,
-            h.cpu_count,
-            h.total_ram_gb,
-            h.gpu_info,
-            h.last_seen,
-            COUNT(r.id) AS total_runs,
-            SUM(r.total_tests) AS total_tests,
-            SUM(r.passed) AS total_passed,
-            SUM(r.failed) AS total_failed,
-            AVG(CAST(r.passed AS DOUBLE PRECISION)
-                / NULLIF(r.total_tests, 0) * 100) AS avg_pass_rate,
-            AVG(r.duration_seconds) AS avg_duration,
-            MAX(r.timestamp) AS last_run
-        FROM host_info h
-        LEFT JOIN test_runs r ON h.hostname = r.hostname
-        GROUP BY h.hostname, h.os_name, h.os_version, h.cpu_arch,
-                 h.cpu_count, h.total_ram_gb, h.gpu_info, h.last_seen
-    """,
-    "ollama_performance": """
-        SELECT
-            om.id AS metrics_id,
-            om.test_name,
-            om.model_name,
-            om.prompt_text,
-            om.total_duration_ns,
-            om.load_duration_ns,
-            om.prompt_eval_count,
-            om.prompt_eval_duration_ns,
-            om.prompt_eval_rate,
-            om.eval_count,
-            om.eval_duration_ns,
-            om.eval_rate,
-            om.rfc_version,
-            runs.timestamp,
-            runs.test_suite,
-            runs.git_branch,
-            CAST(om.total_duration_ns AS DOUBLE PRECISION) / 1e9 AS total_duration_s,
-            CAST(om.load_duration_ns AS DOUBLE PRECISION) / 1e9 AS load_duration_s,
-            CAST(om.prompt_eval_duration_ns AS DOUBLE PRECISION) / 1e9
-                AS prompt_eval_duration_s,
-            CAST(om.eval_duration_ns AS DOUBLE PRECISION) / 1e9 AS eval_duration_s
-        FROM ollama_metrics om
-        JOIN test_runs runs ON om.run_id = runs.id
-    """,
-    "test_run_context": """
-        SELECT
-            r.id AS run_id,
-            r.timestamp,
-            r.model_name,
-            r.test_suite,
-            SUBSTRING(r.git_commit FROM 1 FOR 8) AS git_commit_short,
-            r.git_commit,
-            r.git_branch,
-            r.pipeline_url,
-            r.report_url,
-            r.log_url,
-            r.hostname,
-            r.runner_id,
-            r.runner_tags,
-            r.total_tests,
-            r.passed,
-            r.failed,
-            r.skipped,
-            r.duration_seconds,
-            r.rfc_version,
-            h.os_name,
-            h.cpu_arch,
-            h.cpu_count,
-            h.total_ram_gb,
-            h.gpu_info
-        FROM test_runs r
-        LEFT JOIN host_info h ON r.hostname = h.hostname
-    """,
-    # ── Analytics metadata layer datasets ────────────────────────────
-    "model_trends": "SELECT * FROM analytics_model_trends",
-    "test_stability": "SELECT * FROM analytics_test_stability",
-    "regression_alerts": """
-        SELECT * FROM analytics_regression_alerts
-        WHERE acknowledged = 0
-    """,
-    "model_comparison": "SELECT * FROM analytics_model_comparison",
-    "performance_fingerprints": "SELECT * FROM analytics_performance_fingerprints",
-}
 
-
-# ---------------------------------------------------------------------------
-# Chart definitions — grouped by dashboard
-# ---------------------------------------------------------------------------
-
-
-def _test_results_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Test Results dashboard."""
-    return [
-        {
-            "name": "Pass Rate Over Time",
-            "viz_type": "line",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "timestamp",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)"
-                        ),
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "y_axis_label": "Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Model Comparison - Pass Rate",
-            "viz_type": "bar",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)"
-                        ),
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "show_legend": False,
-                "y_axis_label": "Avg Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Test Results Breakdown",
-            "viz_type": "pie",
-            "datasource": datasets["test_results"],
-            "params": {
-                "viz_type": "pie",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "groupby": ["test_status"],
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "show_labels": True,
-            },
-        },
-        {
-            "name": "Test Suite Duration Trend",
-            "viz_type": "line",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "timestamp",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "avg_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(duration_seconds)",
-                    }
-                ],
-                "groupby": ["test_suite"],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "y_axis_label": "Duration (s)",
-            },
-        },
-        {
-            "name": "Recent Test Runs",
-            "viz_type": "table",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "model_name",
-                    "test_suite",
-                    "passed",
-                    "failed",
-                    "skipped",
-                    "duration_seconds",
-                    "git_branch",
-                    "git_commit",
-                    "hostname",
-                    "report_url",
-                ],
-                "order_desc": True,
-                "row_limit": 50,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-        {
-            "name": "Failures by Test Name",
-            "viz_type": "bar",
-            "datasource": datasets["test_results"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "failures",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "adhoc_filters": [
-                    {
-                        "clause": "WHERE",
-                        "expressionType": "SIMPLE",
-                        "subject": "test_status",
-                        "operator": "==",
-                        "comparator": "FAIL",
-                    }
-                ],
-                "groupby": ["test_name"],
-                "row_limit": 20,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Failure Count",
-            },
-        },
-        # ── New charts ────────────────────────────────────────────────
-        {
-            "name": "Pass Rate by Branch",
-            "viz_type": "bar",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)"
-                        ),
-                    }
-                ],
-                "groupby": ["git_branch"],
-                "row_limit": 30,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Pass Rate by Suite",
-            "viz_type": "bar",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)"
-                        ),
-                    }
-                ],
-                "groupby": ["test_suite"],
-                "row_limit": 30,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Score Distribution",
-            "viz_type": "bar",
-            "datasource": datasets["test_results_detail"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SQL",
-                        "sqlExpression": "COUNT(*)",
-                    }
-                ],
-                "adhoc_filters": [
-                    {
-                        "clause": "WHERE",
-                        "expressionType": "SQL",
-                        "sqlExpression": "score IS NOT NULL",
-                    }
-                ],
-                "groupby": ["model_name", "score"],
-                "row_limit": 100,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Test Count",
-            },
-        },
-        {
-            "name": "Test Results Detail",
-            "viz_type": "table",
-            "datasource": datasets["test_results_detail"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "model_name",
-                    "test_suite",
-                    "test_name",
-                    "test_status",
-                    "score",
-                    "actual_answer",
-                    "grading_reason",
-                    "git_branch",
-                    "hostname",
-                    "report_url",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-        {
-            "name": "Run Provenance",
-            "viz_type": "table",
-            "datasource": datasets["test_run_context"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "model_name",
-                    "test_suite",
-                    "git_branch",
-                    "git_commit_short",
-                    "hostname",
-                    "os_name",
-                    "cpu_arch",
-                    "gpu_info",
-                    "passed",
-                    "failed",
-                    "duration_seconds",
-                    "report_url",
-                    "log_url",
-                    "pipeline_url",
-                ],
-                "order_desc": True,
-                "row_limit": 50,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-    ]
-
-
-def _pipeline_health_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Pipeline Health dashboard."""
-    return [
-        {
-            "name": "Pipeline Status Distribution",
-            "viz_type": "pie",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "pie",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "groupby": ["status"],
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "show_labels": True,
-            },
-        },
-        {
-            "name": "Pipeline Duration Over Time",
-            "viz_type": "line",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "synced_at",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "avg_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(duration_seconds)",
-                    }
-                ],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "y_axis_label": "Duration (s)",
-            },
-        },
-        {
-            "name": "Pipeline Queue Time",
-            "viz_type": "line",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "synced_at",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "avg_queue_time",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(queued_duration_seconds)",
-                    }
-                ],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Queue Time (s)",
-            },
-        },
-        {
-            "name": "Pipelines by Branch",
-            "viz_type": "bar",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "groupby": ["ref"],
-                "row_limit": 20,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Pipeline Count",
-            },
-        },
-        {
-            "name": "Pipeline Success Rate Over Time",
-            "viz_type": "line",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "synced_at",
-                "time_grain_sqla": "P1W",
-                "metrics": [
-                    {
-                        "label": "success_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CASE WHEN status = 'success'"
-                            " THEN 1.0 ELSE 0.0 END) * 100"
-                        ),
-                    }
-                ],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Success Rate (%)",
-            },
-        },
-        {
-            "name": "Recent Pipelines",
-            "viz_type": "table",
-            "datasource": datasets["pipeline_results"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "pipeline_id",
-                    "status",
-                    "ref",
-                    "sha",
-                    "source",
-                    "duration_seconds",
-                    "queued_duration_seconds",
-                    "jobs_fetched",
-                    "artifacts_found",
-                    "synced_at",
-                ],
-                "order_desc": True,
-                "row_limit": 50,
-                "order_by_cols": '["pipeline_id"]',
-            },
-        },
-    ]
-
-
-def _model_analytics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Model Analytics dashboard."""
-    return [
-        {
-            "name": "Model Catalog",
-            "viz_type": "table",
-            "datasource": datasets["models"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "name",
-                    "full_name",
-                    "organization",
-                    "release_date",
-                    "parameters",
-                    "last_tested",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["last_tested"]',
-            },
-        },
-        {
-            "name": "Model x Suite Performance",
-            "viz_type": "table",
-            "datasource": datasets["model_suite_performance"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "model_name",
-                    "test_suite",
-                    "run_count",
-                    "avg_pass_rate",
-                    "avg_duration",
-                    "total_passed",
-                    "total_failed",
-                    "last_run",
-                ],
-                "order_desc": True,
-                "row_limit": 200,
-                "order_by_cols": '["last_run"]',
-            },
-        },
-        {
-            "name": "Tests Per Model",
-            "viz_type": "bar",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "total_runs",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Number of Runs",
-            },
-        },
-        {
-            "name": "Avg Duration by Model",
-            "viz_type": "bar",
-            "datasource": datasets["test_runs"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(duration_seconds)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Duration (s)",
-            },
-        },
-        {
-            "name": "Dry Run Validation Trend",
-            "viz_type": "line",
-            "datasource": datasets["robot_dry_run_results"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "timestamp",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": (
-                            "AVG(CAST(passed AS FLOAT) / NULLIF(total_tests, 0) * 100)"
-                        ),
-                    }
-                ],
-                "groupby": ["test_suite"],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Recent Dry Runs",
-            "viz_type": "table",
-            "datasource": datasets["robot_dry_run_results"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "test_suite",
-                    "total_tests",
-                    "passed",
-                    "failed",
-                    "skipped",
-                    "duration_seconds",
-                    "git_branch",
-                    "errors",
-                ],
-                "order_desc": True,
-                "row_limit": 50,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-        # ── Keyword timing charts ────────────────────────────────────
-        {
-            "name": "Avg Keyword Duration by Model",
-            "viz_type": "bar",
-            "datasource": datasets["keyword_timing"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_kw_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(kw_duration)",
-                    }
-                ],
-                "adhoc_filters": [
-                    {
-                        "clause": "WHERE",
-                        "expressionType": "SIMPLE",
-                        "subject": "keyword_name",
-                        "operator": "==",
-                        "comparator": "Ask LLM",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Ask LLM Duration (s)",
-            },
-        },
-        {
-            "name": "Keyword Execution Count",
-            "viz_type": "bar",
-            "datasource": datasets["keyword_timing"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SQL",
-                        "sqlExpression": "COUNT(*)",
-                    }
-                ],
-                "groupby": ["keyword_name"],
-                "row_limit": 30,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Execution Count",
-            },
-        },
-        {
-            "name": "Keyword Timing Detail",
-            "viz_type": "table",
-            "datasource": datasets["keyword_timing"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "model_name",
-                    "test_suite",
-                    "test_name",
-                    "keyword_name",
-                    "kw_status",
-                    "kw_duration",
-                    "args",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-        {
-            "name": "LLM Response Time Trend",
-            "viz_type": "line",
-            "datasource": datasets["keyword_timing"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "timestamp",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "avg_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(kw_duration)",
-                    }
-                ],
-                "adhoc_filters": [
-                    {
-                        "clause": "WHERE",
-                        "expressionType": "SIMPLE",
-                        "subject": "keyword_name",
-                        "operator": "==",
-                        "comparator": "Ask LLM",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "y_axis_label": "Avg LLM Response Time (s)",
-            },
-        },
-    ]
-
-
-def _ollama_performance_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Ollama Performance dashboard."""
-    return [
-        {
-            "name": "Eval Rate by Model (tokens/s)",
-            "viz_type": "bar",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_eval_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(eval_rate)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Eval Rate (tokens/s)",
-            },
-        },
-        {
-            "name": "Prompt Eval Rate by Model (tokens/s)",
-            "viz_type": "bar",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_prompt_eval_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(prompt_eval_rate)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Prompt Eval Rate (tokens/s)",
-            },
-        },
-        {
-            "name": "Token Throughput Over Time",
-            "viz_type": "line",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "line",
-                "granularity_sqla": "timestamp",
-                "time_grain_sqla": "P1D",
-                "metrics": [
-                    {
-                        "label": "avg_eval_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(eval_rate)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 10000,
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "y_axis_label": "Avg Eval Rate (tokens/s)",
-            },
-        },
-        {
-            "name": "Total Duration by Model",
-            "viz_type": "bar",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_total_duration_s",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(total_duration_s)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Total Duration (s)",
-            },
-        },
-        {
-            "name": "Model Load Time",
-            "viz_type": "bar",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_load_duration_s",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(load_duration_s)",
-                    }
-                ],
-                "groupby": ["model_name"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Load Duration (s)",
-            },
-        },
-        {
-            "name": "Ollama Metrics Detail",
-            "viz_type": "table",
-            "datasource": datasets["ollama_performance"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "timestamp",
-                    "model_name",
-                    "test_suite",
-                    "test_name",
-                    "total_duration_s",
-                    "load_duration_s",
-                    "prompt_eval_count",
-                    "prompt_eval_rate",
-                    "eval_count",
-                    "eval_rate",
-                    "rfc_version",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["timestamp"]',
-            },
-        },
-    ]
-
-
-def _host_metrics_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Host Metrics dashboard."""
-    return [
-        {
-            "name": "Host Inventory",
-            "viz_type": "table",
-            "datasource": datasets["host_info"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "hostname",
-                    "os_name",
-                    "os_version",
-                    "cpu_arch",
-                    "cpu_count",
-                    "total_ram_gb",
-                    "gpu_info",
-                    "last_seen",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["last_seen"]',
-            },
-        },
-        {
-            "name": "Pass Rate by Host",
-            "viz_type": "bar",
-            "datasource": datasets["host_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_pass_rate",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(avg_pass_rate)",
-                    }
-                ],
-                "groupby": ["hostname"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Pass Rate (%)",
-            },
-        },
-        {
-            "name": "Test Runs by Host",
-            "viz_type": "bar",
-            "datasource": datasets["host_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "total_runs",
-                        "expressionType": "SQL",
-                        "sqlExpression": "SUM(total_runs)",
-                    }
-                ],
-                "groupby": ["hostname"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Total Test Runs",
-            },
-        },
-        {
-            "name": "Avg Duration by Host",
-            "viz_type": "bar",
-            "datasource": datasets["host_performance"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "avg_duration",
-                        "expressionType": "SQL",
-                        "sqlExpression": "AVG(avg_duration)",
-                    }
-                ],
-                "groupby": ["hostname"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Avg Duration (s)",
-            },
-        },
-        {
-            "name": "Hosts by CPU Count",
-            "viz_type": "bar",
-            "datasource": datasets["host_info"],
-            "params": {
-                "viz_type": "bar",
-                "metrics": [
-                    {
-                        "label": "host_count",
-                        "expressionType": "SQL",
-                        "sqlExpression": "COUNT(*)",
-                    }
-                ],
-                "groupby": ["cpu_count"],
-                "row_limit": 50,
-                "color_scheme": "supersetColors",
-                "y_axis_label": "Number of Hosts",
-            },
-        },
-        {
-            "name": "Host Performance Summary",
-            "viz_type": "table",
-            "datasource": datasets["host_performance"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "hostname",
-                    "os_name",
-                    "cpu_arch",
-                    "cpu_count",
-                    "total_ram_gb",
-                    "gpu_info",
-                    "total_runs",
-                    "total_passed",
-                    "total_failed",
-                    "avg_pass_rate",
-                    "avg_duration",
-                    "last_run",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["last_run"]',
-            },
-        },
-    ]
-
-
-def _intelligence_charts(datasets: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Charts for the Intelligence dashboard (analytics metadata layer)."""
-    return [
-        {
-            "name": "Model Trends",
-            "viz_type": "table",
-            "datasource": datasets["model_trends"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "model_name",
-                    "test_suite",
-                    "run_count",
-                    "avg_pass_rate",
-                    "pass_rate_delta",
-                    "avg_duration",
-                    "duration_delta",
-                    "trend_direction",
-                    "computed_at",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["computed_at"]',
-            },
-        },
-        {
-            "name": "Flaky Tests Heatmap",
-            "viz_type": "table",
-            "datasource": datasets["test_stability"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "test_name",
-                    "model_name",
-                    "classification",
-                    "stability_score",
-                    "flip_count",
-                    "pass_count",
-                    "fail_count",
-                    "last_status",
-                ],
-                "adhoc_filters": [
-                    {
-                        "clause": "WHERE",
-                        "expressionType": "SIMPLE",
-                        "subject": "classification",
-                        "operator": "==",
-                        "comparator": "flaky",
-                    }
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["stability_score"]',
-            },
-        },
-        {
-            "name": "Model Comparison Matrix",
-            "viz_type": "table",
-            "datasource": datasets["model_comparison"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "test_suite",
-                    "model_a",
-                    "model_b",
-                    "pass_rate_a",
-                    "pass_rate_b",
-                    "pass_rate_diff",
-                    "speed_ratio",
-                    "winner",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["pass_rate_diff"]',
-            },
-        },
-        {
-            "name": "Active Regression Alerts",
-            "viz_type": "table",
-            "datasource": datasets["regression_alerts"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "detected_at",
-                    "severity",
-                    "model_name",
-                    "test_suite",
-                    "alert_type",
-                    "current_value",
-                    "previous_value",
-                    "message",
-                ],
-                "order_desc": True,
-                "row_limit": 50,
-                "order_by_cols": '["detected_at"]',
-            },
-        },
-        {
-            "name": "Performance Fingerprints",
-            "viz_type": "table",
-            "datasource": datasets["performance_fingerprints"],
-            "params": {
-                "viz_type": "table",
-                "all_columns": [
-                    "test_name",
-                    "model_name",
-                    "hostname",
-                    "avg_duration",
-                    "p50_duration",
-                    "p95_duration",
-                    "sample_count",
-                    "tokens_per_second",
-                ],
-                "order_desc": True,
-                "row_limit": 100,
-                "order_by_cols": '["avg_duration"]',
-            },
-        },
-        {
-            "name": "Test Stability Distribution",
-            "viz_type": "pie",
-            "datasource": datasets["test_stability"],
-            "params": {
-                "viz_type": "pie",
-                "metrics": [
-                    {
-                        "label": "count",
-                        "expressionType": "SIMPLE",
-                        "aggregate": "COUNT",
-                        "column": {"column_name": "id"},
-                    }
-                ],
-                "groupby": ["classification"],
-                "color_scheme": "supersetColors",
-                "show_legend": True,
-                "show_labels": True,
-            },
-        },
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _ensure_tables(pg_uri: str) -> None:
-    """Create the RFC result tables in PostgreSQL if they don't exist."""
-    from sqlalchemy import create_engine, text  # type: ignore[import-untyped]
-
-    engine = create_engine(pg_uri)
-    with engine.begin() as conn:
-        conn.execute(text(_TABLE_DDL))
-    engine.dispose()
-    log.info("Ensured RFC result tables exist in PostgreSQL")
-
-
-def _probe_columns(db_uri: str, sql: str) -> List[str]:
-    """Discover column names by executing a virtual dataset SQL with LIMIT 0.
-
-    PostgreSQL (and SQLite) can infer column names from the query plan
-    without returning any rows.  This is used as a fallback when Superset's
-    ``fetch_metadata()`` fails because the underlying tables are empty.
-    """
-    from sqlalchemy import create_engine, text  # type: ignore[import-untyped]
-
-    engine = create_engine(db_uri)
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text(f"SELECT * FROM ({sql}) AS _col_probe LIMIT 0"))
-            return list(result.keys())
-    finally:
-        engine.dispose()
-
-
-def _build_position_json(slices: list, title: str) -> str:
-    """Build a valid Superset dashboard position_json.
-
-    Superset requires ROOT_ID, GRID_ID, HEADER_ID, and ROW wrappers
-    around CHART components.  Charts are arranged in rows of 2.
-    """
-    position: dict = {
-        "ROOT_ID": {
-            "type": "ROOT",
-            "id": "ROOT_ID",
-            "children": ["GRID_ID"],
-        },
-        "GRID_ID": {
-            "type": "GRID",
-            "id": "GRID_ID",
-            "children": [],
-        },
-        "HEADER_ID": {
-            "type": "HEADER",
-            "id": "HEADER_ID",
-            "meta": {"text": title},
-        },
-    }
-
-    # Arrange charts in rows of 2
-    row_idx = 0
-    for i in range(0, len(slices), 2):
-        row_id = f"ROW-{row_idx}"
-        row_children = []
-
-        for slc in slices[i : i + 2]:
-            chart_id = f"CHART-{slc.id}"
-            position[chart_id] = {
-                "type": "CHART",
-                "id": chart_id,
-                "children": [],
-                "meta": {
-                    "width": 6,
-                    "height": 50,
-                    "chartId": slc.id,
-                    "sliceName": slc.slice_name,
-                },
-            }
-            row_children.append(chart_id)
-
-        position[row_id] = {
-            "type": "ROW",
-            "id": row_id,
-            "children": row_children,
-            "meta": {"background": "BACKGROUND_TRANSPARENT"},
-        }
-        position["GRID_ID"]["children"].append(row_id)
-        row_idx += 1
-
-    return json.dumps(position)
-
-
-def _get_or_create_slice(db: Any, Slice: Any, cdef: Dict[str, Any]) -> Any:
-    """Get an existing chart or create a new one."""
-    slc = db.session.query(Slice).filter_by(slice_name=cdef["name"]).first()
-    if slc is None:
-        ds = cdef["datasource"]
-        slc = Slice(
-            slice_name=cdef["name"],
-            viz_type=cdef["viz_type"],
-            datasource_id=ds.id,
-            datasource_type="table",
-            params=json.dumps(cdef["params"]),
-        )
-        db.session.add(slc)
-        db.session.flush()
-        log.info("Created chart: %s", cdef["name"])
-    return slc
-
-
-def _get_or_create_dashboard(
-    db: Any,
-    Dashboard: Any,
-    title: str,
-    slug: str,
-    slices: list,
-    css: str = "",
-) -> Any:
-    """Get an existing dashboard or create a new one with charts."""
-    dashboard = db.session.query(Dashboard).filter_by(dashboard_title=title).first()
-    if dashboard is None:
-        dashboard = Dashboard(
-            dashboard_title=title,
-            slug=slug,
-            position_json=_build_position_json(slices, title),
-            published=True,
-            css=css,
-        )
-        dashboard.slices = slices
-        db.session.add(dashboard)
-        log.info("Created dashboard: %s", title)
-    else:
-        # Sync CSS on existing dashboards (apply or clear)
-        if dashboard.css != css:
-            dashboard.css = css
-            if css:
-                log.info("Applied theme CSS to dashboard: %s", title)
-            else:
-                log.info("Cleared theme CSS from dashboard: %s", title)
-    return dashboard
-
-
-# ---------------------------------------------------------------------------
-# Main bootstrap
-# ---------------------------------------------------------------------------
+def _get_database_uri() -> str:
+    """Build the internal PostgreSQL URI for Superset (Docker-internal)."""
+    pg_user = os.getenv("POSTGRES_USER", "rfc")
+    pg_pass = os.getenv("POSTGRES_PASSWORD", "changeme")
+    pg_db = os.getenv("POSTGRES_DB", "rfc")
+    pg_host = os.getenv("POSTGRES_HOST_INTERNAL", "postgres")
+    pg_port = os.getenv("POSTGRES_PORT_INTERNAL", "5432")
+    return f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
 
 
 def bootstrap() -> None:
-    # Import Superset internals (available inside the container)
-    from superset.app import create_app  # type: ignore[import-untyped]
+    """Run the full bootstrap sequence."""
+    try:
+        from superset.app import create_app
+    except ImportError:
+        log.error("Superset is not installed. Run inside the Superset container.")
+        sys.exit(1)
 
     app = create_app()
 
     with app.app_context():
-        from superset import db  # type: ignore[import-untyped,attr-defined]
-        from superset.connectors.sqla.models import (  # type: ignore[import-untyped]
-            SqlaTable,
-            TableColumn,
+        _create_tables()
+        db_id = _ensure_database_connection()
+        if db_id is None:
+            log.error("Failed to create database connection.")
+            sys.exit(1)
+        _create_datasets(db_id)
+        _create_charts_and_dashboards(db_id)
+
+    log.info("Bootstrap complete.")
+
+
+def _create_tables() -> None:
+    """Create the 2-table schema in PostgreSQL."""
+    from sqlalchemy import create_engine, text
+
+    uri = _get_database_uri()
+    engine = create_engine(uri)
+    with engine.begin() as conn:
+        for statement in _TABLE_DDL.split(";"):
+            statement = statement.strip()
+            if statement:
+                conn.execute(text(statement))
+    engine.dispose()
+    log.info("Created 2-table schema (test_runs, test_results).")
+
+
+def _ensure_database_connection() -> int | None:
+    """Create or update the Superset database connection object."""
+    from superset import db as superset_db
+    from superset.models.core import Database
+
+    db_name = "Robot Framework Results"
+    uri = _get_database_uri()
+
+    existing = (
+        superset_db.session.query(Database)
+        .filter_by(database_name=db_name)
+        .first()
+    )
+    if existing:
+        existing.sqlalchemy_uri = uri
+        superset_db.session.commit()
+        log.info(f"Updated database connection: {db_name} (id={existing.id})")
+        return existing.id
+
+    new_db = Database(
+        database_name=db_name,
+        sqlalchemy_uri=uri,
+        expose_in_sqllab=True,
+    )
+    superset_db.session.add(new_db)
+    superset_db.session.commit()
+    log.info(f"Created database connection: {db_name} (id={new_db.id})")
+    return new_db.id
+
+
+def _create_datasets(db_id: int) -> None:
+    """Create Superset datasets for the 2 tables."""
+    from superset import db as superset_db
+    from superset.connectors.sqla.models import SqlaTable
+
+    tables = ["test_runs", "test_results"]
+    for table_name in tables:
+        existing = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
         )
-        from superset.models.core import Database  # type: ignore[import-untyped]
-        from superset.models.dashboard import (  # type: ignore[import-untyped]
-            Dashboard,
+        if existing:
+            log.info(f"Dataset already exists: {table_name}")
+            continue
+
+        dataset = SqlaTable(
+            table_name=table_name,
+            database_id=db_id,
+            schema=None,
         )
-        from superset.models.slice import Slice  # type: ignore[import-untyped]
+        superset_db.session.add(dataset)
+        superset_db.session.commit()
 
-        # Build connection URI from env (same vars docker-compose sets)
-        pg_user = os.getenv("POSTGRES_USER", "rfc")
-        pg_pass = os.getenv("POSTGRES_PASSWORD", "changeme")
-        pg_db = os.getenv("POSTGRES_DB", "rfc")
-        pg_port = os.getenv("POSTGRES_INTERNAL_PORT", "5432")
-        pg_uri = f"postgresql://{pg_user}:{pg_pass}@postgres:{pg_port}/{pg_db}"
+        # Fetch metadata to populate columns
+        try:
+            dataset.fetch_metadata()
+            superset_db.session.commit()
+        except Exception as e:
+            log.warning(f"fetch_metadata failed for {table_name}: {e}")
 
-        # ── 0. Create RFC tables in PostgreSQL ────────────────────────
-        _ensure_tables(pg_uri)
+        log.info(f"Created dataset: {table_name} (id={dataset.id})")
 
-        # ── 1. Database connection ──────────────────────────────────
-        db_name = "Robot Framework Results"
-        database = db.session.query(Database).filter_by(database_name=db_name).first()
-        if database is None:
-            database = Database(
-                database_name=db_name,
-                sqlalchemy_uri=pg_uri,
-                expose_in_sqllab=True,
-            )
-            db.session.add(database)
-            db.session.flush()
-            log.info("Created database connection: %s", db_name)
-        else:
-            log.info("Database connection already exists: %s", db_name)
 
-        # ── 2. Physical table datasets ────────────────────────────────
-        datasets: Dict[str, Any] = {}
-        for table_name in (
-            "test_runs",
-            "test_results",
-            "models",
-            "pipeline_results",
-            "robot_dry_run_results",
-            "keyword_results",
-            "ollama_metrics",
-            "host_info",
-            "analytics_model_trends",
-            "analytics_test_stability",
-            "analytics_model_comparison",
-            "analytics_regression_alerts",
-            "analytics_performance_fingerprints",
-        ):
-            ds = (
-                db.session.query(SqlaTable)
-                .filter_by(table_name=table_name, database_id=database.id)
-                .first()
-            )
-            if ds is None:
-                ds = SqlaTable(
-                    table_name=table_name,
-                    database_id=database.id,
-                    schema=None,
-                )
-                db.session.add(ds)
-                db.session.flush()
-                log.info("Created dataset: %s", table_name)
-            # Sync column metadata so Superset knows the schema
-            try:
-                ds.fetch_metadata()
-                db.session.flush()
-                log.info("Synced columns for: %s", table_name)
-            except Exception as e:
-                log.warning("Could not sync columns for %s: %s", table_name, e)
-            datasets[table_name] = ds
+def _create_charts_and_dashboards(db_id: int) -> None:
+    """Create charts and 2 dashboards for the 2-table schema."""
+    from superset import db as superset_db
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
 
-        # ── 3. Virtual datasets (SQL queries for cross-table views) ──
-        for vds_name, sql in _VIRTUAL_DATASETS.items():
-            ds = (
-                db.session.query(SqlaTable)
-                .filter_by(table_name=vds_name, database_id=database.id)
-                .first()
-            )
-            if ds is None:
-                ds = SqlaTable(
-                    table_name=vds_name,
-                    database_id=database.id,
-                    schema=None,
-                    sql=sql,
-                )
-                db.session.add(ds)
-                db.session.flush()
-                log.info("Created virtual dataset: %s", vds_name)
-            try:
-                ds.fetch_metadata()
-                db.session.flush()
-                log.info("Synced columns for virtual dataset: %s", vds_name)
-            except Exception as e:
-                log.warning("Could not sync columns for %s: %s", vds_name, e)
+    # Get dataset IDs
+    datasets: dict[str, int] = {}
+    for table_name in ["test_runs", "test_results"]:
+        ds = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
+        )
+        if ds:
+            datasets[table_name] = ds.id
 
-            # Fallback: when fetch_metadata() fails to register columns
-            # (e.g. underlying tables are empty), probe the database with
-            # LIMIT 0 to discover column names from the query plan.
-            if not ds.columns:
-                log.info(
-                    "No columns for %s — probing via LIMIT 0",
-                    vds_name,
-                )
-                try:
-                    col_names = _probe_columns(pg_uri, sql)
-                    for col_name in col_names:
-                        db.session.add(TableColumn(column_name=col_name, table=ds))
-                    db.session.flush()
-                    log.info(
-                        "Registered %d columns for %s via LIMIT 0 probe",
-                        len(col_names),
-                        vds_name,
-                    )
-                except Exception as e:
-                    log.warning("Column probe also failed for %s: %s", vds_name, e)
+    if not datasets:
+        log.warning("No datasets found; skipping chart creation.")
+        return
 
-            datasets[vds_name] = ds
+    # Chart definitions
+    charts: list[dict[str, Any]] = []
 
-        # ── 4. Charts ────────────────────────────────────────────────
-        test_result_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _test_results_charts(datasets)
+    if "test_runs" in datasets:
+        ds_id = datasets["test_runs"]
+        charts.extend([
+            {
+                "slice_name": "Pass Rate Over Time by Model",
+                "viz_type": "echarts_timeseries_line",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["passed"],
+                    "groupby": ["model_name"],
+                    "time_column": "timestamp",
+                },
+            },
+            {
+                "slice_name": "Model Comparison — Pass Rate",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["passed", "failed"],
+                    "groupby": ["model_name"],
+                },
+            },
+            {
+                "slice_name": "Suite Duration Trend",
+                "viz_type": "echarts_timeseries_line",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["duration_seconds"],
+                    "groupby": ["model_name"],
+                    "time_column": "timestamp",
+                },
+            },
+            {
+                "slice_name": "Recent Test Runs",
+                "viz_type": "table",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "columns": [
+                        "timestamp", "model_name", "test_suite",
+                        "passed", "failed", "duration_seconds",
+                        "output_xml_url",
+                    ],
+                    "order_desc": True,
+                    "row_limit": 100,
+                },
+            },
+            {
+                "slice_name": "Avg Duration by Model",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["duration_seconds"],
+                    "groupby": ["model_name"],
+                },
+            },
+            {
+                "slice_name": "Tests Per Model",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["total_tests"],
+                    "groupby": ["model_name"],
+                },
+            },
+        ])
+
+    if "test_results" in datasets:
+        ds_id = datasets["test_results"]
+        charts.extend([
+            {
+                "slice_name": "Test Status Breakdown",
+                "viz_type": "pie",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["count"],
+                    "groupby": ["test_status"],
+                },
+            },
+            {
+                "slice_name": "Failures by Test Name",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["count"],
+                    "groupby": ["test_name"],
+                    "adhoc_filters": [
+                        {"clause": "WHERE", "expressionType": "SIMPLE",
+                         "subject": "test_status", "operator": "==",
+                         "comparator": "FAIL"},
+                    ],
+                },
+            },
+            {
+                "slice_name": "Score Distribution",
+                "viz_type": "echarts_bar",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "metrics": ["count"],
+                    "groupby": ["score"],
+                },
+            },
+            {
+                "slice_name": "Test Results Detail",
+                "viz_type": "table",
+                "datasource_id": ds_id,
+                "datasource_type": "table",
+                "params": {
+                    "columns": [
+                        "test_name", "test_status", "score",
+                        "question", "actual_answer", "grading_reason",
+                    ],
+                    "order_desc": True,
+                    "row_limit": 200,
+                },
+            },
+        ])
+
+    # Create charts
+    import json
+
+    chart_ids: list[int] = []
+    for chart_def in charts:
+        existing = (
+            superset_db.session.query(Slice)
+            .filter_by(slice_name=chart_def["slice_name"])
+            .first()
+        )
+        if existing:
+            chart_ids.append(existing.id)
+            log.info(f"Chart already exists: {chart_def['slice_name']}")
+            continue
+
+        chart = Slice(
+            slice_name=chart_def["slice_name"],
+            viz_type=chart_def["viz_type"],
+            datasource_id=chart_def["datasource_id"],
+            datasource_type=chart_def["datasource_type"],
+            params=json.dumps(chart_def["params"]),
+        )
+        superset_db.session.add(chart)
+        superset_db.session.commit()
+        chart_ids.append(chart.id)
+        log.info(f"Created chart: {chart_def['slice_name']} (id={chart.id})")
+
+    # Create dashboards
+    _dashboards = [
+        {
+            "dashboard_title": "Test Results",
+            "slug": "test-results",
+        },
+        {
+            "dashboard_title": "Model Performance",
+            "slug": "model-performance",
+        },
+    ]
+    for dash_def in _dashboards:
+        existing = (
+            superset_db.session.query(Dashboard)
+            .filter_by(slug=dash_def["slug"])
+            .first()
+        )
+        if existing:
+            log.info(f"Dashboard already exists: {dash_def['dashboard_title']}")
+            continue
+
+        dashboard = Dashboard(
+            dashboard_title=dash_def["dashboard_title"],
+            slug=dash_def["slug"],
+            published=True,
+        )
+        # Associate all charts with both dashboards
+        dashboard.slices = [
+            superset_db.session.query(Slice).get(cid)
+            for cid in chart_ids
+            if superset_db.session.query(Slice).get(cid)
         ]
-        pipeline_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _pipeline_health_charts(datasets)
-        ]
-        model_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _model_analytics_charts(datasets)
-        ]
-        ollama_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _ollama_performance_charts(datasets)
-        ]
-        host_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _host_metrics_charts(datasets)
-        ]
-        intelligence_slices = [
-            _get_or_create_slice(db, Slice, cdef)
-            for cdef in _intelligence_charts(datasets)
-        ]
-
-        # ── 5. Load theme CSS (opt-in via SUPERSET_TRON_CSS=true) ──
-        _tron_css = ""
-        if os.getenv("SUPERSET_TRON_CSS", "false").lower() in ("1", "true", "yes"):
-            _tron_css_path = Path(__file__).parent / "themes" / "tron.css"
-            if _tron_css_path.exists():
-                _tron_css = _tron_css_path.read_text()
-                log.info("Loaded Tron theme CSS from %s", _tron_css_path)
-            else:
-                log.warning("Tron theme CSS not found at %s", _tron_css_path)
-        else:
-            log.info("Tron theme disabled (set SUPERSET_TRON_CSS=true to enable)")
-
-        # ── 6. Dashboards ───────────────────────────────────────────
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Robot Framework Test Results",
-            "rfc-results",
-            test_result_slices,
-            css=_tron_css,
+        superset_db.session.add(dashboard)
+        superset_db.session.commit()
+        log.info(
+            f"Created dashboard: {dash_def['dashboard_title']} (id={dashboard.id})"
         )
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Pipeline Health",
-            "rfc-pipelines",
-            pipeline_slices,
-            css=_tron_css,
-        )
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Model Analytics",
-            "rfc-models",
-            model_slices,
-            css=_tron_css,
-        )
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Ollama Performance",
-            "rfc-ollama",
-            ollama_slices,
-            css=_tron_css,
-        )
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Host Metrics",
-            "rfc-hosts",
-            host_slices,
-            css=_tron_css,
-        )
-        _get_or_create_dashboard(
-            db,
-            Dashboard,
-            "Intelligence",
-            "rfc-intelligence",
-            intelligence_slices,
-            css=_tron_css,
-        )
-
-        db.session.commit()
-        log.info("Bootstrap complete — 5 dashboards created")
 
 
 if __name__ == "__main__":
-    try:
-        bootstrap()
-    except Exception:
-        log.exception("Bootstrap failed")
-        sys.exit(1)
+    bootstrap()
