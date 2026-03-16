@@ -16,6 +16,7 @@ URL is provided.
 """
 
 import gzip
+import json
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -184,6 +185,9 @@ class DbListener:
         parsed = _parse_tags(tags)
         tags_str = parsed["tags_sorted"]
 
+        # Extract performance metrics from llm_metrics JSON
+        metrics = _extract_llm_metrics(self._current_test_data.get("llm_metrics"))
+
         self._test_cases.append(
             {
                 "name": name,
@@ -198,6 +202,21 @@ class DbListener:
                 "tag_severity": parsed["tag_severity"],
                 "tag_tier": parsed["tag_tier"],
                 "tag_verify": parsed["tag_verify"],
+                "thinking_text": self._current_test_data.get("thinking_text"),
+                "thinking_tokens": _safe_int(
+                    self._current_test_data.get("thinking_tokens")
+                ),
+                "num_ctx": _safe_int(self._current_test_data.get("num_ctx"))
+                or metrics.get("num_ctx"),
+                "num_predict": _safe_int(self._current_test_data.get("num_predict"))
+                or metrics.get("num_predict"),
+                "eval_count": metrics.get("eval_count"),
+                "eval_duration_ns": metrics.get("eval_duration_ns"),
+                "prompt_eval_count": metrics.get("prompt_eval_count"),
+                "prompt_eval_duration_ns": metrics.get("prompt_eval_duration_ns"),
+                "load_duration_ns": metrics.get("load_duration_ns"),
+                "total_duration_ns": metrics.get("total_duration_ns"),
+                "tokens_per_second": metrics.get("eval_rate"),
             }
         )
         self._current_test_data = {}
@@ -251,6 +270,12 @@ class DbListener:
         output_xml_url = _build_output_xml_url()
         output_xml_source = _build_output_xml_source()
 
+        # Collect inference params from Robot variables or environment
+        run_temperature = _get_robot_float("TEMPERATURE")
+        run_seed = _get_robot_int("SEED")
+        run_top_p = _get_robot_float("TOP_P")
+        run_top_k = _get_robot_int("TOP_K")
+
         run = TestRun(
             timestamp=self._start_time or end_time,
             model_name=model_name,
@@ -267,6 +292,10 @@ class DbListener:
             output_xml_url=output_xml_url,
             output_xml_gz=output_xml_gz,
             output_xml_source=output_xml_source,
+            temperature=run_temperature,
+            seed=run_seed,
+            top_p=run_top_p,
+            top_k=run_top_k,
         )
 
         try:
@@ -288,6 +317,17 @@ class DbListener:
                     tag_severity=tc.get("tag_severity"),
                     tag_tier=tc.get("tag_tier"),
                     tag_verify=tc.get("tag_verify"),
+                    thinking_text=tc.get("thinking_text"),
+                    thinking_tokens=tc.get("thinking_tokens"),
+                    num_ctx=tc.get("num_ctx"),
+                    num_predict=tc.get("num_predict"),
+                    eval_count=tc.get("eval_count"),
+                    eval_duration_ns=tc.get("eval_duration_ns"),
+                    prompt_eval_count=tc.get("prompt_eval_count"),
+                    prompt_eval_duration_ns=tc.get("prompt_eval_duration_ns"),
+                    load_duration_ns=tc.get("load_duration_ns"),
+                    total_duration_ns=tc.get("total_duration_ns"),
+                    tokens_per_second=tc.get("tokens_per_second"),
                 )
                 for tc in self._test_cases
             ]
@@ -369,3 +409,72 @@ def _format_size(size_bytes: int) -> str:
         return f"{size_bytes / 1024:.1f}KB"
     else:
         return f"{size_bytes / (1024 * 1024):.1f}MB"
+
+
+def _safe_int(value: Optional[str]) -> Optional[int]:
+    """Convert a string to int, returning None on failure."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
+    """Extract individual metrics from the llm_metrics JSON string.
+
+    Returns a dict with keys matching the Ollama metrics names.
+    Missing or unparseable data returns an empty dict.
+    """
+    if not metrics_json:
+        return {}
+    try:
+        data = json.loads(metrics_json)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return {
+        "eval_count": data.get("eval_count"),
+        "eval_duration_ns": data.get("eval_duration_ns"),
+        "prompt_eval_count": data.get("prompt_eval_count"),
+        "prompt_eval_duration_ns": data.get("prompt_eval_duration_ns"),
+        "load_duration_ns": data.get("load_duration_ns"),
+        "total_duration_ns": data.get("total_duration_ns"),
+        "eval_rate": data.get("eval_rate"),
+        "num_ctx": data.get("num_ctx"),
+        "num_predict": data.get("num_predict"),
+    }
+
+
+def _get_robot_float(var_name: str) -> Optional[float]:
+    """Get a float Robot variable, falling back to env var."""
+    try:
+        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
+        if val is not None:
+            return float(val)
+    except Exception:
+        pass
+    env_val = os.getenv(var_name)
+    if env_val is not None:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return None
+
+
+def _get_robot_int(var_name: str) -> Optional[int]:
+    """Get an int Robot variable, falling back to env var."""
+    try:
+        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
+        if val is not None:
+            return int(val)
+    except Exception:
+        pass
+    env_val = os.getenv(var_name)
+    if env_val is not None:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return None

@@ -4,7 +4,14 @@ import os
 import sqlite3
 from unittest.mock import MagicMock, patch
 
-from rfc.db_listener import DbListener, _build_output_xml_url, _format_size, _parse_tags
+from rfc.db_listener import (
+    DbListener,
+    _build_output_xml_url,
+    _extract_llm_metrics,
+    _format_size,
+    _parse_tags,
+    _safe_int,
+)
 
 
 def _suite_attrs(**overrides: object) -> dict:
@@ -653,3 +660,95 @@ class TestFormatSize:
 
     def test_megabytes(self) -> None:
         assert "MB" in _format_size(5_000_000)
+
+
+class TestSafeInt:
+    def test_valid_int(self) -> None:
+        assert _safe_int("42") == 42
+
+    def test_none_returns_none(self) -> None:
+        assert _safe_int(None) is None
+
+    def test_invalid_returns_none(self) -> None:
+        assert _safe_int("abc") is None
+
+
+class TestExtractLlmMetrics:
+    def test_valid_json(self) -> None:
+        data = '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        result = _extract_llm_metrics(data)
+        assert result["eval_count"] == 186
+        assert result["eval_duration_ns"] == 16907870673
+        assert result["eval_rate"] == 11.0
+
+    def test_none_returns_empty(self) -> None:
+        assert _extract_llm_metrics(None) == {}
+
+    def test_invalid_json_returns_empty(self) -> None:
+        assert _extract_llm_metrics("not json") == {}
+
+    def test_missing_keys_return_none(self) -> None:
+        result = _extract_llm_metrics('{"eval_count": 10}')
+        assert result["eval_count"] == 10
+        assert result.get("eval_duration_ns") is None
+
+
+class TestDbListenerThinkingCapture:
+    """Tests for thinking and metrics data capture in the listener."""
+
+    def test_captures_thinking_text(self) -> None:
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:thinking_text:I need to reason"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["thinking_text"] == "I need to reason"
+
+    def test_captures_thinking_tokens(self) -> None:
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:thinking_tokens:15"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["thinking_tokens"] == 15
+
+    def test_captures_num_ctx(self) -> None:
+        listener = DbListener()
+        listener.start_test("T", {})
+        listener.log_message({"message": "RFC_DATA:num_ctx:4096"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["num_ctx"] == 4096
+
+    def test_extracts_metrics_from_llm_metrics_json(self) -> None:
+        listener = DbListener()
+        listener.start_test("T", {})
+        metrics = '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
+        listener.end_test("T", _test_attrs())
+        assert listener._test_cases[0]["eval_count"] == 186
+        assert listener._test_cases[0]["tokens_per_second"] == 11.0
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_thinking_data_archived_to_database(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite("Suite", {})
+        listener.start_test("Think Test", {})
+        listener.log_message({"message": "RFC_DATA:actual_answer:42"})
+        listener.log_message({"message": "RFC_DATA:thinking_text:Let me think"})
+        listener.log_message({"message": "RFC_DATA:thinking_tokens:3"})
+        listener.log_message({"message": "RFC_DATA:num_ctx:8192"})
+        metrics = '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
+        listener.end_test("Think Test", _test_attrs(status="PASS"))
+        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["thinking_text"] == "Let me think"
+            assert row["thinking_tokens"] == 3
+            assert row["num_ctx"] == 8192
+            assert row["eval_count"] == 50
+            assert row["tokens_per_second"] == 10.0
