@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rfc.test_database import (
+    Model,
     TestDatabase,
     TestResult,
     TestRun,
@@ -454,3 +455,147 @@ class TestResultsFullView:
             row = conn.execute("SELECT * FROM test_results_full").fetchone()
             columns = row.keys()
             assert "output_xml_gz" not in columns
+
+
+class TestNewRunColumns:
+    """Verify new inference parameter columns on test_runs."""
+
+    def test_temperature_seed_top_p_top_k_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run = _make_run(temperature=0.7, seed=42, top_p=0.9, top_k=40)
+        db.add_test_run(run)
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["temperature"] == 0.7
+        assert runs[0]["seed"] == 42
+        assert runs[0]["top_p"] == 0.9
+        assert runs[0]["top_k"] == 40
+
+    def test_new_run_columns_default_none(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        db.add_test_run(_make_run())
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["temperature"] is None
+        assert runs[0]["seed"] is None
+
+
+class TestNewResultColumns:
+    """Verify thinking, context, and performance metric columns."""
+
+    def test_thinking_columns_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Thinking Test",
+                    test_status="PASS",
+                    thinking_text="I need to reason about this",
+                    thinking_tokens=7,
+                    num_ctx=4096,
+                    num_predict=256,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["thinking_text"] == "I need to reason about this"
+            assert row["thinking_tokens"] == 7
+            assert row["num_ctx"] == 4096
+            assert row["num_predict"] == 256
+
+    def test_performance_metrics_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Perf Test",
+                    test_status="PASS",
+                    eval_count=186,
+                    eval_duration_ns=16907870673,
+                    prompt_eval_count=73,
+                    prompt_eval_duration_ns=489998464,
+                    load_duration_ns=108889428,
+                    total_duration_ns=17607688368,
+                    tokens_per_second=11.0,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["eval_count"] == 186
+            assert row["eval_duration_ns"] == 16907870673
+            assert row["tokens_per_second"] == 11.0
+
+
+class TestModelsTable:
+    """Verify models table CRUD."""
+
+    def test_upsert_model(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        model = Model(
+            name="llama3:8b",
+            sha256_digest="abc123",
+            size_gb=4.7,
+            quantization="Q4_K_M",
+            architecture="llama",
+            context_length=8192,
+            family="llama",
+            parameter_count="8B",
+        )
+        db.upsert_model(model)
+
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            assert row["name"] == "llama3:8b"
+            assert row["quantization"] == "Q4_K_M"
+            assert row["context_length"] == 8192
+
+    def test_upsert_model_updates(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        db.upsert_model(Model(name="llama3:8b", context_length=4096))
+        db.upsert_model(Model(name="llama3:8b", context_length=8192))
+
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            assert row["context_length"] == 8192
+
+    def test_model_table_row_count(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        assert db.get_table_row_count("models") == 0
+        db.upsert_model(Model(name="model1"))
+        db.upsert_model(Model(name="model2"))
+        assert db.get_table_row_count("models") == 2
+
+
+class TestViewIncludesNewColumns:
+    """Verify test_results_full view includes new columns."""
+
+    def test_view_has_thinking_and_metrics(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run(temperature=0.5, seed=42))
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Full View Test",
+                    test_status="PASS",
+                    thinking_text="reasoning",
+                    thinking_tokens=1,
+                    tokens_per_second=15.0,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            assert row["thinking_text"] == "reasoning"
+            assert row["tokens_per_second"] == 15.0
+            assert row["temperature"] == 0.5
+            assert row["seed"] == 42

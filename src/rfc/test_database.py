@@ -65,6 +65,10 @@ class TestRun:
     output_xml_url: Optional[str] = None
     output_xml_gz: Optional[bytes] = None
     output_xml_source: Optional[str] = None
+    temperature: Optional[float] = None
+    seed: Optional[int] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
     id: Optional[int] = None
 
 
@@ -85,7 +89,32 @@ class TestResult:
     tag_severity: Optional[str] = None
     tag_tier: Optional[int] = None
     tag_verify: Optional[str] = None
+    thinking_text: Optional[str] = None
+    thinking_tokens: Optional[int] = None
+    num_ctx: Optional[int] = None
+    num_predict: Optional[int] = None
+    eval_count: Optional[int] = None
+    eval_duration_ns: Optional[int] = None
+    prompt_eval_count: Optional[int] = None
+    prompt_eval_duration_ns: Optional[int] = None
+    load_duration_ns: Optional[int] = None
+    total_duration_ns: Optional[int] = None
+    tokens_per_second: Optional[float] = None
     id: Optional[int] = None
+
+
+@dataclass
+class Model:
+    """Represents an LLM model's metadata."""
+
+    name: str
+    sha256_digest: Optional[str] = None
+    size_gb: Optional[float] = None
+    quantization: Optional[str] = None
+    architecture: Optional[str] = None
+    context_length: Optional[int] = None
+    family: Optional[str] = None
+    parameter_count: Optional[str] = None
 
 
 class _Backend(abc.ABC):
@@ -112,6 +141,9 @@ class _Backend(abc.ABC):
     @abc.abstractmethod
     def get_table_row_count(self, table_name: str) -> int: ...
 
+    @abc.abstractmethod
+    def upsert_model(self, model: "Model") -> None: ...
+
 
 class _SQLiteBackend(_Backend):
     """SQLite backend using the stdlib sqlite3 module."""
@@ -133,7 +165,11 @@ class _SQLiteBackend(_Backend):
         rfc_version TEXT,
         output_xml_url TEXT,
         output_xml_gz BLOB,
-        output_xml_source TEXT
+        output_xml_source TEXT,
+        temperature REAL,
+        seed INTEGER,
+        top_p REAL,
+        top_k INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -151,15 +187,40 @@ class _SQLiteBackend(_Backend):
         tag_severity TEXT,
         tag_tier INTEGER,
         tag_verify TEXT,
+        thinking_text TEXT,
+        thinking_tokens INTEGER,
+        num_ctx INTEGER,
+        num_predict INTEGER,
+        eval_count INTEGER,
+        eval_duration_ns INTEGER,
+        prompt_eval_count INTEGER,
+        prompt_eval_duration_ns INTEGER,
+        load_duration_ns INTEGER,
+        total_duration_ns INTEGER,
+        tokens_per_second REAL,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS models (
+        name TEXT PRIMARY KEY,
+        sha256_digest TEXT,
+        size_gb REAL,
+        quantization TEXT,
+        architecture TEXT,
+        context_length INTEGER,
+        family TEXT,
+        parameter_count TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    """
 
-    CREATE VIEW IF NOT EXISTS test_results_full AS
+    _VIEW_SQL = """
+    DROP VIEW IF EXISTS test_results_full;
+    CREATE VIEW test_results_full AS
     SELECT
         tr.id AS result_id,
         tr.run_id,
@@ -175,6 +236,17 @@ class _SQLiteBackend(_Backend):
         tr.tag_severity,
         tr.tag_tier,
         tr.tag_verify,
+        tr.thinking_text,
+        tr.thinking_tokens,
+        tr.num_ctx,
+        tr.num_predict,
+        tr.eval_count,
+        tr.eval_duration_ns,
+        tr.prompt_eval_count,
+        tr.prompt_eval_duration_ns,
+        tr.load_duration_ns,
+        tr.total_duration_ns,
+        tr.tokens_per_second,
         r.timestamp,
         r.model_name,
         r.test_suite,
@@ -187,16 +259,46 @@ class _SQLiteBackend(_Backend):
         r.git_branch,
         r.hostname,
         r.output_xml_url,
-        r.output_xml_source
+        r.output_xml_source,
+        r.temperature,
+        r.seed,
+        r.top_p,
+        r.top_k
     FROM test_results tr
     JOIN test_runs r ON tr.run_id = r.id;
     """
+
+    # SQLite migrations for existing databases (new columns added via ALTER TABLE)
+    _SQLITE_MIGRATIONS = [
+        "ALTER TABLE test_runs ADD COLUMN temperature REAL",
+        "ALTER TABLE test_runs ADD COLUMN seed INTEGER",
+        "ALTER TABLE test_runs ADD COLUMN top_p REAL",
+        "ALTER TABLE test_runs ADD COLUMN top_k INTEGER",
+        "ALTER TABLE test_results ADD COLUMN thinking_text TEXT",
+        "ALTER TABLE test_results ADD COLUMN thinking_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN num_ctx INTEGER",
+        "ALTER TABLE test_results ADD COLUMN num_predict INTEGER",
+        "ALTER TABLE test_results ADD COLUMN eval_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN eval_duration_ns INTEGER",
+        "ALTER TABLE test_results ADD COLUMN prompt_eval_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN prompt_eval_duration_ns INTEGER",
+        "ALTER TABLE test_results ADD COLUMN load_duration_ns INTEGER",
+        "ALTER TABLE test_results ADD COLUMN total_duration_ns INTEGER",
+        "ALTER TABLE test_results ADD COLUMN tokens_per_second REAL",
+    ]
 
     def __init__(self, db_path: str):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         with sqlite3.connect(db_path) as conn:
             conn.executescript(self.SCHEMA)
+            # Run migrations for existing databases (idempotent)
+            for sql in self._SQLITE_MIGRATIONS:
+                try:
+                    conn.execute(sql)
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+            conn.executescript(self._VIEW_SQL)
 
     def add_test_run(self, run: TestRun) -> int:
         with sqlite3.connect(self.db_path) as conn:
@@ -206,8 +308,8 @@ class _SQLiteBackend(_Backend):
                 (timestamp, model_name, test_suite, total_tests, passed,
                  failed, skipped, duration_seconds, git_commit, git_branch,
                  hostname, rfc_version, output_xml_url, output_xml_gz,
-                 output_xml_source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 output_xml_source, temperature, seed, top_p, top_k)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -225,6 +327,10 @@ class _SQLiteBackend(_Backend):
                     run.output_xml_url,
                     run.output_xml_gz,
                     run.output_xml_source,
+                    run.temperature,
+                    run.seed,
+                    run.top_p,
+                    run.top_k,
                 ),
             )
             run_id = cursor.lastrowid
@@ -239,8 +345,13 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_results
                 (run_id, test_name, test_status, score, tags, question,
                  expected_answer, actual_answer, grading_reason,
-                 rfc_version, tag_severity, tag_tier, tag_verify)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 rfc_version, tag_severity, tag_tier, tag_verify,
+                 thinking_text, thinking_tokens, num_ctx, num_predict,
+                 eval_count, eval_duration_ns, prompt_eval_count,
+                 prompt_eval_duration_ns, load_duration_ns,
+                 total_duration_ns, tokens_per_second)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -257,6 +368,17 @@ class _SQLiteBackend(_Backend):
                         r.tag_severity,
                         r.tag_tier,
                         r.tag_verify,
+                        r.thinking_text,
+                        r.thinking_tokens,
+                        r.num_ctx,
+                        r.num_predict,
+                        r.eval_count,
+                        r.eval_duration_ns,
+                        r.prompt_eval_count,
+                        r.prompt_eval_duration_ns,
+                        r.load_duration_ns,
+                        r.total_duration_ns,
+                        r.tokens_per_second,
                     )
                     for r in results
                 ],
@@ -319,6 +441,27 @@ class _SQLiteBackend(_Backend):
             ).fetchone()
             return int(row[0]) if row else 0
 
+    def upsert_model(self, model: Model) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO models
+                (name, sha256_digest, size_gb, quantization, architecture,
+                 context_length, family, parameter_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    model.name,
+                    model.sha256_digest,
+                    model.size_gb,
+                    model.quantization,
+                    model.architecture,
+                    model.context_length,
+                    model.family,
+                    model.parameter_count,
+                ),
+            )
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL backend using SQLAlchemy."""
@@ -347,6 +490,34 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20)",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50)",
+        # New columns: test_runs inference parameters.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS temperature REAL",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS seed INTEGER",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS top_p REAL",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS top_k INTEGER",
+        # New columns: test_results thinking and performance metrics.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_text TEXT",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS num_ctx INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS num_predict INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_duration_ns BIGINT",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS prompt_eval_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS prompt_eval_duration_ns BIGINT",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS load_duration_ns BIGINT",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS total_duration_ns BIGINT",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tokens_per_second REAL",
+        # Models table.
+        """CREATE TABLE IF NOT EXISTS models (
+            name TEXT PRIMARY KEY,
+            sha256_digest TEXT,
+            size_gb REAL,
+            quantization TEXT,
+            architecture TEXT,
+            context_length INTEGER,
+            family TEXT,
+            parameter_count TEXT
+        )""",
         # Joined view for Superset — one flat dataset with all columns.
         """CREATE OR REPLACE VIEW test_results_full AS
         SELECT
@@ -364,6 +535,17 @@ class _SQLAlchemyBackend(_Backend):
             tr.tag_severity,
             tr.tag_tier,
             tr.tag_verify,
+            tr.thinking_text,
+            tr.thinking_tokens,
+            tr.num_ctx,
+            tr.num_predict,
+            tr.eval_count,
+            tr.eval_duration_ns,
+            tr.prompt_eval_count,
+            tr.prompt_eval_duration_ns,
+            tr.load_duration_ns,
+            tr.total_duration_ns,
+            tr.tokens_per_second,
             r.timestamp,
             r.model_name,
             r.test_suite,
@@ -376,7 +558,11 @@ class _SQLAlchemyBackend(_Backend):
             r.git_branch,
             r.hostname,
             r.output_xml_url,
-            r.output_xml_source
+            r.output_xml_source,
+            r.temperature,
+            r.seed,
+            r.top_p,
+            r.top_k
         FROM test_results tr
         JOIN test_runs r ON tr.run_id = r.id""",
     ]
@@ -413,6 +599,10 @@ class _SQLAlchemyBackend(_Backend):
             Column("output_xml_url", Text),
             Column("output_xml_gz", LargeBinary),
             Column("output_xml_source", Text),
+            Column("temperature", Float),
+            Column("seed", Integer),
+            Column("top_p", Float),
+            Column("top_k", Integer),
             Index("idx_test_runs_model", "model_name"),
             Index("idx_test_runs_timestamp", "timestamp"),
             Index("idx_test_runs_suite", "test_suite"),
@@ -440,7 +630,31 @@ class _SQLAlchemyBackend(_Backend):
             Column("tag_severity", String(20)),
             Column("tag_tier", Integer),
             Column("tag_verify", String(50)),
+            Column("thinking_text", Text),
+            Column("thinking_tokens", Integer),
+            Column("num_ctx", Integer),
+            Column("num_predict", Integer),
+            Column("eval_count", Integer),
+            Column("eval_duration_ns", Integer),
+            Column("prompt_eval_count", Integer),
+            Column("prompt_eval_duration_ns", Integer),
+            Column("load_duration_ns", Integer),
+            Column("total_duration_ns", Integer),
+            Column("tokens_per_second", Float),
             Index("idx_test_results_run_id", "run_id"),
+        )
+
+        self._models = Table(
+            "models",
+            self.metadata,
+            Column("name", Text, primary_key=True),
+            Column("sha256_digest", Text),
+            Column("size_gb", Float),
+            Column("quantization", Text),
+            Column("architecture", Text),
+            Column("context_length", Integer),
+            Column("family", Text),
+            Column("parameter_count", Text),
         )
 
     def _run_migrations(self) -> None:
@@ -470,6 +684,10 @@ class _SQLAlchemyBackend(_Backend):
                     output_xml_url=run.output_xml_url,
                     output_xml_gz=run.output_xml_gz,
                     output_xml_source=run.output_xml_source,
+                    temperature=run.temperature,
+                    seed=run.seed,
+                    top_p=run.top_p,
+                    top_k=run.top_k,
                 )
             )
             return int(result.inserted_primary_key[0])
@@ -495,6 +713,17 @@ class _SQLAlchemyBackend(_Backend):
                         "tag_severity": r.tag_severity,
                         "tag_tier": r.tag_tier,
                         "tag_verify": r.tag_verify,
+                        "thinking_text": r.thinking_text,
+                        "thinking_tokens": r.thinking_tokens,
+                        "num_ctx": r.num_ctx,
+                        "num_predict": r.num_predict,
+                        "eval_count": r.eval_count,
+                        "eval_duration_ns": r.eval_duration_ns,
+                        "prompt_eval_count": r.prompt_eval_count,
+                        "prompt_eval_duration_ns": r.prompt_eval_duration_ns,
+                        "load_duration_ns": r.load_duration_ns,
+                        "total_duration_ns": r.total_duration_ns,
+                        "tokens_per_second": r.tokens_per_second,
                     }
                     for r in results
                 ],
@@ -539,6 +768,36 @@ class _SQLAlchemyBackend(_Backend):
         with self.engine.connect() as conn:
             result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))  # noqa: S608
             return int(result.scalar() or 0)
+
+    def upsert_model(self, model: Model) -> None:
+        with self.engine.begin() as conn:
+            # Try update first, then insert
+            result = conn.execute(
+                self._models.update()
+                .where(self._models.c.name == model.name)
+                .values(
+                    sha256_digest=model.sha256_digest,
+                    size_gb=model.size_gb,
+                    quantization=model.quantization,
+                    architecture=model.architecture,
+                    context_length=model.context_length,
+                    family=model.family,
+                    parameter_count=model.parameter_count,
+                )
+            )
+            if result.rowcount == 0:
+                conn.execute(
+                    self._models.insert().values(
+                        name=model.name,
+                        sha256_digest=model.sha256_digest,
+                        size_gb=model.size_gb,
+                        quantization=model.quantization,
+                        architecture=model.architecture,
+                        context_length=model.context_length,
+                        family=model.family,
+                        parameter_count=model.parameter_count,
+                    )
+                )
 
 
 class TestDatabase:
@@ -607,3 +866,6 @@ class TestDatabase:
 
     def get_table_row_count(self, table_name: str) -> int:
         return self._backend.get_table_row_count(table_name)
+
+    def upsert_model(self, model: Model) -> None:
+        return self._backend.upsert_model(model)
