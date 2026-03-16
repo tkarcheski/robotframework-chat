@@ -52,6 +52,11 @@ class OllamaClient:
         max_tokens: int = 256,
         timeout: Optional[int] = None,
         max_retries: int = 2,
+        seed: Optional[int] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ):
         if not base_url:
             base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
@@ -77,6 +82,11 @@ class OllamaClient:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.max_retries = max_retries
+        self.seed = seed
+        self.top_p = top_p
+        self.top_k = top_k
+        self.num_ctx = num_ctx
+        self.keep_alive = keep_alive
         self.last_metrics: Optional[Dict[str, Any]] = None
 
     @property
@@ -109,15 +119,27 @@ class OllamaClient:
             raise TypeError(f"prompt must be a str, got {type(prompt).__name__}")
         if not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
-        payload = {
+        options: Dict[str, Any] = {
+            "temperature": self.temperature,
+            "num_predict": self.max_tokens,
+        }
+        if self.seed is not None:
+            options["seed"] = self.seed
+        if self.top_p is not None:
+            options["top_p"] = self.top_p
+        if self.top_k is not None:
+            options["top_k"] = self.top_k
+        if self.num_ctx is not None:
+            options["num_ctx"] = self.num_ctx
+
+        payload: Dict[str, Any] = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_predict": self.max_tokens,
-            },
+            "options": options,
         }
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
 
         self.last_metrics = None
         last_exception: Exception | None = None
@@ -153,6 +175,35 @@ class OllamaClient:
                     )
 
         raise last_exception  # type: ignore[misc]
+
+    def unload_model(self, model: Optional[str] = None) -> bool:
+        """Unload a model from VRAM by sending keep_alive=0.
+
+        Args:
+            model: Model name to unload. Defaults to self.model.
+
+        Returns:
+            True if the unload request succeeded.
+        """
+        target = model or self.model
+        payload = {
+            "model": target,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": 0,
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=30,
+            )
+            response.raise_for_status()
+            logger.info(f"Unloaded model: {target}")
+            return True
+        except Exception as exc:
+            logger.warn(f"Failed to unload model {target}: {exc}")
+            return False
 
     def list_models(self) -> List[str]:
         """Query available models from the Ollama endpoint.

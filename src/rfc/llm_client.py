@@ -22,6 +22,11 @@ class LLMProvider(Protocol):
     model: str
     temperature: float
     max_tokens: int
+    seed: Optional[int]
+    top_p: Optional[float]
+    top_k: Optional[int]
+    num_ctx: Optional[int]
+    keep_alive: Optional[str]
     last_metrics: Optional[Dict[str, Any]]
 
     def generate(self, prompt: str) -> str: ...

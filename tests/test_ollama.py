@@ -543,6 +543,101 @@ class TestGenerateMetrics:
         assert client.last_metrics["model_name"] == "llama3"
 
 
+class TestNewParameters:
+    def test_defaults_none(self):
+        client = OllamaClient()
+        assert client.seed is None
+        assert client.top_p is None
+        assert client.top_k is None
+        assert client.num_ctx is None
+        assert client.keep_alive is None
+
+    def test_explicit_params(self):
+        client = OllamaClient(seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m")
+        assert client.seed == 42
+        assert client.top_p == 0.9
+        assert client.top_k == 40
+        assert client.num_ctx == 4096
+        assert client.keep_alive == "5m"
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_params_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m")
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["options"]["seed"] == 42
+        assert payload["options"]["top_p"] == 0.9
+        assert payload["options"]["top_k"] == 40
+        assert payload["options"]["num_ctx"] == 4096
+        assert payload["keep_alive"] == "5m"
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_none_params_not_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert "seed" not in payload["options"]
+        assert "top_p" not in payload["options"]
+        assert "top_k" not in payload["options"]
+        assert "num_ctx" not in payload["options"]
+        assert "keep_alive" not in payload
+
+
+class TestUnloadModel:
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_unload_default_model(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="llama3")
+        result = client.unload_model()
+
+        assert result is True
+        payload = mock_post.call_args[1]["json"]
+        assert payload["model"] == "llama3"
+        assert payload["keep_alive"] == 0
+        assert payload["prompt"] == ""
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_unload_specific_model(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="llama3")
+        result = client.unload_model("mistral")
+
+        assert result is True
+        payload = mock_post.call_args[1]["json"]
+        assert payload["model"] == "mistral"
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_unload_failure_returns_false(self, mock_post, mock_logger):
+        mock_post.side_effect = Exception("connection refused")
+
+        client = OllamaClient()
+        result = client.unload_model()
+        assert result is False
+
+
 class TestLLMClientAlias:
     def test_alias(self):
         assert LLMClient is OllamaClient
