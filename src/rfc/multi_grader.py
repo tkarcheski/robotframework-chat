@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, List, Sequence
 
+from .thinking import parse_thinking
+
 
 @dataclass
 class MultiGradeResult:
@@ -32,8 +34,7 @@ class MultiGradeResult:
 
 def _extract_json(text: str) -> str:
     """Extract JSON from text that may contain markdown or thinking tags."""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+    text, _ = parse_thinking(text)
 
     json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
     matches = re.findall(json_block_pattern, text, re.DOTALL)

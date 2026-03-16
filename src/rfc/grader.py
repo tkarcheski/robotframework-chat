@@ -1,6 +1,8 @@
 import json
 import re
+
 from .models import GradeResult
+from .thinking import parse_thinking
 
 
 class Grader:
@@ -18,8 +20,7 @@ class Grader:
         - Text before/after JSON
         """
         # Remove thinking tags (various formats used by different models)
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+        text, _ = parse_thinking(text)
 
         # Try to find JSON in markdown code blocks
         json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
