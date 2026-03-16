@@ -26,6 +26,11 @@ class OpenAIClient:
         max_tokens: int = 256,
         timeout: Optional[int] = None,
         max_retries: int = 2,
+        seed: Optional[int] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ):
         if not base_url:
             base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -61,6 +66,11 @@ class OpenAIClient:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.max_retries = max_retries
+        self.seed = seed
+        self.top_p = top_p
+        self.top_k = top_k
+        self.num_ctx = num_ctx  # Not used by OpenAI, kept for protocol compliance
+        self.keep_alive = keep_alive  # Not used by OpenAI, kept for protocol compliance
         self.last_metrics: Optional[Dict[str, Any]] = None
 
     def generate(self, prompt: str) -> str:
@@ -80,12 +90,18 @@ class OpenAIClient:
         if not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
+        if self.seed is not None:
+            payload["seed"] = self.seed
+        if self.top_p is not None:
+            payload["top_p"] = self.top_p
+        if self.top_k is not None:
+            payload["top_k"] = self.top_k
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

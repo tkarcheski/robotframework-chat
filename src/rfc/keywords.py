@@ -1,12 +1,14 @@
 import json
 import os
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
+
+from .grader import Grader
 from .llm_client import create_provider
 from .ollama import OllamaClient
-from .grader import Grader
+from .thinking import estimate_token_count, parse_thinking
 
 _DEFAULT_TIMEOUT = 5400
 
@@ -45,20 +47,66 @@ class LLMKeywords:
         self.client.model = model
 
     @keyword("Set LLM Parameters")
-    def set_llm_parameters(self, temperature: float = 0.0, max_tokens: int = 256):
+    def set_llm_parameters(
+        self,
+        temperature: float = 0.0,
+        max_tokens: int = 256,
+        seed: Optional[int] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        keep_alive: Optional[str] = None,
+    ) -> None:
         self.client.temperature = float(temperature)
         self.client.max_tokens = int(max_tokens)
+        if seed is not None:
+            self.client.seed = int(seed)
+        if top_p is not None:
+            self.client.top_p = float(top_p)
+        if top_k is not None:
+            self.client.top_k = int(top_k)
+        if num_ctx is not None:
+            self.client.num_ctx = int(num_ctx)
+        if keep_alive is not None:
+            self.client.keep_alive = str(keep_alive)
 
     @keyword("Ask LLM")
     def ask_llm(self, prompt: str) -> str:
         logger.info(prompt)
-        response = self.client.generate(prompt)
-        logger.info(response)
-        logger.info(f"RFC_DATA:actual_answer:{response}")
+        raw_response = self.client.generate(prompt)
+        clean_answer, thinking_text = parse_thinking(raw_response)
+        logger.info(clean_answer)
+        logger.info(f"RFC_DATA:actual_answer:{clean_answer}")
+        if thinking_text is not None:
+            logger.info(f"RFC_DATA:thinking_text:{thinking_text}")
+            thinking_tokens = estimate_token_count(thinking_text)
+            logger.info(f"RFC_DATA:thinking_tokens:{thinking_tokens}")
+        if self.client.num_ctx is not None:
+            logger.info(f"RFC_DATA:num_ctx:{self.client.num_ctx}")
+        if self.client.max_tokens is not None:
+            logger.info(f"RFC_DATA:num_predict:{self.client.max_tokens}")
         if self.client.last_metrics is not None:
             self.client.last_metrics["prompt_text"] = prompt
+            if self.client.num_ctx is not None:
+                self.client.last_metrics["num_ctx"] = self.client.num_ctx
+            self.client.last_metrics["num_predict"] = self.client.max_tokens
             logger.info(f"RFC_DATA:llm_metrics:{json.dumps(self.client.last_metrics)}")
-        return response
+        return clean_answer
+
+    @keyword("Unload Model")
+    def unload_model(self, model: Optional[str] = None) -> bool:
+        """Unload a model from Ollama VRAM.
+
+        Args:
+            model: Model name to unload. Defaults to current model.
+
+        Returns:
+            True if unloaded successfully.
+        """
+        if not isinstance(self.client, OllamaClient):
+            logger.warn("Unload Model is only supported for Ollama providers")
+            return False
+        return self.client.unload_model(model)
 
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
