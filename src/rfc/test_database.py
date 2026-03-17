@@ -690,7 +690,9 @@ class _SQLAlchemyBackend(_Backend):
                     top_k=run.top_k,
                 )
             )
-            return int(result.inserted_primary_key[0])
+            pk = result.inserted_primary_key
+            assert pk is not None, "INSERT did not return a primary key"
+            return int(pk[0])
 
     def add_test_results(self, results: List[TestResult]) -> None:
         if not results:

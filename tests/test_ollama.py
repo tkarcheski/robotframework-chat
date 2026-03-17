@@ -553,7 +553,9 @@ class TestNewParameters:
         assert client.keep_alive is None
 
     def test_explicit_params(self):
-        client = OllamaClient(seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m")
+        client = OllamaClient(
+            seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m"
+        )
         assert client.seed == 42
         assert client.top_p == 0.9
         assert client.top_k == 40
@@ -568,7 +570,9 @@ class TestNewParameters:
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 
-        client = OllamaClient(seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m")
+        client = OllamaClient(
+            seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m"
+        )
         client.generate("test")
 
         payload = mock_post.call_args[1]["json"]

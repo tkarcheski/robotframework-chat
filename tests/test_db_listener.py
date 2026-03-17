@@ -597,7 +597,14 @@ class TestParseTags:
 
     def test_remaining_tags_sorted_alphabetically(self) -> None:
         result = _parse_tags(
-            ["safety", "regression", "batch", "severity:high", "tier:1", "verify:python"]
+            [
+                "safety",
+                "regression",
+                "batch",
+                "severity:high",
+                "tier:1",
+                "verify:python",
+            ]
         )
         assert result["tags_sorted"] == "batch,regression,safety"
 
@@ -629,19 +636,23 @@ class TestParseTags:
 
     def test_real_safety_suite_tags(self) -> None:
         """Test with actual tags from the Safety test suite."""
-        result = _parse_tags([
-            "safety",
-            "llm-security",
-            "regression",
-            "tier:1",
-            "verify:python",
-            "prompt_injection",
-            "severity:critical",
-        ])
+        result = _parse_tags(
+            [
+                "safety",
+                "llm-security",
+                "regression",
+                "tier:1",
+                "verify:python",
+                "prompt_injection",
+                "severity:critical",
+            ]
+        )
         assert result["tag_severity"] == "critical"
         assert result["tag_tier"] == 1
         assert result["tag_verify"] == "python"
-        assert result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+        assert (
+            result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+        )
 
     def test_score_tag_kept_in_other(self) -> None:
         """score: tags are NOT extracted (handled separately by DbListener)."""
@@ -720,7 +731,9 @@ class TestDbListenerThinkingCapture:
     def test_extracts_metrics_from_llm_metrics_json(self) -> None:
         listener = DbListener()
         listener.start_test("T", {})
-        metrics = '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        metrics = (
+            '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        )
         listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
         listener.end_test("T", _test_attrs())
         assert listener._test_cases[0]["eval_count"] == 186
@@ -739,7 +752,9 @@ class TestDbListenerThinkingCapture:
         listener.log_message({"message": "RFC_DATA:thinking_text:Let me think"})
         listener.log_message({"message": "RFC_DATA:thinking_tokens:3"})
         listener.log_message({"message": "RFC_DATA:num_ctx:8192"})
-        metrics = '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        metrics = (
+            '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        )
         listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
         listener.end_test("Think Test", _test_attrs(status="PASS"))
         listener.end_suite("Suite", _suite_attrs(totaltests=1))

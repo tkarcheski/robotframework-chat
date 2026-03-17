@@ -877,7 +877,7 @@ def _create_tables() -> None:
 
 def _ensure_database_connection() -> int | None:
     """Create or update the Superset database connection object."""
-    from superset import db as superset_db
+    from superset import db as superset_db  # type: ignore[attr-defined]
     from superset.models.core import Database
 
     db_name = "Robot Framework Results"
@@ -905,7 +905,7 @@ def _ensure_database_connection() -> int | None:
 
 def _create_datasets(db_id: int) -> None:
     """Create Superset datasets for tables, views, and virtual datasets."""
-    from superset import db as superset_db
+    from superset import db as superset_db  # type: ignore[attr-defined]
     from superset.connectors.sqla.models import SqlaTable
 
     # Physical tables and views
@@ -975,7 +975,7 @@ def _create_datasets(db_id: int) -> None:
 
 def _create_charts_and_dashboard(db_id: int) -> None:
     """Create charts and the consolidated RFC Test Health dashboard."""
-    from superset import db as superset_db
+    from superset import db as superset_db  # type: ignore[attr-defined]
     from superset.connectors.sqla.models import SqlaTable
     from superset.models.dashboard import Dashboard
     from superset.models.slice import Slice

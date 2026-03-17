@@ -371,9 +371,9 @@ class TestInjectionResistanceRfcData:
 
         info_calls = [str(c) for c in mock_logger.info.call_args_list]
         rfc_expected = [c for c in info_calls if "RFC_DATA:expected_answer:" in c]
-        assert (
-            len(rfc_expected) >= 1
-        ), f"No RFC_DATA:expected_answer found in {info_calls}"
+        assert len(rfc_expected) >= 1, (
+            f"No RFC_DATA:expected_answer found in {info_calls}"
+        )
 
 
 class TestExtractionResistanceRfcData:
