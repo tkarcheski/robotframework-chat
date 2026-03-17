@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -131,9 +130,9 @@ class TestVirtualDatasets:
         """Every SQL references at least one of the core tables."""
         for key, sql in _VIRTUAL_DATASETS.items():
             sql_upper = sql.upper()
-            assert (
-                "TEST_RUNS" in sql_upper or "TEST_RESULTS" in sql_upper
-            ), f"{key} doesn't reference test_runs or test_results"
+            assert "TEST_RUNS" in sql_upper or "TEST_RESULTS" in sql_upper, (
+                f"{key} doesn't reference test_runs or test_results"
+            )
 
     def test_kpi_overall_pass_rate_columns(self, pg_like_db: str) -> None:
         """KPI overall pass rate SQL produces expected columns."""
@@ -280,9 +279,7 @@ class TestChartDefs:
                     or "x_axis" in params
                     or "granularity_sqla" in params
                 )
-                assert has_time, (
-                    f"{chart['slice_name']} timeseries missing time config"
-                )
+                assert has_time, f"{chart['slice_name']} timeseries missing time config"
 
     def test_bar_charts_have_groupby(self) -> None:
         """All bar charts have a groupby in params."""
@@ -298,9 +295,7 @@ class TestChartDefs:
             if chart["viz_type"] == "table":
                 params = chart["params"]
                 has_cols = "columns" in params or "all_columns" in params
-                assert has_cols, (
-                    f"{chart['slice_name']} table missing columns"
-                )
+                assert has_cols, f"{chart['slice_name']} table missing columns"
 
     def test_datasource_id_key_references_valid_dataset(self) -> None:
         """Every chart's datasource_id_key maps to a known dataset name."""
@@ -321,9 +316,7 @@ class TestChartDefs:
             try:
                 json.dumps(chart["params"])
             except (TypeError, ValueError) as e:
-                pytest.fail(
-                    f"{chart['slice_name']} params not JSON-serializable: {e}"
-                )
+                pytest.fail(f"{chart['slice_name']} params not JSON-serializable: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -337,20 +330,26 @@ class TestDashboardLayout:
     def test_returns_dict(self) -> None:
         """_build_position_json returns a dict."""
         # Use placeholder chart IDs for testing
-        chart_id_map = {chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)}
+        chart_id_map = {
+            chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)
+        }
         layout = _build_position_json(chart_id_map)
         assert isinstance(layout, dict)
 
     def test_contains_root_and_grid(self) -> None:
         """Layout contains ROOT_ID and GRID_ID."""
-        chart_id_map = {chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)}
+        chart_id_map = {
+            chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)
+        }
         layout = _build_position_json(chart_id_map)
         assert "ROOT_ID" in layout
         assert "GRID_ID" in layout
 
     def test_all_charts_have_positions(self) -> None:
         """Every chart in _CHART_DEFS has a position in the layout."""
-        chart_id_map = {chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)}
+        chart_id_map = {
+            chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)
+        }
         layout = _build_position_json(chart_id_map)
         chart_ids_in_layout = set()
         for key, val in layout.items():
@@ -361,7 +360,9 @@ class TestDashboardLayout:
 
     def test_kpi_row_is_first(self) -> None:
         """KPI charts appear in the first row of the layout."""
-        chart_id_map = {chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)}
+        chart_id_map = {
+            chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)
+        }
         layout = _build_position_json(chart_id_map)
         # Find the first ROW in the GRID's children
         grid = layout["GRID_ID"]
@@ -384,7 +385,9 @@ class TestDashboardLayout:
 
     def test_layout_is_json_serializable(self) -> None:
         """Layout can be serialized to JSON."""
-        chart_id_map = {chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)}
+        chart_id_map = {
+            chart["slice_name"]: i + 1 for i, chart in enumerate(_CHART_DEFS)
+        }
         layout = _build_position_json(chart_id_map)
         json.dumps(layout)  # Should not raise
 

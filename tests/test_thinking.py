@@ -1,7 +1,5 @@
 """Tests for rfc.thinking — thinking token parser."""
 
-import pytest
-
 from rfc.thinking import estimate_token_count, parse_thinking
 
 
@@ -32,7 +30,9 @@ class TestParseThinking:
         assert "Line 2" in thinking
 
     def test_multiple_think_blocks(self) -> None:
-        text = "<think>First thought.</think>Part 1. <think>Second thought.</think>Part 2."
+        text = (
+            "<think>First thought.</think>Part 1. <think>Second thought.</think>Part 2."
+        )
         clean, thinking = parse_thinking(text)
         assert "Part 1." in clean
         assert "Part 2." in clean

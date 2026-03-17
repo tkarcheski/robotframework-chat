@@ -125,14 +125,14 @@ def parse_output_xml(xml_path: str) -> dict:
             for msg in test.findall(".//msg"):
                 text = msg.text or ""
                 if text.startswith("RFC_DATA:actual_answer:"):
-                    actual_answer = text[len("RFC_DATA:actual_answer:"):]
+                    actual_answer = text[len("RFC_DATA:actual_answer:") :]
                 elif text.startswith("RFC_DATA:expected_answer:"):
-                    expected_answer = text[len("RFC_DATA:expected_answer:"):]
+                    expected_answer = text[len("RFC_DATA:expected_answer:") :]
                 elif text.startswith("RFC_DATA:grading_reason:"):
-                    grading_reason = text[len("RFC_DATA:grading_reason:"):]
+                    grading_reason = text[len("RFC_DATA:grading_reason:") :]
                 elif text.startswith("RFC_DATA:score:"):
                     try:
-                        score = int(text[len("RFC_DATA:score:"):])
+                        score = int(text[len("RFC_DATA:score:") :])
                     except (ValueError, IndexError):
                         pass
 

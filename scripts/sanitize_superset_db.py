@@ -107,7 +107,9 @@ def main() -> None:
         sys.exit(0)
 
     # Confirmation prompt.
-    print(f"\n{_RED}{_BOLD}This will permanently delete all {total_rows:,} rows.{_RESET}")
+    print(
+        f"\n{_RED}{_BOLD}This will permanently delete all {total_rows:,} rows.{_RESET}"
+    )
     print("Superset dashboards, charts, and configuration will be preserved.")
 
     if not skip_confirm:
@@ -135,7 +137,9 @@ def main() -> None:
     for table, count in counts_after.items():
         print(f"  {_GREEN}{table}: {count} rows{_RESET}")
 
-    print(f"\n{_GREEN}Sanitize complete.{_RESET} Flush the Redis cache to refresh dashboards:")
+    print(
+        f"\n{_GREEN}Sanitize complete.{_RESET} Flush the Redis cache to refresh dashboards:"
+    )
     print("  make cache-flush")
 
 
