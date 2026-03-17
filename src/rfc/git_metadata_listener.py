@@ -114,9 +114,11 @@ class GitMetaData(ListenerV3):
 
         # Add execution metadata
         metadata["Test_Duration_Seconds"] = str(duration)
-        metadata["Test_End_Time"] = end_time.isoformat() + "Z"
+        metadata["Test_End_Time"] = end_time.replace(tzinfo=None).isoformat() + "Z"
         metadata["Test_Start_Time"] = (
-            self.start_time.isoformat() + "Z" if self.start_time else ""
+            self.start_time.replace(tzinfo=None).isoformat() + "Z"
+            if self.start_time
+            else ""
         )
 
         # Add summary statistics

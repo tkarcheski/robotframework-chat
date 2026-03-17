@@ -28,6 +28,16 @@ from robot.result.model import TestSuite as ResultSuite  # type: ignore
 from robot.running.model import Keyword as RunningKeyword  # type: ignore
 from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
+
+def _utc_iso() -> str:
+    """Return the current UTC time as a valid ISO-8601 string with Z suffix.
+
+    Uses a naive datetime (no tzinfo) so ``isoformat()`` does not append
+    a ``+00:00`` offset before the trailing ``Z``.
+    """
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+
+
 # Keywords that represent Ollama interactions worth timestamping.
 _TRACKED_KEYWORDS = frozenset(
     {
@@ -90,7 +100,7 @@ class OllamaTimestampListener(ListenerV3):
         self._current_keyword = {
             "keyword": name,
             "prompt": prompt,
-            "start_time": datetime.now(UTC).isoformat() + "Z",
+            "start_time": _utc_iso(),
             "model": self._model,
             "endpoint": self._endpoint,
         }
@@ -102,7 +112,7 @@ class OllamaTimestampListener(ListenerV3):
         if self._current_keyword["keyword"] != data.name:
             return
 
-        end_time = datetime.now(UTC)
+        end_time = datetime.now(UTC).replace(tzinfo=None)
         end_iso = end_time.isoformat() + "Z"
 
         start_dt = datetime.fromisoformat(
@@ -164,7 +174,7 @@ class OllamaTimestampListener(ListenerV3):
             with open(output_file, "w") as f:
                 f.write("# ollama_audit.log - Auditable Ollama LLM interaction log\n")
                 f.write(f"# Suite: {suite_name}\n")
-                f.write(f"# Generated: {datetime.now(UTC).isoformat()}Z\n")
+                f.write(f"# Generated: {_utc_iso()}\n")
                 f.write(
                     "# Format: TIMESTAMP\\tENDPOINT\\tMODEL\\tKEYWORD"
                     "\\tDURATION_S\\tPROMPT\n"

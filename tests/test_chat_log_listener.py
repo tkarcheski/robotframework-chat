@@ -350,7 +350,8 @@ class TestChatLogListener:
             assert "\n" not in lines[0].rstrip("\n")
             assert "line1 line2 line3" in lines[0]
 
-    def test_timestamps_are_iso_format(self) -> None:
+    def test_timestamps_are_valid_iso_format(self) -> None:
+        """Timestamps must be valid ISO-8601 with Z suffix and no UTC offset."""
         listener = ChatLogListener()
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["test"]),
@@ -359,6 +360,7 @@ class TestChatLogListener:
         ts, _, _, _ = listener._entries[0]
         assert ts.endswith("Z")
         assert "T" in ts
+        assert "+00:00" not in ts
 
     def test_tab_separated_format(self) -> None:
         listener = ChatLogListener()

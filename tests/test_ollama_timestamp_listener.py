@@ -266,7 +266,8 @@ class TestOllamaTimestampListener:
         )
         assert listener._chats[0]["duration_seconds"] >= 0
 
-    def test_timestamps_are_iso_format(self) -> None:
+    def test_timestamps_are_valid_iso_format(self) -> None:
+        """Timestamps must be valid ISO-8601 with Z suffix and no UTC offset."""
         listener = OllamaTimestampListener()
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["test"]),
@@ -277,8 +278,14 @@ class TestOllamaTimestampListener:
             _mock_keyword_result(),
         )
         chat = listener._chats[0]
-        assert chat["start_time"].endswith("Z")
-        assert chat["end_time"].endswith("Z")
+        for key in ("start_time", "end_time"):
+            ts = chat[key]
+            assert ts.endswith("Z"), f"{key} must end with Z"
+            assert "+00:00" not in ts, f"{key} must not contain UTC offset"
+            # Must be parseable as ISO-8601
+            from datetime import datetime
+
+            datetime.fromisoformat(ts.rstrip("Z"))
 
     def test_json_output_structure(self) -> None:
         listener = OllamaTimestampListener()
