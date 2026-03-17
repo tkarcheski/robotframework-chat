@@ -133,7 +133,9 @@ class TestLLMKeywordsAskThinking:
     @patch("rfc.keywords.Grader")
     def test_ask_llm_strips_thinking(self, MockGrader, mock_create, mock_logger):
         kw = LLMKeywords()
-        kw.client.generate.return_value = "<think>reasoning here</think>The answer is 42."
+        kw.client.generate.return_value = (
+            "<think>reasoning here</think>The answer is 42."
+        )
         kw.client.last_metrics = None
         kw.client.num_ctx = None
         kw.client.max_tokens = 256
@@ -181,8 +183,13 @@ class TestLLMKeywordsSetParametersExtended:
     def test_set_extended_parameters(self, MockGrader, mock_create):
         kw = LLMKeywords()
         kw.set_llm_parameters(
-            temperature=0.7, max_tokens=512,
-            seed=42, top_p=0.9, top_k=40, num_ctx=4096, keep_alive="5m"
+            temperature=0.7,
+            max_tokens=512,
+            seed=42,
+            top_p=0.9,
+            top_k=40,
+            num_ctx=4096,
+            keep_alive="5m",
         )
         assert kw.client.temperature == 0.7
         assert kw.client.max_tokens == 512
@@ -198,8 +205,12 @@ class TestLLMKeywordsSetParametersExtended:
         """Robot Framework passes all args as strings."""
         kw = LLMKeywords()
         kw.set_llm_parameters(
-            temperature="0.5", max_tokens="1024",
-            seed="42", top_p="0.9", top_k="40", num_ctx="8192"
+            temperature="0.5",
+            max_tokens="1024",
+            seed="42",
+            top_p="0.9",
+            top_k="40",
+            num_ctx="8192",
         )
         assert kw.client.seed == 42
         assert kw.client.num_ctx == 8192
