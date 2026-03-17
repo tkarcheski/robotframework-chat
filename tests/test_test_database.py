@@ -3,6 +3,7 @@
 import gzip
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -160,14 +161,16 @@ class TestTestDatabase:
         run_id = db.add_test_run(_make_run())
         assert run_id > 0
 
-    def test_no_database_url_raises_error(self, monkeypatch: object) -> None:
+    def test_no_database_url_raises_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """TestDatabase() with no args and no DATABASE_URL must raise."""
-        monkeypatch.delenv("DATABASE_URL", raising=False)  # type: ignore[union-attr]
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         with pytest.raises(RuntimeError, match="DATABASE_URL is not set"):
             TestDatabase()
 
-    def test_sqlite_url_creates_sqlite_backend(self, tmp_path: object) -> None:
-        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+    def test_sqlite_url_creates_sqlite_backend(self, tmp_path: Path) -> None:
+        db_path = str(tmp_path / "test.db")
         db = TestDatabase(database_url=f"sqlite:///{db_path}")
         run_id = db.add_test_run(_make_run())
         assert run_id > 0
@@ -551,7 +554,9 @@ class TestModelsTable:
 
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
+            ).fetchone()
             assert row["name"] == "llama3:8b"
             assert row["quantization"] == "Q4_K_M"
             assert row["context_length"] == 8192
@@ -563,7 +568,9 @@ class TestModelsTable:
 
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
+            ).fetchone()
             assert row["context_length"] == 8192
 
     def test_model_table_row_count(self, tmp_path: object) -> None:
