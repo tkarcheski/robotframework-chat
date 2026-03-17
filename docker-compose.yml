@@ -5,6 +5,7 @@
 #   make docker-up               # start the stack
 #   make bootstrap              # first-time Superset setup
 #   open http://localhost:8088   # Superset analytics
+#   open http://localhost:8089   # RF Metrics dashboard
 #
 # Run tests with archiving to PostgreSQL:
 #   make robot-math
@@ -135,6 +136,24 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+
+  # ── RF Metrics (HTML dashboard from output.xml) ─────────────────────
+  metrics:
+    build: ./metrics
+    restart: unless-stopped
+    environment:
+      METRICS_REFRESH_INTERVAL: ${METRICS_REFRESH_INTERVAL:-300}
+    volumes:
+      - ./results:/app/results:ro
+    ports:
+      - "${METRICS_PORT:-8089}:80"
+    networks:
+      - rfc-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
 networks:
   rfc-net:

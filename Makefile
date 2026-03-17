@@ -141,7 +141,7 @@ code-quality-audit: ## Audit dependencies for known vulnerabilities
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 
-docker-up: .env ## Start the full stack (app + PostgreSQL + Redis + Superset)
+docker-up: .env ## Start the full stack (app + PostgreSQL + Redis + Superset + Metrics)
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
