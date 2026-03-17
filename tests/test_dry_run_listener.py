@@ -77,9 +77,7 @@ class TestDryRunListenerStartSuite:
 class TestDryRunListenerEndTest:
     def test_end_test_pass(self) -> None:
         listener = DryRunListener()
-        listener.end_test(
-            _mock_test_data("Test One"), _mock_test_result("PASS")
-        )
+        listener.end_test(_mock_test_data("Test One"), _mock_test_result("PASS"))
         assert len(listener._test_cases) == 1
         assert listener._test_cases[0] == {"name": "Test One", "status": "PASS"}
         assert listener._errors == []
@@ -97,9 +95,7 @@ class TestDryRunListenerEndTest:
 
     def test_end_test_fail_no_message(self) -> None:
         listener = DryRunListener()
-        listener.end_test(
-            _mock_test_data("Test Three"), _mock_test_result("FAIL", "")
-        )
+        listener.end_test(_mock_test_data("Test Three"), _mock_test_result("FAIL", ""))
         assert listener._errors == []
 
 
@@ -110,12 +106,8 @@ class TestDryRunListenerEndSuite:
         suite_data = _mock_suite_data("Top")
         suite_result = _mock_suite_result(total=2)
         listener.start_suite(suite_data, suite_result)
-        listener.end_test(
-            _mock_test_data("T1"), _mock_test_result("PASS")
-        )
-        listener.end_test(
-            _mock_test_data("T2"), _mock_test_result("FAIL", "error msg")
-        )
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("FAIL", "error msg"))
         listener.end_suite(suite_data, suite_result)
 
         mock_logger.console.assert_called()

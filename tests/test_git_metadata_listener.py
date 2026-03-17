@@ -86,9 +86,7 @@ class TestGitMetaDataSuiteDepth:
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
     )
-    def test_end_suite_only_saves_json_at_top_level(
-        self, _mock_ci: MagicMock
-    ) -> None:
+    def test_end_suite_only_saves_json_at_top_level(self, _mock_ci: MagicMock) -> None:
         listener = GitMetaData()
         listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())

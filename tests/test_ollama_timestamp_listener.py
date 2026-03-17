@@ -121,9 +121,7 @@ class TestOllamaTimestampListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             output_file = os.path.join(tmpdir, "ollama_timestamps.json")
             assert os.path.exists(output_file)
@@ -141,9 +139,7 @@ class TestOllamaTimestampListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             output_file = os.path.join(tmpdir, "ollama_timestamps.json")
             assert not os.path.exists(output_file)
@@ -182,16 +178,12 @@ class TestOllamaTimestampListener:
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
                 # End nested suite — should not save
-                listener.end_suite(
-                    _mock_suite_data("Nested"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
                 output_file = os.path.join(tmpdir, "ollama_timestamps.json")
                 assert not os.path.exists(output_file)
 
                 # End top-level suite — should save
-                listener.end_suite(
-                    _mock_suite_data("Top"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Top"), _mock_suite_result())
                 assert os.path.exists(output_file)
 
     def test_start_keyword_with_empty_args(self) -> None:
@@ -301,9 +293,7 @@ class TestOllamaTimestampListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             output_file = os.path.join(tmpdir, "ollama_timestamps.json")
             with open(output_file) as f:
@@ -414,9 +404,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             assert os.path.exists(audit_file)
@@ -427,9 +415,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             assert not os.path.exists(audit_file)
@@ -448,9 +434,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("My Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
@@ -480,9 +464,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
@@ -514,9 +496,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
@@ -567,9 +547,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             audit_file = os.path.join(tmpdir, "ollama_audit.log")
             with open(audit_file) as f:
@@ -601,9 +579,7 @@ class TestOllamaAuditLog:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             with open(os.path.join(tmpdir, "ollama_timestamps.json")) as f:
                 data = json.load(f)

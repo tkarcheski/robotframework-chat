@@ -16,7 +16,7 @@ Usage:
 
 import os
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from robot.api import logger  # type: ignore
 from robot.api.interfaces import ListenerV3  # type: ignore

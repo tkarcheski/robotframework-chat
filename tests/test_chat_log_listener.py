@@ -286,9 +286,7 @@ class TestChatLogListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Test Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Test Suite"), _mock_suite_result())
 
             path = os.path.join(tmpdir, "chat.log")
             assert os.path.exists(path)
@@ -305,9 +303,7 @@ class TestChatLogListener:
         listener = ChatLogListener()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Empty"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Empty"), _mock_suite_result())
             assert not os.path.exists(os.path.join(tmpdir, "chat.log"))
 
     def test_suite_depth_only_saves_at_top_level(self) -> None:
@@ -325,14 +321,10 @@ class TestChatLogListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Nested"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
                 assert not os.path.exists(os.path.join(tmpdir, "chat.log"))
 
-                listener.end_suite(
-                    _mock_suite_data("Top"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Top"), _mock_suite_result())
                 assert os.path.exists(os.path.join(tmpdir, "chat.log"))
 
     def test_multiline_message_flattened(self) -> None:
@@ -349,9 +341,7 @@ class TestChatLogListener:
         # But the file output should flatten
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             with open(os.path.join(tmpdir, "chat.log")) as f:
                 lines = [ln for ln in f.readlines() if not ln.startswith("#")]
@@ -379,9 +369,7 @@ class TestChatLogListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Suite"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
             with open(os.path.join(tmpdir, "chat.log")) as f:
                 data_lines = [ln for ln in f.readlines() if not ln.startswith("#")]
@@ -457,9 +445,7 @@ class TestChatLogListener:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
-                listener.end_suite(
-                    _mock_suite_data("Math Tests"), _mock_suite_result()
-                )
+                listener.end_suite(_mock_suite_data("Math Tests"), _mock_suite_result())
 
             with open(os.path.join(tmpdir, "chat.log")) as f:
                 content = f.read()
