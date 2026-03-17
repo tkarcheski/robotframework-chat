@@ -144,7 +144,7 @@ class ChatLogListener(ListenerV3):
 
     def _log(self, prompt_type: str, message: str) -> None:
         """Append a log entry."""
-        timestamp = datetime.now(UTC).isoformat() + "Z"
+        timestamp = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
         self._entries.append((timestamp, self._model, prompt_type, message))
 
     def _save_chat_log(self, suite_name: str) -> None:

@@ -234,7 +234,9 @@ class TestGitMetaDataEndSuite:
         assert "Test_End_Time" in result.metadata
         assert "Test_Start_Time" in result.metadata
         assert result.metadata["Test_End_Time"].endswith("Z")
+        assert "+00:00" not in result.metadata["Test_End_Time"]
         assert result.metadata["Test_Start_Time"].endswith("Z")
+        assert "+00:00" not in result.metadata["Test_Start_Time"]
 
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
