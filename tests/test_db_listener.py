@@ -119,10 +119,10 @@ class TestDbListenerEndTest:
         listener.end_test("Test One", _test_attrs(tags=["IQ:100", "score:1"]))
         assert listener._test_cases[0]["score"] == 1
 
-    def test_score_none_when_no_score_tag(self) -> None:
+    def test_score_negative_one_when_no_score_tag(self) -> None:
         listener = DbListener()
         listener.end_test("Test One", _test_attrs(tags=["IQ:100"]))
-        assert listener._test_cases[0]["score"] is None
+        assert listener._test_cases[0]["score"] == -1
 
     def test_score_from_rfc_data_fallback(self) -> None:
         """Score captured from RFC_DATA when no score: tag exists."""
@@ -140,20 +140,20 @@ class TestDbListenerEndTest:
         listener.end_test("T", _test_attrs(tags=["score:1"]))
         assert listener._test_cases[0]["score"] == 1
 
-    def test_score_none_for_invalid_score_tag(self) -> None:
+    def test_score_negative_one_for_invalid_score_tag(self) -> None:
         listener = DbListener()
         listener.end_test("Test One", _test_attrs(tags=["score:abc"]))
-        assert listener._test_cases[0]["score"] is None
+        assert listener._test_cases[0]["score"] == -1
 
     def test_uses_doc_as_question(self) -> None:
         listener = DbListener()
         listener.end_test("T", _test_attrs(doc="What is 2+2?"))
         assert listener._test_cases[0]["question"] == "What is 2+2?"
 
-    def test_empty_doc_becomes_none(self) -> None:
+    def test_empty_doc_becomes_empty_string(self) -> None:
         listener = DbListener()
         listener.end_test("T", _test_attrs(doc=""))
-        assert listener._test_cases[0]["question"] is None
+        assert listener._test_cases[0]["question"] == ""
 
     def test_multiple_tests_recorded(self) -> None:
         listener = DbListener()
@@ -237,7 +237,7 @@ class TestDbListenerEndSuiteArchival:
         listener.end_suite("Suite", _suite_attrs())
 
         runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["rfc_version"] is not None
+        assert runs[0]["rfc_version"] != ""
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_model_name_from_env(self, _mock_ci: MagicMock, tmp_path: object) -> None:
@@ -571,13 +571,13 @@ class TestBuildOutputXmlUrl:
             url = _build_output_xml_url()
         assert url == "/tmp/results/math/output.xml"
 
-    def test_none_when_no_env(self) -> None:
+    def test_empty_when_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
             os.environ.pop("CI_JOB_URL", None)
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
             url = _build_output_xml_url()
-        assert url is None
+        assert url == ""
 
 
 class TestParseTags:
@@ -597,51 +597,62 @@ class TestParseTags:
 
     def test_remaining_tags_sorted_alphabetically(self) -> None:
         result = _parse_tags(
-            ["safety", "regression", "batch", "severity:high", "tier:1", "verify:python"]
+            [
+                "safety",
+                "regression",
+                "batch",
+                "severity:high",
+                "tier:1",
+                "verify:python",
+            ]
         )
         assert result["tags_sorted"] == "batch,regression,safety"
 
     def test_empty_tags(self) -> None:
         result = _parse_tags([])
-        assert result["tag_severity"] is None
-        assert result["tag_tier"] is None
-        assert result["tag_verify"] is None
-        assert result["tags_sorted"] is None
+        assert result["tag_severity"] == ""
+        assert result["tag_tier"] == -1
+        assert result["tag_verify"] == ""
+        assert result["tags_sorted"] == ""
 
     def test_no_structured_tags(self) -> None:
         result = _parse_tags(["safety", "regression"])
-        assert result["tag_severity"] is None
-        assert result["tag_tier"] is None
-        assert result["tag_verify"] is None
+        assert result["tag_severity"] == ""
+        assert result["tag_tier"] == -1
+        assert result["tag_verify"] == ""
         assert result["tags_sorted"] == "regression,safety"
 
     def test_invalid_tier_kept_in_other(self) -> None:
         result = _parse_tags(["tier:abc", "safety"])
-        assert result["tag_tier"] is None
-        assert "tier:abc" in (result["tags_sorted"] or "")
+        assert result["tag_tier"] == -1
+        assert "tier:abc" in result["tags_sorted"]
 
     def test_all_structured_no_remaining(self) -> None:
         result = _parse_tags(["severity:critical", "tier:2", "verify:llm"])
         assert result["tag_severity"] == "critical"
         assert result["tag_tier"] == 2
         assert result["tag_verify"] == "llm"
-        assert result["tags_sorted"] is None
+        assert result["tags_sorted"] == ""
 
     def test_real_safety_suite_tags(self) -> None:
         """Test with actual tags from the Safety test suite."""
-        result = _parse_tags([
-            "safety",
-            "llm-security",
-            "regression",
-            "tier:1",
-            "verify:python",
-            "prompt_injection",
-            "severity:critical",
-        ])
+        result = _parse_tags(
+            [
+                "safety",
+                "llm-security",
+                "regression",
+                "tier:1",
+                "verify:python",
+                "prompt_injection",
+                "severity:critical",
+            ]
+        )
         assert result["tag_severity"] == "critical"
         assert result["tag_tier"] == 1
         assert result["tag_verify"] == "python"
-        assert result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+        assert (
+            result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+        )
 
     def test_score_tag_kept_in_other(self) -> None:
         """score: tags are NOT extracted (handled separately by DbListener)."""
@@ -720,7 +731,9 @@ class TestDbListenerThinkingCapture:
     def test_extracts_metrics_from_llm_metrics_json(self) -> None:
         listener = DbListener()
         listener.start_test("T", {})
-        metrics = '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        metrics = (
+            '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        )
         listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
         listener.end_test("T", _test_attrs())
         assert listener._test_cases[0]["eval_count"] == 186
@@ -739,7 +752,9 @@ class TestDbListenerThinkingCapture:
         listener.log_message({"message": "RFC_DATA:thinking_text:Let me think"})
         listener.log_message({"message": "RFC_DATA:thinking_tokens:3"})
         listener.log_message({"message": "RFC_DATA:num_ctx:8192"})
-        metrics = '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        metrics = (
+            '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        )
         listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
         listener.end_test("Think Test", _test_attrs(status="PASS"))
         listener.end_suite("Suite", _suite_attrs(totaltests=1))

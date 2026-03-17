@@ -623,7 +623,7 @@ class TestImportResults:
             import_results(path, db)
 
             run = db.add_test_run.call_args[0][0]
-            assert run.rfc_version is not None
+            assert run.rfc_version != ""
         finally:
             os.unlink(path)
 
@@ -731,13 +731,13 @@ class TestImportResults:
             import_results(path, db)
 
             run = db.add_test_run.call_args[0][0]
-            assert run.output_xml_gz is not None
+            assert run.output_xml_gz != b""
             assert isinstance(run.output_xml_gz, bytes)
         finally:
             os.unlink(path)
 
-    def test_import_no_base_url_output_xml_url_none(self):
-        """output_xml_url is None when no report_base_url given."""
+    def test_import_no_base_url_output_xml_url_empty(self):
+        """output_xml_url is empty when no report_base_url given."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
             db = MagicMock()
@@ -746,6 +746,6 @@ class TestImportResults:
             import_results(path, db)
 
             run = db.add_test_run.call_args[0][0]
-            assert run.output_xml_url is None
+            assert run.output_xml_url == ""
         finally:
             os.unlink(path)

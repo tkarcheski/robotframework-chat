@@ -95,11 +95,11 @@ class TestSQLiteBackend:
         runs = db.get_recent_runs(limit=1)
         assert runs[0]["output_xml_url"] == "https://results.example.com/output.xml"
 
-    def test_output_xml_url_defaults_to_none(self, tmp_path: object) -> None:
+    def test_output_xml_url_defaults_to_empty(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         db.add_test_run(_make_run())
         runs = db.get_recent_runs(limit=1)
-        assert runs[0]["output_xml_url"] is None
+        assert runs[0]["output_xml_url"] == ""
 
     def test_output_xml_gz_blob_stored(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
@@ -179,12 +179,12 @@ class TestTestRunDataclass:
         assert run.model_name == "llama3"
         assert run.total_tests == 10
 
-    def test_optional_fields(self) -> None:
+    def test_default_fields(self) -> None:
         run = _make_run()
-        assert run.rfc_version is None
-        assert run.id is None
-        assert run.output_xml_gz is None
-        assert run.output_xml_url is None
+        assert run.rfc_version == ""
+        assert run.id == -1
+        assert run.output_xml_gz == b""
+        assert run.output_xml_url == ""
 
 
 class TestTestResultDataclass:
@@ -196,11 +196,11 @@ class TestTestResultDataclass:
         )
         assert result.run_id == 1
         assert result.test_name == "Test One"
-        assert result.score is None
+        assert result.score == -1
 
-    def test_rfc_version_defaults_none(self) -> None:
+    def test_rfc_version_defaults_empty(self) -> None:
         r = TestResult(run_id=1, test_name="T", test_status="PASS")
-        assert r.rfc_version is None
+        assert r.rfc_version == ""
 
     def test_rfc_version_set(self) -> None:
         r = TestResult(
@@ -357,7 +357,7 @@ class TestTagsColumn:
             row = conn.execute("SELECT tags FROM test_results").fetchone()
             assert row["tags"] == "tier:1,verify:math,score:1"
 
-    def test_tags_defaults_to_none(self, tmp_path: object) -> None:
+    def test_tags_defaults_to_empty(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         run_id = db.add_test_run(_make_run())
         db.add_test_results(
@@ -372,7 +372,7 @@ class TestTagsColumn:
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT tags FROM test_results").fetchone()
-            assert row["tags"] is None
+            assert row["tags"] == ""
 
 
 class TestResultsFullView:
@@ -470,12 +470,12 @@ class TestNewRunColumns:
         assert runs[0]["top_p"] == 0.9
         assert runs[0]["top_k"] == 40
 
-    def test_new_run_columns_default_none(self, tmp_path: object) -> None:
+    def test_new_run_columns_default_zero(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         db.add_test_run(_make_run())
         runs = db.get_recent_runs(limit=1)
-        assert runs[0]["temperature"] is None
-        assert runs[0]["seed"] is None
+        assert runs[0]["temperature"] == 0.0
+        assert runs[0]["seed"] == 0
 
 
 class TestNewResultColumns:
@@ -551,7 +551,9 @@ class TestModelsTable:
 
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
+            ).fetchone()
             assert row["name"] == "llama3:8b"
             assert row["quantization"] == "Q4_K_M"
             assert row["context_length"] == 8192
@@ -563,7 +565,9 @@ class TestModelsTable:
 
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM models WHERE name = ?", ("llama3:8b",)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
+            ).fetchone()
             assert row["context_length"] == 8192
 
     def test_model_table_row_count(self, tmp_path: object) -> None:

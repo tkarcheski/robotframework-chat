@@ -125,14 +125,14 @@ def parse_output_xml(xml_path: str) -> dict:
             for msg in test.findall(".//msg"):
                 text = msg.text or ""
                 if text.startswith("RFC_DATA:actual_answer:"):
-                    actual_answer = text[len("RFC_DATA:actual_answer:"):]
+                    actual_answer = text[len("RFC_DATA:actual_answer:") :]
                 elif text.startswith("RFC_DATA:expected_answer:"):
-                    expected_answer = text[len("RFC_DATA:expected_answer:"):]
+                    expected_answer = text[len("RFC_DATA:expected_answer:") :]
                 elif text.startswith("RFC_DATA:grading_reason:"):
-                    grading_reason = text[len("RFC_DATA:grading_reason:"):]
+                    grading_reason = text[len("RFC_DATA:grading_reason:") :]
                 elif text.startswith("RFC_DATA:score:"):
                     try:
-                        score = int(text[len("RFC_DATA:score:"):])
+                        score = int(text[len("RFC_DATA:score:") :])
                     except (ValueError, IndexError):
                         pass
 
@@ -242,10 +242,10 @@ def import_results(
         duration_seconds=data["duration"],
         git_commit=git_commit,
         git_branch=git_branch,
-        hostname=os.getenv("HOSTNAME"),
+        hostname=os.getenv("HOSTNAME", ""),
         rfc_version=__version__,
-        output_xml_url=output_xml_url,
-        output_xml_gz=output_xml_gz,
+        output_xml_url=output_xml_url or "",
+        output_xml_gz=output_xml_gz or b"",
         output_xml_source=os.path.abspath(xml_path),
     )
 
@@ -256,16 +256,16 @@ def import_results(
             run_id=run_id,
             test_name=td["name"],
             test_status=td["status"],
-            score=td["score"],
-            tags=td.get("tags"),
-            question=td["question"],
-            expected_answer=td["expected_answer"],
-            actual_answer=td["actual_answer"],
-            grading_reason=td["grading_reason"],
+            score=td.get("score", -1),
+            tags=td.get("tags", ""),
+            question=td.get("question", ""),
+            expected_answer=td.get("expected_answer", ""),
+            actual_answer=td.get("actual_answer", ""),
+            grading_reason=td.get("grading_reason", ""),
             rfc_version=__version__,
-            tag_severity=td.get("tag_severity"),
-            tag_tier=td.get("tag_tier"),
-            tag_verify=td.get("tag_verify"),
+            tag_severity=td.get("tag_severity", ""),
+            tag_tier=td.get("tag_tier", -1),
+            tag_verify=td.get("tag_verify", ""),
         )
         for td in data["test_results"]
     ]
