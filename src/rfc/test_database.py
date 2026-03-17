@@ -60,16 +60,16 @@ class TestRun:
     duration_seconds: float
     git_commit: str = ""
     git_branch: str = ""
-    hostname: Optional[str] = None
-    rfc_version: Optional[str] = None
-    output_xml_url: Optional[str] = None
-    output_xml_gz: Optional[bytes] = None
-    output_xml_source: Optional[str] = None
-    temperature: Optional[float] = None
-    seed: Optional[int] = None
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    id: Optional[int] = None
+    hostname: str = ""
+    rfc_version: str = ""
+    output_xml_url: str = ""
+    output_xml_gz: bytes = b""
+    output_xml_source: str = ""
+    temperature: float = 0.0
+    seed: int = 0
+    top_p: float = 0.0
+    top_k: int = 0
+    id: int = -1
 
 
 @dataclass
@@ -79,28 +79,28 @@ class TestResult:
     run_id: int
     test_name: str
     test_status: str
-    score: Optional[int] = None
-    tags: Optional[str] = None
-    question: Optional[str] = None
-    expected_answer: Optional[str] = None
-    actual_answer: Optional[str] = None
-    grading_reason: Optional[str] = None
-    rfc_version: Optional[str] = None
-    tag_severity: Optional[str] = None
-    tag_tier: Optional[int] = None
-    tag_verify: Optional[str] = None
-    thinking_text: Optional[str] = None
-    thinking_tokens: Optional[int] = None
-    num_ctx: Optional[int] = None
-    num_predict: Optional[int] = None
-    eval_count: Optional[int] = None
-    eval_duration_ns: Optional[int] = None
-    prompt_eval_count: Optional[int] = None
-    prompt_eval_duration_ns: Optional[int] = None
-    load_duration_ns: Optional[int] = None
-    total_duration_ns: Optional[int] = None
-    tokens_per_second: Optional[float] = None
-    id: Optional[int] = None
+    score: int = -1
+    tags: str = ""
+    question: str = ""
+    expected_answer: str = ""
+    actual_answer: str = ""
+    grading_reason: str = ""
+    rfc_version: str = ""
+    tag_severity: str = ""
+    tag_tier: int = -1
+    tag_verify: str = ""
+    thinking_text: str = ""
+    thinking_tokens: int = 0
+    num_ctx: int = 0
+    num_predict: int = 0
+    eval_count: int = 0
+    eval_duration_ns: int = 0
+    prompt_eval_count: int = 0
+    prompt_eval_duration_ns: int = 0
+    load_duration_ns: int = 0
+    total_duration_ns: int = 0
+    tokens_per_second: float = 0.0
+    id: int = -1
 
 
 @dataclass
@@ -108,13 +108,13 @@ class Model:
     """Represents an LLM model's metadata."""
 
     name: str
-    sha256_digest: Optional[str] = None
-    size_gb: Optional[float] = None
-    quantization: Optional[str] = None
-    architecture: Optional[str] = None
-    context_length: Optional[int] = None
-    family: Optional[str] = None
-    parameter_count: Optional[str] = None
+    sha256_digest: str = ""
+    size_gb: float = 0.0
+    quantization: str = ""
+    architecture: str = ""
+    context_length: int = 0
+    family: str = ""
+    parameter_count: str = ""
 
 
 class _Backend(abc.ABC):
