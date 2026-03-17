@@ -26,11 +26,12 @@ class TestDetectCiPlatform:
 
 
 class TestCollectGitMetadata:
-    def test_always_has_timestamp(self):
+    def test_always_has_valid_timestamp(self):
         with patch.dict(os.environ, {}, clear=True):
             result = collect_ci_metadata()
         assert "Timestamp" in result
         assert result["Timestamp"].endswith("Z")
+        assert "+00:00" not in result["Timestamp"]
 
     def test_always_has_default_model(self):
         with patch.dict(os.environ, {}, clear=True):

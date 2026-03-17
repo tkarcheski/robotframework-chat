@@ -18,10 +18,25 @@ Usage:
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from robot.api import logger  # type: ignore
+from robot.api.interfaces import ListenerV3  # type: ignore
+from robot.result.model import Keyword as ResultKeyword  # type: ignore
+from robot.result.model import TestSuite as ResultSuite  # type: ignore
+from robot.running.model import Keyword as RunningKeyword  # type: ignore
+from robot.running.model import TestSuite as RunningSuite  # type: ignore
+
+
+def _utc_iso() -> str:
+    """Return the current UTC time as a valid ISO-8601 string with Z suffix.
+
+    Uses a naive datetime (no tzinfo) so ``isoformat()`` does not append
+    a ``+00:00`` offset before the trailing ``Z``.
+    """
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+
 
 # Keywords that represent Ollama interactions worth timestamping.
 _TRACKED_KEYWORDS = frozenset(
@@ -37,7 +52,7 @@ _TRACKED_KEYWORDS = frozenset(
 )
 
 
-class OllamaTimestampListener:
+class OllamaTimestampListener(ListenerV3):
     """Listener that timestamps all Ollama chat keyword calls.
 
     Hooks into ``start_keyword`` / ``end_keyword`` to record when each
@@ -54,7 +69,7 @@ class OllamaTimestampListener:
         robot --listener rfc.ollama_timestamp_listener.OllamaTimestampListener tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 2
+    ROBOT_LISTENER_API_VERSION = 3
 
     def __init__(self) -> None:
         self._chats: List[Dict[str, Any]] = []
@@ -63,16 +78,17 @@ class OllamaTimestampListener:
         self._model: str = os.getenv("DEFAULT_MODEL", "unknown")
         self._endpoint: str = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
 
-    def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         """Track suite nesting depth."""
         self._suite_depth += 1
 
-    def start_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
         """Record the start time when an Ollama keyword begins."""
+        name = data.name
         if name not in _TRACKED_KEYWORDS:
             return
 
-        args = attributes.get("args", [])
+        args = list(data.args)
         prompt = args[0] if args else ""
 
         # Track model/endpoint changes from configuration keywords.
@@ -84,19 +100,19 @@ class OllamaTimestampListener:
         self._current_keyword = {
             "keyword": name,
             "prompt": prompt,
-            "start_time": datetime.utcnow().isoformat() + "Z",
+            "start_time": _utc_iso(),
             "model": self._model,
             "endpoint": self._endpoint,
         }
 
-    def end_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
         """Record the end time and compute duration for Ollama keywords."""
         if self._current_keyword is None:
             return
-        if self._current_keyword["keyword"] != name:
+        if self._current_keyword["keyword"] != data.name:
             return
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC).replace(tzinfo=None)
         end_iso = end_time.isoformat() + "Z"
 
         start_dt = datetime.fromisoformat(
@@ -110,9 +126,9 @@ class OllamaTimestampListener:
         self._chats.append(self._current_keyword)
         self._current_keyword = None
 
-        logger.info(f"Ollama call '{name}' completed in {duration:.3f}s")
+        logger.info(f"Ollama call '{data.name}' completed in {duration:.3f}s")
 
-    def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         """Save the timestamp log when the top-level suite ends."""
         self._suite_depth -= 1
         if self._suite_depth > 0:
@@ -121,15 +137,11 @@ class OllamaTimestampListener:
         if not self._chats:
             return
 
-        self._save_timestamps_json(name)
-        self._save_audit_log(name)
+        self._save_timestamps_json(data.name)
+        self._save_audit_log(data.name)
 
     def _save_timestamps_json(self, suite_name: str) -> None:
-        """Write collected timestamps to a JSON file.
-
-        Args:
-            suite_name: Name of the suite that just finished.
-        """
+        """Write collected timestamps to a JSON file."""
         output_dir = os.getenv("ROBOT_OUTPUT_DIR", ".")
         output_file = os.path.join(output_dir, "ollama_timestamps.json")
 
@@ -154,9 +166,6 @@ class OllamaTimestampListener:
         Format per line::
 
             TIMESTAMP\\tENDPOINT\\tMODEL\\tKEYWORD\\tDURATION_S\\tPROMPT
-
-        Args:
-            suite_name: Name of the suite that just finished.
         """
         output_dir = os.getenv("ROBOT_OUTPUT_DIR", ".")
         output_file = os.path.join(output_dir, "ollama_audit.log")
@@ -165,7 +174,7 @@ class OllamaTimestampListener:
             with open(output_file, "w") as f:
                 f.write("# ollama_audit.log - Auditable Ollama LLM interaction log\n")
                 f.write(f"# Suite: {suite_name}\n")
-                f.write(f"# Generated: {datetime.utcnow().isoformat()}Z\n")
+                f.write(f"# Generated: {_utc_iso()}\n")
                 f.write(
                     "# Format: TIMESTAMP\\tENDPOINT\\tMODEL\\tKEYWORD"
                     "\\tDURATION_S\\tPROMPT\n"

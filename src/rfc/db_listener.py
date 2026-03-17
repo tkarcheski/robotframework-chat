@@ -18,12 +18,18 @@ URL is provided.
 import gzip
 import json
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
+from robot.api.interfaces import ListenerV3  # type: ignore
 from robot.libraries.BuiltIn import BuiltIn  # type: ignore
+from robot.result.model import Message  # type: ignore
+from robot.result.model import TestCase as ResultTest  # type: ignore
+from robot.result.model import TestSuite as ResultSuite  # type: ignore
+from robot.running.model import TestCase as RunningTest  # type: ignore
+from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
@@ -88,7 +94,7 @@ def _parse_tags(tags: list[str]) -> Dict[str, Any]:
     }
 
 
-class DbListener:
+class DbListener(ListenerV3):
     """Listener that archives Robot Framework results to a SQL database.
 
     Captures structured data emitted by keywords via log messages with
@@ -106,7 +112,7 @@ class DbListener:
         robot --listener rfc.db_listener.DbListener:database_url=<URL> tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 2
+    ROBOT_LISTENER_API_VERSION = 3
 
     def __init__(self, database_url: Optional[str] = None):
         self._database_url = database_url or os.getenv("DATABASE_URL")
@@ -146,10 +152,10 @@ class DbListener:
             return f"SQLite: {path}"
         return "NOT CONFIGURED (DATABASE_URL is not set)"
 
-    def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth += 1
         if self._suite_depth == 1:
-            self._start_time = datetime.utcnow()
+            self._start_time = datetime.now(UTC)
             self._ci_info = collect_ci_metadata()
             self._host_info = collect_host_info()
             self._test_cases = []
@@ -158,14 +164,14 @@ class DbListener:
             logger.info(banner)
             logger.console(banner)
 
-    def start_test(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_test(self, data: RunningTest, result: ResultTest) -> None:
         """Reset per-test structured data at the start of each test."""
         self._current_test_data = {}
-        self._current_test_name = name
+        self._current_test_name = data.name
 
-    def log_message(self, message: Dict[str, Any]) -> None:
+    def log_message(self, message: Message) -> None:
         """Capture structured data from ``RFC_DATA:`` log messages."""
-        text = message.get("message", "")
+        text = message.message
         if not isinstance(text, str) or not text.startswith(RFC_DATA_PREFIX):
             return
         payload = text[len(RFC_DATA_PREFIX) :]
@@ -173,9 +179,9 @@ class DbListener:
         if key:
             self._current_test_data[key] = value
 
-    def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
-        doc = attributes.get("doc", "")
-        tags = attributes.get("tags", [])
+    def end_test(self, data: RunningTest, result: ResultTest) -> None:
+        doc = data.doc
+        tags = list(data.tags)
 
         score = -1
         for tag in tags:
@@ -201,12 +207,12 @@ class DbListener:
 
         self._test_cases.append(
             {
-                "name": name,
-                "status": attributes.get("status", "UNKNOWN"),
+                "name": data.name,
+                "status": result.status,
                 "score": score,
                 "tags": tags_str,
                 "question": doc if doc else "",
-                "message": attributes.get("message", ""),
+                "message": result.message,
                 "actual_answer": self._current_test_data.get("actual_answer"),
                 "expected_answer": self._current_test_data.get("expected_answer"),
                 "grading_reason": self._current_test_data.get("grading_reason"),
@@ -233,17 +239,17 @@ class DbListener:
         self._current_test_data = {}
         self._current_test_name = None
 
-    def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth -= 1
         if self._suite_depth > 0:
             return
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration = (
             (end_time - self._start_time).total_seconds() if self._start_time else 0.0
         )
 
-        total = int(attributes.get("totaltests", 0))
+        total = result.statistics.total
         pass_count = 0
         fail_count = 0
         skip_count = 0
@@ -290,7 +296,7 @@ class DbListener:
         run = TestRun(
             timestamp=self._start_time or end_time,
             model_name=model_name,
-            test_suite=name,
+            test_suite=data.name,
             total_tests=total,
             passed=pass_count,
             failed=fail_count,
