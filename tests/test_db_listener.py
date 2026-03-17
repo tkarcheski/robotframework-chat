@@ -1,4 +1,4 @@
-"""Tests for rfc.db_listener.DbListener (2-table schema)."""
+"""Tests for rfc.db_listener.DbListener (Listener API v3, 2-table schema)."""
 
 import os
 import sqlite3
@@ -14,32 +14,51 @@ from rfc.db_listener import (
 )
 
 
-def _suite_attrs(**overrides: object) -> dict:
-    """Build a minimal suite-end attributes dict."""
-    defaults: dict = {
-        "totaltests": 3,
-        "metadata": {},
-    }
-    defaults.update(overrides)
-    return defaults
+def _mock_suite_data(name: str = "Suite") -> MagicMock:
+    """Create a mock running.TestSuite (data) object."""
+    data = MagicMock()
+    data.name = name
+    return data
 
 
-def _test_attrs(
-    status: str = "PASS", tags: list | None = None, doc: str = "", message: str = ""
-) -> dict:
-    """Build a minimal test-end attributes dict."""
-    return {
-        "status": status,
-        "tags": tags or [],
-        "doc": doc,
-        "message": message,
-    }
+def _mock_suite_result(total: int = 3) -> MagicMock:
+    """Create a mock result.TestSuite (result) object."""
+    result = MagicMock()
+    result.statistics.total = total
+    result.metadata = {}
+    return result
+
+
+def _mock_test_data(
+    name: str = "Test", tags: list | None = None, doc: str = ""
+) -> MagicMock:
+    """Create a mock running.TestCase (data) object."""
+    data = MagicMock()
+    data.name = name
+    data.tags = tags if tags is not None else []
+    data.doc = doc
+    return data
+
+
+def _mock_test_result(status: str = "PASS", message: str = "") -> MagicMock:
+    """Create a mock result.TestCase (result) object."""
+    result = MagicMock()
+    result.status = status
+    result.message = message
+    return result
+
+
+def _mock_message(text: str) -> MagicMock:
+    """Create a mock result.Message object."""
+    msg = MagicMock()
+    msg.message = text
+    return msg
 
 
 class TestDbListenerInit:
     def test_robot_listener_api_version(self) -> None:
         listener = DbListener()
-        assert listener.ROBOT_LISTENER_API_VERSION == 2
+        assert listener.ROBOT_LISTENER_API_VERSION == 3
 
     def test_initial_state(self) -> None:
         listener = DbListener()
@@ -68,9 +87,9 @@ class TestDbListenerSuiteDepth:
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_start_suite_increments_depth(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         assert listener._suite_depth == 1
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._suite_depth == 2
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
@@ -78,19 +97,19 @@ class TestDbListenerSuiteDepth:
         self, _mock_ci: MagicMock
     ) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         first_start_time = listener._start_time
         assert first_start_time is not None
 
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._start_time is first_start_time
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_end_suite_decrements_depth(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
-        listener.start_suite("Nested", {})
-        listener.end_suite("Nested", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._suite_depth == 1
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
@@ -99,9 +118,9 @@ class TestDbListenerSuiteDepth:
         mock_db = MagicMock()
         listener._db = mock_db
 
-        listener.start_suite("Top", {})
-        listener.start_suite("Nested", {})
-        listener.end_suite("Nested", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
 
         mock_db.add_test_run.assert_not_called()
 
@@ -109,56 +128,83 @@ class TestDbListenerSuiteDepth:
 class TestDbListenerEndTest:
     def test_records_test_case(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(status="PASS"))
+        listener.end_test(
+            _mock_test_data("Test One"),
+            _mock_test_result("PASS"),
+        )
         assert len(listener._test_cases) == 1
         assert listener._test_cases[0]["name"] == "Test One"
         assert listener._test_cases[0]["status"] == "PASS"
 
     def test_extracts_score_from_tags(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["IQ:100", "score:1"]))
+        listener.end_test(
+            _mock_test_data("Test One", tags=["IQ:100", "score:1"]),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["score"] == 1
 
     def test_score_negative_one_when_no_score_tag(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["IQ:100"]))
+        listener.end_test(
+            _mock_test_data("Test One", tags=["IQ:100"]),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["score"] == -1
 
     def test_score_from_rfc_data_fallback(self) -> None:
         """Score captured from RFC_DATA when no score: tag exists."""
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:score:1"})
-        listener.end_test("T", _test_attrs(tags=["tier:1"]))
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["score"] == 1
 
     def test_score_tag_takes_precedence_over_rfc_data(self) -> None:
         """Tag-based score wins when both tag and RFC_DATA are present."""
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:score:0"})
-        listener.end_test("T", _test_attrs(tags=["score:1"]))
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:0"))
+        listener.end_test(
+            _mock_test_data("T", tags=["score:1"]),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["score"] == 1
 
     def test_score_negative_one_for_invalid_score_tag(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["score:abc"]))
+        listener.end_test(
+            _mock_test_data("Test One", tags=["score:abc"]),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["score"] == -1
 
     def test_uses_doc_as_question(self) -> None:
         listener = DbListener()
-        listener.end_test("T", _test_attrs(doc="What is 2+2?"))
+        listener.end_test(
+            _mock_test_data("T", doc="What is 2+2?"),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["question"] == "What is 2+2?"
 
     def test_empty_doc_becomes_empty_string(self) -> None:
         listener = DbListener()
-        listener.end_test("T", _test_attrs(doc=""))
+        listener.end_test(
+            _mock_test_data("T", doc=""),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["question"] == ""
 
     def test_multiple_tests_recorded(self) -> None:
         listener = DbListener()
         for i in range(5):
-            listener.end_test(f"Test {i}", _test_attrs())
+            listener.end_test(
+                _mock_test_data(f"Test {i}"),
+                _mock_test_result(),
+            )
         assert len(listener._test_cases) == 5
 
 
@@ -168,10 +214,10 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("My Suite", {})
-        listener.end_test("Test A", _test_attrs(status="PASS"))
-        listener.end_test("Test B", _test_attrs(status="FAIL"))
-        listener.end_suite("My Suite", _suite_attrs(totaltests=2))
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("Test A"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("Test B"), _mock_test_result("FAIL"))
+        listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result(total=2))
 
         db = listener._get_db()
         runs = db.get_recent_runs(limit=1)
@@ -185,12 +231,12 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="PASS"))
-        listener.end_test("T3", _test_attrs(status="FAIL"))
-        listener.end_test("T4", _test_attrs(status="SKIP"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=4))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T3"), _mock_test_result("FAIL"))
+        listener.end_test(_mock_test_data("T4"), _mock_test_result("SKIP"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=4))
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["passed"] == 2
@@ -205,10 +251,10 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=0))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=0))
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["total_tests"] == 2
@@ -220,9 +266,9 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["git_commit"] == "abc"
@@ -232,9 +278,9 @@ class TestDbListenerEndSuiteArchival:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["rfc_version"] != ""
@@ -245,9 +291,9 @@ class TestDbListenerEndSuiteArchival:
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
         with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
-            listener.start_suite("Suite", {})
-            listener.end_test("T1", _test_attrs())
-            listener.end_suite("Suite", _suite_attrs())
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
+            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["model_name"] == "mistral"
@@ -260,11 +306,11 @@ class TestDbListenerEndSuiteArchival:
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
         with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
-            listener.start_suite("Suite", {})
-            listener.end_test("T1", _test_attrs())
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
             with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = "llama3"
-                listener.end_suite("Suite", _suite_attrs())
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["model_name"] == "llama3"
@@ -276,10 +322,10 @@ class TestDbListenerEndSuiteArchival:
         mock_db.add_test_run.side_effect = Exception("db error")
         listener._db = mock_db
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
         # Should not raise — errors are logged and swallowed
-        listener.end_suite("Suite", _suite_attrs())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
 
 class TestDbListenerLogMessage:
@@ -287,67 +333,60 @@ class TestDbListenerLogMessage:
 
     def test_captures_actual_answer(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:The answer is 4"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:The answer is 4"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] == "The answer is 4"
 
     def test_captures_expected_answer(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["expected_answer"] == "4"
 
     def test_captures_grading_reason(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            {"message": "RFC_DATA:grading_reason:Correct numeric answer"}
+            _mock_message("RFC_DATA:grading_reason:Correct numeric answer")
         )
-        listener.end_test("T", _test_attrs())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["grading_reason"] == "Correct numeric answer"
 
     def test_ignores_non_rfc_data_messages(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "Just a normal log message"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("Just a normal log message"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] is None
 
     def test_ignores_empty_message(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": ""})
-        listener.end_test("T", _test_attrs())
-        assert listener._test_cases[0]["actual_answer"] is None
-
-    def test_ignores_non_string_message(self) -> None:
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": 12345})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message(""))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] is None
 
     def test_resets_between_tests(self) -> None:
         listener = DbListener()
-        listener.start_test("T1", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:first"})
-        listener.end_test("T1", _test_attrs())
+        listener.start_test(_mock_test_data("T1"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:first"))
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
 
-        listener.start_test("T2", {})
-        listener.end_test("T2", _test_attrs())
+        listener.start_test(_mock_test_data("T2"), _mock_test_result())
+        listener.end_test(_mock_test_data("T2"), _mock_test_result())
 
         assert listener._test_cases[0]["actual_answer"] == "first"
         assert listener._test_cases[1]["actual_answer"] is None
 
     def test_handles_value_with_colons(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            {"message": "RFC_DATA:grading_reason:Score: 1/1, reason: correct"}
+            _mock_message("RFC_DATA:grading_reason:Score: 1/1, reason: correct")
         )
-        listener.end_test("T", _test_attrs())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert (
             listener._test_cases[0]["grading_reason"] == "Score: 1/1, reason: correct"
         )
@@ -359,13 +398,13 @@ class TestDbListenerLogMessage:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("Math Test", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:4"})
-        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
-        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
-        listener.end_test("Math Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Math Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:grading_reason:Correct"))
+        listener.end_test(_mock_test_data("Math Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -382,13 +421,13 @@ class TestDbListenerLogMessage:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("Graded Test", {})
-        listener.log_message({"message": "RFC_DATA:score:1"})
-        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
-        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
-        listener.end_test("Graded Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Graded Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:grading_reason:Correct"))
+        listener.end_test(_mock_test_data("Graded Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -400,7 +439,7 @@ class TestDbListenerStartTest:
     def test_resets_current_test_data(self) -> None:
         listener = DbListener()
         listener._current_test_data = {"stale": "data"}
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         assert listener._current_test_data == {}
 
 
@@ -457,7 +496,7 @@ class TestDbListenerConsoleOutput:
         self, _mock_ci: MagicMock, mock_logger: MagicMock
     ) -> None:
         listener = DbListener(database_url="sqlite:///test.db")
-        listener.start_suite("My Suite", {})
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -470,9 +509,9 @@ class TestDbListenerConsoleOutput:
         self, _mock_ci: MagicMock, mock_logger: MagicMock
     ) -> None:
         listener = DbListener(database_url="sqlite:///test.db")
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         mock_logger.console.reset_mock()
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         mock_logger.console.assert_not_called()
 
     @patch("rfc.db_listener.logger")
@@ -483,11 +522,11 @@ class TestDbListenerConsoleOutput:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="FAIL"))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("FAIL"))
         mock_logger.console.reset_mock()
-        listener.end_suite("Suite", _suite_attrs(totaltests=2))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=2))
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -505,10 +544,10 @@ class TestDbListenerConsoleOutput:
         mock_db.add_test_run.side_effect = Exception("connection refused")
         listener._db = mock_db
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
         mock_logger.console.reset_mock()
-        listener.end_suite("Suite", _suite_attrs())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -537,10 +576,10 @@ class TestDbListenerHostInfo:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        listener.end_test("T", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -709,33 +748,33 @@ class TestDbListenerThinkingCapture:
 
     def test_captures_thinking_text(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:thinking_text:I need to reason"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:thinking_text:I need to reason"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["thinking_text"] == "I need to reason"
 
     def test_captures_thinking_tokens(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:thinking_tokens:15"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:thinking_tokens:15"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["thinking_tokens"] == 15
 
     def test_captures_num_ctx(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:num_ctx:4096"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:num_ctx:4096"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["num_ctx"] == 4096
 
     def test_extracts_metrics_from_llm_metrics_json(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         metrics = (
             '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
         )
-        listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
-        listener.end_test("T", _test_attrs())
+        listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["eval_count"] == 186
         assert listener._test_cases[0]["tokens_per_second"] == 11.0
 
@@ -746,18 +785,18 @@ class TestDbListenerThinkingCapture:
         db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("Think Test", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:42"})
-        listener.log_message({"message": "RFC_DATA:thinking_text:Let me think"})
-        listener.log_message({"message": "RFC_DATA:thinking_tokens:3"})
-        listener.log_message({"message": "RFC_DATA:num_ctx:8192"})
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Think Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:42"))
+        listener.log_message(_mock_message("RFC_DATA:thinking_text:Let me think"))
+        listener.log_message(_mock_message("RFC_DATA:thinking_tokens:3"))
+        listener.log_message(_mock_message("RFC_DATA:num_ctx:8192"))
         metrics = (
             '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
         )
-        listener.log_message({"message": f"RFC_DATA:llm_metrics:{metrics}"})
-        listener.end_test("Think Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
+        listener.end_test(_mock_test_data("Think Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
