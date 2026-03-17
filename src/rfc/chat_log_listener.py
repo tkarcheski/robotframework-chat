@@ -15,10 +15,16 @@ Usage:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger  # type: ignore
+from robot.api.interfaces import ListenerV3  # type: ignore
+from robot.result.model import Keyword as ResultKeyword  # type: ignore
+from robot.result.model import Message  # type: ignore
+from robot.result.model import TestSuite as ResultSuite  # type: ignore
+from robot.running.model import Keyword as RunningKeyword  # type: ignore
+from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
 # Keywords worth logging and their prompt types.
 _KEYWORD_TYPES: Dict[str, str] = {
@@ -33,7 +39,7 @@ _KEYWORD_TYPES: Dict[str, str] = {
 }
 
 
-class ChatLogListener:
+class ChatLogListener(ListenerV3):
     """Listener that writes a plain-text ``chat.log`` of all Ollama interactions.
 
     Tracks the active model name and classifies each keyword call into a
@@ -45,7 +51,7 @@ class ChatLogListener:
         robot --listener rfc.chat_log_listener.ChatLogListener tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 2
+    ROBOT_LISTENER_API_VERSION = 3
 
     def __init__(self) -> None:
         self._model: str = os.getenv("DEFAULT_MODEL", "unknown")
@@ -57,28 +63,29 @@ class ChatLogListener:
     # Suite tracking
     # ------------------------------------------------------------------
 
-    def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth += 1
 
-    def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth -= 1
         if self._suite_depth > 0:
             return
         if not self._entries:
             return
-        self._save_chat_log(name)
+        self._save_chat_log(data.name)
 
     # ------------------------------------------------------------------
     # Keyword tracking
     # ------------------------------------------------------------------
 
-    def start_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
+        name = data.name
         prompt_type = _KEYWORD_TYPES.get(name)
         if prompt_type is None:
             return
 
         self._in_tracked_keyword = name
-        args = attributes.get("args", [])
+        args = list(data.args)
 
         if name == "Set LLM Model":
             if args:
@@ -109,15 +116,15 @@ class ChatLogListener:
         elif name == "LLM Is Busy":
             self._log("system", "checking busy status")
 
-    def end_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
-        if self._in_tracked_keyword == name:
+    def end_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
+        if self._in_tracked_keyword == data.name:
             self._in_tracked_keyword = None
 
     # ------------------------------------------------------------------
     # Log message capture (for LLM responses)
     # ------------------------------------------------------------------
 
-    def log_message(self, message: Dict[str, Any]) -> None:
+    def log_message(self, message: Message) -> None:
         """Capture LLM responses logged by OllamaClient.generate().
 
         The client logs ``"{model} >> {text}"`` on successful generation.
@@ -126,7 +133,7 @@ class ChatLogListener:
         if self._in_tracked_keyword not in ("Ask LLM", "Grade Answer"):
             return
 
-        text = message.get("message", "")
+        text = message.message
         if " >> " in text:
             response = text.split(" >> ", 1)[1]
             self._log("output", response)
@@ -137,7 +144,7 @@ class ChatLogListener:
 
     def _log(self, prompt_type: str, message: str) -> None:
         """Append a log entry."""
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(UTC).isoformat() + "Z"
         self._entries.append((timestamp, self._model, prompt_type, message))
 
     def _save_chat_log(self, suite_name: str) -> None:
@@ -149,7 +156,7 @@ class ChatLogListener:
             with open(output_file, "w") as f:
                 f.write("# chat.log - Ollama interaction log\n")
                 f.write(f"# Suite: {suite_name}\n")
-                f.write(f"# Generated: {datetime.utcnow().isoformat()}Z\n")
+                f.write(f"# Generated: {datetime.now(UTC).isoformat()}Z\n")
                 f.write("# Format: TIMESTAMP\\tMODEL\\tTYPE\\tMESSAGE\n")
                 f.write("#\n")
                 for ts, model, ptype, msg in self._entries:
