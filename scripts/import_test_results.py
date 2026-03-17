@@ -19,7 +19,7 @@ from xml.etree import ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rfc import __version__
-from rfc.db_listener import _parse_tags
+from rfc.db_listener import _nvl, _parse_tags
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -256,16 +256,16 @@ def import_results(
             run_id=run_id,
             test_name=td["name"],
             test_status=td["status"],
-            score=td.get("score", -1),
-            tags=td.get("tags", ""),
-            question=td.get("question", ""),
-            expected_answer=td.get("expected_answer", ""),
-            actual_answer=td.get("actual_answer", ""),
-            grading_reason=td.get("grading_reason", ""),
+            score=_nvl(td.get("score"), -1),
+            tags=_nvl(td.get("tags"), ""),
+            question=_nvl(td.get("question"), ""),
+            expected_answer=_nvl(td.get("expected_answer"), ""),
+            actual_answer=_nvl(td.get("actual_answer"), ""),
+            grading_reason=_nvl(td.get("grading_reason"), ""),
             rfc_version=__version__,
-            tag_severity=td.get("tag_severity", ""),
-            tag_tier=td.get("tag_tier", -1),
-            tag_verify=td.get("tag_verify", ""),
+            tag_severity=_nvl(td.get("tag_severity"), ""),
+            tag_tier=_nvl(td.get("tag_tier"), -1),
+            tag_verify=_nvl(td.get("tag_verify"), ""),
         )
         for td in data["test_results"]
     ]

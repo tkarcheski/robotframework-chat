@@ -37,6 +37,17 @@ from .test_database import (
 # Prefix used by keywords to emit structured data for the listener.
 RFC_DATA_PREFIX = "RFC_DATA:"
 
+T = Any  # type alias for _nvl generic usage
+
+
+def _nvl(value: Any, default: T) -> T:
+    """Return *default* when *value* is ``None`` (SQL NVL / COALESCE).
+
+    Unlike ``dict.get(key, default)``, this replaces an explicit ``None``
+    value — not just a missing key.
+    """
+    return default if value is None else value
+
 
 def _parse_tags(tags: list[str]) -> Dict[str, Any]:
     """Parse structured tag prefixes and sort remaining tags.
@@ -307,27 +318,27 @@ class DbListener:
                     run_id=run_id,
                     test_name=tc["name"],
                     test_status=tc["status"],
-                    score=tc.get("score", -1),
-                    tags=tc.get("tags", ""),
-                    question=tc.get("question", ""),
-                    expected_answer=tc.get("expected_answer", ""),
-                    actual_answer=tc.get("actual_answer", ""),
-                    grading_reason=tc.get("grading_reason", ""),
+                    score=_nvl(tc.get("score"), -1),
+                    tags=_nvl(tc.get("tags"), ""),
+                    question=_nvl(tc.get("question"), ""),
+                    expected_answer=_nvl(tc.get("expected_answer"), ""),
+                    actual_answer=_nvl(tc.get("actual_answer"), ""),
+                    grading_reason=_nvl(tc.get("grading_reason"), ""),
                     rfc_version=__version__,
-                    tag_severity=tc.get("tag_severity", ""),
-                    tag_tier=tc.get("tag_tier", -1),
-                    tag_verify=tc.get("tag_verify", ""),
-                    thinking_text=tc.get("thinking_text", ""),
-                    thinking_tokens=tc.get("thinking_tokens", 0),
-                    num_ctx=tc.get("num_ctx", 0),
-                    num_predict=tc.get("num_predict", 0),
-                    eval_count=tc.get("eval_count", 0),
-                    eval_duration_ns=tc.get("eval_duration_ns", 0),
-                    prompt_eval_count=tc.get("prompt_eval_count", 0),
-                    prompt_eval_duration_ns=tc.get("prompt_eval_duration_ns", 0),
-                    load_duration_ns=tc.get("load_duration_ns", 0),
-                    total_duration_ns=tc.get("total_duration_ns", 0),
-                    tokens_per_second=tc.get("tokens_per_second", 0.0),
+                    tag_severity=_nvl(tc.get("tag_severity"), ""),
+                    tag_tier=_nvl(tc.get("tag_tier"), -1),
+                    tag_verify=_nvl(tc.get("tag_verify"), ""),
+                    thinking_text=_nvl(tc.get("thinking_text"), ""),
+                    thinking_tokens=_nvl(tc.get("thinking_tokens"), 0),
+                    num_ctx=_nvl(tc.get("num_ctx"), 0),
+                    num_predict=_nvl(tc.get("num_predict"), 0),
+                    eval_count=_nvl(tc.get("eval_count"), 0),
+                    eval_duration_ns=_nvl(tc.get("eval_duration_ns"), 0),
+                    prompt_eval_count=_nvl(tc.get("prompt_eval_count"), 0),
+                    prompt_eval_duration_ns=_nvl(tc.get("prompt_eval_duration_ns"), 0),
+                    load_duration_ns=_nvl(tc.get("load_duration_ns"), 0),
+                    total_duration_ns=_nvl(tc.get("total_duration_ns"), 0),
+                    tokens_per_second=_nvl(tc.get("tokens_per_second"), 0.0),
                 )
                 for tc in self._test_cases
             ]
