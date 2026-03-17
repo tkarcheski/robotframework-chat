@@ -10,14 +10,18 @@ generate_index() {
     local index="${OUTPUT_DIR}/index.html"
     local suites=()
 
-    for dir in "${OUTPUT_DIR}"/*/; do
-        [ -d "$dir" ] || continue
-        suite=$(basename "$dir")
-        # Only list suites that have a generated metrics file
-        if ls "$dir"/*.html >/dev/null 2>&1; then
-            suites+=("$suite")
-        fi
-    done
+    # Walk all subdirectories (nested paths like local/node1/model1)
+    while IFS= read -r html_file; do
+        local dir rel_dir
+        dir=$(dirname "$html_file")
+        rel_dir="${dir#"${OUTPUT_DIR}"/}"
+        # Deduplicate (multiple .html files per suite dir)
+        local already=false
+        for s in "${suites[@]+"${suites[@]}"}"; do
+            [ "$s" = "$rel_dir" ] && already=true && break
+        done
+        "$already" || suites+=("$rel_dir")
+    done < <(find "$OUTPUT_DIR" -mindepth 2 -name "*.html" -type f 2>/dev/null | sort)
 
     cat > "$index" <<'HEADER'
 <!DOCTYPE html>
@@ -69,13 +73,15 @@ generate_metrics() {
     local count=0
     while IFS= read -r xml; do
         [ -z "$xml" ] && continue
-        local suite_dir suite_name dest
+        local suite_dir rel_path dest
         suite_dir=$(dirname "$xml")
-        suite_name=$(basename "$suite_dir")
-        dest="${OUTPUT_DIR}/${suite_name}"
+        # Use the full relative path from RESULTS_DIR to avoid collisions.
+        # e.g. results/local/node1/model1/output.xml → local/node1/model1
+        rel_path="${suite_dir#"${RESULTS_DIR}"/}"
+        dest="${OUTPUT_DIR}/${rel_path}"
 
         mkdir -p "$dest"
-        echo "  Generating metrics for suite '${suite_name}' from ${xml}..."
+        echo "  Generating metrics for '${rel_path}' from ${xml}..."
 
         # robotmetrics writes report into --metrics-report-path
         if robotmetrics \
@@ -84,7 +90,7 @@ generate_metrics() {
             --metrics-report-path "$dest/" 2>&1; then
             count=$((count + 1))
         else
-            echo "  WARNING: metrics generation failed for '${suite_name}' (non-fatal)"
+            echo "  WARNING: metrics generation failed for '${rel_path}' (non-fatal)"
         fi
     done < <(find "$RESULTS_DIR" -name "output.xml" -type f 2>/dev/null)
 
