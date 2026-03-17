@@ -37,6 +37,17 @@ from .test_database import (
 # Prefix used by keywords to emit structured data for the listener.
 RFC_DATA_PREFIX = "RFC_DATA:"
 
+T = Any  # type alias for _nvl generic usage
+
+
+def _nvl(value: Any, default: T) -> T:
+    """Return *default* when *value* is ``None`` (SQL NVL / COALESCE).
+
+    Unlike ``dict.get(key, default)``, this replaces an explicit ``None``
+    value — not just a missing key.
+    """
+    return default if value is None else value
+
 
 def _parse_tags(tags: list[str]) -> Dict[str, Any]:
     """Parse structured tag prefixes and sort remaining tags.
@@ -53,9 +64,9 @@ def _parse_tags(tags: list[str]) -> Dict[str, Any]:
         Dict with keys ``tag_severity``, ``tag_tier``, ``tag_verify``,
         and ``tags_sorted`` (comma-separated remaining tags or None).
     """
-    severity: Optional[str] = None
-    tier: Optional[int] = None
-    verify: Optional[str] = None
+    severity: str = ""
+    tier: int = -1
+    verify: str = ""
     other: list[str] = []
     for tag in sorted(tags):
         if tag.startswith("severity:"):
@@ -73,7 +84,7 @@ def _parse_tags(tags: list[str]) -> Dict[str, Any]:
         "tag_severity": severity,
         "tag_tier": tier,
         "tag_verify": verify,
-        "tags_sorted": ",".join(other) if other else None,
+        "tags_sorted": ",".join(other) if other else "",
     }
 
 
@@ -166,7 +177,7 @@ class DbListener:
         doc = attributes.get("doc", "")
         tags = attributes.get("tags", [])
 
-        score = None
+        score = -1
         for tag in tags:
             if isinstance(tag, str) and tag.startswith("score:"):
                 try:
@@ -174,7 +185,7 @@ class DbListener:
                 except (ValueError, IndexError):
                     pass
 
-        if score is None:
+        if score == -1:
             rfc_score = self._current_test_data.get("score")
             if rfc_score is not None:
                 try:
@@ -194,7 +205,7 @@ class DbListener:
                 "status": attributes.get("status", "UNKNOWN"),
                 "score": score,
                 "tags": tags_str,
-                "question": doc if doc else None,
+                "question": doc if doc else "",
                 "message": attributes.get("message", ""),
                 "actual_answer": self._current_test_data.get("actual_answer"),
                 "expected_answer": self._current_test_data.get("expected_answer"),
@@ -263,7 +274,7 @@ class DbListener:
             or "unknown"
         )
 
-        hostname = self._host_info.get("hostname")
+        hostname = self._host_info.get("hostname", "")
 
         # Read and gzip output.xml
         output_xml_gz = _read_and_compress_output_xml()
@@ -307,27 +318,27 @@ class DbListener:
                     run_id=run_id,
                     test_name=tc["name"],
                     test_status=tc["status"],
-                    score=tc["score"],
-                    tags=tc.get("tags"),
-                    question=tc["question"],
-                    expected_answer=tc.get("expected_answer"),
-                    actual_answer=tc.get("actual_answer"),
-                    grading_reason=tc.get("grading_reason"),
+                    score=_nvl(tc.get("score"), -1),
+                    tags=_nvl(tc.get("tags"), ""),
+                    question=_nvl(tc.get("question"), ""),
+                    expected_answer=_nvl(tc.get("expected_answer"), ""),
+                    actual_answer=_nvl(tc.get("actual_answer"), ""),
+                    grading_reason=_nvl(tc.get("grading_reason"), ""),
                     rfc_version=__version__,
-                    tag_severity=tc.get("tag_severity"),
-                    tag_tier=tc.get("tag_tier"),
-                    tag_verify=tc.get("tag_verify"),
-                    thinking_text=tc.get("thinking_text"),
-                    thinking_tokens=tc.get("thinking_tokens"),
-                    num_ctx=tc.get("num_ctx"),
-                    num_predict=tc.get("num_predict"),
-                    eval_count=tc.get("eval_count"),
-                    eval_duration_ns=tc.get("eval_duration_ns"),
-                    prompt_eval_count=tc.get("prompt_eval_count"),
-                    prompt_eval_duration_ns=tc.get("prompt_eval_duration_ns"),
-                    load_duration_ns=tc.get("load_duration_ns"),
-                    total_duration_ns=tc.get("total_duration_ns"),
-                    tokens_per_second=tc.get("tokens_per_second"),
+                    tag_severity=_nvl(tc.get("tag_severity"), ""),
+                    tag_tier=_nvl(tc.get("tag_tier"), -1),
+                    tag_verify=_nvl(tc.get("tag_verify"), ""),
+                    thinking_text=_nvl(tc.get("thinking_text"), ""),
+                    thinking_tokens=_nvl(tc.get("thinking_tokens"), 0),
+                    num_ctx=_nvl(tc.get("num_ctx"), 0),
+                    num_predict=_nvl(tc.get("num_predict"), 0),
+                    eval_count=_nvl(tc.get("eval_count"), 0),
+                    eval_duration_ns=_nvl(tc.get("eval_duration_ns"), 0),
+                    prompt_eval_count=_nvl(tc.get("prompt_eval_count"), 0),
+                    prompt_eval_duration_ns=_nvl(tc.get("prompt_eval_duration_ns"), 0),
+                    load_duration_ns=_nvl(tc.get("load_duration_ns"), 0),
+                    total_duration_ns=_nvl(tc.get("total_duration_ns"), 0),
+                    tokens_per_second=_nvl(tc.get("tokens_per_second"), 0.0),
                 )
                 for tc in self._test_cases
             ]
@@ -348,22 +359,22 @@ class DbListener:
             logger.console(error_msg)
 
 
-def _read_and_compress_output_xml() -> Optional[bytes]:
+def _read_and_compress_output_xml() -> bytes:
     """Read output.xml from Robot's output directory and gzip-compress it."""
     output_dir = os.getenv("ROBOT_OUTPUT_DIR")
     if not output_dir:
-        return None
+        return b""
     output_xml = os.path.join(output_dir, "output.xml")
     if not os.path.isfile(output_xml):
-        return None
+        return b""
     try:
         with open(output_xml, "rb") as f:
             return gzip.compress(f.read())
     except OSError:
-        return None
+        return b""
 
 
-def _build_output_xml_source() -> Optional[str]:
+def _build_output_xml_source() -> str:
     """Return the filesystem path to the Robot Framework output.xml.
 
     This traces the test run back to the original output.xml that was
@@ -375,10 +386,10 @@ def _build_output_xml_source() -> Optional[str]:
         if os.path.isfile(candidate):
             return os.path.abspath(candidate)
         return candidate
-    return None
+    return ""
 
 
-def _build_output_xml_url() -> Optional[str]:
+def _build_output_xml_url() -> str:
     """Build a URL to the output.xml file from environment variables.
 
     Priority:
@@ -398,7 +409,7 @@ def _build_output_xml_url() -> Optional[str]:
     if output_dir:
         return f"{output_dir.rstrip('/')}/output.xml"
 
-    return None
+    return ""
 
 
 def _format_size(size_bytes: int) -> str:
@@ -446,7 +457,7 @@ def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
     }
 
 
-def _get_robot_float(var_name: str) -> Optional[float]:
+def _get_robot_float(var_name: str) -> float:
     """Get a float Robot variable, falling back to env var."""
     try:
         val = BuiltIn().get_variable_value(f"${{{var_name}}}")
@@ -460,10 +471,10 @@ def _get_robot_float(var_name: str) -> Optional[float]:
             return float(env_val)
         except ValueError:
             pass
-    return None
+    return 0.0
 
 
-def _get_robot_int(var_name: str) -> Optional[int]:
+def _get_robot_int(var_name: str) -> int:
     """Get an int Robot variable, falling back to env var."""
     try:
         val = BuiltIn().get_variable_value(f"${{{var_name}}}")
@@ -477,4 +488,4 @@ def _get_robot_int(var_name: str) -> Optional[int]:
             return int(env_val)
         except ValueError:
             pass
-    return None
+    return 0

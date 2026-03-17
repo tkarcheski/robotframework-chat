@@ -86,6 +86,10 @@ like:
 - **Never bundle unrelated changes** in a single commit.
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
+- **Never use `Optional` for database dataclass fields.** Use concrete defaults instead
+  (`str = ""`, `int = 0`, `float = 0.0`, `bytes = b""`). Use `int = -1` for sentinel
+  values like unassigned IDs or scores. `Optional` obscures intent and complicates
+  null-checking throughout the codebase.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
 - **Every Robot test must be tagged** with exactly one `tier:*` (0–6) and one `verify:*` tag per `ai/CLAUDE.md` § Tagging Rules.
 - **When adding a new Robot test suite**, register it in both `config/test_suites.yaml` (CI) and `config/local_models.yaml` (local cron). The hourly cron job (`scripts/cron_run_local_models.sh`) runs every suite listed in `local_models.yaml`.

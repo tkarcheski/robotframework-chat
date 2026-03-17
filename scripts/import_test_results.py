@@ -19,7 +19,7 @@ from xml.etree import ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rfc import __version__
-from rfc.db_listener import _parse_tags
+from rfc.db_listener import _nvl, _parse_tags
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -242,10 +242,10 @@ def import_results(
         duration_seconds=data["duration"],
         git_commit=git_commit,
         git_branch=git_branch,
-        hostname=os.getenv("HOSTNAME"),
+        hostname=os.getenv("HOSTNAME", ""),
         rfc_version=__version__,
-        output_xml_url=output_xml_url,
-        output_xml_gz=output_xml_gz,
+        output_xml_url=output_xml_url or "",
+        output_xml_gz=output_xml_gz or b"",
         output_xml_source=os.path.abspath(xml_path),
     )
 
@@ -256,16 +256,16 @@ def import_results(
             run_id=run_id,
             test_name=td["name"],
             test_status=td["status"],
-            score=td["score"],
-            tags=td.get("tags"),
-            question=td["question"],
-            expected_answer=td["expected_answer"],
-            actual_answer=td["actual_answer"],
-            grading_reason=td["grading_reason"],
+            score=_nvl(td.get("score"), -1),
+            tags=_nvl(td.get("tags"), ""),
+            question=_nvl(td.get("question"), ""),
+            expected_answer=_nvl(td.get("expected_answer"), ""),
+            actual_answer=_nvl(td.get("actual_answer"), ""),
+            grading_reason=_nvl(td.get("grading_reason"), ""),
             rfc_version=__version__,
-            tag_severity=td.get("tag_severity"),
-            tag_tier=td.get("tag_tier"),
-            tag_verify=td.get("tag_verify"),
+            tag_severity=_nvl(td.get("tag_severity"), ""),
+            tag_tier=_nvl(td.get("tag_tier"), -1),
+            tag_verify=_nvl(td.get("tag_verify"), ""),
         )
         for td in data["test_results"]
     ]
