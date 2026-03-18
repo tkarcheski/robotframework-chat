@@ -1,7 +1,7 @@
 """Multi-LLM consensus grader for tier:3 verification.
 
-Uses 3+ LLM providers to evaluate a response, returning a consensus
-score with agreement tracking.
+Uses 3+ LLM providers to evaluate a response, returning a fractional
+consensus score with agreement tracking.
 """
 
 from __future__ import annotations
@@ -56,10 +56,11 @@ def _extract_json(text: str) -> str:
 
 
 class MultiGrader:
-    """Grades LLM output using consensus across multiple providers.
+    """Grades LLM output using median consensus across multiple providers.
 
     Requires at least 3 providers. Each provider independently evaluates
-    the output, and the median score becomes the aggregate result.
+    the output, and the median score becomes the aggregate result so
+    fractional values remain intact instead of being bucketed to pass/fail.
     """
 
     def __init__(self, providers: Sequence[Any]) -> None:

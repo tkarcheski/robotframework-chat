@@ -1,4 +1,4 @@
-"""Unit tests for multi-LLM majority-vote grader."""
+"""Unit tests for multi-LLM consensus grader."""
 
 from __future__ import annotations
 
@@ -190,6 +190,30 @@ class TestMultiGrader:
         assert abs(result.agreement_ratio - 0.9) < 0.01
         assert result.passed
 
+    def test_fractional_consensus_does_not_collapse_low_scores_to_zero(self) -> None:
+        providers = [
+            _mock_provider('{"score": 0.4, "reason": "partial"}'),
+            _mock_provider('{"score": 0.4, "reason": "partial"}'),
+            _mock_provider('{"score": 0.4, "reason": "partial"}'),
+        ]
+        grader = MultiGrader(providers=providers)
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
+        assert result.scores == [0.4, 0.4, 0.4]
+        assert result.majority_score == 0.4
+        assert result.agreement_ratio == 1.0
+        assert not result.passed
+
+    def test_fractional_consensus_uses_median_instead_of_binary_vote(self) -> None:
+        providers = [
+            _mock_provider('{"score": 0.9, "reason": "strong"}'),
+            _mock_provider('{"score": 0.6, "reason": "solid"}'),
+            _mock_provider('{"score": 0.6, "reason": "solid"}'),
+        ]
+        grader = MultiGrader(providers=providers)
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
+        assert result.majority_score == 0.6
+        assert result.passed
+
     def test_prompt_requests_fractional_scores(self) -> None:
         providers = [
             _mock_provider('{"score": 0.5, "reason": "ok"}'),
@@ -202,6 +226,7 @@ class TestMultiGrader:
         assert "score must be a number between 0.0 and 1.0" in prompt
         assert "use partial credit" in prompt
         assert '"score": 0.0 to 1.0' in prompt
+        assert "score must be 0 or 1" not in prompt
 
     def test_invalid_fractional_score_reports_original_value(self) -> None:
         providers = [

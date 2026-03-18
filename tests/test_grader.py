@@ -90,3 +90,4 @@ class TestGrader:
         assert "score must be a number between 0.0 and 1.0" in prompt
         assert "use partial credit" in prompt
         assert '"score": 0.0 to 1.0' in prompt
+        assert "score must be 0 or 1" not in prompt

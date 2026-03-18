@@ -352,7 +352,7 @@ class CEOKeywords:
         output: Dict[str, Any],
         rubric: str = "",
     ) -> Dict[str, Any]:
-        """Grade stage output using multi-LLM majority vote.
+        """Grade stage output using multi-LLM median consensus.
 
         Args:
             stage_name: The pipeline stage name.
@@ -362,7 +362,7 @@ class CEOKeywords:
         Returns:
             Dict with scores, majority_score, agreement_ratio, reasons.
         """
-        logger.info(f"Grading {stage_name} output with multi-LLM vote")
+        logger.info(f"Grading {stage_name} output with multi-LLM consensus")
 
         grader = self._get_multi_grader()
         result = grader.grade(
