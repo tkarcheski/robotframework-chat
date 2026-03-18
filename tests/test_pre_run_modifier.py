@@ -171,8 +171,6 @@ class TestAddMetadata:
         mod.model_config = {
             "llama3": {
                 "full_name": "LLaMA 3",
-                "release_date": "2024-04-01",
-                "parameters": "8B",
                 "organization": "Meta",
             }
         }
@@ -182,7 +180,7 @@ class TestAddMetadata:
 
         mod._add_metadata(suite)
         assert suite.metadata["Model_Name"] == "LLaMA 3"
-        assert suite.metadata["Model_Parameters"] == "8B"
+        assert suite.metadata["Model_Organization"] == "Meta"
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_skips_empty_metadata(self, MockClient):

@@ -127,7 +127,6 @@ LLM model metadata:
 | `architecture` | TEXT | e.g., llama, mistral, gemma |
 | `context_length` | INTEGER | Max context window |
 | `family` | TEXT | Model family |
-| `parameter_count` | TEXT | e.g., 8B, 27B |
 
 ### Future Schema Additions
 

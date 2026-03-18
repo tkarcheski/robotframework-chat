@@ -173,10 +173,6 @@ class ModelAwarePreRunModifier:
             suite.metadata["Model_Name"] = model_info.get(
                 "full_name", self.default_model
             )
-            suite.metadata["Model_Release_Date"] = model_info.get(
-                "release_date", "Unknown"
-            )
-            suite.metadata["Model_Parameters"] = model_info.get("parameters", "Unknown")
             suite.metadata["Model_Organization"] = model_info.get(
                 "organization", "Unknown"
             )
