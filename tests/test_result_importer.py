@@ -91,5 +91,5 @@ class TestImportResults:
     def test_source_tracking(self, tmp_path: Path) -> None:
         xml_file = self._write_xml(tmp_path)
         db = self._mock_db()
-        result = import_results(str(xml_file), db, source="ftp")
-        assert result.source == "ftp"
+        result = import_results(str(xml_file), db, source="ci")
+        assert result.source == "ci"

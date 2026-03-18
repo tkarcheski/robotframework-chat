@@ -172,13 +172,6 @@ def rebot_merge() -> None:
     _uv_run("python", "-m", "rfc.rebot_merger", *dirs.split())
 
 
-def send_results_ftp() -> None:
-    """Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)."""
-    _ensure_env()
-    results_dir = os.environ.get("RESULTS_DIR", "results/")
-    _uv_run("python", "-m", "rfc.ftp_sender", results_dir)
-
-
 def docker_build_app() -> None:
     """Build the application Docker image locally."""
     _run(["docker", "build", "-t", "ghcr.io/tkarcheski/robotframework-chat:local", "."])
@@ -236,7 +229,6 @@ TARGETS: dict[str, object] = {
     "analytics-refresh": analytics_refresh,
     "analytics-regressions": analytics_regressions,
     "rebot-merge": rebot_merge,
-    "send-results-ftp": send_results_ftp,
     "superset-sanitize": superset_sanitize,
     "docker-build-app": docker_build_app,
     "docker-test-app": docker_test_app,

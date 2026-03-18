@@ -59,7 +59,7 @@ def import_results(
         xml_path: Path to output.xml file.
         db: TestDatabase instance.
         model_name: Optional model name override.
-        source: Import source identifier (local, ftp, ci).
+        source: Import source identifier (local, ci).
         check_dedup: If True, skip files already imported (by hash).
         report_base_url: Base URL for output.xml web access.
         _existing_hash: For testing — pretend this hash already exists.
@@ -136,7 +136,7 @@ def main() -> None:
     parser.add_argument(
         "--source",
         default="local",
-        choices=["local", "ftp", "ci"],
+        choices=["local", "ci"],
         help="Import source identifier (default: local)",
     )
     parser.add_argument(
