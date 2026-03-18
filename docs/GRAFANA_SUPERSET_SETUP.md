@@ -910,8 +910,6 @@ db.export_to_json("full_export.json")
 | `name` | VARCHAR(255) PK | Model identifier |
 | `full_name` | VARCHAR(255) | Human-readable name |
 | `organization` | VARCHAR(255) | Model creator |
-| `release_date` | VARCHAR(255) | Model release date |
-| `parameters` | VARCHAR(255) | Parameter count |
 | `last_tested` | TIMESTAMP | Last test timestamp |
 
 #### `keyword_results` — Keyword execution timing

@@ -548,7 +548,6 @@ class TestModelsTable:
             architecture="llama",
             context_length=8192,
             family="llama",
-            parameter_count="8B",
         )
         db.upsert_model(model)
 
