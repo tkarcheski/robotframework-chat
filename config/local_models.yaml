@@ -94,6 +94,11 @@ test_suites:
     description: "Task management and planning tests"
     timeout_seconds: 300
 
+  - name: "benchmark"
+    path: "robot/benchmark/tests/"
+    description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
+    timeout_seconds: 1800
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
