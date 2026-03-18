@@ -34,6 +34,9 @@ from .rfc_data import emit_rfc_data
 from .web_cache import SearchResult, WebSearchCache
 
 _DEFAULT_TIMEOUT = 5400
+_DEFAULT_CEO_MAX_TOKENS = 4096
+_DEFAULT_LLM_PROVIDER = "ollama"
+_COMPAT_OPENAI_PROVIDER = "openai"
 
 
 class CEOKeywords:
@@ -54,6 +57,29 @@ class CEOKeywords:
         self.web_cache = WebSearchCache()
         self._multi_grader: Optional[MultiGrader] = None
 
+    def _resolve_ceo_provider(self) -> str:
+        """Resolve the provider for CEO stages with backward-compatible fallback.
+
+        Precedence:
+        1. ``CEO_LLM_PROVIDER`` when explicitly set.
+        2. ``LLM_PROVIDER`` when it is set to a non-default value.
+        3. ``openai`` when an OpenAI key is present and the global provider is
+           still the repo default ``ollama``.
+        4. The global/default provider resolution from ``create_provider``.
+        """
+        ceo_provider = os.getenv("CEO_LLM_PROVIDER", "").strip().lower()
+        if ceo_provider:
+            return ceo_provider
+
+        llm_provider = os.getenv("LLM_PROVIDER", _DEFAULT_LLM_PROVIDER).strip().lower()
+        if llm_provider != _DEFAULT_LLM_PROVIDER:
+            return llm_provider
+
+        if os.getenv("OPENAI_API_KEY", "").strip():
+            return _COMPAT_OPENAI_PROVIDER
+
+        return llm_provider
+
     @property
     def client(self) -> Any:
         """Lazily create the LLM provider on first access.
@@ -62,10 +88,12 @@ class CEOKeywords:
         and discover keywords without requiring API keys.
         """
         if self._client is None:
+            max_tokens = int(os.getenv("CEO_MAX_TOKENS", str(_DEFAULT_CEO_MAX_TOKENS)))
             self._client = create_provider(
-                provider="openai",
+                provider=self._resolve_ceo_provider(),
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                max_tokens=max_tokens,
             )
         return self._client
 
@@ -78,7 +106,7 @@ class CEOKeywords:
         if not models_str:
             raise ValueError(
                 "CEO_GRADER_MODELS env var must be set with 3+ comma-separated "
-                "model names (e.g. 'gpt-4o,gpt-4o-mini,gpt-3.5-turbo')"
+                "model names (e.g. 'qwen2:latest,phi3:latest,gemma2:latest')"
             )
 
         models = [m.strip() for m in models_str.split(",") if m.strip()]
@@ -87,9 +115,15 @@ class CEOKeywords:
                 f"CEO_GRADER_MODELS must contain at least 3 models, got {len(models)}"
             )
 
+        max_tokens = int(os.getenv("CEO_MAX_TOKENS", str(_DEFAULT_CEO_MAX_TOKENS)))
+        provider_name = self._resolve_ceo_provider()
         providers = []
         for model in models:
-            provider = create_provider(provider="openai", model=model)
+            provider = create_provider(
+                provider=provider_name,
+                model=model,
+                max_tokens=max_tokens,
+            )
             providers.append(provider)
 
         self._multi_grader = MultiGrader(providers=providers)
