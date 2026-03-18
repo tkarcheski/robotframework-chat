@@ -10,27 +10,27 @@ Variables         ${CURDIR}/../variables/c_challenges.yaml
 
 *** Test Cases ***
 LLM Generates C Hello World (IQ:100)
-    [Documentation]    LLM writes a C program that prints Hello World
+    [Documentation]    Can the LLM write a C program that prints 'Hello World'?
     [Tags]    IQ:100    basic    tier:4    verify:robot
     Run Compiled Challenge    ${C_CODE_CHALLENGES}[0]
 
 LLM Generates C Factorial Function (IQ:120)
-    [Documentation]    LLM writes a C program with an iterative factorial function
+    [Documentation]    Can the LLM write a C program with an iterative factorial function?
     [Tags]    IQ:120    algorithm    function-generation    tier:4    verify:robot
     Run Compiled Challenge    ${C_CODE_CHALLENGES}[1]
 
 LLM Generates C String Reverse (IQ:120)
-    [Documentation]    LLM writes a C program that reverses a string in-place
+    [Documentation]    Can the LLM write a C program that reverses a string in-place?
     [Tags]    IQ:120    string-manipulation    tier:4    verify:robot
     Run Compiled Challenge    ${C_CODE_CHALLENGES}[2]
 
 LLM Generates C Bubble Sort (IQ:130)
-    [Documentation]    LLM writes a C program implementing bubble sort
+    [Documentation]    Can the LLM write a C program implementing bubble sort?
     [Tags]    IQ:130    algorithm    sorting    tier:4    verify:robot
     Run Compiled Challenge    ${C_CODE_CHALLENGES}[3]
 
 LLM Generates C FizzBuzz (IQ:110)
-    [Documentation]    LLM writes FizzBuzz in C
+    [Documentation]    Can the LLM write FizzBuzz in C?
     [Tags]    IQ:110    algorithm    fizzbuzz    tier:4    verify:robot
     Run Compiled Challenge    ${C_CODE_CHALLENGES}[4]
 

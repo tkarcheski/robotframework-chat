@@ -10,7 +10,7 @@ Test Timeout      3 minutes
 
 *** Test Cases ***
 IP Analysis Produces Structured Findings
-    [Documentation]    Verify IP analysis stage produces valid structured output
+    [Documentation]    Can the LLM produce structured IP landscape analysis identifying prior art gaps?
     [Tags]    tier:3    verify:llms    ceo    stage:ip_analysis
     Warm Web Cache    ${IP_ANALYSIS_WEB_CACHE}
     ${output}=    Analyze IP Landscape    ${IP_ANALYSIS_SEED}
@@ -18,7 +18,7 @@ IP Analysis Produces Structured Findings
     Log    Analyzed IP for ${output}[findings].__len__() ideas
 
 IP Analysis Passes Quality Grading
-    [Documentation]    Verify IP analysis output passes multi-LLM quality assessment
+    [Documentation]    Can the LLM's IP landscape analysis pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:ip_analysis    grading
     Warm Web Cache    ${IP_ANALYSIS_WEB_CACHE}
     ${output}=    Analyze IP Landscape    ${IP_ANALYSIS_SEED}
@@ -26,7 +26,7 @@ IP Analysis Passes Quality Grading
     Log    IP analysis grading: majority=${grade}[majority_score], agreement=${grade}[agreement_ratio]
 
 IP Analysis With Patent Search Context
-    [Documentation]    Verify IP analysis enriches findings with patent search data
+    [Documentation]    Can the LLM enrich IP analysis using web-cached patent search data?
     [Tags]    tier:3    verify:llms    ceo    stage:ip_analysis    web_cache
     Warm Web Cache    ${IP_ANALYSIS_WEB_CACHE}
     @{queries}=    Create List    smart radiator valve patent prior art    water leak detection ultrasonic patent

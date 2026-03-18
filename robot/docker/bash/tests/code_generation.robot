@@ -10,27 +10,27 @@ Variables         ${CURDIR}/../variables/bash_challenges.yaml
 
 *** Test Cases ***
 LLM Generates Bash Hello World (IQ:100)
-    [Documentation]    LLM writes a bash script that prints Hello World
+    [Documentation]    Can the LLM write a bash script that prints 'Hello World'?
     [Tags]    IQ:100    basic    tier:4    verify:robot
     Run Interpreted Challenge    ${BASH_CODE_CHALLENGES}[0]
 
 LLM Generates Loop And Sum Script (IQ:110)
-    [Documentation]    LLM writes a bash script that sums numbers 1 to 10
+    [Documentation]    Can the LLM write a bash script that sums numbers 1 to 10?
     [Tags]    IQ:110    loops    arithmetic    tier:4    verify:robot
     Run Interpreted Challenge    ${BASH_CODE_CHALLENGES}[1]
 
 LLM Generates Array Processing Script (IQ:120)
-    [Documentation]    LLM writes a bash script using arrays and sorting
+    [Documentation]    Can the LLM write a bash script using arrays and sorting?
     [Tags]    IQ:120    arrays    sorting    tier:4    verify:robot
     Run Interpreted Challenge    ${BASH_CODE_CHALLENGES}[2]
 
 LLM Generates String Manipulation Script (IQ:130)
-    [Documentation]    LLM writes a bash script with string operations
+    [Documentation]    Can the LLM write a bash script with string manipulation operations?
     [Tags]    IQ:130    string-manipulation    tier:4    verify:robot
     Run Interpreted Challenge    ${BASH_CODE_CHALLENGES}[3]
 
 LLM Generates FizzBuzz In Bash (IQ:120)
-    [Documentation]    LLM writes FizzBuzz in bash
+    [Documentation]    Can the LLM write FizzBuzz in bash?
     [Tags]    IQ:120    algorithm    fizzbuzz    tier:4    verify:robot
     Run Interpreted Challenge    ${BASH_CODE_CHALLENGES}[4]
 

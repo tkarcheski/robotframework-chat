@@ -5,7 +5,7 @@ Library           rfc.superset_keywords.SupersetKeywords    WITH NAME    Superse
 
 *** Test Cases ***
 Database Connection Is Alive
-    [Documentation]    Verify that DATABASE_URL connects to PostgreSQL.
+    [Documentation]    Can the system connect to PostgreSQL via DATABASE_URL?
     [Tags]    tier:6    verify:python
     ${url}=    Superset.Get Database URL
     Log    DATABASE_URL: ${url}
@@ -16,7 +16,7 @@ Database Connection Is Alive
     Log    Connected: ${version}
 
 Core Tables Have Data
-    [Documentation]    Verify that the 2 core RFC tables exist and contain rows.
+    [Documentation]    Can the system verify that test_runs and test_results tables exist and have data?
     [Tags]    tier:6    verify:python
     ${counts}=    Superset.Get Table Row Counts
     Log    Table row counts: ${counts}
