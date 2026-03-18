@@ -291,3 +291,73 @@ class TestLicensingStrategyOutput:
         restored = LicensingStrategyOutput.from_dict(d)
         assert len(restored.plans) == 1
         assert restored.plans[0].idea_name == "X"
+
+
+# ---------------------------------------------------------------------------
+# _require_score type error (line 16)
+# ---------------------------------------------------------------------------
+
+
+class TestRequireScoreTypeError:
+    def test_non_numeric_demand_score_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="demand_score must be a float"):
+            MarketAnalysis(
+                idea_name="X",
+                demand_score="high",  # type: ignore[arg-type]
+                market_size="$1B",
+                competitors=[],
+                profitability="low",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Roundtrip tests for remaining output types
+# ---------------------------------------------------------------------------
+
+
+class TestIPAnalysisOutput:
+    def test_to_dict_roundtrip(self) -> None:
+        from rfc.ceo_models import IPAnalysisOutput
+
+        ipf = IPFinding(
+            idea_name="X",
+            patentability_score=0.5,
+            prior_art_gaps=["gap"],
+            claim_angles=["angle"],
+        )
+        output = IPAnalysisOutput(findings=[ipf])
+        d = output.to_dict()
+        restored = IPAnalysisOutput.from_dict(d)
+        assert len(restored.findings) == 1
+
+
+class TestPatentStrategyOutput:
+    def test_to_dict_roundtrip(self) -> None:
+        from rfc.ceo_models import PatentStrategyOutput
+
+        ps = PatentStrategy(
+            idea_name="X",
+            claim_type="utility",
+            abstract="abc",
+            key_claims=["claim"],
+            filing_priority="high",
+        )
+        output = PatentStrategyOutput(strategies=[ps])
+        d = output.to_dict()
+        restored = PatentStrategyOutput.from_dict(d)
+        assert len(restored.strategies) == 1
+
+
+class TestMarketResearchOutputRoundtrip:
+    def test_to_dict_roundtrip(self) -> None:
+        ma = MarketAnalysis(
+            idea_name="X",
+            demand_score=0.5,
+            market_size="$1B",
+            competitors=["A"],
+            profitability="medium",
+        )
+        output = MarketResearchOutput(analyses=[ma])
+        d = output.to_dict()
+        restored = MarketResearchOutput.from_dict(d)
+        assert len(restored.analyses) == 1

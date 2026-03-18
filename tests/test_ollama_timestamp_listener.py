@@ -594,3 +594,50 @@ class TestOllamaAuditLog:
             chat = data["chats"][0]
             assert chat["model"] == "phi3"
             assert "endpoint" in chat
+
+    def test_save_json_error_does_not_raise(self) -> None:
+        """Write failure for JSON (lines 160-161) should be caught silently."""
+        listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_keyword(
+            _mock_keyword_data("Ask LLM", ["test"]),
+            _mock_keyword_result(),
+        )
+        listener.end_keyword(
+            _mock_keyword_data("Ask LLM"),
+            _mock_keyword_result(),
+        )
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/nonexistent/readonly"}):
+            # Should not raise
+            listener.end_suite(_mock_suite_data("Top"), _mock_suite_result())
+
+    def test_save_audit_log_error_does_not_raise(self) -> None:
+        """Write failure for audit log (lines 197-198) should be caught silently."""
+        listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_keyword(
+            _mock_keyword_data("Ask LLM", ["test"]),
+            _mock_keyword_result(),
+        )
+        listener.end_keyword(
+            _mock_keyword_data("Ask LLM"),
+            _mock_keyword_result(),
+        )
+        # Patch _save_timestamps to succeed, but _save_audit_log to fail
+        import builtins
+
+        _real_open = builtins.open
+        call_count = 0
+
+        def open_second_fails(path: object, *a: object, **kw: object) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise OSError("audit write failed")
+            return _real_open(path, *a, **kw)  # type: ignore[call-overload]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
+                with patch("builtins.open", open_second_fails):
+                    # Should not raise even though audit log write fails
+                    listener.end_suite(_mock_suite_data("Top"), _mock_suite_result())

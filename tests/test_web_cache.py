@@ -172,3 +172,19 @@ class TestCacheSearch:
         assert "Result 1" in context
         assert "First result" in context
         assert "Result 2" in context
+
+    def test_format_as_context_empty(self, cache: WebSearchCache) -> None:
+        """Empty results list returns empty string (line 179)."""
+        assert cache.format_as_context([]) == ""
+
+    def test_fetch_and_cache_request_error(self, cache: WebSearchCache) -> None:
+        """Request exception returns empty list (lines 165-166)."""
+        cache.endpoint = "http://search-api.test/search"
+        import requests
+
+        with patch(
+            "rfc.web_cache.requests.get",
+            side_effect=requests.exceptions.ConnectionError("fail"),
+        ):
+            result = cache.search("failing query")
+        assert result == []

@@ -6,7 +6,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from rfc.git_metadata_listener import GitMetaData
+import pytest
+
+from rfc.git_metadata_listener import GitMetaData, GitMetaDataModifier, main
 
 
 def _mock_suite_data(name: str = "Suite", source: str = "") -> MagicMock:
@@ -357,3 +359,132 @@ class TestGitMetaDataFormatLinks:
             result
             == "[robot/test.robot|https://github.com/org/repo/blob/abc123/robot/test.robot]"
         )
+
+
+# ── Pipeline_URL and Job_URL formatting ──────────────────────────────
+
+
+class TestGitMetaDataPipelineAndJobLinks:
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={
+            "CI": "true",
+            "CI_Platform": "gitlab",
+            "Pipeline_URL": "https://gitlab.com/org/repo/-/pipelines/123",
+            "Pipeline_ID": "123",
+        },
+    )
+    def test_pipeline_url_passes_through(self, _mock_ci: MagicMock) -> None:
+        listener = GitMetaData()
+        result = _mock_suite_result()
+        listener.start_suite(_mock_suite_data(), result)
+        assert (
+            result.metadata["Pipeline_URL"]
+            == "https://gitlab.com/org/repo/-/pipelines/123"
+        )
+
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={
+            "CI": "true",
+            "CI_Platform": "gitlab",
+            "Job_URL": "https://gitlab.com/org/repo/-/jobs/456",
+            "Job_Name": "test-math",
+            "Job_ID": "456",
+        },
+    )
+    def test_formats_job_url_with_name(self, _mock_ci: MagicMock) -> None:
+        listener = GitMetaData()
+        result = _mock_suite_result()
+        listener.start_suite(_mock_suite_data(), result)
+        assert result.metadata["Job_URL"] == (
+            "[test-math|https://gitlab.com/org/repo/-/jobs/456]"
+        )
+
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={
+            "CI": "true",
+            "CI_Platform": "gitlab",
+            "Job_URL": "https://gitlab.com/org/repo/-/jobs/789",
+            "Job_ID": "789",
+        },
+    )
+    def test_formats_job_url_with_id_only(self, _mock_ci: MagicMock) -> None:
+        listener = GitMetaData()
+        result = _mock_suite_result()
+        listener.start_suite(_mock_suite_data(), result)
+        assert result.metadata["Job_URL"] == (
+            "[Job #789|https://gitlab.com/org/repo/-/jobs/789]"
+        )
+
+
+# ── _save_metadata_json error path ──────────────────────────────────
+
+
+class TestSaveMetadataJsonError:
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
+    def test_save_error_does_not_raise(
+        self, _mock_ci: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listener = GitMetaData()
+        listener.start_suite(_mock_suite_data(), _mock_suite_result())
+
+        # Point to a non-writable directory
+        monkeypatch.setenv("ROBOT_OUTPUT_DIR", "/nonexistent/readonly/dir")
+        result = _mock_suite_result()
+        # Should not raise
+        listener.end_suite(_mock_suite_data(), result)
+
+
+# ── GitMetaDataModifier ─────────────────────────────────────────────
+
+
+class TestGitMetaDataModifier:
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={
+            "CI": "true",
+            "Branch": "main",
+            "Commit_SHA": "abc123",
+        },
+    )
+    def test_start_suite_adds_metadata(self, _mock_ci: MagicMock) -> None:
+        modifier = GitMetaDataModifier()
+        suite = MagicMock()
+        suite.metadata = {}
+        modifier.start_suite(suite)
+        assert suite.metadata["CI"] == "true"
+        assert suite.metadata["Branch"] == "main"
+        assert modifier.start_time is not None
+
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata", return_value={"CI": "false"}
+    )
+    def test_sets_platform(self, _mock_ci: MagicMock) -> None:
+        modifier = GitMetaDataModifier()
+        suite = MagicMock()
+        suite.metadata = {}
+        modifier.start_suite(suite)
+        assert modifier.ci_info == {"CI": "false"}
+
+
+# ── main() ───────────────────────────────────────────────────────────
+
+
+class TestGitMetaDataMain:
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={"CI": "true", "Branch": "main"},
+    )
+    def test_main_in_ci_returns_zero(self, _mock_ci: MagicMock) -> None:
+        assert main() == 0
+
+    @patch(
+        "rfc.git_metadata_listener.collect_ci_metadata",
+        return_value={"CI": "false"},
+    )
+    def test_main_outside_ci_returns_one(self, _mock_ci: MagicMock) -> None:
+        assert main() == 1

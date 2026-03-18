@@ -618,3 +618,149 @@ class TestContainerManagerStopDockerError:
         mgr._active_containers["abc123"] = mock_container
         mgr.stop_container("abc123")  # should not raise
         assert "abc123" not in mgr._active_containers
+
+
+# ── Container name conflict retry (lines 60-61) ─────────────────────
+
+
+class TestContainerManagerNameConflict:
+    @patch("rfc.container_manager.docker")
+    def test_409_conflict_retries_after_removing_stale(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        stale = MagicMock()
+        mock_client.containers.get.return_value = stale
+
+        success_container = MagicMock()
+        success_container.id = "new123456"
+
+        api_error = APIError("Conflict", response=MagicMock(status_code=409))
+        mock_client.containers.run.side_effect = [api_error, success_container]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        config = ContainerConfig(image="python:3.11-slim", name="rfc-test")
+        cid = mgr.create_container(config)
+        assert cid == "new123456"
+        stale.stop.assert_called_once_with(timeout=5)
+        stale.remove.assert_called_once_with(force=True)
+
+    @patch("rfc.container_manager.docker")
+    def test_409_conflict_stale_removal_fails_still_retries(self, mock_docker):
+        """Lines 60-61: stale container removal fails but retry still proceeds."""
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        stale = MagicMock()
+        stale.stop.side_effect = Exception("container already dead")
+        mock_client.containers.get.return_value = stale
+
+        success_container = MagicMock()
+        success_container.id = "retry123"
+
+        api_error = APIError("Conflict", response=MagicMock(status_code=409))
+        mock_client.containers.run.side_effect = [api_error, success_container]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        config = ContainerConfig(image="python:3.11-slim", name="rfc-test")
+        cid = mgr.create_container(config)
+        assert cid == "retry123"
+
+
+# ── wait_for_port exec_run exception (lines 190-193) ────────────────
+
+
+class TestContainerManagerWaitForPortException:
+    @patch("rfc.container_manager.time")
+    @patch("rfc.container_manager.docker")
+    def test_exec_exception_retries(self, mock_docker, mock_time):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+        mock_result = MagicMock()
+        mock_result.exit_code = 0
+        mock_container.exec_run.side_effect = [Exception("exec error"), mock_result]
+        mock_client.containers.get.return_value = mock_container
+        mock_time.time.side_effect = [0, 0.5, 1.5]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        result = mgr.wait_for_port("abc123", 8080, timeout=30)
+        assert result is True
+
+
+# ── get_metrics stats iterator branch (line 284) ────────────────────
+
+
+class TestContainerManagerMetricsIterator:
+    @patch("rfc.container_manager.docker")
+    def test_stats_returns_iterator(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+        mock_container = MagicMock()
+
+        stats_data = {
+            "cpu_stats": {
+                "cpu_usage": {"total_usage": 200},
+                "system_cpu_usage": 1000,
+            },
+            "precpu_stats": {
+                "cpu_usage": {"total_usage": 100},
+                "system_cpu_usage": 500,
+            },
+            "memory_stats": {"usage": 104857600, "limit": 536870912},
+        }
+        mock_container.stats.return_value = iter([stats_data])
+        mock_client.containers.get.return_value = mock_container
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        metrics = mgr.get_metrics("abc123")
+        assert metrics["memory_usage_mb"] == 100.0
+
+
+# ── cleanup_all with temp dirs (lines 347-349) ──────────────────────
+
+
+class TestContainerManagerCleanupTempDirs:
+    @patch("rfc.container_manager.docker")
+    def test_cleanup_removes_temp_dirs(self, mock_docker, tmp_path):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        temp_dir = tmp_path / "rfc-test"
+        temp_dir.mkdir()
+        mgr._temp_dirs["test"] = temp_dir
+        mgr.cleanup_all()
+        assert not temp_dir.exists()
+
+
+# ── cleanup_orphaned remove exception (lines 374-375) ───────────────
+
+
+class TestContainerManagerCleanupOrphanedRemoveError:
+    @patch("rfc.container_manager.docker")
+    def test_remove_exception_still_counts(self, mock_docker):
+        mock_client = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        mock_c = MagicMock()
+        mock_c.name = "rfc-broken"
+        mock_c.stop.side_effect = Exception("stop error")
+        mock_c.remove.side_effect = Exception("remove error")
+        mock_client.containers.list.return_value = [mock_c]
+
+        from rfc.container_manager import ContainerManager
+
+        mgr = ContainerManager()
+        removed = mgr.cleanup_orphaned()
+        assert removed == 1
