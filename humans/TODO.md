@@ -23,7 +23,7 @@ These require human decisions, manual setup, or external work.
 
 - [ ] **Add model metadata fields to database.** Call Ollama `/api/show` per model and store: quantization level (e.g., Q4_K_M, Q8_0), parameter count, architecture (llama, mistral, etc.), context length, family, license. Requires new columns on `models` table or a new `model_metadata` table.
 - [ ] **Add tokens/sec performance tracking.** Ollama's `/api/generate` response includes `eval_count`, `eval_duration`, `prompt_eval_count`, `prompt_eval_duration`, `load_duration`. Capture these in `keyword_results` or a new `llm_performance` table. This is critical for the "fastest model" comparison.
-- [ ] **Add hardware context to test runs.** Each test run should record which node (and therefore which hardware) executed it. Currently `runner_id` and `runner_tags` capture CI runner info, but for local runs there's no hardware fingerprint.
+- [ ] **Add hardware context to test runs.** Each test run should record which node (and therefore which hardware) executed it. Currently there's no hardware fingerprint for local or CI runs.
 - [ ] **Track quantization in the database.** Parse the model tag (e.g., `llama3:8b-q4_K_M`) or use `/api/show` to get quantization details. Store in model metadata so you can compare Q4 vs Q8 vs FP16 performance.
 - [ ] **Add model size in GB.** Model size should be stored in gigabytes (disk size of the GGUF/safetensors), not just parameter count. This can be researched from web sources or pulled from `/api/show`. Enables "best model that fits in X GB VRAM" queries.
 - [ ] **Add model size categories.** Define size buckets (8B, 16B, 64B, 128B, 256B+) so Superset/Grafana can group comparisons by weight class. Models should only be compared within their size category.
