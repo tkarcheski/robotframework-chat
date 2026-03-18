@@ -29,9 +29,6 @@ MINIMAL_OUTPUT_XML = """\
       <item name="Model">llama3</item>
       <item name="Commit_SHA">abc123</item>
       <item name="Branch">main</item>
-      <item name="Pipeline_URL">https://gl.test/p/500</item>
-      <item name="Runner_ID">runner-1</item>
-      <item name="Runner_Tags">ollama,gpu</item>
       <item name="Timestamp">2025-06-15T10:00:00</item>
     </metadata>
     <test name="IQ 100 Basic Addition" id="s1-t1">
@@ -316,7 +313,6 @@ class TestParseOutputXml:
             assert data["metadata"]["Model"] == "llama3"
             assert data["metadata"]["Commit_SHA"] == "abc123"
             assert data["metadata"]["Branch"] == "main"
-            assert data["metadata"]["Pipeline_URL"] == "https://gl.test/p/500"
         finally:
             os.unlink(path)
 
@@ -573,9 +569,6 @@ class TestImportResults:
         {
             "CI_COMMIT_SHA": "env-sha",
             "CI_COMMIT_REF_NAME": "env-branch",
-            "CI_PIPELINE_URL": "https://gl.test/env-pipeline",
-            "CI_RUNNER_ID": "env-runner",
-            "CI_RUNNER_TAGS": "env-tags",
         },
         clear=False,
     )
