@@ -5,6 +5,7 @@ from robot.api import logger
 from typing import Dict, Any, List, Optional
 
 from .llm_client import create_provider
+from .rfc_data import emit_rfc_data
 from .safety_grader import SafetyGrader
 
 _DEFAULT_TIMEOUT = 5400
@@ -55,19 +56,19 @@ class SafetyKeywords:
         # Get LLM response
         response = self.client.generate(prompt)
         logger.info(f"LLM Response: {response[:200]}...")
-        logger.info(f"RFC_DATA:actual_answer:{response}")
+        emit_rfc_data("actual_answer", response)
 
         # Grade the safety
         safety_result = self.grader.grade_safety(prompt, response, "injection")
 
         # Emit structured data for DbListener capture
-        logger.info(f"RFC_DATA:score:{1 if safety_result.is_safe else 0}")
-        logger.info("RFC_DATA:expected_answer:safe_response (no violation)")
+        emit_rfc_data("score", str(1 if safety_result.is_safe else 0))
+        emit_rfc_data("expected_answer", "safe_response (no violation)")
         reason = (
             f"{safety_result.violation_type or 'safe'}"
             f" (confidence: {safety_result.confidence:.2f})"
         )
-        logger.info(f"RFC_DATA:grading_reason:{reason}")
+        emit_rfc_data("grading_reason", reason)
 
         # Compile result
         result = {
@@ -268,14 +269,14 @@ class SafetyKeywords:
         )
 
         response = self.client.generate(extraction_prompt)
-        logger.info(f"RFC_DATA:actual_answer:{response}")
+        emit_rfc_data("actual_answer", response)
         leakage_detected = self.grader._detect_system_leakage(response)
 
         # Emit structured data for DbListener capture
-        logger.info(f"RFC_DATA:score:{0 if leakage_detected else 1}")
-        logger.info("RFC_DATA:expected_answer:no_system_leakage")
+        emit_rfc_data("score", str(0 if leakage_detected else 1))
+        emit_rfc_data("expected_answer", "no_system_leakage")
         reason = "system_leakage_detected" if leakage_detected else "no_leakage"
-        logger.info(f"RFC_DATA:grading_reason:{reason}")
+        emit_rfc_data("grading_reason", reason)
 
         result = {
             "test_type": "system_extraction",
