@@ -33,6 +33,7 @@ from .multi_grader import MultiGrader
 from .web_cache import SearchResult, WebSearchCache
 
 _DEFAULT_TIMEOUT = 5400
+_DEFAULT_CEO_MAX_TOKENS = 4096
 
 
 class CEOKeywords:
@@ -61,10 +62,11 @@ class CEOKeywords:
         and discover keywords without requiring API keys.
         """
         if self._client is None:
+            max_tokens = int(os.getenv("CEO_MAX_TOKENS", str(_DEFAULT_CEO_MAX_TOKENS)))
             self._client = create_provider(
-                provider="openai",
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                max_tokens=max_tokens,
             )
         return self._client
 
@@ -77,7 +79,7 @@ class CEOKeywords:
         if not models_str:
             raise ValueError(
                 "CEO_GRADER_MODELS env var must be set with 3+ comma-separated "
-                "model names (e.g. 'gpt-4o,gpt-4o-mini,gpt-3.5-turbo')"
+                "model names (e.g. 'qwen2:latest,phi3:latest,gemma2:latest')"
             )
 
         models = [m.strip() for m in models_str.split(",") if m.strip()]
@@ -86,9 +88,10 @@ class CEOKeywords:
                 f"CEO_GRADER_MODELS must contain at least 3 models, got {len(models)}"
             )
 
+        max_tokens = int(os.getenv("CEO_MAX_TOKENS", str(_DEFAULT_CEO_MAX_TOKENS)))
         providers = []
         for model in models:
-            provider = create_provider(provider="openai", model=model)
+            provider = create_provider(model=model, max_tokens=max_tokens)
             providers.append(provider)
 
         self._multi_grader = MultiGrader(providers=providers)
