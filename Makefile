@@ -21,7 +21,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
-        send-results send-results-ftp \
+        send-results \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
         robot-autopilot \
@@ -87,9 +87,6 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
-
-send-results-ftp: ## Send results via FTP/FTPS/SFTP (set FTP_RESULTS_* env vars)
-	bash ci/send_results_ftp.sh
 
 rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/math results/docker"
 	uv run python -m rfc.rebot_merger $(DIRS)
