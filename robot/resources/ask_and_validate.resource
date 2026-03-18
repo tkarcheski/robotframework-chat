@@ -11,7 +11,7 @@ Ask And Validate
     [Arguments]    ${question}    ${expected}
     ${answer}=     LLM.Ask LLM    ${question}
     ${score}    ${reason}=    LLM.Grade Answer    ${question}    ${expected}    ${answer}
-    Should Be Equal As Integers    ${score}    1
+    Should Be Equal As Numbers    ${score}    1.0
     Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
 
 Generate Random Integer

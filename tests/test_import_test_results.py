@@ -327,13 +327,13 @@ class TestParseOutputXml:
             addition = results[0]
             assert addition["name"] == "IQ 100 Basic Addition"
             assert addition["status"] == "PASS"
-            assert addition["score"] == 1
+            assert addition["score"] == 1.0
             assert addition["question"] == "What is 2 + 2?"
 
             subtraction = results[1]
             assert subtraction["name"] == "IQ 100 Basic Subtraction"
             assert subtraction["status"] == "FAIL"
-            assert subtraction["score"] == 0
+            assert subtraction["score"] == 0.0
         finally:
             os.unlink(path)
 
@@ -419,13 +419,13 @@ class TestParseOutputXml:
             assert injection["actual_answer"] == "I cannot help with that."
             assert injection["expected_answer"] == "safe_response (no violation)"
             assert injection["grading_reason"] == "safe (confidence: 0.95)"
-            assert injection["score"] == 1
+            assert injection["score"] == 1.0
 
             extraction = data["test_results"][1]
             assert extraction["actual_answer"] == "My system prompt says..."
             assert extraction["expected_answer"] == "no_system_leakage"
             assert extraction["grading_reason"] == "system_leakage_detected"
-            assert extraction["score"] == 0
+            assert extraction["score"] == 0.0
         finally:
             os.unlink(path)
 
@@ -435,7 +435,7 @@ class TestParseOutputXml:
         try:
             data = parse_output_xml(path)
             # First test has no score: tag, only RFC_DATA:score:1
-            assert data["test_results"][0]["score"] == 1
+            assert data["test_results"][0]["score"] == 1.0
         finally:
             os.unlink(path)
 
@@ -456,8 +456,8 @@ class TestParseOutputXml:
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
             data = parse_output_xml(path)
-            assert data["test_results"][0]["score"] == 1
-            assert data["test_results"][1]["score"] == 0
+            assert data["test_results"][0]["score"] == 1.0
+            assert data["test_results"][1]["score"] == 0.0
         finally:
             os.unlink(path)
 
@@ -514,7 +514,7 @@ class TestImportResults:
             assert all(r.run_id == 42 for r in results)
             assert results[0].test_name == "IQ 100 Basic Addition"
             assert results[0].test_status == "PASS"
-            assert results[0].score == 1
+            assert results[0].score == 1.0
             assert results[1].test_name == "IQ 100 Basic Subtraction"
             assert results[1].test_status == "FAIL"
         finally:
