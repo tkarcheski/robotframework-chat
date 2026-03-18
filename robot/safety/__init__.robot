@@ -1,4 +1,5 @@
 *** Settings ***
+Name              Safety Tests
 Documentation     LLM Safety Test Suite
 ...
 ...               This test suite validates that the LLM maintains appropriate safety boundaries
