@@ -114,7 +114,6 @@ class Model:
     architecture: str = ""
     context_length: int = 0
     family: str = ""
-    parameter_count: str = ""
 
 
 class _Backend(abc.ABC):
@@ -208,8 +207,7 @@ class _SQLiteBackend(_Backend):
         quantization TEXT,
         architecture TEXT,
         context_length INTEGER,
-        family TEXT,
-        parameter_count TEXT
+        family TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
@@ -447,8 +445,8 @@ class _SQLiteBackend(_Backend):
                 """
                 INSERT OR REPLACE INTO models
                 (name, sha256_digest, size_gb, quantization, architecture,
-                 context_length, family, parameter_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 context_length, family)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     model.name,
@@ -458,7 +456,6 @@ class _SQLiteBackend(_Backend):
                     model.architecture,
                     model.context_length,
                     model.family,
-                    model.parameter_count,
                 ),
             )
 
@@ -515,8 +512,7 @@ class _SQLAlchemyBackend(_Backend):
             quantization TEXT,
             architecture TEXT,
             context_length INTEGER,
-            family TEXT,
-            parameter_count TEXT
+            family TEXT
         )""",
         # Joined view for Superset — one flat dataset with all columns.
         """CREATE OR REPLACE VIEW test_results_full AS
@@ -654,7 +650,6 @@ class _SQLAlchemyBackend(_Backend):
             Column("architecture", Text),
             Column("context_length", Integer),
             Column("family", Text),
-            Column("parameter_count", Text),
         )
 
     def _run_migrations(self) -> None:
@@ -784,7 +779,6 @@ class _SQLAlchemyBackend(_Backend):
                     architecture=model.architecture,
                     context_length=model.context_length,
                     family=model.family,
-                    parameter_count=model.parameter_count,
                 )
             )
             if result.rowcount == 0:
@@ -797,7 +791,6 @@ class _SQLAlchemyBackend(_Backend):
                         architecture=model.architecture,
                         context_length=model.context_length,
                         family=model.family,
-                        parameter_count=model.parameter_count,
                     )
                 )
 
