@@ -54,7 +54,7 @@ class TestSQLiteBackend:
                 run_id=run_id,
                 test_name="Test One",
                 test_status="PASS",
-                score=1,
+                score=1.0,
                 question="What is 2+2?",
                 expected_answer="4",
                 actual_answer="4",
@@ -64,7 +64,7 @@ class TestSQLiteBackend:
                 run_id=run_id,
                 test_name="Test Two",
                 test_status="FAIL",
-                score=0,
+                score=0.0,
                 question="What is 3+3?",
                 expected_answer="6",
                 actual_answer="5",
@@ -121,7 +121,7 @@ class TestSQLiteBackend:
                     run_id=run_id,
                     test_name="Math Addition",
                     test_status="PASS",
-                    score=1,
+                    score=1.0,
                     question="What is 2+2?",
                     expected_answer="4",
                     actual_answer="4",
@@ -199,7 +199,8 @@ class TestTestResultDataclass:
         )
         assert result.run_id == 1
         assert result.test_name == "Test One"
-        assert result.score == -1
+        assert result.score == -1.0
+        assert isinstance(result.score, float)
 
     def test_rfc_version_defaults_empty(self) -> None:
         r = TestResult(run_id=1, test_name="T", test_status="PASS")
@@ -213,6 +214,63 @@ class TestTestResultDataclass:
             rfc_version="1.0.2",
         )
         assert r.rfc_version == "1.0.2"
+
+
+class TestFloatScoreRoundTrip:
+    """Verify float scores are stored and retrieved correctly."""
+
+    def test_partial_score_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Partial Score Test",
+                    test_status="PASS",
+                    score=0.75,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT score FROM test_results").fetchone()
+            assert row["score"] == 0.75
+
+    def test_zero_score_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Zero Score Test",
+                    test_status="FAIL",
+                    score=0.0,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT score FROM test_results").fetchone()
+            assert row["score"] == 0.0
+
+    def test_sentinel_score_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Unscored Test",
+                    test_status="PASS",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT score FROM test_results").fetchone()
+            assert row["score"] == -1.0
 
 
 class TestRfcVersionRoundTrip:
@@ -350,7 +408,7 @@ class TestTagsColumn:
                     run_id=run_id,
                     test_name="Tagged Test",
                     test_status="PASS",
-                    score=1,
+                    score=1.0,
                     tags="tier:1,verify:math,score:1",
                 ),
             ]
@@ -390,7 +448,7 @@ class TestResultsFullView:
                     run_id=run_id,
                     test_name="Math Addition",
                     test_status="PASS",
-                    score=1,
+                    score=1.0,
                     tags="tier:1,verify:math",
                 ),
             ]
@@ -401,7 +459,7 @@ class TestResultsFullView:
             # test_results columns
             assert row["test_name"] == "Math Addition"
             assert row["test_status"] == "PASS"
-            assert row["score"] == 1
+            assert row["score"] == 1.0
             assert row["tags"] == "tier:1,verify:math"
             # test_runs columns (joined)
             assert row["model_name"] == "qwen3"
@@ -422,7 +480,7 @@ class TestResultsFullView:
                     run_id=run_id,
                     test_name="Full Data Test",
                     test_status="PASS",
-                    score=1,
+                    score=1.0,
                     tags="tier:1,verify:math",
                     expected_answer="4",
                     actual_answer="4",
@@ -433,7 +491,7 @@ class TestResultsFullView:
         with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM test_results_full").fetchone()
-            assert row["score"] == 1
+            assert row["score"] == 1.0
             assert row["tags"] == "tier:1,verify:math"
             assert row["expected_answer"] == "4"
             assert row["grading_reason"] == "Correct numeric answer"

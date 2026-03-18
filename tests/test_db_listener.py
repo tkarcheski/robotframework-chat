@@ -142,7 +142,7 @@ class TestDbListenerEndTest:
             _mock_test_data("Test One", tags=["IQ:100", "score:1"]),
             _mock_test_result(),
         )
-        assert listener._test_cases[0]["score"] == 1
+        assert listener._test_cases[0]["score"] == 1.0
 
     def test_score_negative_one_when_no_score_tag(self) -> None:
         listener = DbListener()
@@ -150,7 +150,7 @@ class TestDbListenerEndTest:
             _mock_test_data("Test One", tags=["IQ:100"]),
             _mock_test_result(),
         )
-        assert listener._test_cases[0]["score"] == -1
+        assert listener._test_cases[0]["score"] == -1.0
 
     def test_score_from_rfc_data_fallback(self) -> None:
         """Score captured from RFC_DATA when no score: tag exists."""
@@ -161,7 +161,18 @@ class TestDbListenerEndTest:
             _mock_test_data("T", tags=["tier:1"]),
             _mock_test_result(),
         )
-        assert listener._test_cases[0]["score"] == 1
+        assert listener._test_cases[0]["score"] == 1.0
+
+    def test_score_from_rfc_data_float(self) -> None:
+        """Float score captured from RFC_DATA."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:0.75"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == 0.75
 
     def test_score_tag_takes_precedence_over_rfc_data(self) -> None:
         """Tag-based score wins when both tag and RFC_DATA are present."""
@@ -172,7 +183,7 @@ class TestDbListenerEndTest:
             _mock_test_data("T", tags=["score:1"]),
             _mock_test_result(),
         )
-        assert listener._test_cases[0]["score"] == 1
+        assert listener._test_cases[0]["score"] == 1.0
 
     def test_score_negative_one_for_invalid_score_tag(self) -> None:
         listener = DbListener()
@@ -180,7 +191,7 @@ class TestDbListenerEndTest:
             _mock_test_data("Test One", tags=["score:abc"]),
             _mock_test_result(),
         )
-        assert listener._test_cases[0]["score"] == -1
+        assert listener._test_cases[0]["score"] == -1.0
 
     def test_uses_doc_as_question(self) -> None:
         listener = DbListener()
@@ -432,7 +443,7 @@ class TestDbListenerLogMessage:
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM test_results").fetchone()
-            assert row["score"] == 1
+            assert row["score"] == 1.0
 
 
 class TestDbListenerStartTest:

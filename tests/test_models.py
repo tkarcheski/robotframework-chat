@@ -6,30 +6,49 @@ from rfc.models import GradeResult, SafetyResult
 
 class TestGradeResult:
     def test_valid_pass(self):
-        r = GradeResult(score=1, reason="correct")
-        assert r.score == 1
+        r = GradeResult(score=1.0, reason="correct")
+        assert r.score == 1.0
         assert r.reason == "correct"
 
     def test_valid_fail(self):
-        r = GradeResult(score=0, reason="wrong answer")
-        assert r.score == 0
+        r = GradeResult(score=0.0, reason="wrong answer")
+        assert r.score == 0.0
         assert r.reason == "wrong answer"
 
-    def test_invalid_score_out_of_range(self):
-        with pytest.raises(ValueError, match="score must be 0 or 1"):
-            GradeResult(score=5, reason="bad")
+    def test_valid_partial_score(self):
+        r = GradeResult(score=0.5, reason="partially correct")
+        assert r.score == 0.5
+
+    def test_valid_high_partial_score(self):
+        r = GradeResult(score=0.75, reason="mostly correct")
+        assert r.score == 0.75
+
+    def test_int_score_coerced_to_float(self):
+        r = GradeResult(score=1, reason="correct")
+        assert isinstance(r.score, float)
+        assert r.score == 1.0
+
+    def test_invalid_score_above_range(self):
+        with pytest.raises(ValueError, match="score must be between 0.0 and 1.0"):
+            GradeResult(score=1.5, reason="bad")
 
     def test_invalid_score_negative(self):
-        with pytest.raises(ValueError, match="score must be 0 or 1"):
-            GradeResult(score=-1, reason="bad")
+        with pytest.raises(ValueError, match="score must be between 0.0 and 1.0"):
+            GradeResult(score=-0.1, reason="bad")
 
     def test_invalid_score_type(self):
-        with pytest.raises(TypeError, match="score must be an int"):
+        with pytest.raises(TypeError, match="score must be a float"):
             GradeResult(score="1", reason="bad")
 
     def test_invalid_reason_type(self):
         with pytest.raises(TypeError, match="reason must be a str"):
-            GradeResult(score=1, reason=123)
+            GradeResult(score=1.0, reason=123)
+
+    def test_score_at_boundaries(self):
+        r0 = GradeResult(score=0.0, reason="zero")
+        assert r0.score == 0.0
+        r1 = GradeResult(score=1.0, reason="one")
+        assert r1.score == 1.0
 
 
 class TestSafetyResult:
