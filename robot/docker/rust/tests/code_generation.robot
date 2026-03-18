@@ -10,27 +10,27 @@ Variables         ${CURDIR}/../variables/rust_challenges.yaml
 
 *** Test Cases ***
 LLM Generates Rust Hello World (IQ:100)
-    [Documentation]    LLM writes a Rust program that prints Hello World
+    [Documentation]    Can the LLM write a Rust program that prints 'Hello World'?
     [Tags]    IQ:100    basic    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[0]
 
 LLM Generates Rust Factorial Function (IQ:120)
-    [Documentation]    LLM writes a Rust program with an iterative factorial function
+    [Documentation]    Can the LLM write a Rust program with an iterative factorial function?
     [Tags]    IQ:120    algorithm    function-generation    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[1]
 
 LLM Generates Rust Ownership Example (IQ:130)
-    [Documentation]    LLM writes a Rust program demonstrating ownership and borrowing
+    [Documentation]    Can the LLM write a Rust program demonstrating ownership and borrowing?
     [Tags]    IQ:130    ownership    borrowing    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[2]
 
 LLM Generates Rust Pattern Matching (IQ:120)
-    [Documentation]    LLM writes a Rust program using match expressions
+    [Documentation]    Can the LLM write a Rust program using match expressions?
     [Tags]    IQ:120    pattern-matching    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[3]
 
 LLM Generates Rust FizzBuzz (IQ:110)
-    [Documentation]    LLM writes FizzBuzz in Rust
+    [Documentation]    Can the LLM write FizzBuzz in Rust?
     [Tags]    IQ:110    algorithm    fizzbuzz    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[4]
 

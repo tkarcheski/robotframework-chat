@@ -4,6 +4,7 @@ Resource          ../../resources/ask_and_validate.resource
 
 *** Test Cases ***
 IQ 105 Percentage Calculation
+    [Documentation]    Can the LLM calculate {pct}% of {whole}?
     [Tags]    IQ:105
     ${whole}=    Generate Positive Integer
     ${pct}=      Generate Random Percent
@@ -12,6 +13,7 @@ IQ 105 Percentage Calculation
     Ask And Validate    ${question}    ${expected}
 
 IQ 115 Exponentiation
+    [Documentation]    Can the LLM compute {base} raised to the power of {exp}?
     [Tags]    IQ:115
     ${base}=    Generate Small Positive Integer    min=2    max=20
     ${exp}=     Generate Small Positive Integer    min=2    max=5
@@ -20,6 +22,7 @@ IQ 115 Exponentiation
     Ask And Validate    ${question}    ${expected}
 
 IQ 115 Square Root Of Perfect Square
+    [Documentation]    Can the LLM find the square root of {squared} (a perfect square)?
     [Tags]    IQ:115
     ${n}=       Generate Small Positive Integer    min=2    max=100
     ${squared}=    Evaluate    ${n} ** 2
@@ -28,6 +31,7 @@ IQ 115 Square Root Of Perfect Square
     Ask And Validate    ${question}    ${expected}
 
 IQ 135 Order Of Operations PEMDAS
+    [Documentation]    Can the LLM evaluate {a} + {b} * {c} - {d} following standard order of operations?
     [Tags]    IQ:135
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
@@ -38,6 +42,7 @@ IQ 135 Order Of Operations PEMDAS
     Ask And Validate    ${question}    ${expected}
 
 IQ 110 Absolute Value
+    [Documentation]    Can the LLM compute the absolute value of {a} minus {b}?
     [Tags]    IQ:110
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
@@ -46,6 +51,7 @@ IQ 110 Absolute Value
     Ask And Validate    ${question}    ${expected}
 
 IQ 125 Greatest Common Divisor
+    [Documentation]    Can the LLM find the greatest common divisor of {a} and {b}?
     [Tags]    IQ:125
     ${a}=    Generate Positive Integer
     ${b}=    Generate Positive Integer
@@ -54,6 +60,7 @@ IQ 125 Greatest Common Divisor
     Ask And Validate    ${question}    ${expected}
 
 IQ 125 Arithmetic Mean
+    [Documentation]    Can the LLM calculate the arithmetic mean of five random integers?
     [Tags]    IQ:125
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
@@ -65,6 +72,7 @@ IQ 125 Arithmetic Mean
     Ask And Validate    ${question}    ${expected}
 
 IQ 105 Rectangle Area
+    [Documentation]    Can the LLM compute the area of a rectangle with length {l} and width {w}?
     [Tags]    IQ:105
     ${l}=    Generate Positive Integer    min=1    max=500
     ${w}=    Generate Positive Integer    min=1    max=500
@@ -73,6 +81,7 @@ IQ 105 Rectangle Area
     Ask And Validate    ${question}    ${expected}
 
 IQ 120 Rectangular Prism Volume
+    [Documentation]    Can the LLM compute the volume of a rectangular prism ({l} x {w} x {h})?
     [Tags]    IQ:120
     ${l}=    Generate Positive Integer    min=1    max=100
     ${w}=    Generate Positive Integer    min=1    max=100
@@ -82,6 +91,7 @@ IQ 120 Rectangular Prism Volume
     Ask And Validate    ${question}    ${expected}
 
 IQ 145 Sum Of Arithmetic Sequence
+    [Documentation]    Can the LLM sum the first {n} terms of an arithmetic sequence (start={a}, diff={d})?
     [Tags]    IQ:145
     ${a}=    Generate Small Positive Integer    min=1    max=100
     ${d}=    Generate Small Positive Integer    min=1    max=20

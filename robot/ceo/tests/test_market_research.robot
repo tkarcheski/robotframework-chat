@@ -11,7 +11,7 @@ Test Timeout      3 minutes
 
 *** Test Cases ***
 Market Research Produces Structured Analysis
-    [Documentation]    Verify market research stage produces valid structured output
+    [Documentation]    Can the LLM produce structured market research with demand scoring, sizing, and competitor analysis?
     [Tags]    tier:3    verify:llms    ceo    stage:market_research
     Warm Web Cache    ${MARKET_RESEARCH_WEB_CACHE}
     ${output}=    Research Market    ${MARKET_RESEARCH_SEED}
@@ -19,7 +19,7 @@ Market Research Produces Structured Analysis
     Log    Analyzed ${output}[analyses].__len__() ideas
 
 Market Research Passes Quality Grading
-    [Documentation]    Verify market research output passes multi-LLM quality assessment
+    [Documentation]    Can the LLM's market research analysis pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:market_research    grading
     Warm Web Cache    ${MARKET_RESEARCH_WEB_CACHE}
     ${output}=    Research Market    ${MARKET_RESEARCH_SEED}
@@ -27,7 +27,7 @@ Market Research Passes Quality Grading
     Log    Market research grading: majority=${grade}[majority_score], agreement=${grade}[agreement_ratio]
 
 Market Research With Web Context
-    [Documentation]    Verify market research enriches analysis with web cache data
+    [Documentation]    Can the LLM enrich market research analysis using web-cached industry data?
     [Tags]    tier:3    verify:llms    ceo    stage:market_research    web_cache
     Warm Web Cache    ${MARKET_RESEARCH_WEB_CACHE}
     @{queries}=    Create List    smart radiator valve market size 2025    home battery storage market competitors

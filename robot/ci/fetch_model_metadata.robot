@@ -122,7 +122,7 @@ Save Model Metadata
 
 *** Test Cases ***
 Research LLM Models Metadata
-    [Documentation]    Research metadata for known LLM models
+    [Documentation]    Can the system scrape and save metadata for known LLM models (llama3, mistral, codellama)?
     [Tags]    ci    metadata    research    tier:1    verify:robot
 
     # Get current date for metadata
