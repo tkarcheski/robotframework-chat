@@ -365,9 +365,29 @@ class DbListener(ListenerV3):
             logger.console(error_msg)
 
 
+def _resolve_output_dir() -> str:
+    """Resolve the Robot Framework output directory.
+
+    Priority:
+    1. ``ROBOT_OUTPUT_DIR`` environment variable (explicit override).
+    2. Robot Framework's ``${OUTPUT DIR}`` built-in variable.
+    3. Empty string if neither is available.
+    """
+    env_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if env_dir:
+        return env_dir
+    try:
+        robot_dir = BuiltIn().get_variable_value("${OUTPUT DIR}")
+        if robot_dir:
+            return str(robot_dir)
+    except Exception:
+        pass  # Not running inside Robot context
+    return ""
+
+
 def _read_and_compress_output_xml() -> bytes:
     """Read output.xml from Robot's output directory and gzip-compress it."""
-    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    output_dir = _resolve_output_dir()
     if not output_dir:
         return b""
     output_xml = os.path.join(output_dir, "output.xml")
@@ -386,7 +406,7 @@ def _build_output_xml_source() -> str:
     This traces the test run back to the original output.xml that was
     produced by Robot Framework, enabling audit and replay.
     """
-    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    output_dir = _resolve_output_dir()
     if output_dir:
         candidate = os.path.join(output_dir, "output.xml")
         if os.path.isfile(candidate):
@@ -411,7 +431,7 @@ def _build_output_xml_url() -> str:
     if ci_job_url:
         return f"{ci_job_url}/artifacts/browse/output.xml"
 
-    output_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    output_dir = _resolve_output_dir()
     if output_dir:
         return f"{output_dir.rstrip('/')}/output.xml"
 
