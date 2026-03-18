@@ -273,6 +273,38 @@ class TestMetrics:
 
     @patch("rfc.openai_client.logger")
     @patch("rfc.openai_client.requests.post")
+    def test_stores_reasoning_tokens_in_last_metrics(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "hello"}}],
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 80,
+                "total_tokens": 130,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 60,
+                    "accepted_prediction_tokens": 0,
+                    "rejected_prediction_tokens": 0,
+                },
+                "prompt_tokens_details": {
+                    "cached_tokens": 20,
+                },
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OpenAIClient(api_key="sk-test")
+        client.generate("test")
+
+        assert client.last_metrics is not None
+        assert client.last_metrics["reasoning_tokens"] == 60
+        assert client.last_metrics["cached_tokens"] == 20
+        assert client.last_metrics["prompt_eval_count"] == 50
+        assert client.last_metrics["eval_count"] == 80
+
+    @patch("rfc.openai_client.logger")
+    @patch("rfc.openai_client.requests.post")
     def test_last_metrics_includes_model_name(self, mock_post, mock_logger):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -308,6 +340,92 @@ class TestExtractMetrics:
         metrics = _extract_metrics({}, "gpt-4o")
         assert metrics["model_name"] == "gpt-4o"
         assert metrics["prompt_tokens"] is None
+
+    def test_extracts_reasoning_tokens(self):
+        data = {
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 80,
+                "total_tokens": 130,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 60,
+                },
+            }
+        }
+        metrics = _extract_metrics(data, "o3")
+        assert metrics["reasoning_tokens"] == 60
+
+    def test_extracts_cached_tokens(self):
+        data = {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "prompt_tokens_details": {
+                    "cached_tokens": 80,
+                },
+            }
+        }
+        metrics = _extract_metrics(data, "gpt-4o")
+        assert metrics["cached_tokens"] == 80
+
+    def test_extracts_prediction_tokens(self):
+        data = {
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": 40,
+                "total_tokens": 90,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 0,
+                    "accepted_prediction_tokens": 15,
+                    "rejected_prediction_tokens": 5,
+                },
+            }
+        }
+        metrics = _extract_metrics(data, "gpt-4o")
+        assert metrics["accepted_prediction_tokens"] == 15
+        assert metrics["rejected_prediction_tokens"] == 5
+
+    def test_maps_to_ollama_equivalents(self):
+        data = {
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30,
+            }
+        }
+        metrics = _extract_metrics(data, "gpt-4o")
+        assert metrics["prompt_eval_count"] == 10
+        assert metrics["eval_count"] == 20
+
+    def test_missing_details_defaults_to_none(self):
+        data = {
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+            }
+        }
+        metrics = _extract_metrics(data, "gpt-4o")
+        assert metrics["reasoning_tokens"] is None
+        assert metrics["cached_tokens"] is None
+        assert metrics["accepted_prediction_tokens"] is None
+        assert metrics["rejected_prediction_tokens"] is None
+
+    def test_null_details_defaults_to_none(self):
+        """When details objects are explicitly null in JSON."""
+        data = {
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "prompt_tokens_details": None,
+                "completion_tokens_details": None,
+            }
+        }
+        metrics = _extract_metrics(data, "gpt-4o")
+        assert metrics["reasoning_tokens"] is None
+        assert metrics["cached_tokens"] is None
 
 
 class TestProtocolCompliance:
