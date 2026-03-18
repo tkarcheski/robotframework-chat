@@ -166,6 +166,15 @@ class TestFlakyVirtualDatasets:
         sql = _VIRTUAL_DATASETS["kpi_flaky_test_count"].upper()
         assert "FLAKY_COUNT" in sql
 
+    def test_flaky_trend_timeseries_columns(self, infra_db: str) -> None:
+        """flaky_trend_timeseries produces grouped day and count columns."""
+        sql = _VIRTUAL_DATASETS["flaky_trend_timeseries"]
+        sqlite_sql = _pg_to_sqlite(sql)
+        cols = _probe_columns(infra_db, sqlite_sql)
+        assert "time_bucket" in cols
+        assert "flaky_count" in cols
+        assert "total_tests" in cols
+
 
 # ---------------------------------------------------------------------------
 # Coverage virtual datasets
