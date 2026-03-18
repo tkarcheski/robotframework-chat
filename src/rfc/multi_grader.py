@@ -18,14 +18,14 @@ from .thinking import parse_thinking
 class MultiGradeResult:
     """Result of a multi-LLM grading vote."""
 
-    scores: List[int]
-    majority_score: int
+    scores: List[float]
+    majority_score: float
     agreement_ratio: float
     reasons: List[str]
 
     @property
     def passed(self) -> bool:
-        return self.majority_score == 1
+        return self.majority_score == 1.0
 
     @property
     def unanimous(self) -> bool:
@@ -88,7 +88,7 @@ class MultiGrader:
         """
         prompt = self._build_prompt(question, expected, actual, rubric)
 
-        scores: List[int] = []
+        scores: List[float] = []
         reasons: List[str] = []
 
         for provider in self.providers:
@@ -96,9 +96,9 @@ class MultiGrader:
             scores.append(score)
             reasons.append(reason)
 
-        ones = sum(scores)
+        ones = sum(1 for s in scores if s >= 0.5)
         zeros = len(scores) - ones
-        majority_score = 1 if ones > zeros else 0
+        majority_score = 1.0 if ones > zeros else 0.0
         majority_count = max(ones, zeros)
         agreement_ratio = majority_count / len(scores)
 
@@ -138,17 +138,17 @@ Format:
 }}
 """
 
-    def _grade_single(self, provider: Any, prompt: str) -> tuple[int, str]:
-        """Get a single grade from one provider. Returns (0, error) on failure."""
+    def _grade_single(self, provider: Any, prompt: str) -> tuple[float, str]:
+        """Get a single grade from one provider. Returns (0.0, error) on failure."""
         try:
             raw = provider.generate(prompt)
             json_text = _extract_json(raw)
             parsed = json.loads(json_text)
-            score = int(parsed.get("score", 0))
+            score = float(parsed.get("score", 0))
             reason = str(parsed.get("reason", ""))
-            if score not in (0, 1):
-                score = 0
+            if not 0.0 <= score <= 1.0:
+                score = 0.0
                 reason = f"Invalid score value: {score}"
             return score, reason
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            return 0, f"Grader error: {exc}"
+            return 0.0, f"Grader error: {exc}"

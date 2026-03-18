@@ -114,7 +114,7 @@ def parse_output_xml(xml_path: str) -> dict:
                     tag_texts.append(tag.text)
                     if tag.text.startswith("score:"):
                         try:
-                            score = int(tag.text.split(":")[1])
+                            score = float(tag.text.split(":")[1])
                         except (ValueError, IndexError):
                             pass
             parsed_tags = _parse_tags(tag_texts)
@@ -132,7 +132,7 @@ def parse_output_xml(xml_path: str) -> dict:
                     grading_reason = text[len("RFC_DATA:grading_reason:") :]
                 elif text.startswith("RFC_DATA:score:"):
                     try:
-                        score = int(text[len("RFC_DATA:score:") :])
+                        score = float(text[len("RFC_DATA:score:") :])
                     except (ValueError, IndexError):
                         pass
 
@@ -256,7 +256,7 @@ def import_results(
             run_id=run_id,
             test_name=td["name"],
             test_status=td["status"],
-            score=_nvl(td.get("score"), -1),
+            score=_nvl(td.get("score"), -1.0),
             tags=_nvl(td.get("tags"), ""),
             question=_nvl(td.get("question"), ""),
             expected_answer=_nvl(td.get("expected_answer"), ""),
