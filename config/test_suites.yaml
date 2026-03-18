@@ -112,6 +112,11 @@ test_suites:
     path: "robot/ceo/tests"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
 
+  benchmark:
+    label: "Token Output Benchmark"
+    path: "robot/benchmark/tests"
+    description: "Token output throughput and completion ratio benchmark (512–65536 tokens)"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
