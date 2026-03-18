@@ -24,7 +24,8 @@ class TestGrader:
         grader = Grader(client)
         result = grader.grade("What is 2+2?", "4", "4")
         assert isinstance(result, GradeResult)
-        assert result.score == 1
+        assert result.score == 1.0
+        assert isinstance(result.score, float)
         assert result.reason == "correct"
 
     def test_grade_incorrect_answer(self):
@@ -32,7 +33,7 @@ class TestGrader:
         client.generate.return_value = '{"score": 0, "reason": "wrong"}'
         grader = Grader(client)
         result = grader.grade("What is 2+2?", "4", "5")
-        assert result.score == 0
+        assert result.score == 0.0
 
     def test_grade_invalid_json(self):
         client = MagicMock()

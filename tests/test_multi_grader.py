@@ -26,8 +26,8 @@ def _mock_provider(response: str) -> MagicMock:
 class TestMultiGradeResult:
     def test_unanimous_pass(self) -> None:
         r = MultiGradeResult(
-            scores=[1, 1, 1],
-            majority_score=1,
+            scores=[1.0, 1.0, 1.0],
+            majority_score=1.0,
             agreement_ratio=1.0,
             reasons=["good", "good", "good"],
         )
@@ -36,8 +36,8 @@ class TestMultiGradeResult:
 
     def test_unanimous_fail(self) -> None:
         r = MultiGradeResult(
-            scores=[0, 0, 0],
-            majority_score=0,
+            scores=[0.0, 0.0, 0.0],
+            majority_score=0.0,
             agreement_ratio=1.0,
             reasons=["bad", "bad", "bad"],
         )
@@ -46,8 +46,8 @@ class TestMultiGradeResult:
 
     def test_majority_pass_with_disagreement(self) -> None:
         r = MultiGradeResult(
-            scores=[1, 1, 0],
-            majority_score=1,
+            scores=[1.0, 1.0, 0.0],
+            majority_score=1.0,
             agreement_ratio=2 / 3,
             reasons=["good", "good", "bad"],
         )
@@ -56,8 +56,8 @@ class TestMultiGradeResult:
 
     def test_majority_fail_with_disagreement(self) -> None:
         r = MultiGradeResult(
-            scores=[0, 0, 1],
-            majority_score=0,
+            scores=[0.0, 0.0, 1.0],
+            majority_score=0.0,
             agreement_ratio=2 / 3,
             reasons=["bad", "bad", "good"],
         )
@@ -88,7 +88,7 @@ class TestMultiGrader:
             actual="A great product idea.",
             rubric="Evaluate if the response is a positive product idea.",
         )
-        assert result.majority_score == 1
+        assert result.majority_score == 1.0
         assert result.agreement_ratio == 1.0
         assert len(result.scores) == 3
 
@@ -100,7 +100,7 @@ class TestMultiGrader:
         ]
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
-        assert result.majority_score == 0
+        assert result.majority_score == 0.0
         assert result.agreement_ratio == 1.0
 
     def test_majority_vote_2_of_3(self) -> None:
@@ -111,7 +111,7 @@ class TestMultiGrader:
         ]
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
-        assert result.majority_score == 1
+        assert result.majority_score == 1.0
         assert abs(result.agreement_ratio - 2 / 3) < 0.01
 
     def test_majority_vote_3_of_5(self) -> None:
@@ -124,7 +124,7 @@ class TestMultiGrader:
         ]
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
-        assert result.majority_score == 1
+        assert result.majority_score == 1.0
         assert abs(result.agreement_ratio - 3 / 5) < 0.01
 
     def test_handles_json_in_markdown(self) -> None:
@@ -135,7 +135,7 @@ class TestMultiGrader:
         ]
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
-        assert result.majority_score == 1
+        assert result.majority_score == 1.0
 
     def test_invalid_json_from_one_grader_still_works(self) -> None:
         providers = [
@@ -146,8 +146,8 @@ class TestMultiGrader:
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         # Invalid response counts as score=0
-        assert result.scores[1] == 0
-        assert result.majority_score == 1
+        assert result.scores[1] == 0.0
+        assert result.majority_score == 1.0
 
     def test_grade_uses_rubric_in_prompt(self) -> None:
         providers = [
