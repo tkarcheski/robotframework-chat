@@ -580,6 +580,81 @@ class TestModelsTable:
         assert db.get_table_row_count("models") == 2
 
 
+class TestTokenMetricColumns:
+    """Verify OpenAI token detail columns (reasoning, cache, prediction)."""
+
+    def test_token_detail_columns_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Token Detail Test",
+                    test_status="PASS",
+                    reasoning_tokens=60,
+                    cached_tokens=20,
+                    accepted_prediction_tokens=15,
+                    rejected_prediction_tokens=5,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["reasoning_tokens"] == 60
+            assert row["cached_tokens"] == 20
+            assert row["accepted_prediction_tokens"] == 15
+            assert row["rejected_prediction_tokens"] == 5
+
+    def test_token_detail_columns_default_zero(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Defaults",
+                    test_status="PASS",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["reasoning_tokens"] == 0
+            assert row["cached_tokens"] == 0
+            assert row["accepted_prediction_tokens"] == 0
+            assert row["rejected_prediction_tokens"] == 0
+
+    def test_token_detail_in_view(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="View Test",
+                    test_status="PASS",
+                    reasoning_tokens=30,
+                    cached_tokens=10,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            assert row["reasoning_tokens"] == 30
+            assert row["cached_tokens"] == 10
+
+    def test_dataclass_defaults(self) -> None:
+        r = TestResult(run_id=1, test_name="T", test_status="PASS")
+        assert r.reasoning_tokens == 0
+        assert r.cached_tokens == 0
+        assert r.accepted_prediction_tokens == 0
+        assert r.rejected_prediction_tokens == 0
+
+
 class TestViewIncludesNewColumns:
     """Verify test_results_full view includes new columns."""
 

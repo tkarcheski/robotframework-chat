@@ -749,6 +749,38 @@ class TestExtractLlmMetrics:
         assert result["eval_count"] == 10
         assert result.get("eval_duration_ns") is None
 
+    def test_openai_metrics_passthrough(self) -> None:
+        """OpenAI token detail fields pass through to metrics dict."""
+        import json
+
+        data = json.dumps(
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "reasoning_tokens": 30,
+                "cached_tokens": 20,
+                "accepted_prediction_tokens": 10,
+                "rejected_prediction_tokens": 5,
+                "prompt_eval_count": 100,
+                "eval_count": 50,
+            }
+        )
+        result = _extract_llm_metrics(data)
+        assert result["reasoning_tokens"] == 30
+        assert result["cached_tokens"] == 20
+        assert result["accepted_prediction_tokens"] == 10
+        assert result["rejected_prediction_tokens"] == 5
+        assert result["prompt_eval_count"] == 100
+        assert result["eval_count"] == 50
+
+    def test_openai_metrics_missing_returns_none(self) -> None:
+        """Missing OpenAI detail fields return None."""
+        result = _extract_llm_metrics('{"eval_count": 10}')
+        assert result.get("reasoning_tokens") is None
+        assert result.get("cached_tokens") is None
+        assert result.get("accepted_prediction_tokens") is None
+        assert result.get("rejected_prediction_tokens") is None
+
 
 class TestDbListenerThinkingCapture:
     """Tests for thinking and metrics data capture in the listener."""

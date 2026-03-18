@@ -145,11 +145,31 @@ class OpenAIClient:
 
 
 def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
-    """Extract usage metrics from an OpenAI chat completions response."""
+    """Extract usage metrics from an OpenAI chat completions response.
+
+    Maps prompt_tokens/completion_tokens to Ollama-equivalent names
+    (prompt_eval_count/eval_count) for database compatibility. Also
+    extracts nested detail fields: reasoning_tokens, cached_tokens,
+    accepted_prediction_tokens, rejected_prediction_tokens.
+    """
     usage = data.get("usage", {})
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    completion_details = usage.get("completion_tokens_details") or {}
     return {
         "model_name": model,
         "prompt_tokens": usage.get("prompt_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
         "total_tokens": usage.get("total_tokens"),
+        # Map to Ollama-equivalent names for DB compatibility
+        "prompt_eval_count": usage.get("prompt_tokens"),
+        "eval_count": usage.get("completion_tokens"),
+        # Detailed breakdowns
+        "reasoning_tokens": completion_details.get("reasoning_tokens"),
+        "cached_tokens": prompt_details.get("cached_tokens"),
+        "accepted_prediction_tokens": completion_details.get(
+            "accepted_prediction_tokens"
+        ),
+        "rejected_prediction_tokens": completion_details.get(
+            "rejected_prediction_tokens"
+        ),
     }

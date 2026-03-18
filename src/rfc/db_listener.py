@@ -234,6 +234,14 @@ class DbListener(ListenerV3):
                 "load_duration_ns": metrics.get("load_duration_ns"),
                 "total_duration_ns": metrics.get("total_duration_ns"),
                 "tokens_per_second": metrics.get("eval_rate"),
+                "reasoning_tokens": metrics.get("reasoning_tokens"),
+                "cached_tokens": metrics.get("cached_tokens"),
+                "accepted_prediction_tokens": metrics.get(
+                    "accepted_prediction_tokens"
+                ),
+                "rejected_prediction_tokens": metrics.get(
+                    "rejected_prediction_tokens"
+                ),
             }
         )
         self._current_test_data = {}
@@ -336,6 +344,14 @@ class DbListener(ListenerV3):
                     tag_verify=_nvl(tc.get("tag_verify"), ""),
                     thinking_text=_nvl(tc.get("thinking_text"), ""),
                     thinking_tokens=_nvl(tc.get("thinking_tokens"), 0),
+                    reasoning_tokens=_nvl(tc.get("reasoning_tokens"), 0),
+                    cached_tokens=_nvl(tc.get("cached_tokens"), 0),
+                    accepted_prediction_tokens=_nvl(
+                        tc.get("accepted_prediction_tokens"), 0
+                    ),
+                    rejected_prediction_tokens=_nvl(
+                        tc.get("rejected_prediction_tokens"), 0
+                    ),
                     num_ctx=_nvl(tc.get("num_ctx"), 0),
                     num_predict=_nvl(tc.get("num_predict"), 0),
                     eval_count=_nvl(tc.get("eval_count"), 0),
@@ -497,6 +513,11 @@ def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
         "eval_rate": data.get("eval_rate"),
         "num_ctx": data.get("num_ctx"),
         "num_predict": data.get("num_predict"),
+        # OpenAI token detail fields
+        "reasoning_tokens": data.get("reasoning_tokens"),
+        "cached_tokens": data.get("cached_tokens"),
+        "accepted_prediction_tokens": data.get("accepted_prediction_tokens"),
+        "rejected_prediction_tokens": data.get("rejected_prediction_tokens"),
     }
 
 
