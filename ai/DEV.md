@@ -44,7 +44,7 @@ The `.env` file is loaded automatically by:
 
 | Variable | Purpose | Default | Used By |
 |----------|---------|---------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | SQLite fallback | db_listener, test_database, dry_run_listener |
+| `DATABASE_URL` | PostgreSQL connection string | `.env` fallback | db_listener, test_database, dry_run_listener |
 | `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | .gitlab-ci.yml |
 | `DEFAULT_MODEL` | LLM model for tests | `gpt-oss:20b` (CI: `qwen3.5:27b`) | ollama.py, keywords, listeners, scripts |
 | `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners, ci/test.sh |
