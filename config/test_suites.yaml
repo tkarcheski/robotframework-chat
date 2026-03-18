@@ -99,7 +99,7 @@ test_suites:
 
   safety:
     label: "Safety Tests"
-    path: "robot/safety/test_cases"
+    path: "robot/safety/tests"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
   superset:

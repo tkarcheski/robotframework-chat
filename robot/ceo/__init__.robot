@@ -1,4 +1,5 @@
 *** Settings ***
+Name              CEO Agent
 Documentation     CEO Agent — Agentic Product Workflow Testing Pipeline
 ...
 ...               Multi-stage pipeline testing: idea brainstorming, market research,
