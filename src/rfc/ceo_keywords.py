@@ -30,6 +30,7 @@ from .ceo_prompts import (
 from .grader import Grader
 from .llm_client import create_provider
 from .multi_grader import MultiGrader
+from .rfc_data import emit_rfc_data
 from .web_cache import SearchResult, WebSearchCache
 
 _DEFAULT_TIMEOUT = 5400
@@ -128,12 +129,12 @@ class CEOKeywords:
             constraints=constraints or None,
         )
         raw = self.client.generate(prompt)
-        logger.info(f"RFC_DATA:brainstorm_raw:{raw}")
+        emit_rfc_data("brainstorm_raw", raw)
 
         parsed = self._extract_json_response(raw)
         output = BrainstormOutput.from_dict(parsed)
         result = output.to_dict()
-        logger.info(f"RFC_DATA:brainstorm_output:{json.dumps(result)}")
+        emit_rfc_data("brainstorm_output", json.dumps(result))
         return result
 
     # ------------------------------------------------------------------
@@ -174,12 +175,12 @@ class CEOKeywords:
 
         prompt = build_market_research_prompt(ideas=idea_list, web_context=web_context)
         raw = self.client.generate(prompt)
-        logger.info(f"RFC_DATA:market_research_raw:{raw}")
+        emit_rfc_data("market_research_raw", raw)
 
         parsed = self._extract_json_response(raw)
         output = MarketResearchOutput.from_dict(parsed)
         result = output.to_dict()
-        logger.info(f"RFC_DATA:market_research_output:{json.dumps(result)}")
+        emit_rfc_data("market_research_output", json.dumps(result))
         return result
 
     # ------------------------------------------------------------------
@@ -222,12 +223,12 @@ class CEOKeywords:
             market_analyses=analyses_list, web_context=web_context
         )
         raw = self.client.generate(prompt)
-        logger.info(f"RFC_DATA:ip_analysis_raw:{raw}")
+        emit_rfc_data("ip_analysis_raw", raw)
 
         parsed = self._extract_json_response(raw)
         output = IPAnalysisOutput.from_dict(parsed)
         result = output.to_dict()
-        logger.info(f"RFC_DATA:ip_analysis_output:{json.dumps(result)}")
+        emit_rfc_data("ip_analysis_output", json.dumps(result))
         return result
 
     # ------------------------------------------------------------------
@@ -258,12 +259,12 @@ class CEOKeywords:
 
         prompt = build_patent_strategy_prompt(ip_findings=findings_list)
         raw = self.client.generate(prompt)
-        logger.info(f"RFC_DATA:patent_strategy_raw:{raw}")
+        emit_rfc_data("patent_strategy_raw", raw)
 
         parsed = self._extract_json_response(raw)
         output = PatentStrategyOutput.from_dict(parsed)
         result = output.to_dict()
-        logger.info(f"RFC_DATA:patent_strategy_output:{json.dumps(result)}")
+        emit_rfc_data("patent_strategy_output", json.dumps(result))
         return result
 
     # ------------------------------------------------------------------
@@ -294,12 +295,12 @@ class CEOKeywords:
 
         prompt = build_licensing_strategy_prompt(patent_strategies=strategies_list)
         raw = self.client.generate(prompt)
-        logger.info(f"RFC_DATA:licensing_strategy_raw:{raw}")
+        emit_rfc_data("licensing_strategy_raw", raw)
 
         parsed = self._extract_json_response(raw)
         output = LicensingStrategyOutput.from_dict(parsed)
         result = output.to_dict()
-        logger.info(f"RFC_DATA:licensing_strategy_output:{json.dumps(result)}")
+        emit_rfc_data("licensing_strategy_output", json.dumps(result))
         return result
 
     # ------------------------------------------------------------------
@@ -381,7 +382,7 @@ class CEOKeywords:
             "unanimous": result.unanimous,
         }
 
-        logger.info(f"RFC_DATA:grade_{stage_name}:{json.dumps(grade_dict)}")
+        emit_rfc_data(f"grade_{stage_name}", json.dumps(grade_dict))
 
         if not result.unanimous:
             logger.warn(

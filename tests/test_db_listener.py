@@ -782,6 +782,53 @@ class TestExtractLlmMetrics:
         assert result.get("rejected_prediction_tokens") is None
 
 
+class TestDbListenerNearMissWarning:
+    """Tests for near-miss RFC_DATA typo detection."""
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_lowercase_rfc_data(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("rfc_data:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+        assert "RFC_DATA" in str(mock_logger.warn.call_args)
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_missing_underscore(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFCDATA:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_space_instead_of_underscore(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC DATA:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+
+    @patch("rfc.db_listener.logger")
+    def test_no_warning_on_normal_message(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("Just a normal log message"))
+        mock_logger.warn.assert_not_called()
+
+    @patch("rfc.db_listener.logger")
+    def test_no_warning_on_valid_rfc_data(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        mock_logger.warn.assert_not_called()
+
+    def test_near_miss_does_not_capture_data(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("rfc_data:actual_answer:42"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+
 class TestDbListenerThinkingCapture:
     """Tests for thinking and metrics data capture in the listener."""
 

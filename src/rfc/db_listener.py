@@ -40,8 +40,7 @@ from .test_database import (
     TestRun,
 )
 
-# Prefix used by keywords to emit structured data for the listener.
-RFC_DATA_PREFIX = "RFC_DATA:"
+from .rfc_data import RFC_DATA_PREFIX
 
 T = Any  # type alias for _nvl generic usage
 
@@ -172,12 +171,16 @@ class DbListener(ListenerV3):
     def log_message(self, message: Message) -> None:
         """Capture structured data from ``RFC_DATA:`` log messages."""
         text = message.message
-        if not isinstance(text, str) or not text.startswith(RFC_DATA_PREFIX):
+        if not isinstance(text, str):
             return
-        payload = text[len(RFC_DATA_PREFIX) :]
-        key, _, value = payload.partition(":")
-        if key:
-            self._current_test_data[key] = value
+        if text.startswith(RFC_DATA_PREFIX):
+            payload = text[len(RFC_DATA_PREFIX) :]
+            key, _, value = payload.partition(":")
+            if key:
+                self._current_test_data[key] = value
+            return
+        # Detect near-miss typos to prevent silent data loss.
+        _warn_near_miss(text)
 
     def end_test(self, data: RunningTest, result: ResultTest) -> None:
         doc = data.doc
@@ -489,6 +492,21 @@ def _safe_int(value: Optional[str]) -> Optional[int]:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def _warn_near_miss(text: str) -> None:
+    """Warn if *text* looks like a malformed ``RFC_DATA:`` message.
+
+    Called only when *text* did NOT match the real prefix.  Checks for
+    common typos: wrong case, missing underscore, space instead of
+    underscore.
+    """
+    normalized = text.lstrip().upper().replace(" ", "_")
+    if normalized.startswith("RFC_DATA:") or normalized.startswith("RFCDATA:"):
+        logger.warn(
+            f"DbListener: possible RFC_DATA typo (message ignored): "
+            f"{text[:80]!r} — expected prefix 'RFC_DATA:'"
+        )
 
 
 def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
