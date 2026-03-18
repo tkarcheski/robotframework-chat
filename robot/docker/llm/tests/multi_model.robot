@@ -76,7 +76,7 @@ Compare Models On Code Generation (IQ:130)
     Should Be Equal As Integers    ${score}    1
 
 LLM Algorithm Explanation (IQ:120)
-    [Documentation]    Can the LLM explain merge sort's time and space complexity (O(n log n))?
+    [Documentation]    Can the LLM explain merge sort's time complexity (O(n log n)) and space complexity?
     [Tags]    IQ:120    algorithm    explanation    tier:1    verify:robot
 
     ${response}=    LLM.Ask LLM    ${ALGO_PROMPT}
@@ -90,7 +90,7 @@ LLM Algorithm Explanation (IQ:120)
     Run Keyword And Ignore Error    Docker.Execute Python In Container    ${code}    timeout=10
 
 LLM Container Resource Usage (IQ:110)
-    [Documentation]    Can the LLM generate code while staying under 4GB memory usage?
+    [Documentation]    Can the LLM container stay under 4GB memory during inference?
     [Tags]    IQ:110    monitoring    resources    tier:1    verify:robot
 
     # Start a request
