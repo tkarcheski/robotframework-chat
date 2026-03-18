@@ -109,6 +109,16 @@ class TestVirtualDatasets:
         "model_pass_rate_timeseries",
         "version_pass_rate",
         "host_recent_failures",
+        # Flaky detection (Test Infrastructure dashboard)
+        "flaky_test_scores",
+        "flaky_test_summary",
+        "flaky_trend_timeseries",
+        "kpi_flaky_test_count",
+        # Coverage (Test Infrastructure dashboard)
+        "kpi_current_coverage",
+        "coverage_timeseries",
+        "coverage_by_module",
+        "coverage_by_commit",
     }
 
     def test_all_expected_keys_present(self) -> None:
@@ -126,12 +136,14 @@ class TestVirtualDatasets:
         for key, sql in _VIRTUAL_DATASETS.items():
             assert "SELECT" in sql.upper(), f"{key} missing SELECT"
 
-    def test_all_sql_references_test_runs_or_test_results(self) -> None:
+    def test_all_sql_references_core_tables(self) -> None:
         """Every SQL references at least one of the core tables."""
+        core_tables = {"TEST_RUNS", "TEST_RESULTS", "COVERAGE_REPORTS"}
         for key, sql in _VIRTUAL_DATASETS.items():
             sql_upper = sql.upper()
-            assert "TEST_RUNS" in sql_upper or "TEST_RESULTS" in sql_upper, (
-                f"{key} doesn't reference test_runs or test_results"
+            found = any(t in sql_upper for t in core_tables)
+            assert found, (
+                f"{key} doesn't reference test_runs, test_results, or coverage_reports"
             )
 
     def test_kpi_overall_pass_rate_columns(self, pg_like_db: str) -> None:

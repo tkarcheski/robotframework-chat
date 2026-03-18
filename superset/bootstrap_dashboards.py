@@ -82,6 +82,29 @@ ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20);
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER;
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50);
 
+CREATE TABLE IF NOT EXISTS coverage_reports (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    git_commit VARCHAR(255) NOT NULL DEFAULT '',
+    git_branch VARCHAR(255) NOT NULL DEFAULT '',
+    hostname VARCHAR(255) NOT NULL DEFAULT '',
+    rfc_version VARCHAR(50) NOT NULL DEFAULT '',
+    total_statements INTEGER NOT NULL DEFAULT 0,
+    total_missed INTEGER NOT NULL DEFAULT 0,
+    total_covered INTEGER NOT NULL DEFAULT 0,
+    coverage_pct DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    module_name VARCHAR(500) NOT NULL DEFAULT '',
+    module_statements INTEGER NOT NULL DEFAULT 0,
+    module_missed INTEGER NOT NULL DEFAULT 0,
+    module_covered INTEGER NOT NULL DEFAULT 0,
+    module_coverage_pct DOUBLE PRECISION NOT NULL DEFAULT 0.0
+);
+
+CREATE INDEX IF NOT EXISTS idx_coverage_reports_timestamp
+    ON coverage_reports(timestamp);
+CREATE INDEX IF NOT EXISTS idx_coverage_reports_git_commit
+    ON coverage_reports(git_commit);
+
 CREATE OR REPLACE VIEW test_results_full AS
 SELECT
     tr.id AS result_id,
@@ -255,6 +278,151 @@ _VIRTUAL_DATASETS: dict[str, str] = {
         WHERE tr.test_status IN ('FAIL', 'ERROR')
           AND r.timestamp >= NOW() - INTERVAL '24 hours'
         ORDER BY r.timestamp DESC
+    """,
+    # --- Flaky test detection (7-day window) ---
+    "flaky_test_scores": """
+        SELECT
+            tr.test_name,
+            r.model_name,
+            COUNT(*) AS total_runs,
+            SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END) AS pass_count,
+            SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END) AS fail_count,
+            ROUND(
+                CASE WHEN COUNT(*) < 2 THEN 0.0
+                ELSE 2.0
+                    * SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END)
+                    * SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END)
+                    / (COUNT(*) * COUNT(*))
+                END::numeric, 3
+            ) AS flaky_score
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE r.timestamp >= NOW() - INTERVAL '7 days'
+          AND tr.test_status IN ('PASS', 'FAIL')
+        GROUP BY tr.test_name, r.model_name
+        HAVING COUNT(*) >= 2
+        ORDER BY flaky_score DESC
+    """,
+    "flaky_test_summary": """
+        SELECT
+            tr.test_name,
+            COUNT(*) AS total_runs,
+            SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END) AS pass_count,
+            SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END) AS fail_count,
+            COUNT(DISTINCT r.model_name) AS model_count,
+            ROUND(
+                CASE WHEN COUNT(*) < 2 THEN 0.0
+                ELSE 2.0
+                    * SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END)
+                    * SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END)
+                    / (COUNT(*) * COUNT(*))
+                END::numeric, 3
+            ) AS flaky_score
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE r.timestamp >= NOW() - INTERVAL '7 days'
+          AND tr.test_status IN ('PASS', 'FAIL')
+        GROUP BY tr.test_name
+        HAVING COUNT(*) >= 2
+        ORDER BY flaky_score DESC
+    """,
+    "flaky_trend_timeseries": """
+        SELECT
+            sub.time_bucket,
+            COUNT(DISTINCT CASE
+                WHEN sub.flaky_score > 0.1 THEN sub.test_name
+            END) AS flaky_count,
+            COUNT(DISTINCT sub.test_name) AS total_tests
+        FROM (
+            SELECT
+                tr.test_name,
+                DATE_TRUNC('day', r2.timestamp) AS time_bucket,
+                CASE WHEN COUNT(*) < 2 THEN 0.0
+                ELSE 2.0
+                    * SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END)
+                    * SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END)
+                    / (COUNT(*) * COUNT(*))
+                END AS flaky_score
+            FROM test_results tr
+            JOIN test_runs r2 ON tr.run_id = r2.id
+            WHERE tr.test_status IN ('PASS', 'FAIL')
+            GROUP BY tr.test_name, DATE_TRUNC('day', r2.timestamp)
+        ) sub
+        GROUP BY sub.time_bucket
+        ORDER BY time_bucket
+    """,
+    "kpi_flaky_test_count": """
+        SELECT
+            COUNT(*) AS flaky_count
+        FROM (
+            SELECT
+                tr.test_name
+            FROM test_results tr
+            JOIN test_runs r ON tr.run_id = r.id
+            WHERE r.timestamp >= NOW() - INTERVAL '7 days'
+              AND tr.test_status IN ('PASS', 'FAIL')
+            GROUP BY tr.test_name
+            HAVING COUNT(*) >= 2
+               AND 2.0
+                   * SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END)
+                   * SUM(CASE WHEN tr.test_status = 'FAIL' THEN 1 ELSE 0 END)
+                   / (COUNT(*) * COUNT(*)) > 0.1
+        ) flaky_tests
+    """,
+    # --- Coverage datasets ---
+    "kpi_current_coverage": """
+        SELECT
+            ROUND(AVG(coverage_pct)::numeric, 1) AS coverage_pct,
+            SUM(total_statements) AS total_statements,
+            SUM(total_covered) AS total_covered,
+            SUM(total_missed) AS total_missed
+        FROM coverage_reports
+        WHERE module_name = ''
+          AND timestamp = (
+              SELECT MAX(timestamp)
+              FROM coverage_reports
+              WHERE module_name = ''
+          )
+    """,
+    "coverage_timeseries": """
+        SELECT
+            DATE_TRUNC('day', timestamp) AS time_bucket,
+            ROUND(AVG(coverage_pct)::numeric, 1) AS coverage_pct,
+            SUM(total_statements) AS total_statements,
+            SUM(total_covered) AS total_covered
+        FROM coverage_reports
+        WHERE module_name = ''
+        GROUP BY DATE_TRUNC('day', timestamp)
+        ORDER BY time_bucket
+    """,
+    "coverage_by_module": """
+        SELECT
+            module_name,
+            ROUND(AVG(module_coverage_pct)::numeric, 1) AS module_coverage_pct,
+            AVG(module_statements)::integer AS module_statements,
+            AVG(module_covered)::integer AS module_covered,
+            AVG(module_missed)::integer AS module_missed
+        FROM coverage_reports
+        WHERE module_name != ''
+          AND timestamp = (
+              SELECT MAX(timestamp) FROM coverage_reports
+          )
+        GROUP BY module_name
+        ORDER BY module_coverage_pct ASC
+    """,
+    "coverage_by_commit": """
+        SELECT
+            git_commit,
+            git_branch,
+            timestamp,
+            ROUND(coverage_pct::numeric, 1) AS coverage_pct,
+            total_statements,
+            total_covered,
+            total_missed
+        FROM coverage_reports
+        WHERE module_name = ''
+        ORDER BY timestamp DESC
+        LIMIT 50
     """,
 }
 
@@ -714,6 +882,308 @@ _LAYOUT_SECTIONS: list[dict[str, Any]] = [
 
 
 # ---------------------------------------------------------------------------
+# Test Infrastructure Dashboard — flaky detection + coverage
+# ---------------------------------------------------------------------------
+
+_INFRA_CHART_DEFS: list[dict[str, Any]] = [
+    # --- Flaky KPI Row ---
+    {
+        "slice_name": "Flaky Tests (7d)",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_flaky_test_count",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "flaky_count"},
+                "aggregate": "MAX",
+                "label": "Flaky Tests",
+            },
+            "subheader": "Tests with flaky_score > 0.1 (7 days)",
+            "conditional_formatting": [
+                {
+                    "operator": ">",
+                    "targetValue": 0,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+                {
+                    "operator": "==",
+                    "targetValue": 0,
+                    "color": STATUS_COLORS["PASS"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Flakiest Test",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "flaky_test_summary",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "flaky_score"},
+                "aggregate": "MAX",
+                "label": "Worst Flaky Score",
+            },
+            "subheader": "Highest flaky score (0=stable, 1=random)",
+            "y_axis_format": ".3f",
+            "conditional_formatting": [
+                {
+                    "operator": ">=",
+                    "targetValue": 0.5,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+                {
+                    "operator": ">=",
+                    "targetValue": 0.1,
+                    "color": "#F39C12",
+                },
+            ],
+        },
+    },
+    # --- Flaky Detail ---
+    {
+        "slice_name": "Flaky Test Scores",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "flaky_test_scores",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "flaky_score"},
+                    "aggregate": "MAX",
+                    "label": "Flaky Score",
+                },
+            ],
+            "groupby": ["test_name"],
+            "order_desc": True,
+            "row_limit": 20,
+            "y_axis_bounds": [0, 1],
+            "color_scheme": "supersetColors",
+        },
+    },
+    {
+        "slice_name": "Flaky Trend Over Time",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "flaky_trend_timeseries",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "flaky_count"},
+                    "aggregate": "MAX",
+                    "label": "Flaky Test Count",
+                },
+            ],
+            "x_axis": "time_bucket",
+            "granularity_sqla": "time_bucket",
+        },
+    },
+    {
+        "slice_name": "Flaky Tests Detail",
+        "viz_type": "table",
+        "datasource_id_key": "flaky_test_scores",
+        "params": {
+            "columns": [
+                "test_name",
+                "model_name",
+                "total_runs",
+                "pass_count",
+                "fail_count",
+                "flaky_score",
+            ],
+            "order_desc": True,
+            "row_limit": 50,
+        },
+    },
+    # --- Coverage KPI Row ---
+    {
+        "slice_name": "Current Coverage %",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_current_coverage",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "coverage_pct"},
+                "aggregate": "MAX",
+                "label": "Coverage %",
+            },
+            "subheader": "Latest pytest-cov result",
+            "y_axis_format": ".1f",
+            "conditional_formatting": [
+                {
+                    "operator": ">=",
+                    "targetValue": 80,
+                    "color": STATUS_COLORS["PASS"],
+                },
+                {
+                    "operator": "<",
+                    "targetValue": 80,
+                    "color": STATUS_COLORS["FAIL"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Coverage Delta (7d)",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "coverage_timeseries",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "coverage_pct"},
+                "aggregate": "MAX",
+                "label": "Coverage %",
+            },
+            "subheader": "Coverage trend over 7 days",
+            "y_axis_format": ".1f",
+        },
+    },
+    # --- Coverage Detail ---
+    {
+        "slice_name": "Coverage Over Time",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "coverage_timeseries",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "coverage_pct"},
+                    "aggregate": "AVG",
+                    "label": "Coverage %",
+                },
+            ],
+            "x_axis": "time_bucket",
+            "granularity_sqla": "time_bucket",
+            "y_axis_bounds": [0, 100],
+            "annotation_layers": [
+                {
+                    "name": "80% Target",
+                    "annotationType": "FORMULA",
+                    "value": "80",
+                    "style": "dashed",
+                    "color": STATUS_COLORS["PASS"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Coverage by Module",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "coverage_by_module",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "module_coverage_pct"},
+                    "aggregate": "MAX",
+                    "label": "Coverage %",
+                },
+            ],
+            "groupby": ["module_name"],
+            "order_desc": False,
+            "y_axis_bounds": [0, 100],
+        },
+    },
+    {
+        "slice_name": "Coverage by Commit",
+        "viz_type": "table",
+        "datasource_id_key": "coverage_by_commit",
+        "params": {
+            "columns": [
+                "timestamp",
+                "git_commit",
+                "git_branch",
+                "coverage_pct",
+                "total_statements",
+                "total_covered",
+                "total_missed",
+            ],
+            "order_desc": True,
+            "row_limit": 50,
+        },
+    },
+]
+
+_INFRA_FILTER_CONFIGS: list[dict[str, Any]] = [
+    {
+        "id": "INFRA_FILTER-TIME",
+        "name": "Time Range",
+        "filterType": "filter_time",
+        "targets": [{"datasetId": "__TEST_RUNS_ID__"}],
+        "defaultDataMask": {"filterState": {"value": "Last week"}},
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "INFRA_FILTER-MODEL",
+        "name": "Model",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "model_name"},
+                "datasetId": "__TEST_RUNS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "INFRA_FILTER-SUITE",
+        "name": "Test Suite",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "test_suite"},
+                "datasetId": "__TEST_RUNS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+]
+
+_INFRA_LAYOUT_SECTIONS: list[dict[str, Any]] = [
+    {
+        "label": "Flaky Detection",
+        "charts": [
+            {"name": "Flaky Tests (7d)", "width": 6, "height": 10},
+            {"name": "Flakiest Test", "width": 6, "height": 10},
+        ],
+    },
+    {
+        "label": "Flaky Analysis",
+        "charts": [
+            {"name": "Flaky Test Scores", "width": 6, "height": 50},
+            {"name": "Flaky Trend Over Time", "width": 6, "height": 50},
+        ],
+    },
+    {
+        "label": "Flaky Detail",
+        "charts": [
+            {"name": "Flaky Tests Detail", "width": 12, "height": 50},
+        ],
+    },
+    {
+        "label": "Coverage KPIs",
+        "charts": [
+            {"name": "Current Coverage %", "width": 6, "height": 10},
+            {"name": "Coverage Delta (7d)", "width": 6, "height": 10},
+        ],
+    },
+    {
+        "label": "Coverage Trends",
+        "charts": [
+            {"name": "Coverage Over Time", "width": 8, "height": 50},
+            {"name": "Coverage by Module", "width": 4, "height": 50},
+        ],
+    },
+    {
+        "label": "Coverage History",
+        "charts": [
+            {"name": "Coverage by Commit", "width": 12, "height": 50},
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -823,6 +1293,93 @@ def _build_json_metadata(
     }
 
 
+def _build_infra_position_json(chart_id_map: dict[str, int]) -> dict[str, Any]:
+    """Build Superset dashboard ``position_json`` for Test Infrastructure.
+
+    Args:
+        chart_id_map: mapping of chart slice_name -> Superset slice ID.
+
+    Returns:
+        Dict suitable for ``Dashboard.position_json``.
+    """
+    layout: dict[str, Any] = {
+        "DASHBOARD_VERSION_KEY": "v2",
+        "ROOT_ID": {
+            "type": "ROOT",
+            "id": "ROOT_ID",
+            "children": ["GRID_ID"],
+        },
+        "GRID_ID": {
+            "type": "GRID",
+            "id": "GRID_ID",
+            "children": [],
+        },
+        "HEADER_ID": {
+            "type": "HEADER",
+            "id": "HEADER_ID",
+            "meta": {"text": "Test Infrastructure"},
+        },
+    }
+
+    row_counter = 0
+    for section in _INFRA_LAYOUT_SECTIONS:
+        row_id = f"ROW-{row_counter}"
+        row: dict[str, Any] = {
+            "type": "ROW",
+            "id": row_id,
+            "children": [],
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+        }
+        layout["GRID_ID"]["children"].append(row_id)
+
+        for chart_spec in section["charts"]:
+            chart_name = chart_spec["name"]
+            chart_db_id = chart_id_map.get(chart_name, 0)
+            chart_key = f"CHART-{chart_db_id}"
+            row["children"].append(chart_key)
+            layout[chart_key] = {
+                "type": "CHART",
+                "id": chart_key,
+                "children": [],
+                "meta": {
+                    "chartId": chart_db_id,
+                    "width": chart_spec["width"],
+                    "height": chart_spec["height"],
+                    "sliceName": chart_name,
+                },
+            }
+
+        layout[row_id] = row
+        row_counter += 1
+
+    return layout
+
+
+def _build_infra_json_metadata(
+    test_runs_dataset_id: int,
+    coverage_dataset_id: int,
+) -> dict[str, Any]:
+    """Build dashboard ``json_metadata`` for Test Infrastructure.
+
+    Substitutes placeholder dataset IDs in _INFRA_FILTER_CONFIGS.
+    """
+    filters = []
+    for fconf in _INFRA_FILTER_CONFIGS:
+        f = json.loads(json.dumps(fconf))  # deep copy
+        for target in f.get("targets", []):
+            if target.get("datasetId") == "__TEST_RUNS_ID__":
+                target["datasetId"] = test_runs_dataset_id
+            elif target.get("datasetId") == "__COVERAGE_ID__":
+                target["datasetId"] = coverage_dataset_id
+        filters.append(f)
+
+    return {
+        "native_filter_configuration": filters,
+        "chart_configuration": {},
+        "cross_filters_enabled": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap functions
 # ---------------------------------------------------------------------------
@@ -856,6 +1413,7 @@ def bootstrap() -> None:
             sys.exit(1)
         _create_datasets(db_id)
         _create_charts_and_dashboard(db_id)
+        _create_infra_dashboard(db_id)
 
     log.info("Bootstrap complete.")
 
@@ -909,7 +1467,12 @@ def _create_datasets(db_id: int) -> None:
     from superset.connectors.sqla.models import SqlaTable
 
     # Physical tables and views
-    for table_name in ["test_runs", "test_results", "test_results_full"]:
+    for table_name in [
+        "test_runs",
+        "test_results",
+        "test_results_full",
+        "coverage_reports",
+    ]:
         existing = (
             superset_db.session.query(SqlaTable)
             .filter_by(table_name=table_name, database_id=db_id)
@@ -1071,6 +1634,107 @@ def _create_charts_and_dashboard(db_id: int) -> None:
     superset_db.session.add(dashboard)
     superset_db.session.commit()
     log.info(f"Created dashboard: RFC Test Health (id={dashboard.id})")
+
+
+def _create_infra_dashboard(db_id: int) -> None:
+    """Create charts and the Test Infrastructure dashboard."""
+    from superset import db as superset_db  # type: ignore[attr-defined]
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
+
+    # Build dataset name -> ID map
+    datasets: dict[str, int] = {}
+    all_dataset_names = [
+        "test_runs",
+        "test_results",
+        "test_results_full",
+        "coverage_reports",
+    ] + list(_VIRTUAL_DATASETS.keys())
+
+    for table_name in all_dataset_names:
+        ds = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
+        )
+        if ds:
+            datasets[table_name] = ds.id
+
+    if not datasets:
+        log.warning("No datasets found; skipping infra dashboard creation.")
+        return
+
+    # Create charts from _INFRA_CHART_DEFS
+    chart_id_map: dict[str, int] = {}
+    for chart_def in _INFRA_CHART_DEFS:
+        ds_key = chart_def["datasource_id_key"]
+        if ds_key not in datasets:
+            log.warning(
+                f"Skipping infra chart '{chart_def['slice_name']}': "
+                f"dataset '{ds_key}' not found."
+            )
+            continue
+
+        ds_id = datasets[ds_key]
+        slice_name = chart_def["slice_name"]
+
+        existing = (
+            superset_db.session.query(Slice).filter_by(slice_name=slice_name).first()
+        )
+        if existing:
+            chart_id_map[slice_name] = existing.id
+            log.info(f"Infra chart already exists: {slice_name}")
+            continue
+
+        chart = Slice(
+            slice_name=slice_name,
+            viz_type=chart_def["viz_type"],
+            datasource_id=ds_id,
+            datasource_type="table",
+            params=json.dumps(chart_def["params"]),
+        )
+        superset_db.session.add(chart)
+        superset_db.session.commit()
+        chart_id_map[slice_name] = chart.id
+        log.info(f"Created infra chart: {slice_name} (id={chart.id})")
+
+    # Build layout and metadata
+    position = _build_infra_position_json(chart_id_map)
+    test_runs_ds_id = datasets.get("test_runs", 0)
+    coverage_ds_id = datasets.get("coverage_reports", 0)
+    metadata = _build_infra_json_metadata(test_runs_ds_id, coverage_ds_id)
+
+    # Create infrastructure dashboard
+    slug = "test-infrastructure"
+    existing_dash = superset_db.session.query(Dashboard).filter_by(slug=slug).first()
+    if existing_dash:
+        existing_dash.position_json = json.dumps(position)
+        existing_dash.json_metadata = json.dumps(metadata)
+        existing_dash.slices = [
+            superset_db.session.query(Slice).get(cid)
+            for cid in chart_id_map.values()
+            if superset_db.session.query(Slice).get(cid)
+        ]
+        superset_db.session.commit()
+        log.info(f"Updated dashboard: Test Infrastructure (id={existing_dash.id})")
+        return
+
+    dashboard = Dashboard(
+        dashboard_title="Test Infrastructure",
+        slug=slug,
+        published=True,
+        position_json=json.dumps(position),
+        json_metadata=json.dumps(metadata),
+    )
+    dashboard.slices = [
+        superset_db.session.query(Slice).get(cid)
+        for cid in chart_id_map.values()
+        if superset_db.session.query(Slice).get(cid)
+    ]
+    superset_db.session.add(dashboard)
+    superset_db.session.commit()
+    log.info(f"Created dashboard: Test Infrastructure (id={dashboard.id})")
 
 
 if __name__ == "__main__":
