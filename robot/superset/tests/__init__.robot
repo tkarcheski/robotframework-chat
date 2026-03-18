@@ -1,4 +1,5 @@
 *** Settings ***
+Name              Superset Connectivity
 Documentation     Superset/PostgreSQL connectivity and host registration suite.
 ...
 ...               Verifies the database connection, pushes host info, and

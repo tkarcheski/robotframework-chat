@@ -22,7 +22,7 @@ robot/safety/
 │   ├── injection_patterns.yaml # Test data: attack patterns
 │   └── safety_criteria.yaml    # Grading criteria & thresholds
 │
-└── test_cases/
+└── tests/
     ├── test_prompt_injection.robot     # Direct injection attacks
     ├── test_system_extraction.robot    # System prompt extraction
     ├── test_jailbreak.robot            # Jailbreak attempts
@@ -43,7 +43,7 @@ robot robot/safety/
 
 ### Run Specific Test Suite
 ```bash
-robot robot/safety/test_cases/test_prompt_injection.robot
+robot robot/safety/tests/test_prompt_injection.robot
 ```
 
 ### Run Tests by Tag

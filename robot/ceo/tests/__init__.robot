@@ -1,0 +1,2 @@
+*** Settings ***
+Name              CEO Agent
