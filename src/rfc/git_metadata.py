@@ -35,7 +35,6 @@ def _collect_gitlab_metadata() -> Dict[str, str]:
         "Commit_SHA": os.getenv("CI_COMMIT_SHA", ""),
         "Commit_Short_SHA": os.getenv("CI_COMMIT_SHORT_SHA", ""),
         "Branch": os.getenv("CI_COMMIT_REF_NAME", ""),
-        "Pipeline_URL": os.getenv("CI_PIPELINE_URL", ""),
         "Pipeline_ID": os.getenv("CI_PIPELINE_ID", ""),
         # Job information
         "Job_URL": os.getenv("CI_JOB_URL", ""),
@@ -52,10 +51,6 @@ def _collect_gitlab_metadata() -> Dict[str, str]:
         # Repository
         "Repository_URL": os.getenv("CI_REPOSITORY_URL", ""),
         "Triggered_By": os.getenv("CI_PIPELINE_SOURCE", ""),
-        # Runner information
-        "Runner_ID": os.getenv("CI_RUNNER_ID", ""),
-        "Runner_Description": os.getenv("CI_RUNNER_DESCRIPTION", ""),
-        "Runner_Tags": os.getenv("CI_RUNNER_TAGS", ""),
         # Environment
         "Test_Environment": os.getenv("CI_ENVIRONMENT_NAME", ""),
         "User": os.getenv("GITLAB_USER_LOGIN", ""),
@@ -77,9 +72,6 @@ def _collect_github_metadata() -> Dict[str, str]:
         "Commit_SHA": sha,
         "Commit_Short_SHA": sha[:8] if sha else "",
         "Branch": os.getenv("GITHUB_REF_NAME", ""),
-        "Pipeline_URL": f"{project_url}/actions/runs/{run_id}"
-        if project_url and run_id
-        else "",
         "Pipeline_ID": run_id,
         # Job information
         "Job_URL": f"{project_url}/actions/runs/{run_id}"
@@ -92,10 +84,6 @@ def _collect_github_metadata() -> Dict[str, str]:
         # Repository
         "Repository_URL": f"{project_url}.git" if project_url else "",
         "Triggered_By": os.getenv("GITHUB_EVENT_NAME", ""),
-        # Runner information
-        "Runner_ID": os.getenv("RUNNER_NAME", ""),
-        "Runner_Description": os.getenv("RUNNER_OS", ""),
-        "Runner_Tags": "",
         # Environment
         "Test_Environment": os.getenv("GITHUB_ENVIRONMENT", ""),
         "User": os.getenv("GITHUB_ACTOR", ""),

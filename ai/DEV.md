@@ -116,11 +116,10 @@ These are set automatically by GitLab CI or GitHub Actions:
 | `CI`, `GITLAB_CI`, `GITHUB_ACTIONS` | CI runner | Platform detection |
 | `CI_COMMIT_SHA`, `GITHUB_SHA` | CI runner | Commit hash |
 | `CI_COMMIT_REF_NAME`, `GITHUB_REF_NAME` | CI runner | Branch name |
-| `CI_PIPELINE_URL`, `CI_PIPELINE_ID` | GitLab | Pipeline tracking |
+| `CI_PIPELINE_ID` | GitLab | Pipeline tracking |
 | `CI_JOB_URL`, `CI_JOB_ID`, `CI_JOB_NAME` | GitLab | Job tracking |
 | `CI_MERGE_REQUEST_IID` | GitLab | MR identification |
 | `CI_API_V4_URL`, `CI_PROJECT_ID` | GitLab | API access |
-| `CI_RUNNER_ID`, `CI_RUNNER_DESCRIPTION`, `CI_RUNNER_TAGS` | GitLab | Runner metadata |
 | `ROBOT_OUTPUT_DIR` | Robot Framework | Output directory |
 | `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY` | GitHub Actions | Repo identification |
 | `GITHUB_WORKSPACE`, `CI_PROJECT_DIR` | CI runner | Workspace path |
