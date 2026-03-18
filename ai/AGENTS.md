@@ -420,7 +420,7 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 | `DATABASE_URL` | Backend | Notes |
 |----------------|---------|-------|
-| Not set | **Error** | `RuntimeError` — must be configured |
+| Not set | `.env` fallback | Read from `.env`; `RuntimeError` if still missing |
 | `postgresql://...` | PostgreSQL | Requires `uv sync --extra superset` |
 
 ---
