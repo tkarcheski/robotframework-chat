@@ -15,6 +15,7 @@ from rfc.db_listener import (
     _parse_tags,
     _read_and_compress_output_xml,
     _resolve_output_dir,
+    _resolve_output_file,
     _safe_int,
 )
 
@@ -607,13 +608,14 @@ class TestBuildOutputXmlUrl:
         assert url is not None
         assert "output.xml" in url
 
-    def test_from_output_dir(self) -> None:
+    def test_empty_when_only_output_dir(self) -> None:
+        """Filesystem paths should NOT be stored as URLs."""
         env = {"ROBOT_OUTPUT_DIR": "/tmp/results/math"}
         with patch.dict(os.environ, env, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
             os.environ.pop("CI_JOB_URL", None)
             url = _build_output_xml_url()
-        assert url == "/tmp/results/math/output.xml"
+        assert url == ""
 
     def test_empty_when_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
@@ -859,56 +861,110 @@ class TestResolveOutputDir:
                 assert _resolve_output_dir() == "/from/env"
 
 
+class TestResolveOutputFile:
+    """Tests for _resolve_output_file() fallback chain."""
+
+    def test_returns_env_var_path_when_set(self) -> None:
+        """ROBOT_OUTPUT_DIR env var constructs output.xml path."""
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/explicit/path"}):
+            result = _resolve_output_file()
+        assert result == "/explicit/path/output.xml"
+
+    def test_returns_robot_output_file_variable(self) -> None:
+        """Falls back to Robot's ${OUTPUT FILE} when env var is absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "/robot/results/custom_output.xml"
+                )
+                assert _resolve_output_file() == "/robot/results/custom_output.xml"
+
+    def test_returns_empty_when_output_none(self) -> None:
+        """Returns empty string when Robot output is NONE (--output NONE)."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = "NONE"
+                assert _resolve_output_file() == ""
+
+    def test_returns_empty_when_neither_available(self) -> None:
+        """Returns empty string when both env var and Robot var are absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                assert _resolve_output_file() == ""
+
+    def test_returns_empty_when_builtin_raises(self) -> None:
+        """Returns empty string when not running inside Robot context."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.side_effect = (
+                    RuntimeError("not in robot")
+                )
+                assert _resolve_output_file() == ""
+
+
 class TestBuildOutputXmlSource:
-    """Tests for _build_output_xml_source() using resolved output dir."""
+    """Tests for _build_output_xml_source() using resolved output file."""
 
     def test_returns_path_when_file_exists(self, tmp_path: object) -> None:
-        """Returns absolute path when output.xml exists in output dir."""
+        """Returns absolute path when output file exists."""
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
-        with patch("rfc.db_listener._resolve_output_dir", return_value=str(tmp_path)):
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value=str(output_xml),
+        ):
             result = _build_output_xml_source()
         assert result == os.path.abspath(str(output_xml))
 
     def test_returns_candidate_when_file_missing(self) -> None:
-        """Returns candidate path even when output.xml does not exist."""
+        """Returns resolved path even when file does not exist yet."""
         with patch(
-            "rfc.db_listener._resolve_output_dir", return_value="/nonexistent/dir"
+            "rfc.db_listener._resolve_output_file",
+            return_value="/nonexistent/dir/output.xml",
         ):
             result = _build_output_xml_source()
         assert result == "/nonexistent/dir/output.xml"
 
-    def test_returns_empty_when_no_output_dir(self) -> None:
-        """Returns empty string when output dir cannot be resolved."""
-        with patch("rfc.db_listener._resolve_output_dir", return_value=""):
+    def test_returns_empty_when_no_output_file(self) -> None:
+        """Returns empty string when output file cannot be resolved."""
+        with patch("rfc.db_listener._resolve_output_file", return_value=""):
             result = _build_output_xml_source()
         assert result == ""
 
 
 class TestReadAndCompressOutputXml:
-    """Tests for _read_and_compress_output_xml() using resolved output dir."""
+    """Tests for _read_and_compress_output_xml() using resolved output file."""
 
     def test_returns_compressed_data_when_file_exists(
         self, tmp_path: object
     ) -> None:
-        """Returns gzip-compressed content when output.xml exists."""
+        """Returns gzip-compressed content when output file exists."""
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
-        with patch("rfc.db_listener._resolve_output_dir", return_value=str(tmp_path)):
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value=str(output_xml),
+        ):
             result = _read_and_compress_output_xml()
         assert len(result) > 0
         assert gzip.decompress(result) == b"<robot/>"
 
-    def test_returns_empty_when_no_output_dir(self) -> None:
-        """Returns empty bytes when output dir cannot be resolved."""
-        with patch("rfc.db_listener._resolve_output_dir", return_value=""):
+    def test_returns_empty_when_no_output_file(self) -> None:
+        """Returns empty bytes when output file cannot be resolved."""
+        with patch("rfc.db_listener._resolve_output_file", return_value=""):
             result = _read_and_compress_output_xml()
         assert result == b""
 
     def test_returns_empty_when_file_missing(self) -> None:
-        """Returns empty bytes when output.xml does not exist in dir."""
+        """Returns empty bytes when resolved file does not exist."""
         with patch(
-            "rfc.db_listener._resolve_output_dir", return_value="/nonexistent/dir"
+            "rfc.db_listener._resolve_output_file",
+            return_value="/nonexistent/dir/output.xml",
         ):
             result = _read_and_compress_output_xml()
         assert result == b""
