@@ -365,6 +365,18 @@ class TestUpdateContainerResources:
         assert resources.cpu_quota == 200000
         assert resources.memory_mb == 1024
 
+    @patch("rfc.docker_keywords.ContainerManager")
+    def test_update_with_memory_swap(self, MockMgr):
+        """Line 352: memory_swap_mb in resources dict."""
+        mock_mgr = MagicMock()
+        MockMgr.return_value = mock_mgr
+
+        kw = ConfigurableDockerKeywords()
+        kw.update_container_resources("cid", {"memory_mb": 512, "memory_swap_mb": 1024})
+        resources = mock_mgr.update_resources.call_args[0][1]
+        assert resources.memory_mb == 512
+        assert resources.memory_swap_mb == 1024
+
 
 class TestCreateWithAllOptions:
     @patch("rfc.docker_keywords.ContainerManager")

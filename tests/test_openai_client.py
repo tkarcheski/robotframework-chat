@@ -434,3 +434,41 @@ class TestProtocolCompliance:
 
         client = OpenAIClient(api_key="sk-test")
         assert isinstance(client, LLMProvider)
+
+
+# ── Validation edge cases (lines 45, 52) ────────────────────────────
+
+
+class TestOpenAIClientValidationEdgeCases:
+    def test_non_string_base_url_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        with pytest.raises(ValueError, match="base_url must be a non-empty string"):
+            OpenAIClient(base_url=123, api_key="sk-test")  # type: ignore[arg-type]
+
+    def test_non_string_model_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DEFAULT_MODEL", raising=False)
+        with pytest.raises(ValueError, match="model must be a non-empty string"):
+            OpenAIClient(model=123, api_key="sk-test")  # type: ignore[arg-type]
+
+
+# ── Optional params in payload (lines 100, 102, 104) ────────────────
+
+
+class TestOpenAIClientOptionalParams:
+    @patch("rfc.openai_client.logger")
+    @patch("rfc.openai_client.requests.post")
+    def test_seed_top_p_top_k_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "hello"}}],
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OpenAIClient(api_key="sk-test", seed=42, top_p=0.9, top_k=40)
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["seed"] == 42
+        assert payload["top_p"] == 0.9
+        assert payload["top_k"] == 40

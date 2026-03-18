@@ -328,3 +328,38 @@ class TestLLMKeywordsRunningModels:
     def test_llm_is_busy_non_ollama_returns_false(self, MockGrader, mock_create):
         kw = LLMKeywords()
         assert kw.llm_is_busy() is False
+
+
+# ── set_llm_endpoint unsupported provider (line 42) ─────────────────
+
+
+class TestLLMKeywordsSetEndpointUnsupported:
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_unsupported_provider_warns(self, MockGrader, mock_create):
+        """Provider with no endpoint or base_url attribute should log a warning."""
+        mock_client = MagicMock(spec=[])  # No attributes at all
+        mock_create.return_value = mock_client
+        kw = LLMKeywords()
+        # Should not raise
+        kw.set_llm_endpoint("http://new:11434")
+
+
+# ── ask_llm with num_ctx in metrics (line 91) ───────────────────────
+
+
+class TestAskLlmNumCtxInMetrics:
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_ask_llm_includes_num_ctx_in_metrics(self, MockGrader, mock_create):
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "The answer is 42"
+        mock_client.num_ctx = 4096
+        mock_client.max_tokens = 256
+        mock_client.last_metrics = {"eval_count": 10}
+        mock_create.return_value = mock_client
+        kw = LLMKeywords()
+        result = kw.ask_llm("What is 6*7?")
+        assert result == "The answer is 42"
+        # Verify num_ctx was added to last_metrics
+        assert mock_client.last_metrics["num_ctx"] == 4096
