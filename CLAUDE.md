@@ -97,6 +97,22 @@ like:
 - **Always rebase onto `claude-code-staging`**, not `main`. This is the integration branch for all Claude Code work.
 - **Always include a version bump when submitting a PR.** Ask the user what the next version should be before bumping. Update the version in both `pyproject.toml` and `src/rfc/__init__.py`.
 
+### PR workflow (mandatory)
+
+After a working solution is committed and tests pass:
+
+1. **Rebase onto `claude-code-staging`** before creating the PR. Other agents may
+   have merged work since you branched — always `git fetch origin claude-code-staging`
+   and rebase. Resolve conflicts if any.
+2. **Ask the user for the version bump** (`pyproject.toml` + `src/rfc/__init__.py`).
+   Wait for their answer before bumping.
+3. **Create the PR** using `gh pr create`. This is not optional — every working
+   solution must result in a PR. Use `gh` CLI (install it first if missing).
+4. **Multiple agents may be working concurrently.** Only ask the user questions
+   (version bump, clarifications) when it is your turn — i.e., when you are ready
+   to submit, not while still mid-implementation. Do not block the user with
+   questions while other agents need attention.
+
 ---
 
 ## Architecture guardrails
@@ -105,6 +121,22 @@ like:
 - `robot/` is the single home for all Robot Framework test suites.
 - Never duplicate logic outside these directories.
 - Listeners are always active in make targets — don't strip them.
+
+---
+
+## Tool prerequisites
+
+- **`gh` CLI is required.** If `gh` is not available, install it before proceeding:
+  ```bash
+  # Debian/Ubuntu
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+  sudo apt-get update && sudo apt-get install gh -y
+  ```
+  The `gh` CLI is used for creating PRs, reading PR review comments, and interacting
+  with GitHub Issues. Do not attempt GitHub API operations without it.
 
 ---
 
