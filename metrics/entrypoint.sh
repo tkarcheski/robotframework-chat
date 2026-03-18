@@ -1,27 +1,60 @@
 #!/bin/bash
 set -euo pipefail
 
-RESULTS_DIR="/app/results"
-OUTPUT_DIR="/var/www/html/metrics"
+RESULTS_DIR="${RESULTS_DIR:-/app/results}"
+OUTPUT_DIR="${OUTPUT_DIR:-/var/www/html/metrics}"
 REFRESH_INTERVAL="${METRICS_REFRESH_INTERVAL:-300}"  # seconds (default: 5 min)
+
+relative_path() {
+    local root path
+    root="${1%/}"
+    path="${2%/}"
+
+    if [ "$path" = "$root" ]; then
+        printf '.'
+    else
+        printf '%s' "${path#"$root"/}"
+    fi
+}
+
+suite_label() {
+    local rel_path="${1:-.}"
+    if [ "$rel_path" = "." ]; then
+        printf 'root'
+    else
+        printf '%s' "$rel_path"
+    fi
+}
+
+suite_href() {
+    local rel_path="${1:-.}"
+    if [ "$rel_path" = "." ]; then
+        printf './'
+    else
+        printf '%s/' "$rel_path"
+    fi
+}
 
 generate_index() {
     # Build an index page listing all suite metric dashboards.
     local index="${OUTPUT_DIR}/index.html"
     local suites=()
 
-    # Walk all subdirectories (nested paths like local/node1/model1)
+    # Walk all metrics HTML files, including root-level dashboards.
     while IFS= read -r html_file; do
         local dir rel_dir
         dir=$(dirname "$html_file")
-        rel_dir="${dir#"${OUTPUT_DIR}"/}"
+        rel_dir=$(relative_path "$OUTPUT_DIR" "$dir")
         # Deduplicate (multiple .html files per suite dir)
         local already=false
         for s in "${suites[@]+"${suites[@]}"}"; do
-            [ "$s" = "$rel_dir" ] && already=true && break
+        [ "$s" = "$rel_dir" ] && already=true && break
         done
         "$already" || suites+=("$rel_dir")
-    done < <(find "$OUTPUT_DIR" -mindepth 2 -name "*.html" -type f 2>/dev/null | sort)
+    done < <(
+        find "$OUTPUT_DIR" -mindepth 1 -name "*.html" -type f 2>/dev/null \
+            ! -path "${index}" | sort
+    )
 
     cat > "$index" <<'HEADER'
 <!DOCTYPE html>
@@ -53,7 +86,7 @@ HEADER
     else
         echo '  <ul class="suite-list">' >> "$index"
         for suite in "${suites[@]}"; do
-            echo "    <li><a href=\"${suite}/\">${suite}</a></li>" >> "$index"
+            echo "    <li><a href=\"$(suite_href "$suite")\">$(suite_label "$suite")</a></li>" >> "$index"
         done
         echo '  </ul>' >> "$index"
     fi
@@ -70,18 +103,24 @@ FOOTER
 generate_metrics() {
     echo "$(date -u '+%Y-%m-%d %H:%M:%S') Scanning ${RESULTS_DIR} for output.xml files..."
 
-    local count=0
+    local count=0 found=0
     while IFS= read -r xml; do
         [ -z "$xml" ] && continue
-        local suite_dir rel_path dest
+        local suite_dir rel_path dest label
+        found=$((found + 1))
         suite_dir=$(dirname "$xml")
         # Use the full relative path from RESULTS_DIR to avoid collisions.
         # e.g. results/local/node1/model1/output.xml → local/node1/model1
-        rel_path="${suite_dir#"${RESULTS_DIR}"/}"
-        dest="${OUTPUT_DIR}/${rel_path}"
+        rel_path=$(relative_path "$RESULTS_DIR" "$suite_dir")
+        if [ "$rel_path" = "." ]; then
+            dest="${OUTPUT_DIR}"
+        else
+            dest="${OUTPUT_DIR}/${rel_path}"
+        fi
+        label=$(suite_label "$rel_path")
 
         mkdir -p "$dest"
-        echo "  Generating metrics for '${rel_path}' from ${xml}..."
+        echo "  Generating metrics for '${label}' from ${xml}..."
 
         # robotmetrics writes report into --metrics-report-path
         if robotmetrics \
@@ -90,29 +129,38 @@ generate_metrics() {
             --metrics-report-path "$dest/" 2>&1; then
             count=$((count + 1))
         else
-            echo "  WARNING: metrics generation failed for '${rel_path}' (non-fatal)"
+            echo "  WARNING: metrics generation failed for '${label}' (non-fatal)"
         fi
     done < <(find "$RESULTS_DIR" -name "output.xml" -type f 2>/dev/null)
+
+    if [ "$found" -eq 0 ]; then
+        echo "$(date -u '+%Y-%m-%d %H:%M:%S') No output.xml files found under ${RESULTS_DIR}."
+    fi
 
     echo "$(date -u '+%Y-%m-%d %H:%M:%S') Generated metrics for ${count} suite(s)."
     generate_index
 }
 
-# ── Main ─────────────────────────────────────────────────────────────
-echo "=== robotframework-metrics dashboard ==="
-echo "Results dir : ${RESULTS_DIR}"
-echo "Output dir  : ${OUTPUT_DIR}"
-echo "Refresh     : every ${REFRESH_INTERVAL}s"
+main() {
+    echo "=== robotframework-metrics dashboard ==="
+    echo "Results dir : ${RESULTS_DIR}"
+    echo "Output dir  : ${OUTPUT_DIR}"
+    echo "Refresh     : every ${REFRESH_INTERVAL}s"
 
-# Initial generation
-generate_metrics
-
-# Start nginx in background
-echo "Starting nginx..."
-nginx
-
-# Regeneration loop
-while true; do
-    sleep "$REFRESH_INTERVAL"
+    # Initial generation
     generate_metrics
-done
+
+    # Start nginx in background
+    echo "Starting nginx..."
+    nginx
+
+    # Regeneration loop
+    while true; do
+        sleep "$REFRESH_INTERVAL"
+        generate_metrics
+    done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
