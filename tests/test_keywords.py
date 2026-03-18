@@ -76,10 +76,13 @@ class TestLLMKeywordsAsk:
         kw.client.generate.assert_called_once_with("What is 6 * 7?")
         assert result == "42"
 
+    @patch("rfc.rfc_data.logger")
     @patch("rfc.keywords.logger")
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm_emits_llm_metrics(self, MockGrader, mock_create, mock_logger):
+    def test_ask_llm_emits_llm_metrics(
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
+    ):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
         kw.client.max_tokens = 256
@@ -94,14 +97,14 @@ class TestLLMKeywordsAsk:
 
         # RFC_DATA messages must be emitted at INFO level so the
         # DbListener.log_message() receives them at the default --loglevel.
-        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         metrics_calls = [c for c in info_calls if "RFC_DATA:llm_metrics:" in c]
         assert len(metrics_calls) == 1
 
         # Parse and verify the JSON payload
         raw = [
             c.args[0]
-            for c in mock_logger.info.call_args_list
+            for c in mock_rfc_logger.info.call_args_list
             if "RFC_DATA:llm_metrics:" in str(c)
         ][0]
         payload = raw.split("RFC_DATA:llm_metrics:", 1)[1]
@@ -110,11 +113,12 @@ class TestLLMKeywordsAsk:
         assert data["total_duration_ns"] == 17607688368
         assert data["prompt_text"] == "What is 6 * 7?"
 
+    @patch("rfc.rfc_data.logger")
     @patch("rfc.keywords.logger")
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
     def test_ask_llm_skips_metrics_when_none(
-        self, MockGrader, mock_create, mock_logger
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
     ):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
@@ -122,7 +126,7 @@ class TestLLMKeywordsAsk:
 
         kw.ask_llm("test")
 
-        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         metrics_calls = [c for c in info_calls if "RFC_DATA:llm_metrics:" in c]
         assert len(metrics_calls) == 0
 
@@ -142,10 +146,13 @@ class TestLLMKeywordsAskThinking:
         result = kw.ask_llm("What is 6 * 7?")
         assert result == "The answer is 42."
 
+    @patch("rfc.rfc_data.logger")
     @patch("rfc.keywords.logger")
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm_emits_thinking_data(self, MockGrader, mock_create, mock_logger):
+    def test_ask_llm_emits_thinking_data(
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
+    ):
         kw = LLMKeywords()
         kw.client.generate.return_value = "<think>step by step</think>42"
         kw.client.last_metrics = None
@@ -153,7 +160,7 @@ class TestLLMKeywordsAskThinking:
         kw.client.max_tokens = 256
         kw.ask_llm("test")
 
-        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         thinking_calls = [c for c in info_calls if "RFC_DATA:thinking_text:" in c]
         assert len(thinking_calls) == 1
         assert "step by step" in thinking_calls[0]
@@ -161,10 +168,13 @@ class TestLLMKeywordsAskThinking:
         token_calls = [c for c in info_calls if "RFC_DATA:thinking_tokens:" in c]
         assert len(token_calls) == 1
 
+    @patch("rfc.rfc_data.logger")
     @patch("rfc.keywords.logger")
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_ask_llm_no_thinking_no_data(self, MockGrader, mock_create, mock_logger):
+    def test_ask_llm_no_thinking_no_data(
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
+    ):
         kw = LLMKeywords()
         kw.client.generate.return_value = "42"
         kw.client.last_metrics = None
@@ -172,7 +182,7 @@ class TestLLMKeywordsAskThinking:
         kw.client.max_tokens = 256
         kw.ask_llm("test")
 
-        info_calls = [str(c) for c in mock_logger.info.call_args_list]
+        info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         thinking_calls = [c for c in info_calls if "RFC_DATA:thinking_text:" in c]
         assert len(thinking_calls) == 0
 
