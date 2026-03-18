@@ -69,11 +69,12 @@ Rules:
 - Respond ONLY with valid JSON
 - No markdown
 - No commentary
-- score must be 0 or 1
+- score must be a number between 0.0 and 1.0
+- use partial credit when the answer is only partially correct
 
 Format:
 {{
-  "score": 0 or 1,
+  "score": 0.0 to 1.0,
   "reason": "short explanation"
 }}
 """

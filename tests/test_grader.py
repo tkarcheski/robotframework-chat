@@ -73,3 +73,20 @@ class TestGrader:
         grader = Grader(client)
         with pytest.raises(TypeError, match="expected must be a str"):
             grader.grade("q", 123, "actual")
+
+    def test_grade_partial_score(self):
+        client = MagicMock()
+        client.generate.return_value = '{"score": 0.4, "reason": "partially correct"}'
+        grader = Grader(client)
+        result = grader.grade("What is 2+2?", "4", "It might be 3 or 4")
+        assert result.score == 0.4
+
+    def test_grade_prompt_requests_fractional_scores(self):
+        client = MagicMock()
+        client.generate.return_value = '{"score": 0.5, "reason": "partial"}'
+        grader = Grader(client)
+        grader.grade("q", "e", "a")
+        prompt = client.generate.call_args[0][0]
+        assert "score must be a number between 0.0 and 1.0" in prompt
+        assert "use partial credit" in prompt
+        assert '"score": 0.0 to 1.0' in prompt
