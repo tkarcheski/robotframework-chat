@@ -91,6 +91,10 @@ class TestResult:
     tag_verify: str = ""
     thinking_text: str = ""
     thinking_tokens: int = 0
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
+    accepted_prediction_tokens: int = 0
+    rejected_prediction_tokens: int = 0
     num_ctx: int = 0
     num_predict: int = 0
     eval_count: int = 0
@@ -189,6 +193,10 @@ class _SQLiteBackend(_Backend):
         tag_verify TEXT,
         thinking_text TEXT,
         thinking_tokens INTEGER,
+        reasoning_tokens INTEGER,
+        cached_tokens INTEGER,
+        accepted_prediction_tokens INTEGER,
+        rejected_prediction_tokens INTEGER,
         num_ctx INTEGER,
         num_predict INTEGER,
         eval_count INTEGER,
@@ -238,6 +246,10 @@ class _SQLiteBackend(_Backend):
         tr.tag_verify,
         tr.thinking_text,
         tr.thinking_tokens,
+        tr.reasoning_tokens,
+        tr.cached_tokens,
+        tr.accepted_prediction_tokens,
+        tr.rejected_prediction_tokens,
         tr.num_ctx,
         tr.num_predict,
         tr.eval_count,
@@ -285,6 +297,10 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN load_duration_ns INTEGER",
         "ALTER TABLE test_results ADD COLUMN total_duration_ns INTEGER",
         "ALTER TABLE test_results ADD COLUMN tokens_per_second REAL",
+        "ALTER TABLE test_results ADD COLUMN reasoning_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN cached_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN accepted_prediction_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN rejected_prediction_tokens INTEGER",
     ]
 
     def __init__(self, db_path: str):
@@ -346,12 +362,15 @@ class _SQLiteBackend(_Backend):
                 (run_id, test_name, test_status, score, tags, question,
                  expected_answer, actual_answer, grading_reason,
                  rfc_version, tag_severity, tag_tier, tag_verify,
-                 thinking_text, thinking_tokens, num_ctx, num_predict,
+                 thinking_text, thinking_tokens,
+                 reasoning_tokens, cached_tokens,
+                 accepted_prediction_tokens, rejected_prediction_tokens,
+                 num_ctx, num_predict,
                  eval_count, eval_duration_ns, prompt_eval_count,
                  prompt_eval_duration_ns, load_duration_ns,
                  total_duration_ns, tokens_per_second)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -370,6 +389,10 @@ class _SQLiteBackend(_Backend):
                         r.tag_verify,
                         r.thinking_text,
                         r.thinking_tokens,
+                        r.reasoning_tokens,
+                        r.cached_tokens,
+                        r.accepted_prediction_tokens,
+                        r.rejected_prediction_tokens,
                         r.num_ctx,
                         r.num_predict,
                         r.eval_count,
@@ -507,6 +530,11 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS load_duration_ns BIGINT",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS total_duration_ns BIGINT",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tokens_per_second REAL",
+        # OpenAI token detail columns.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS reasoning_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cached_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS accepted_prediction_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS rejected_prediction_tokens INTEGER",
         # Models table.
         """CREATE TABLE IF NOT EXISTS models (
             name TEXT PRIMARY KEY,
@@ -632,6 +660,10 @@ class _SQLAlchemyBackend(_Backend):
             Column("tag_verify", String(50)),
             Column("thinking_text", Text),
             Column("thinking_tokens", Integer),
+            Column("reasoning_tokens", Integer),
+            Column("cached_tokens", Integer),
+            Column("accepted_prediction_tokens", Integer),
+            Column("rejected_prediction_tokens", Integer),
             Column("num_ctx", Integer),
             Column("num_predict", Integer),
             Column("eval_count", Integer),
@@ -717,6 +749,10 @@ class _SQLAlchemyBackend(_Backend):
                         "tag_verify": r.tag_verify,
                         "thinking_text": r.thinking_text,
                         "thinking_tokens": r.thinking_tokens,
+                        "reasoning_tokens": r.reasoning_tokens,
+                        "cached_tokens": r.cached_tokens,
+                        "accepted_prediction_tokens": r.accepted_prediction_tokens,
+                        "rejected_prediction_tokens": r.rejected_prediction_tokens,
                         "num_ctx": r.num_ctx,
                         "num_predict": r.num_predict,
                         "eval_count": r.eval_count,
