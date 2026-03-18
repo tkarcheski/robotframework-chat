@@ -7,6 +7,7 @@ Library           String
 
 *** Test Cases ***
 IQ 70 Basic Addition
+    [Documentation]    Can the LLM compute {a} plus {b} and explain its steps?
     [Tags]    IQ:70
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
@@ -15,6 +16,7 @@ IQ 70 Basic Addition
     Ask And Validate    ${question}    ${expected}
 
 IQ 80 Simple Subtraction and Reasoning
+    [Documentation]    Can the LLM subtract {y} from {x} and explain why the result is correct?
     [Tags]    IQ:80
     ${x}=    Generate Random Integer
     ${y}=    Generate Random Integer
@@ -23,6 +25,7 @@ IQ 80 Simple Subtraction and Reasoning
     Ask And Validate    ${question}    ${expected}
 
 IQ 90 Multiplication Pattern Recognition
+    [Documentation]    Can the LLM multiply {m} by {n} and describe a pattern in the result?
     [Tags]    IQ:90
     ${m}=    Generate Random Integer
     ${n}=    Generate Random Integer
@@ -31,6 +34,7 @@ IQ 90 Multiplication Pattern Recognition
     Ask And Validate    ${question}    ${expected}
 
 IQ 100 Division with Remainders
+    [Documentation]    Can the LLM divide {num} by {div} and give both quotient and remainder?
     [Tags]    IQ:100
     ${num}=    Generate Random Integer
     ${div}=    Generate Random Integer
@@ -39,6 +43,7 @@ IQ 100 Division with Remainders
     Ask And Validate    ${question}    ${expected}
 
 IQ 110 Simple Algebra: Solve for X
+    [Documentation]    Can the LLM solve for x in {a}*x + {b} = {c} and explain each step?
     [Tags]    IQ:110
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
@@ -48,6 +53,7 @@ IQ 110 Simple Algebra: Solve for X
     Ask And Validate    ${question}    ${expected}
 
 IQ 130 Nested Addition and Multiplication
+    [Documentation]    Can the LLM compute ({p} + {q}) * {r} and explain each calculation step?
     [Tags]    IQ:130
     ${p}=    Generate Random Integer
     ${q}=    Generate Random Integer
@@ -57,6 +63,7 @@ IQ 130 Nested Addition and Multiplication
     Ask And Validate    ${question}    ${expected}
 
 IQ 150 Multi-Step Algebraic Expression
+    [Documentation]    Can the LLM evaluate (({a} * {b}) + ({c} - {d})) / 2 showing work step by step?
     [Tags]    IQ:150
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer

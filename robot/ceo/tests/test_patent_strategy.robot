@@ -10,14 +10,14 @@ Test Timeout      3 minutes
 
 *** Test Cases ***
 Patent Strategy Produces Structured Output
-    [Documentation]    Verify patent strategy stage produces valid structured output
+    [Documentation]    Can the LLM develop structured patent strategies with claim types, abstracts, and filing priorities?
     [Tags]    tier:3    verify:llms    ceo    stage:patent_strategy
     ${output}=    Develop Patent Strategy    ${PATENT_STRATEGY_SEED}
     Validate Stage Structure    patent_strategy    ${output}
     Log    Developed strategies for ${output}[strategies].__len__() ideas
 
 Patent Strategy Passes Quality Grading
-    [Documentation]    Verify patent strategy output passes multi-LLM quality assessment
+    [Documentation]    Can the LLM's patent filing strategies pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:patent_strategy    grading
     ${output}=    Develop Patent Strategy    ${PATENT_STRATEGY_SEED}
     ${grade}=    Run Stage And Validate    patent_strategy    ${output}    ${PATENT_STRATEGY_RUBRIC}

@@ -45,7 +45,7 @@ Find Governing Law And Dispute Venue
     Run Needle Scenario    ${scenario}
 
 Batch Needle-in-Haystack - All Scenarios
-    [Documentation]    Run all needle-in-haystack scenarios in sequence
+    [Documentation]    Can the LLM find all hidden clauses across the full agreement in batch?
     [Tags]    batch    template
     FOR    ${scenario}    IN    @{NEEDLE_SCENARIOS}
         Run Needle Scenario    ${scenario}

@@ -21,7 +21,7 @@ Test Timeout      3 minutes
 # ---------------------------------------------------------------------------
 
 Vending Machine Brainstorm Generates Ideas
-    [Documentation]    CEO agent brainstorms novel vending machine product ideas
+    [Documentation]    Can the LLM brainstorm vending machine innovations (AI dietary advisor, micro-roastery, recycling)?
     [Tags]    tier:3    verify:llms    ceo    stage:brainstorm    scenario:vending
     ${output}=    Brainstorm Ideas
     ...    domain=${VENDING_BRAINSTORM_SEED}[domain]
@@ -30,7 +30,7 @@ Vending Machine Brainstorm Generates Ideas
     Validate Stage Structure    brainstorm    ${output}
 
 Vending Machine Brainstorm Passes Grading
-    [Documentation]    Brainstormed vending ideas pass multi-LLM quality review
+    [Documentation]    Can the LLM's vending machine ideas pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:brainstorm    scenario:vending    grading
     ${output}=    Brainstorm Ideas
     ...    domain=${VENDING_BRAINSTORM_SEED}[domain]
@@ -44,14 +44,14 @@ Vending Machine Brainstorm Passes Grading
 # ---------------------------------------------------------------------------
 
 Vending Machine Market Research Produces Analysis
-    [Documentation]    CEO agent evaluates market viability of vending machine ideas
+    [Documentation]    Can the LLM evaluate market viability of vending machine innovations?
     [Tags]    tier:3    verify:llms    ceo    stage:market_research    scenario:vending
     Warm Web Cache    ${VENDING_MARKET_WEB_CACHE}
     ${output}=    Research Market    ${VENDING_MARKET_RESEARCH_SEED}
     Validate Stage Structure    market_research    ${output}
 
 Vending Machine Market Research With Web Context
-    [Documentation]    Market research enriched with cached vending industry data
+    [Documentation]    Can the LLM enrich vending machine market research using web-cached industry data?
     [Tags]    tier:3    verify:llms    ceo    stage:market_research    scenario:vending    web_cache
     Warm Web Cache    ${VENDING_MARKET_WEB_CACHE}
     @{queries}=    Create List
@@ -67,14 +67,14 @@ Vending Machine Market Research With Web Context
 # ---------------------------------------------------------------------------
 
 Vending Machine IP Analysis Identifies Patent Gaps
-    [Documentation]    CEO agent analyzes patent landscape for vending machine innovations
+    [Documentation]    Can the LLM analyze the patent landscape for vending machine innovations?
     [Tags]    tier:3    verify:llms    ceo    stage:ip_analysis    scenario:vending
     Warm Web Cache    ${VENDING_IP_WEB_CACHE}
     ${output}=    Analyze IP Landscape    ${VENDING_IP_ANALYSIS_SEED}
     Validate Stage Structure    ip_analysis    ${output}
 
 Vending Machine IP Analysis With Patent Context
-    [Documentation]    IP analysis enriched with cached patent search results
+    [Documentation]    Can the LLM enrich vending IP analysis using web-cached patent search data?
     [Tags]    tier:3    verify:llms    ceo    stage:ip_analysis    scenario:vending    web_cache
     Warm Web Cache    ${VENDING_IP_WEB_CACHE}
     @{queries}=    Create List
@@ -90,13 +90,13 @@ Vending Machine IP Analysis With Patent Context
 # ---------------------------------------------------------------------------
 
 Vending Machine Patent Strategy Develops Claims
-    [Documentation]    CEO agent develops patent filing strategies for vending innovations
+    [Documentation]    Can the LLM develop patent filing strategies for vending machine innovations?
     [Tags]    tier:3    verify:llms    ceo    stage:patent_strategy    scenario:vending
     ${output}=    Develop Patent Strategy    ${VENDING_PATENT_STRATEGY_SEED}
     Validate Stage Structure    patent_strategy    ${output}
 
 Vending Machine Patent Strategy Passes Grading
-    [Documentation]    Patent strategies for vending innovations pass multi-LLM review
+    [Documentation]    Can the LLM's vending patent strategies pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:patent_strategy    scenario:vending    grading
     ${output}=    Develop Patent Strategy    ${VENDING_PATENT_STRATEGY_SEED}
     ${grade}=    Run Stage And Validate    patent_strategy    ${output}    ${PATENT_STRATEGY_RUBRIC}
@@ -107,13 +107,13 @@ Vending Machine Patent Strategy Passes Grading
 # ---------------------------------------------------------------------------
 
 Vending Machine Licensing Strategy Identifies Licensees
-    [Documentation]    CEO agent plans licensing for vending machine patents
+    [Documentation]    Can the LLM plan licensing strategies for vending machine patents?
     [Tags]    tier:3    verify:llms    ceo    stage:licensing_strategy    scenario:vending
     ${output}=    Plan Licensing Strategy    ${VENDING_LICENSING_STRATEGY_SEED}
     Validate Stage Structure    licensing_strategy    ${output}
 
 Vending Machine Licensing Strategy Passes Grading
-    [Documentation]    Licensing plans for vending patents pass multi-LLM review
+    [Documentation]    Can the LLM's vending licensing plans pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:licensing_strategy    scenario:vending    grading
     ${output}=    Plan Licensing Strategy    ${VENDING_LICENSING_STRATEGY_SEED}
     ${grade}=    Run Stage And Validate    licensing_strategy    ${output}    ${LICENSING_STRATEGY_RUBRIC}

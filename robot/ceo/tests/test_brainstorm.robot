@@ -11,7 +11,7 @@ Test Timeout      3 minutes
 
 *** Test Cases ***
 Brainstorm Generates Structured Ideas
-    [Documentation]    Verify the brainstorm stage produces valid structured output
+    [Documentation]    Can the LLM generate structured product ideas with name, description, category, and novelty notes?
     [Tags]    tier:3    verify:llms    ceo    stage:brainstorm
     ${output}=    Brainstorm Ideas
     ...    domain=${BRAINSTORM_SEED}[domain]
@@ -21,7 +21,7 @@ Brainstorm Generates Structured Ideas
     Log    Generated ${output}[ideas].__len__() ideas
 
 Brainstorm Ideas Pass Quality Grading
-    [Documentation]    Verify brainstormed ideas pass multi-LLM quality assessment
+    [Documentation]    Can the LLM's brainstormed product ideas pass multi-LLM quality grading?
     [Tags]    tier:3    verify:llms    ceo    stage:brainstorm    grading
     ${output}=    Brainstorm Ideas
     ...    domain=${BRAINSTORM_SEED}[domain]
@@ -31,7 +31,7 @@ Brainstorm Ideas Pass Quality Grading
     Log    Brainstorm grading: majority=${grade}[majority_score], agreement=${grade}[agreement_ratio]
 
 Brainstorm Respects Idea Count
-    [Documentation]    Verify the brainstorm stage generates the requested number of ideas
+    [Documentation]    Can the LLM generate exactly the requested number of brainstorm ideas (count=2)?
     [Tags]    tier:3    verify:llms    ceo    stage:brainstorm
     ${output}=    Brainstorm Ideas
     ...    domain=${BRAINSTORM_SEED}[domain]

@@ -12,7 +12,7 @@ ${PROJECT_SETUP_PROMPT}    Generate shell commands to: create a directory called
 
 *** Test Cases ***
 LLM Generates Project Setup Commands (IQ:120)
-    [Documentation]    LLM generates correct shell workflow
+    [Documentation]    Can the LLM generate shell commands to set up a project directory with files?
     [Tags]    IQ:120    workflow    project-setup    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${PROJECT_SETUP_PROMPT}
@@ -32,7 +32,7 @@ LLM Generates Project Setup Commands (IQ:120)
     Should Contain    ${list_result}[stdout]    README.md
 
 LLM Generates File Processing Pipeline (IQ:130)
-    [Documentation]    LLM creates file processing command pipeline
+    [Documentation]    Can the LLM write a shell pipeline to count line occurrences sorted by frequency?
     [Tags]    IQ:130    pipeline    file-processing    tier:4    verify:robot
 
     # Create test data
@@ -51,7 +51,7 @@ LLM Generates File Processing Pipeline (IQ:130)
     Should Contain    ${result}[stdout]    apple
 
 Container Is Network Isolated (IQ:110)
-    [Documentation]    Verify container network isolation
+    [Documentation]    Can the container block outbound network access (wget to google.com)?
     [Tags]    IQ:110    security    network    tier:1    verify:robot
 
     # Try to access network
@@ -61,7 +61,7 @@ Container Is Network Isolated (IQ:110)
     Should Not Be Equal As Integers    ${result}[exit_code]    0
 
 Custom Shell Container (IQ:120)
-    [Documentation]    Create shell container with custom resources
+    [Documentation]    Can a custom Alpine container (0.25 CPU, 64MB, read-only) execute shell commands?
     [Tags]    IQ:120    custom-resources    tier:1    verify:robot
 
     ${config}=    Create Dictionary
@@ -83,7 +83,7 @@ Custom Shell Container (IQ:120)
     Docker.Stop Container    ${container}
 
 Container Preserves State Between Commands (IQ:130)
-    [Documentation]    Verify container state is maintained
+    [Documentation]    Can the container preserve file state between sequential commands?
     [Tags]    IQ:130    state-management    tier:1    verify:robot
 
     # Create a file

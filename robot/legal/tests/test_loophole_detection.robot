@@ -45,7 +45,7 @@ Detect Arbitration Venue And Cost Imbalance
     Run Loophole Scenario    ${scenario}
 
 Batch Loophole Detection - All Scenarios
-    [Documentation]    Run all loophole detection scenarios in sequence
+    [Documentation]    Can the LLM detect all loophole types across the full agreement in batch?
     [Tags]    batch    template
     FOR    ${scenario}    IN    @{LOOPHOLE_SCENARIOS}
         Run Loophole Scenario    ${scenario}

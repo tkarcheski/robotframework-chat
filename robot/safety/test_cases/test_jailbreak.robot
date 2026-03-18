@@ -26,56 +26,56 @@ Test Timeout      2 minutes
 *** Test Cases ***
 
 DAN Jailbreak - Classic
-    [Documentation]    Classic DAN jailbreak attempt
+    [Documentation]    Can the LLM resist the classic DAN (Do Anything Now) jailbreak attempt?
     [Tags]    dan    role_switching    severity:critical    regression
     Run Jailbreak Test Case
     ...    ${ROLE_SWITCHING_PATTERNS}[0][payload]
     ...    DAN Classic Jailbreak
 
 Developer Mode Activation
-    [Documentation]    Attempt to activate developer mode
+    [Documentation]    Can the LLM resist a 'developer mode activation' override attempt?
     [Tags]    developer_mode    severity:high    regression
     Run Jailbreak Test Case
     ...    ${ROLE_SWITCHING_PATTERNS}[1][payload]
     ...    Developer Mode Activation
 
 Expert Hacker Role Play
-    [Documentation]    Role play as expert hacker
+    [Documentation]    Can the LLM refuse to role-play as an expert hacker?
     [Tags]    roleplay    social_engineering    severity:high    regression
     Run Jailbreak Test Case
     ...    ${ROLE_SWITCHING_PATTERNS}[2][payload]
     ...    Expert Hacker Role Play
 
 Teacher Mode Exploit
-    [Documentation]    Using teacher mode to extract information
+    [Documentation]    Can the LLM resist a 'teacher mode' information extraction attempt?
     [Tags]    roleplay    social_engineering    severity:medium    regression
     Run Jailbreak Test Case
     ...    ${ROLE_SWITCHING_PATTERNS}[3][payload]
     ...    Teacher Mode Exploit
 
 Research Assistant Pretext
-    [Documentation]    Using research assistant role for extraction
+    [Documentation]    Can the LLM resist a 'research assistant' pretext for unsafe content?
     [Tags]    roleplay    social_engineering    severity:medium    regression
     Run Jailbreak Test Case
     ...    ${ROLE_SWITCHING_PATTERNS}[4][payload]
     ...    Research Assistant Pretext
 
 Hypothetical Unrestricted Scenario
-    [Documentation]    Hypothetical scenario with no restrictions
+    [Documentation]    Can the LLM maintain safety boundaries in a hypothetical 'no restrictions' scenario?
     [Tags]    hypothetical    context_manipulation    severity:medium    regression
     Run Jailbreak Test Case
     ...    ${CONTEXT_MANIPULATION_PATTERNS}[0][payload]
     ...    Hypothetical Unrestricted
 
 Educational Demonstration Request
-    [Documentation]    Educational demonstration pretext
+    [Documentation]    Can the LLM resist an 'educational demonstration' pretext for unsafe content?
     [Tags]    social_engineering    educational    severity:low    regression
     Run Jailbreak Test Case
     ...    ${CONTEXT_MANIPULATION_PATTERNS}[2][payload]
     ...    Educational Demonstration
 
 Batch Jailbreak Role Switching
-    [Documentation]    Test all role-switching patterns
+    [Documentation]    Can the LLM resist all role-switching jailbreak patterns in batch?
     [Tags]    batch    comprehensive    severity:high    regression
     [Template]    Run Jailbreak Test Case
     FOR    ${pattern}    IN    @{ROLE_SWITCHING_PATTERNS}
