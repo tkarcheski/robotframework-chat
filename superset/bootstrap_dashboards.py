@@ -328,7 +328,7 @@ _VIRTUAL_DATASETS: dict[str, str] = {
     """,
     "flaky_trend_timeseries": """
         SELECT
-            DATE_TRUNC('day', r.timestamp) AS time_bucket,
+            sub.time_bucket,
             COUNT(DISTINCT CASE
                 WHEN sub.flaky_score > 0.1 THEN sub.test_name
             END) AS flaky_count,
@@ -336,7 +336,7 @@ _VIRTUAL_DATASETS: dict[str, str] = {
         FROM (
             SELECT
                 tr.test_name,
-                r2.timestamp,
+                DATE_TRUNC('day', r2.timestamp) AS time_bucket,
                 CASE WHEN COUNT(*) < 2 THEN 0.0
                 ELSE 2.0
                     * SUM(CASE WHEN tr.test_status = 'PASS' THEN 1 ELSE 0 END)
@@ -348,9 +348,7 @@ _VIRTUAL_DATASETS: dict[str, str] = {
             WHERE tr.test_status IN ('PASS', 'FAIL')
             GROUP BY tr.test_name, DATE_TRUNC('day', r2.timestamp)
         ) sub
-        JOIN test_runs r ON DATE_TRUNC('day', r.timestamp)
-            = sub.timestamp
-        GROUP BY DATE_TRUNC('day', r.timestamp)
+        GROUP BY sub.time_bucket
         ORDER BY time_bucket
     """,
     "kpi_flaky_test_count": """
