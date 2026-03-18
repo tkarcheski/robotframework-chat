@@ -8,6 +8,7 @@ from robot.api.deco import keyword
 from .grader import Grader
 from .llm_client import create_provider
 from .ollama import OllamaClient
+from .rfc_data import emit_rfc_data
 from .thinking import estimate_token_count, parse_thinking
 
 _DEFAULT_TIMEOUT = 5400
@@ -76,21 +77,21 @@ class LLMKeywords:
         raw_response = self.client.generate(prompt)
         clean_answer, thinking_text = parse_thinking(raw_response)
         logger.info(clean_answer)
-        logger.info(f"RFC_DATA:actual_answer:{clean_answer}")
+        emit_rfc_data("actual_answer", clean_answer)
         if thinking_text is not None:
-            logger.info(f"RFC_DATA:thinking_text:{thinking_text}")
+            emit_rfc_data("thinking_text", thinking_text)
             thinking_tokens = estimate_token_count(thinking_text)
-            logger.info(f"RFC_DATA:thinking_tokens:{thinking_tokens}")
+            emit_rfc_data("thinking_tokens", str(thinking_tokens))
         if self.client.num_ctx is not None:
-            logger.info(f"RFC_DATA:num_ctx:{self.client.num_ctx}")
+            emit_rfc_data("num_ctx", str(self.client.num_ctx))
         if self.client.max_tokens is not None:
-            logger.info(f"RFC_DATA:num_predict:{self.client.max_tokens}")
+            emit_rfc_data("num_predict", str(self.client.max_tokens))
         if self.client.last_metrics is not None:
             self.client.last_metrics["prompt_text"] = prompt
             if self.client.num_ctx is not None:
                 self.client.last_metrics["num_ctx"] = self.client.num_ctx
             self.client.last_metrics["num_predict"] = self.client.max_tokens
-            logger.info(f"RFC_DATA:llm_metrics:{json.dumps(self.client.last_metrics)}")
+            emit_rfc_data("llm_metrics", json.dumps(self.client.last_metrics))
         return clean_answer
 
     @keyword("Unload Model")
@@ -111,9 +112,9 @@ class LLMKeywords:
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):
         result = self.grader.grade(question, expected, actual)
-        logger.info(f"RFC_DATA:score:{result.score}")
-        logger.info(f"RFC_DATA:expected_answer:{expected}")
-        logger.info(f"RFC_DATA:grading_reason:{result.reason}")
+        emit_rfc_data("score", str(result.score))
+        emit_rfc_data("expected_answer", expected)
+        emit_rfc_data("grading_reason", result.reason)
         return result.score, result.reason
 
     @keyword("Wait For LLM")
