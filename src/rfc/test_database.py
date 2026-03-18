@@ -79,7 +79,7 @@ class TestResult:
     run_id: int
     test_name: str
     test_status: str
-    score: int = -1
+    score: float = -1.0
     tags: str = ""
     question: str = ""
     expected_answer: str = ""
@@ -180,7 +180,7 @@ class _SQLiteBackend(_Backend):
         run_id INTEGER NOT NULL,
         test_name TEXT NOT NULL,
         test_status TEXT NOT NULL,
-        score INTEGER,
+        score REAL,
         tags TEXT,
         question TEXT,
         expected_answer TEXT,
@@ -542,6 +542,8 @@ class _SQLAlchemyBackend(_Backend):
             context_length INTEGER,
             family TEXT
         )""",
+        # Migrate score column from INTEGER to REAL (float).
+        "ALTER TABLE test_results ALTER COLUMN score TYPE REAL USING score::real",
         # Joined view for Superset — one flat dataset with all columns.
         """CREATE OR REPLACE VIEW test_results_full AS
         SELECT
@@ -644,7 +646,7 @@ class _SQLAlchemyBackend(_Backend):
             ),
             Column("test_name", String, nullable=False),
             Column("test_status", String, nullable=False),
-            Column("score", Integer),
+            Column("score", Float),
             Column("tags", Text),
             Column("question", Text),
             Column("expected_answer", Text),

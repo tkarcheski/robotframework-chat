@@ -92,6 +92,6 @@ Format:
             raise ValueError(f"Grader JSON missing required fields: {parsed}")
 
         return GradeResult(
-            score=int(parsed["score"]),
+            score=float(parsed["score"]),
             reason=str(parsed["reason"]),
         )

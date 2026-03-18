@@ -1502,6 +1502,7 @@ wheels = [
 name = "robotframework-chat"
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "1.3.2"
 =======
 version = "1.3.0"
@@ -1509,6 +1510,9 @@ version = "1.3.0"
 =======
 version = "1.3.3"
 >>>>>>> bd71db6 (chore: bump version to 1.3.3, add gh CLI setup instructions to CLAUDE.md)
+=======
+version = "1.3.3"
+>>>>>>> 3d7d986 (feat: change score field from int to float 0.0-1.0)
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

@@ -186,19 +186,19 @@ class DbListener(ListenerV3):
         doc = data.doc
         tags = list(data.tags)
 
-        score = -1
+        score: float = -1.0
         for tag in tags:
             if isinstance(tag, str) and tag.startswith("score:"):
                 try:
-                    score = int(tag.split(":")[1])
+                    score = float(tag.split(":")[1])
                 except (ValueError, IndexError):
                     pass
 
-        if score == -1:
+        if score == -1.0:
             rfc_score = self._current_test_data.get("score")
             if rfc_score is not None:
                 try:
-                    score = int(rfc_score)
+                    score = float(rfc_score)
                 except (ValueError, TypeError):
                     pass
 
@@ -335,7 +335,7 @@ class DbListener(ListenerV3):
                     run_id=run_id,
                     test_name=tc["name"],
                     test_status=tc["status"],
-                    score=_nvl(tc.get("score"), -1),
+                    score=_nvl(tc.get("score"), -1.0),
                     tags=_nvl(tc.get("tags"), ""),
                     question=_nvl(tc.get("question"), ""),
                     expected_answer=_nvl(tc.get("expected_answer"), ""),
