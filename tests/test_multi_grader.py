@@ -54,6 +54,16 @@ class TestMultiGradeResult:
         assert r.passed
         assert not r.unanimous
 
+    def test_partial_majority_score_counts_as_pass(self) -> None:
+        r = MultiGradeResult(
+            scores=[0.6, 0.6, 0.9],
+            majority_score=0.6,
+            agreement_ratio=0.9,
+            reasons=["good", "good", "great"],
+        )
+        assert r.passed
+        assert not r.unanimous
+
     def test_majority_fail_with_disagreement(self) -> None:
         r = MultiGradeResult(
             scores=[0.0, 0.0, 1.0],
@@ -125,7 +135,7 @@ class TestMultiGrader:
         grader = MultiGrader(providers=providers)
         result = grader.grade(question="q", expected="e", actual="a", rubric="r")
         assert result.majority_score == 1.0
-        assert abs(result.agreement_ratio - 3 / 5) < 0.01
+        assert abs(result.agreement_ratio - 0.6) < 0.01
 
     def test_handles_json_in_markdown(self) -> None:
         providers = [
@@ -167,3 +177,39 @@ class TestMultiGrader:
             call_args = p.generate.call_args[0][0]
             assert "novelty" in call_args
             assert "market viability" in call_args
+
+    def test_fractional_scores_preserved_in_aggregation(self) -> None:
+        providers = [
+            _mock_provider('{"score": 0.9, "reason": "strong"}'),
+            _mock_provider('{"score": 0.6, "reason": "solid"}'),
+            _mock_provider('{"score": 0.6, "reason": "solid"}'),
+        ]
+        grader = MultiGrader(providers=providers)
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
+        assert result.majority_score == 0.6
+        assert abs(result.agreement_ratio - 0.9) < 0.01
+        assert result.passed
+
+    def test_prompt_requests_fractional_scores(self) -> None:
+        providers = [
+            _mock_provider('{"score": 0.5, "reason": "ok"}'),
+            _mock_provider('{"score": 0.5, "reason": "ok"}'),
+            _mock_provider('{"score": 0.5, "reason": "ok"}'),
+        ]
+        grader = MultiGrader(providers=providers)
+        grader.grade(question="q", expected="e", actual="a", rubric="r")
+        prompt = providers[0].generate.call_args[0][0]
+        assert "score must be a number between 0.0 and 1.0" in prompt
+        assert "use partial credit" in prompt
+        assert '"score": 0.0 to 1.0' in prompt
+
+    def test_invalid_fractional_score_reports_original_value(self) -> None:
+        providers = [
+            _mock_provider('{"score": 1.2, "reason": "too high"}'),
+            _mock_provider('{"score": 0.8, "reason": "fine"}'),
+            _mock_provider('{"score": 0.8, "reason": "fine"}'),
+        ]
+        grader = MultiGrader(providers=providers)
+        result = grader.grade(question="q", expected="e", actual="a", rubric="r")
+        assert result.scores[0] == 0.0
+        assert result.reasons[0] == "Invalid score value: 1.2"
