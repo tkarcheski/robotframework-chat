@@ -123,7 +123,7 @@ Read `ai/CLAUDE.md` for grading tiers and test rules.
 - `chore:` - Maintenance
 
 **Pull Request Workflow:**
-1. Create feature branch from `claude-code-staging`
+1. Create feature branch from `claude-code-staging` (the integration branch for all Claude Code work — not `main`)
 2. Implement changes following all rules above
 3. Push branch to remote: `git push origin feature-name`
 4. Create PR/MR with descriptive title and body
