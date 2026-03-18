@@ -339,8 +339,7 @@ robotframework-chat/
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
-│   ├── DEVOPS.md               # DevOps practices tracker
-│   └── FEATURES.md             # Redirect → docs/requirements.md
+│   └── DEVOPS.md               # DevOps practices tracker
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
 │   ├── lint.sh                 # Code quality checks
