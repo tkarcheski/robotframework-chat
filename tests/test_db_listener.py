@@ -1,10 +1,11 @@
 """Tests for rfc.db_listener.DbListener (Listener API v3, 2-table schema)."""
 
+import gzip
 import os
 import sqlite3
 from unittest.mock import MagicMock, patch
 
-import gzip
+import pytest
 
 from rfc.db_listener import (
     DbListener,
@@ -12,6 +13,8 @@ from rfc.db_listener import (
     _build_output_xml_url,
     _extract_llm_metrics,
     _format_size,
+    _get_robot_float,
+    _get_robot_int,
     _parse_tags,
     _read_and_compress_output_xml,
     _resolve_output_dir,
@@ -1030,9 +1033,7 @@ class TestBuildOutputXmlSource:
 class TestReadAndCompressOutputXml:
     """Tests for _read_and_compress_output_xml() using resolved output file."""
 
-    def test_returns_compressed_data_when_file_exists(
-        self, tmp_path: object
-    ) -> None:
+    def test_returns_compressed_data_when_file_exists(self, tmp_path: object) -> None:
         """Returns gzip-compressed content when output file exists."""
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
@@ -1058,3 +1059,110 @@ class TestReadAndCompressOutputXml:
         ):
             result = _read_and_compress_output_xml()
         assert result == b""
+
+    def test_returns_empty_on_oserror(self, tmp_path: object) -> None:
+        """Returns empty bytes when reading the file raises OSError (lines 438-439)."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+
+        def _open_raises(*args: object, **kwargs: object) -> None:
+            raise OSError("permission denied")
+
+        with (
+            patch(
+                "rfc.db_listener._resolve_output_file",
+                return_value=str(output_xml),
+            ),
+            patch("builtins.open", _open_raises),
+        ):
+            result = _read_and_compress_output_xml()
+        assert result == b""
+
+
+# ── log_message non-string early return ──────────────────────────────
+
+
+class TestLogMessageNonString:
+    def test_non_string_message_returns_early(self) -> None:
+        """Line 175: log_message should return early for non-string messages."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        msg = MagicMock()
+        msg.message = 12345  # non-string
+        listener.log_message(msg)
+        # No crash, and no data captured
+        assert listener._current_test_data == {}
+
+
+# ── _get_db fallback ─────────────────────────────────────────────────
+
+
+class TestDbListenerGetDbFallback:
+    def test_get_db_without_explicit_url_uses_env(
+        self, tmp_path: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When database_url param is None but DATABASE_URL env is set, _get_db uses env."""
+        db_path = str(tmp_path / "fallback.db")  # type: ignore[operator]
+        # Don't pass database_url to constructor; instead set env var
+        # but make sure __init__ sees it as None (simulate no env var at init time)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        listener = DbListener()
+        # _database_url is None at this point
+        assert listener._database_url is None
+        # Now set DATABASE_URL so TestDatabase() can pick it up at line 134
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+        db = listener._get_db()
+        assert db is not None
+
+
+# ── Score from RFC_DATA edge cases ───────────────────────────────────
+
+
+class TestDbListenerScoreEdgeCases:
+    def test_invalid_rfc_data_score_stays_negative_one(self) -> None:
+        """Non-numeric RFC_DATA score should not crash — score stays -1."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:not_a_number"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == -1.0
+
+
+# ── _get_robot_float / _get_robot_int ────────────────────────────────
+
+
+class TestGetRobotFloat:
+    def test_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEMPERATURE", "0.7")
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.7
+
+    def test_invalid_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEMPERATURE", "not_a_float")
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.0
+
+    def test_missing_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("TEMPERATURE", raising=False)
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.0
+
+
+class TestGetRobotInt:
+    def test_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SEED", "42")
+        result = _get_robot_int("SEED")
+        assert result == 42
+
+    def test_invalid_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SEED", "not_an_int")
+        result = _get_robot_int("SEED")
+        assert result == 0
+
+    def test_missing_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SEED", raising=False)
+        result = _get_robot_int("SEED")
+        assert result == 0

@@ -12,9 +12,7 @@ class GradeResult:
             raise TypeError(f"score must be a float, got {type(self.score).__name__}")
         self.score = float(self.score)
         if not 0.0 <= self.score <= 1.0:
-            raise ValueError(
-                f"score must be between 0.0 and 1.0, got {self.score}"
-            )
+            raise ValueError(f"score must be between 0.0 and 1.0, got {self.score}")
         if not isinstance(self.reason, str):
             raise TypeError(f"reason must be a str, got {type(self.reason).__name__}")
 

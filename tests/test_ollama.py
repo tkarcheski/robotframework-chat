@@ -645,3 +645,125 @@ class TestUnloadModel:
 class TestLLMClientAlias:
     def test_alias(self):
         assert LLMClient is OllamaClient
+
+
+# ── Validation edge cases (lines 68, 70) ────────────────────────────
+
+
+class TestOllamaClientValidationEdgeCases:
+    def test_non_string_base_url_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OLLAMA_ENDPOINT", raising=False)
+        with pytest.raises(ValueError, match="base_url must be a non-empty string"):
+            OllamaClient(base_url=123)  # type: ignore[arg-type]
+
+    def test_non_string_model_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DEFAULT_MODEL", raising=False)
+        with pytest.raises(ValueError, match="model must be a non-empty string"):
+            OllamaClient(model=123)  # type: ignore[arg-type]
+
+
+# ── wait_until_ready: unavailable endpoint warns then succeeds ───────
+
+
+class TestWaitUntilReadyUnavailable:
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.time.time")
+    @patch("rfc.ollama.requests.get")
+    def test_unavailable_warns_then_becomes_available(
+        self, mock_get, mock_time, mock_sleep, mock_logger
+    ):
+        """Endpoint unavailable → warning at 60s → then becomes available."""
+        avail_200 = MagicMock()
+        avail_200.status_code = 200
+        avail_200.raise_for_status = MagicMock()
+        avail_200.json.return_value = {"models": []}
+
+        unavail = MagicMock()
+        unavail.side_effect = Exception("refused")
+
+        # is_available calls GET /api/tags
+        # running_models calls GET /api/ps
+        mock_get.side_effect = [
+            Exception("refused"),  # loop 1: is_available → fail
+            Exception("refused"),  # loop 2: is_available → fail → triggers warn at 61s
+            avail_200,  # loop 3: is_available → 200
+            avail_200,  # loop 3: running_models → idle
+        ]
+
+        mock_time.side_effect = [
+            0,  # start
+            0,
+            0,  # loop 1: while check, elapsed
+            61,
+            61,  # loop 2: while check, elapsed — triggers warning
+            65,
+            65,  # loop 3: while check, elapsed — available + idle
+        ]
+
+        client = OllamaClient()
+        result = client.wait_until_ready(timeout=120, poll_interval=2)
+        assert result is True
+
+        # Verify warning was emitted about unavailable endpoint
+        warn_calls = [str(c) for c in mock_logger.warn.call_args_list]
+        unavail_warns = [w for w in warn_calls if "endpoint unavailable" in w]
+        assert len(unavail_warns) >= 1
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.time.time")
+    @patch("rfc.ollama.requests.get")
+    def test_api_ps_exception_returns_true(
+        self, mock_get, mock_time, mock_sleep, mock_logger
+    ):
+        """If /api/ps raises, assume idle and return True."""
+        avail_200 = MagicMock()
+        avail_200.status_code = 200
+
+        mock_get.side_effect = [
+            avail_200,  # is_available → 200
+            Exception("api/ps failed"),  # running_models → exception
+        ]
+
+        mock_time.side_effect = [0, 0, 0]  # start, while check, elapsed
+
+        client = OllamaClient()
+        result = client.wait_until_ready(timeout=5, poll_interval=1)
+        assert result is True
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.time.sleep")
+    @patch("rfc.ollama.time.time")
+    @patch("rfc.ollama.requests.get")
+    def test_timeout_raises_error(self, mock_get, mock_time, mock_sleep, mock_logger):
+        """If Ollama stays busy until timeout, raises TimeoutError."""
+        avail_200 = MagicMock()
+        avail_200.status_code = 200
+        avail_200.raise_for_status = MagicMock()
+
+        busy_resp = MagicMock()
+        busy_resp.status_code = 200
+        busy_resp.raise_for_status = MagicMock()
+        busy_resp.json.return_value = {"models": [{"name": "llama3"}]}
+
+        mock_get.side_effect = [
+            avail_200,
+            busy_resp,  # loop 1: available, busy
+            avail_200,
+            busy_resp,  # loop 2: available, busy → timeout
+        ]
+
+        mock_time.side_effect = [
+            0,  # start
+            0,
+            0,  # loop 1: while check, elapsed
+            4,
+            4,  # loop 2: while check, elapsed
+            6,
+            6,  # after while: elapsed for error message
+        ]
+
+        client = OllamaClient()
+        with pytest.raises(TimeoutError, match="still busy"):
+            client.wait_until_ready(timeout=5, poll_interval=1)

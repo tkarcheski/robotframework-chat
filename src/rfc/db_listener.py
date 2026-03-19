@@ -239,12 +239,8 @@ class DbListener(ListenerV3):
                 "tokens_per_second": metrics.get("eval_rate"),
                 "reasoning_tokens": metrics.get("reasoning_tokens"),
                 "cached_tokens": metrics.get("cached_tokens"),
-                "accepted_prediction_tokens": metrics.get(
-                    "accepted_prediction_tokens"
-                ),
-                "rejected_prediction_tokens": metrics.get(
-                    "rejected_prediction_tokens"
-                ),
+                "accepted_prediction_tokens": metrics.get("accepted_prediction_tokens"),
+                "rejected_prediction_tokens": metrics.get("rejected_prediction_tokens"),
             }
         )
         self._current_test_data = {}

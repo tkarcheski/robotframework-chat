@@ -456,3 +456,19 @@ class TestChatLogListener:
             assert "input\tWhat is 2+2?" in content
             assert "output\t4" in content
             assert "grading\tWhat is 2+2?" in content
+
+    def test_save_error_does_not_raise(self) -> None:
+        """Write failure (lines 168-169) should be caught silently."""
+        listener = ChatLogListener()
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_keyword(
+            _mock_keyword_data("Ask LLM", ["test"]),
+            _mock_keyword_result(),
+        )
+        listener.end_keyword(
+            _mock_keyword_data("Ask LLM"),
+            _mock_keyword_result(),
+        )
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/nonexistent/readonly"}):
+            # Should not raise
+            listener.end_suite(_mock_suite_data("Top"), _mock_suite_result())

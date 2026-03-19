@@ -99,3 +99,19 @@ class TestContainerConfig:
         cfg = ContainerConfig(image="python:3.12", command=None)
         result = cfg.to_docker_run_config()
         assert "command" not in result
+
+
+class TestContainerResourcesMemswapZero:
+    def test_memswap_zero_uses_negative_one(self):
+        from rfc.docker_config import ContainerResources
+
+        res = ContainerResources(memory_swap_mb=0)
+        d = res.to_docker_resources()
+        assert d["memswap_limit"] == -1
+
+    def test_memswap_negative_uses_negative_one(self):
+        from rfc.docker_config import ContainerResources
+
+        res = ContainerResources(memory_swap_mb=-1)
+        d = res.to_docker_resources()
+        assert d["memswap_limit"] == -1

@@ -1,17 +1,20 @@
 """Tests for the result importer with dedup and output.xml blob storage.
 
-Covers SHA-256 deduplication and core import flow for the 2-table schema.
+Covers SHA-256 deduplication, core import flow, report_base_url,
+OSError handling, and the CLI entry point (main).
 """
 
 import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 
 from src.rfc.result_importer import (
     ImportResult,
     compute_file_hash,
     import_results,
+    main,
 )
 
 
@@ -93,3 +96,178 @@ class TestImportResults:
         db = self._mock_db()
         result = import_results(str(xml_file), db, source="ci")
         assert result.source == "ci"
+
+    def test_report_base_url_generates_output_xml_url(self, tmp_path: Path) -> None:
+        xml_file = self._write_xml(tmp_path)
+        db = self._mock_db()
+        result = import_results(
+            str(xml_file), db, report_base_url="https://results.example.com/math"
+        )
+        assert result.run_id == 42
+        assert not result.skipped
+
+    def test_oserror_on_xml_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Lines 95-96: OSError when reading XML for compression."""
+        xml_file = self._write_xml(tmp_path)
+        db = self._mock_db()
+
+        import builtins
+
+        _real_open = builtins.open
+        call_count = 0
+
+        def open_second_rb_fails(path: object, *a: object, **kw: object) -> object:
+            nonlocal call_count
+            mode = a[0] if a else kw.get("mode", "r")
+            if str(path) == str(xml_file) and mode == "rb":
+                call_count += 1
+                if call_count == 2:
+                    # First rb call is for hash, second for gzip
+                    raise OSError("permission denied")
+            return _real_open(path, *a, **kw)  # type: ignore[call-overload]
+
+        monkeypatch.setattr("builtins.open", open_second_rb_fails)
+        result = import_results(str(xml_file), db)
+        assert result.run_id == 42
+
+
+# ── CLI main() ───────────────────────────────────────────────────────
+
+
+class TestResultImporterMain:
+    def test_main_single_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        xml_file = tmp_path / "output.xml"
+        xml_file.write_text(MINIMAL_OUTPUT_XML)
+
+        mock_db = MagicMock()
+        mock_db.db_path = ":memory:"
+        mock_db.add_test_run.return_value = 1
+
+        monkeypatch.setattr("sys.argv", ["result_importer", str(xml_file)])
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
+
+        main()
+        captured = capsys.readouterr()
+        assert "Imported" in captured.out
+
+    def test_main_recursive_dir(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        sub = tmp_path / "math"
+        sub.mkdir()
+        (sub / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+        sub2 = tmp_path / "docker"
+        sub2.mkdir()
+        (sub2 / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+
+        mock_db = MagicMock()
+        mock_db.db_path = ":memory:"
+        mock_db.add_test_run.return_value = 1
+
+        monkeypatch.setattr(
+            "sys.argv", ["result_importer", str(tmp_path), "--recursive"]
+        )
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
+
+        main()
+        captured = capsys.readouterr()
+        assert "Imported 2" in captured.out
+
+    def test_main_dir_without_recursive(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        (tmp_path / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+
+        mock_db = MagicMock()
+        mock_db.db_path = ":memory:"
+        mock_db.add_test_run.return_value = 1
+
+        monkeypatch.setattr("sys.argv", ["result_importer", str(tmp_path)])
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
+
+        main()
+        captured = capsys.readouterr()
+        assert "Imported 1" in captured.out
+
+    def test_main_no_files_found(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        monkeypatch.setattr("sys.argv", ["result_importer", str(empty_dir)])
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: MagicMock())
+
+        with pytest.raises(SystemExit):
+            main()
+        captured = capsys.readouterr()
+        assert "No output.xml" in captured.out
+
+    def test_main_import_error_handled(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        xml_file = tmp_path / "output.xml"
+        xml_file.write_text(MINIMAL_OUTPUT_XML)
+
+        mock_db = MagicMock()
+        mock_db.db_path = ":memory:"
+        mock_db.add_test_run.side_effect = Exception("DB error")
+
+        monkeypatch.setattr("sys.argv", ["result_importer", str(xml_file)])
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
+
+        main()
+        captured = capsys.readouterr()
+        assert "Failed to import" in captured.out
+
+    def test_main_dedup_skips_duplicate(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Lines 186-187: CLI prints 'Skipped (duplicate)' when import_results returns skipped."""
+        xml_file = tmp_path / "output.xml"
+        xml_file.write_text(MINIMAL_OUTPUT_XML)
+
+        mock_db = MagicMock()
+        mock_db.db_path = ":memory:"
+
+        # Make import_results return a skipped result
+        skipped_result = ImportResult(
+            run_id=0,
+            file_hash="abc",
+            file_path=str(xml_file),
+            skipped=True,
+            source="local",
+        )
+        monkeypatch.setattr(
+            "src.rfc.result_importer.import_results",
+            lambda *a, **kw: skipped_result,
+        )
+        monkeypatch.setattr("sys.argv", ["result_importer", str(xml_file), "--dedup"])
+        monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
+
+        main()
+        captured = capsys.readouterr()
+        assert "Skipped (duplicate)" in captured.out
+        assert "skipped 1" in captured.out

@@ -369,9 +369,7 @@ class TestInjectionResistanceRfcData:
 
         info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         rfc_reason = [c for c in info_calls if "RFC_DATA:grading_reason:" in c]
-        assert len(rfc_reason) >= 1, (
-            f"No RFC_DATA:grading_reason found in {info_calls}"
-        )
+        assert len(rfc_reason) >= 1, f"No RFC_DATA:grading_reason found in {info_calls}"
 
     @patch("rfc.rfc_data.logger")
     @patch("rfc.safety_keywords.logger")
@@ -488,9 +486,7 @@ class TestExtractionResistanceRfcData:
 
         info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
         rfc_reason = [c for c in info_calls if "RFC_DATA:grading_reason:" in c]
-        assert len(rfc_reason) >= 1, (
-            f"No RFC_DATA:grading_reason found in {info_calls}"
-        )
+        assert len(rfc_reason) >= 1, f"No RFC_DATA:grading_reason found in {info_calls}"
 
 
 class TestTestWithTemplate:

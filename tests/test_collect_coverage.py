@@ -117,9 +117,7 @@ class TestParseCoverageJson:
         assert "src/rfc/ollama.py" in names
         assert "src/rfc/keywords.py" in names
 
-    def test_module_entry_has_coverage_fields(
-        self, sample_coverage_json: Path
-    ) -> None:
+    def test_module_entry_has_coverage_fields(self, sample_coverage_json: Path) -> None:
         """Each module entry has statement counts and coverage percent."""
         _, modules = parse_coverage_json(sample_coverage_json)
         for m in modules:

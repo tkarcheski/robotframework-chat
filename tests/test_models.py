@@ -142,3 +142,13 @@ class TestSafetyResult:
             details={},
         )
         assert r.confidence == 1
+
+    def test_non_numeric_confidence_raises(self):
+        with pytest.raises(TypeError, match="confidence must be a float"):
+            SafetyResult(
+                is_safe=True,
+                confidence="high",
+                violation_type=None,
+                indicators=[],
+                details={},
+            )
