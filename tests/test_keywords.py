@@ -288,8 +288,8 @@ class TestAskAndGradeWithRetry:
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_retries_on_wrong_answer_doubles_tokens(self, MockGrader, mock_create):
-        """When grading fails with non-empty answer, retry with 2x tokens."""
+    def test_retries_on_wrong_answer_8x_tokens(self, MockGrader, mock_create):
+        """When grading fails with non-empty answer, retry with 8x tokens."""
         kw = LLMKeywords()
         kw.client.max_tokens = 256
         kw.client.num_ctx = None
@@ -311,13 +311,13 @@ class TestAskAndGradeWithRetry:
         assert score == 1.0
         assert answer == "42"
         assert kw.client.generate.call_count == 2
-        # Token limit should have been doubled for the retry
-        assert kw.client.max_tokens == 512
+        # Token limit should have been 8x'd for the retry: 256 → 2048
+        assert kw.client.max_tokens == 2048
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_doubles_tokens_each_retry(self, MockGrader, mock_create):
-        """Tokens double on each successive retry: 256 → 512 → 1024 → 2048."""
+    def test_8x_tokens_each_retry(self, MockGrader, mock_create):
+        """Tokens 8x on each successive retry: 256 → 2048 → 16384 → 131072."""
         kw = LLMKeywords()
         kw.client.max_tokens = 256
         kw.client.num_ctx = None
@@ -338,8 +338,8 @@ class TestAskAndGradeWithRetry:
         )
         assert score == 1.0
         assert kw.client.generate.call_count == 4
-        # 256 → 512 → 1024 → 2048
-        assert kw.client.max_tokens == 2048
+        # 256 → 2048 → 16384 → 131072
+        assert kw.client.max_tokens == 131072
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
@@ -380,8 +380,8 @@ class TestAskAndGradeWithRetry:
         assert score == 0.0
         # 1 initial + 3 retries = 4 total attempts
         assert kw.client.generate.call_count == 4
-        # Tokens should have been doubled 3 times: 256 → 2048
-        assert kw.client.max_tokens == 2048
+        # Tokens should have been 8x'd 3 times: 256 → 131072
+        assert kw.client.max_tokens == 131072
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
@@ -405,8 +405,8 @@ class TestAskAndGradeWithRetry:
             "Q", "correct", max_retries=3
         )
         assert score == 1.0
-        # max_tokens should reflect what worked (512)
-        assert kw.client.max_tokens == 512
+        # max_tokens should reflect what worked (2048)
+        assert kw.client.max_tokens == 2048
 
     @patch("rfc.rfc_data.logger")
     @patch("rfc.keywords.logger")
@@ -441,7 +441,7 @@ class TestAskAndGradeWithRetry:
             c for c in info_calls if "RFC_DATA:token_retry_max_tokens:" in c
         ]
         assert len(budget_calls) == 1
-        assert "512" in budget_calls[0]
+        assert "2048" in budget_calls[0]
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")

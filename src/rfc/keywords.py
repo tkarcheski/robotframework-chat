@@ -116,12 +116,13 @@ class LLMKeywords:
         expected: str,
         max_retries: int = 3,
     ) -> Tuple[float, str, str]:
-        """Ask the LLM and grade; retry with 2x tokens on wrong non-empty answers.
+        """Ask the LLM and grade; retry with 8x tokens on wrong non-empty answers.
 
         When the model responds with a non-empty answer that fails grading,
-        this keyword doubles ``max_tokens`` and retries — up to *max_retries*
-        times.  Empty responses are never retried (they indicate a different
-        problem, not a token budget issue).
+        this keyword multiplies ``max_tokens`` by 8 and retries — up to
+        *max_retries* times (e.g. 256 → 2048 → 16384 → 131072).  Empty
+        responses are never retried (they indicate a different problem, not
+        a token budget issue).
 
         Args:
             question: The prompt to send to the LLM.
@@ -152,10 +153,10 @@ class LLMKeywords:
                 )
                 return result.score, result.reason, answer
 
-            # Non-empty but wrong — double tokens and retry
+            # Non-empty but wrong — 8x tokens and retry
             if answer.strip() and attempt < max_retries:
                 retries_used += 1
-                self.client.max_tokens *= 2
+                self.client.max_tokens *= 8
                 logger.warn(
                     f"Grading failed (score={result.score}) with non-empty "
                     f"response on attempt {attempt + 1}. "
