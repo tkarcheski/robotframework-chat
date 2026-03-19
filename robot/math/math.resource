@@ -8,10 +8,9 @@ ${SEED_END}       10000
 
 *** Keywords ***
 Ask And Validate
-    [Documentation]    Ask the LLM a question and validate the answer via grading
+    [Documentation]    Ask the LLM a question and validate the answer via grading with token retry
     [Arguments]    ${question}    ${expected}
-    ${answer}=     LLM.Ask LLM    ${question}
-    ${score}    ${reason}=    LLM.Grade Answer    ${question}    ${expected}    ${answer}
+    ${score}    ${reason}    ${answer}=    LLM.Ask And Grade With Retry    ${question}    ${expected}
     Should Be Equal As Integers    ${score}    1
     Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
 

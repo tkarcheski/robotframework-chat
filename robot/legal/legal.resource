@@ -41,24 +41,38 @@ Grade Legal Response
 
 Run Needle Scenario
     [Documentation]    Execute a single needle-in-haystack scenario end-to-end.
-    ...    Asks the LLM the question, grades the response, and asserts correctness.
+    ...    Builds the full agreement prompt and uses Ask And Grade With Retry
+    ...    to automatically retry with doubled tokens on wrong answers.
     [Arguments]    ${scenario}
-    ${response}=    Ask LLM About Agreement    ${scenario}[question]
+    ${prompt}=    Catenate    SEPARATOR=\n\n
+    ...    You are a legal document analyst. Read the following software agreement carefully and answer the question.
+    ...    --- BEGIN AGREEMENT ---
+    ...    ${SOFTWARE_AGREEMENT}
+    ...    --- END AGREEMENT ---
+    ...    Question: ${scenario}[question]
+    ...    Provide a precise answer referencing specific section numbers and quoting relevant text where appropriate.
+    ${score}    ${reason}    ${response}=    LLM.Ask And Grade With Retry
+    ...    ${prompt}    ${scenario}[expected]
     Log    LLM Response: ${response}
-    ${score}    ${reason}=    Grade Legal Response
-    ...    ${scenario}[question]    ${scenario}[expected]    ${response}
     Log    Grade: score=${score}, reason=${reason}
     Should Be Equal As Integers    ${score}    1
     ...    LLM failed to find needle '${scenario}[name]': ${reason}
 
 Run Loophole Scenario
     [Documentation]    Execute a single loophole detection scenario end-to-end.
-    ...    Asks the LLM the question, grades the response, and asserts correctness.
+    ...    Builds the full agreement prompt and uses Ask And Grade With Retry
+    ...    to automatically retry with doubled tokens on wrong answers.
     [Arguments]    ${scenario}
-    ${response}=    Ask LLM About Agreement    ${scenario}[question]
+    ${prompt}=    Catenate    SEPARATOR=\n\n
+    ...    You are a legal document analyst. Read the following software agreement carefully and answer the question.
+    ...    --- BEGIN AGREEMENT ---
+    ...    ${SOFTWARE_AGREEMENT}
+    ...    --- END AGREEMENT ---
+    ...    Question: ${scenario}[question]
+    ...    Provide a precise answer referencing specific section numbers and quoting relevant text where appropriate.
+    ${score}    ${reason}    ${response}=    LLM.Ask And Grade With Retry
+    ...    ${prompt}    ${scenario}[expected]
     Log    LLM Response: ${response}
-    ${score}    ${reason}=    Grade Legal Response
-    ...    ${scenario}[question]    ${scenario}[expected]    ${response}
     Log    Grade: score=${score}, reason=${reason}
     Should Be Equal As Integers    ${score}    1
     ...    LLM failed to detect loophole '${scenario}[name]': ${reason}

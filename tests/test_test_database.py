@@ -713,6 +713,74 @@ class TestTokenMetricColumns:
         assert r.rejected_prediction_tokens == 0
 
 
+class TestTokenRetryColumns:
+    """Verify token_retry_count and token_retry_max_tokens columns."""
+
+    def test_retry_columns_stored(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="Retry Test",
+                    test_status="PASS",
+                    score=1.0,
+                    token_retry_count=2,
+                    token_retry_max_tokens=1024,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["token_retry_count"] == 2
+            assert row["token_retry_max_tokens"] == 1024
+
+    def test_retry_columns_default_zero(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="No Retry",
+                    test_status="PASS",
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["token_retry_count"] == 0
+            assert row["token_retry_max_tokens"] == 0
+
+    def test_retry_columns_in_view(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id,
+                    test_name="View Retry Test",
+                    test_status="PASS",
+                    token_retry_count=1,
+                    token_retry_max_tokens=512,
+                ),
+            ]
+        )
+        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
+            assert row["token_retry_count"] == 1
+            assert row["token_retry_max_tokens"] == 512
+
+    def test_dataclass_defaults(self) -> None:
+        r = TestResult(run_id=1, test_name="T", test_status="PASS")
+        assert r.token_retry_count == 0
+        assert r.token_retry_max_tokens == 0
+
+
 class TestViewIncludesNewColumns:
     """Verify test_results_full view includes new columns."""
 
