@@ -153,10 +153,12 @@ docker-logs: ## Tail service logs
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
 
-cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query PostgreSQL)
+cache-flush: ## Flush caches and refresh all dashboards (Superset + RF Metrics)
 	@echo "Flushing Redis cache..."
 	$(COMPOSE) exec redis redis-cli FLUSHALL
-	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+	@echo "Triggering RF Metrics dashboard regeneration..."
+	$(COMPOSE) restart metrics
+	@echo "Done — Superset will re-query on next load; RF Metrics are regenerating now."
 
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py
