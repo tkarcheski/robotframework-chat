@@ -1033,9 +1033,7 @@ class TestBuildOutputXmlSource:
 class TestReadAndCompressOutputXml:
     """Tests for _read_and_compress_output_xml() using resolved output file."""
 
-    def test_returns_compressed_data_when_file_exists(
-        self, tmp_path: object
-    ) -> None:
+    def test_returns_compressed_data_when_file_exists(self, tmp_path: object) -> None:
         """Returns gzip-compressed content when output file exists."""
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
@@ -1061,6 +1059,40 @@ class TestReadAndCompressOutputXml:
         ):
             result = _read_and_compress_output_xml()
         assert result == b""
+
+    def test_returns_empty_on_oserror(self, tmp_path: object) -> None:
+        """Returns empty bytes when reading the file raises OSError (lines 438-439)."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+
+        def _open_raises(*args: object, **kwargs: object) -> None:
+            raise OSError("permission denied")
+
+        with (
+            patch(
+                "rfc.db_listener._resolve_output_file",
+                return_value=str(output_xml),
+            ),
+            patch("builtins.open", _open_raises),
+        ):
+            result = _read_and_compress_output_xml()
+        assert result == b""
+
+
+# ── log_message non-string early return ──────────────────────────────
+
+
+class TestLogMessageNonString:
+    def test_non_string_message_returns_early(self) -> None:
+        """Line 175: log_message should return early for non-string messages."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        msg = MagicMock()
+        msg.message = 12345  # non-string
+        listener.log_message(msg)
+        # No crash, and no data captured
+        assert listener._current_test_data == {}
+
 
 # ── _get_db fallback ─────────────────────────────────────────────────
 
@@ -1097,7 +1129,6 @@ class TestDbListenerScoreEdgeCases:
             _mock_test_result(),
         )
         assert listener._test_cases[0]["score"] == -1.0
-
 
 
 # ── _get_robot_float / _get_robot_int ────────────────────────────────
