@@ -117,6 +117,14 @@ class StubGraderClient:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect HOME so ``WebSearchCache()`` (created eagerly in
+    ``CEOKeywords.__init__``) writes to *tmp_path* instead of ``~/.rfc/``.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
 def _make_kw(response_dict: Dict[str, Any], tmp_path: Path) -> CEOKeywords:
     """Create a CEOKeywords with a stub client and tmp_path-based web cache."""
     kw = CEOKeywords(timeout=10)
@@ -133,14 +141,13 @@ def _make_kw(response_dict: Dict[str, Any], tmp_path: Path) -> CEOKeywords:
 class TestCEOKeywordsLazyInit:
     """CEOKeywords should defer provider creation until first use."""
 
-    def test_instantiation_without_provider_keys(self) -> None:
+    def test_instantiation_without_provider_keys(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """CEOKeywords() must succeed even without provider API keys set."""
-        with patch.dict("os.environ", {}, clear=False):
-            import os
-
-            os.environ.pop("OPENAI_API_KEY", None)
-            kw = CEOKeywords()
-            assert kw is not None
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        kw = CEOKeywords()
+        assert kw is not None
 
     def test_client_not_created_at_init(self) -> None:
         kw = CEOKeywords()

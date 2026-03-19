@@ -75,9 +75,7 @@ def parse_coverage_json(
                 "module_statements": int(file_summary.get("num_statements", 0)),
                 "module_covered": int(file_summary.get("covered_lines", 0)),
                 "module_missed": int(file_summary.get("missing_lines", 0)),
-                "module_coverage_pct": float(
-                    file_summary.get("percent_covered", 0.0)
-                ),
+                "module_coverage_pct": float(file_summary.get("percent_covered", 0.0)),
             }
         )
 
