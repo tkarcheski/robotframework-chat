@@ -262,6 +262,275 @@ class TestLLMKeywordsGrade:
         kw.grader.grade.assert_called_once_with("Q", "expected", "actual")
 
 
+class TestAskAndGradeWithRetry:
+    """Tests for Ask And Grade With Retry keyword — adaptive token scaling."""
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_passes_on_first_attempt(self, MockGrader, mock_create):
+        """If grading passes on first try, no retry needed."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        mock_result = MagicMock()
+        mock_result.score = 1.0
+        mock_result.reason = "correct"
+        kw.grader.grade.return_value = mock_result
+
+        score, reason, answer = kw.ask_and_grade_with_retry(
+            "What is 6*7?", "42", max_retries=3
+        )
+        assert score == 1.0
+        assert answer == "42"
+        assert kw.client.generate.call_count == 1
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_retries_on_wrong_answer_8x_tokens(self, MockGrader, mock_create):
+        """When grading fails with non-empty answer, retry with 8x tokens."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        # First attempt: wrong answer; second attempt: correct
+        kw.client.generate.side_effect = ["wrong", "42"]
+        fail_result = MagicMock()
+        fail_result.score = 0.0
+        fail_result.reason = "incorrect"
+        pass_result = MagicMock()
+        pass_result.score = 1.0
+        pass_result.reason = "correct"
+        kw.grader.grade.side_effect = [fail_result, pass_result]
+
+        score, reason, answer = kw.ask_and_grade_with_retry(
+            "What is 6*7?", "42", max_retries=3
+        )
+        assert score == 1.0
+        assert answer == "42"
+        assert kw.client.generate.call_count == 2
+        # Token limit should have been 8x'd for the retry: 256 → 2048
+        assert kw.client.max_tokens == 2048
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_8x_tokens_each_retry(self, MockGrader, mock_create):
+        """Tokens 8x on each successive retry: 256 → 2048 → 16384 → 131072."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        # Fail 3 times, pass on 4th (initial + 3 retries)
+        kw.client.generate.side_effect = ["wrong1", "wrong2", "wrong3", "correct"]
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.side_effect = [fail, fail, fail, success]
+
+        score, reason, answer = kw.ask_and_grade_with_retry(
+            "Q", "correct", max_retries=3
+        )
+        assert score == 1.0
+        assert kw.client.generate.call_count == 4
+        # 256 → 2048 → 16384 → 131072
+        assert kw.client.max_tokens == 131072
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_no_retry_on_empty_response(self, MockGrader, mock_create):
+        """Empty responses should NOT trigger retry (it's not a token issue)."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.return_value = ""
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "empty"
+        kw.grader.grade.return_value = fail
+
+        score, reason, answer = kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
+        assert score == 0.0
+        assert kw.client.generate.call_count == 1
+        assert kw.client.max_tokens == 256
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_exhausts_retries_returns_last_result(self, MockGrader, mock_create):
+        """If all retries fail, return the last attempt's result."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.return_value = "wrong"
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        kw.grader.grade.return_value = fail
+
+        score, reason, answer = kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
+        assert score == 0.0
+        # 1 initial + 3 retries = 4 total attempts
+        assert kw.client.generate.call_count == 4
+        # Tokens should have been 8x'd 3 times: 256 → 131072
+        assert kw.client.max_tokens == 131072
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_restores_original_max_tokens_on_success(self, MockGrader, mock_create):
+        """After retry succeeds, max_tokens stays at the working value (for logging)."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.side_effect = ["wrong", "correct"]
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.side_effect = [fail, success]
+
+        score, reason, answer = kw.ask_and_grade_with_retry(
+            "Q", "correct", max_retries=3
+        )
+        assert score == 1.0
+        # max_tokens should reflect what worked (2048)
+        assert kw.client.max_tokens == 2048
+
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_emits_retry_metadata(
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
+    ):
+        """Should emit RFC_DATA with retry count and final token budget."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.side_effect = ["wrong", "42"]
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.side_effect = [fail, success]
+
+        kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
+
+        info_calls = [str(c) for c in mock_rfc_logger.info.call_args_list]
+        retry_calls = [c for c in info_calls if "RFC_DATA:token_retry_count:" in c]
+        assert len(retry_calls) == 1
+        assert "1" in retry_calls[0]
+
+        budget_calls = [
+            c for c in info_calls if "RFC_DATA:token_retry_max_tokens:" in c
+        ]
+        assert len(budget_calls) == 1
+        assert "2048" in budget_calls[0]
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_default_max_retries_is_three(self, MockGrader, mock_create):
+        """Default max_retries should be 3."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.return_value = "wrong"
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "nope"
+        kw.grader.grade.return_value = fail
+
+        kw.ask_and_grade_with_retry("Q", "42")
+        # 1 initial + 3 retries = 4 total
+        assert kw.client.generate.call_count == 4
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_grading_question_separates_prompt_from_grading(
+        self, MockGrader, mock_create
+    ):
+        """grading_question should be passed to grader, not the full prompt."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "auto-renewal after 12 months"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 1024
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.return_value = success
+
+        big_prompt = "BEGIN AGREEMENT\n" + ("x" * 10000) + "\nEND\nQuestion: renewal?"
+        short_q = "What is the auto-renewal clause?"
+
+        kw.ask_and_grade_with_retry(big_prompt, "12 months", grading_question=short_q)
+
+        # LLM should receive the full prompt
+        kw.client.generate.assert_called_once_with(big_prompt)
+        # Grader should receive the short question, not the 10KB prompt
+        kw.grader.grade.assert_called_once_with(
+            short_q, "12 months", "auto-renewal after 12 months"
+        )
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_grading_question_defaults_to_prompt(self, MockGrader, mock_create):
+        """When grading_question is not provided, prompt is used for grading."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.return_value = success
+
+        kw.ask_and_grade_with_retry("What is 6*7?", "42")
+
+        kw.grader.grade.assert_called_once_with("What is 6*7?", "42", "42")
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_token_scaling_capped_at_ceiling(self, MockGrader, mock_create):
+        """Token scaling must not exceed _MAX_TOKEN_CEILING (131072)."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 32768  # 32K — one 8x would be 262144
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.side_effect = ["wrong", "correct"]
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.side_effect = [fail, success]
+
+        kw.ask_and_grade_with_retry("Q", "correct", max_retries=3)
+        # 32768 * 8 = 262144, but capped at 131072
+        assert kw.client.max_tokens == 131072
+
+
 class TestLLMKeywordsWait:
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")

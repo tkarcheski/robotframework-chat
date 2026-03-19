@@ -14,9 +14,7 @@ class BenchmarkKeywords:
     """Keywords for measuring LLM token output performance."""
 
     @keyword("Measure Completion Ratio")
-    def measure_completion_ratio(
-        self, requested_tokens: int, eval_count: int
-    ) -> float:
+    def measure_completion_ratio(self, requested_tokens: int, eval_count: int) -> float:
         """Compare actual eval_count to requested max_tokens.
 
         Args:

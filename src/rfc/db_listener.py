@@ -241,6 +241,12 @@ class DbListener(ListenerV3):
                 "cached_tokens": metrics.get("cached_tokens"),
                 "accepted_prediction_tokens": metrics.get("accepted_prediction_tokens"),
                 "rejected_prediction_tokens": metrics.get("rejected_prediction_tokens"),
+                "token_retry_count": _safe_int(
+                    self._current_test_data.get("token_retry_count")
+                ),
+                "token_retry_max_tokens": _safe_int(
+                    self._current_test_data.get("token_retry_max_tokens")
+                ),
             }
         )
         self._current_test_data = {}
@@ -360,6 +366,8 @@ class DbListener(ListenerV3):
                     load_duration_ns=_nvl(tc.get("load_duration_ns"), 0),
                     total_duration_ns=_nvl(tc.get("total_duration_ns"), 0),
                     tokens_per_second=_nvl(tc.get("tokens_per_second"), 0.0),
+                    token_retry_count=_nvl(tc.get("token_retry_count"), 0),
+                    token_retry_max_tokens=_nvl(tc.get("token_retry_max_tokens"), 0),
                 )
                 for tc in self._test_cases
             ]

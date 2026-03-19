@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
 from robot.api.deco import keyword
@@ -108,6 +108,87 @@ class LLMKeywords:
             logger.warn("Unload Model is only supported for Ollama providers")
             return False
         return self.client.unload_model(model)
+
+    # Hard ceiling: no retry should exceed this token count.
+    _MAX_TOKEN_CEILING = 131072
+
+    @keyword("Ask And Grade With Retry")
+    def ask_and_grade_with_retry(
+        self,
+        prompt: str,
+        expected: str,
+        grading_question: Optional[str] = None,
+        max_retries: int = 3,
+    ) -> Tuple[float, str, str]:
+        """Ask the LLM and grade; retry with 8x tokens on wrong non-empty answers.
+
+        When the model responds with a non-empty answer that fails grading,
+        this keyword multiplies ``max_tokens`` by 8 and retries — up to
+        *max_retries* times (e.g. 256 → 2048 → 16384 → 131072).  Empty
+        responses are never retried (they indicate a different problem, not
+        a token budget issue).
+
+        Token scaling is capped at ``_MAX_TOKEN_CEILING`` (131072) to avoid
+        exceeding provider limits.
+
+        Args:
+            prompt: The full prompt to send to the LLM (may be large).
+            expected: The expected answer for grading.
+            grading_question: A shorter question passed to the grader instead
+                of the full prompt.  Defaults to *prompt* when not provided.
+                Use this when the prompt contains large context (e.g. legal
+                agreements) that should not be sent to the grader.
+            max_retries: Maximum number of retries with 8x tokens (default 3).
+
+        Returns:
+            A tuple of ``(score, reason, answer)`` from the final attempt.
+        """
+        max_retries = int(max_retries)
+        original_max_tokens = self.client.max_tokens
+        retries_used = 0
+        grade_q = grading_question if grading_question is not None else prompt
+
+        for attempt in range(1 + max_retries):
+            answer = self.ask_llm(prompt)
+            result = self.grader.grade(grade_q, expected, answer)
+            emit_rfc_data("score", str(result.score))
+            emit_rfc_data("expected_answer", expected)
+            emit_rfc_data("grading_reason", result.reason)
+
+            if result.score >= 1.0:
+                # Success — emit retry metadata and return
+                emit_rfc_data("token_retry_count", str(retries_used))
+                emit_rfc_data("token_retry_max_tokens", str(self.client.max_tokens))
+                logger.info(
+                    f"Grading passed on attempt {attempt + 1} "
+                    f"(max_tokens={self.client.max_tokens})"
+                )
+                return result.score, result.reason, answer
+
+            # Non-empty but wrong — 8x tokens and retry (capped)
+            if answer.strip() and attempt < max_retries:
+                retries_used += 1
+                new_tokens = self.client.max_tokens * 8
+                self.client.max_tokens = min(new_tokens, self._MAX_TOKEN_CEILING)
+                logger.warn(
+                    f"Grading failed (score={result.score}) with non-empty "
+                    f"response on attempt {attempt + 1}. "
+                    f"Retrying with max_tokens={self.client.max_tokens} "
+                    f"({max_retries - retries_used} retries left)"
+                )
+                continue
+
+            # Empty response or exhausted retries — return failure
+            break
+
+        emit_rfc_data("token_retry_count", str(retries_used))
+        emit_rfc_data("token_retry_max_tokens", str(self.client.max_tokens))
+        logger.info(
+            f"Grading failed after {retries_used} retries "
+            f"(final max_tokens={self.client.max_tokens}, "
+            f"original={original_max_tokens})"
+        )
+        return result.score, result.reason, answer
 
     @keyword("Grade Answer")
     def grade_answer(self, question: str, expected: str, actual: str):

@@ -104,6 +104,8 @@ class TestResult:
     load_duration_ns: int = 0
     total_duration_ns: int = 0
     tokens_per_second: float = 0.0
+    token_retry_count: int = 0
+    token_retry_max_tokens: int = 0
     id: int = -1
 
 
@@ -205,6 +207,8 @@ class _SQLiteBackend(_Backend):
         load_duration_ns INTEGER,
         total_duration_ns INTEGER,
         tokens_per_second REAL,
+        token_retry_count INTEGER,
+        token_retry_max_tokens INTEGER,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -257,6 +261,8 @@ class _SQLiteBackend(_Backend):
         tr.load_duration_ns,
         tr.total_duration_ns,
         tr.tokens_per_second,
+        tr.token_retry_count,
+        tr.token_retry_max_tokens,
         r.timestamp,
         r.model_name,
         r.test_suite,
@@ -299,6 +305,8 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN cached_tokens INTEGER",
         "ALTER TABLE test_results ADD COLUMN accepted_prediction_tokens INTEGER",
         "ALTER TABLE test_results ADD COLUMN rejected_prediction_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN token_retry_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN token_retry_max_tokens INTEGER",
     ]
 
     def __init__(self, db_path: str):
@@ -366,9 +374,11 @@ class _SQLiteBackend(_Backend):
                  num_ctx, num_predict,
                  eval_count, eval_duration_ns, prompt_eval_count,
                  prompt_eval_duration_ns, load_duration_ns,
-                 total_duration_ns, tokens_per_second)
+                 total_duration_ns, tokens_per_second,
+                 token_retry_count, token_retry_max_tokens)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?)
                 """,
                 [
                     (
@@ -400,6 +410,8 @@ class _SQLiteBackend(_Backend):
                         r.load_duration_ns,
                         r.total_duration_ns,
                         r.tokens_per_second,
+                        r.token_retry_count,
+                        r.token_retry_max_tokens,
                     )
                     for r in results
                 ],
@@ -532,6 +544,9 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cached_tokens INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS accepted_prediction_tokens INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS rejected_prediction_tokens INTEGER",
+        # Token retry columns.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS token_retry_count INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS token_retry_max_tokens INTEGER",
         # Models table.
         """CREATE TABLE IF NOT EXISTS models (
             name TEXT PRIMARY KEY,
@@ -572,6 +587,8 @@ class _SQLAlchemyBackend(_Backend):
             tr.load_duration_ns,
             tr.total_duration_ns,
             tr.tokens_per_second,
+            tr.token_retry_count,
+            tr.token_retry_max_tokens,
             r.timestamp,
             r.model_name,
             r.test_suite,
@@ -671,6 +688,8 @@ class _SQLAlchemyBackend(_Backend):
             Column("load_duration_ns", Integer),
             Column("total_duration_ns", Integer),
             Column("tokens_per_second", Float),
+            Column("token_retry_count", Integer),
+            Column("token_retry_max_tokens", Integer),
             Index("idx_test_results_run_id", "run_id"),
         )
 
@@ -759,6 +778,8 @@ class _SQLAlchemyBackend(_Backend):
                         "load_duration_ns": r.load_duration_ns,
                         "total_duration_ns": r.total_duration_ns,
                         "tokens_per_second": r.tokens_per_second,
+                        "token_retry_count": r.token_retry_count,
+                        "token_retry_max_tokens": r.token_retry_max_tokens,
                     }
                     for r in results
                 ],
