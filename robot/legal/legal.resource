@@ -53,6 +53,7 @@ Run Needle Scenario
     ...    Provide a precise answer referencing specific section numbers and quoting relevant text where appropriate.
     ${score}    ${reason}    ${response}=    LLM.Ask And Grade With Retry
     ...    ${prompt}    ${scenario}[expected]
+    ...    grading_question=${scenario}[question]
     Log    LLM Response: ${response}
     Log    Grade: score=${score}, reason=${reason}
     Should Be Equal As Integers    ${score}    1
@@ -72,6 +73,7 @@ Run Loophole Scenario
     ...    Provide a precise answer referencing specific section numbers and quoting relevant text where appropriate.
     ${score}    ${reason}    ${response}=    LLM.Ask And Grade With Retry
     ...    ${prompt}    ${scenario}[expected]
+    ...    grading_question=${scenario}[question]
     Log    LLM Response: ${response}
     Log    Grade: score=${score}, reason=${reason}
     Should Be Equal As Integers    ${score}    1

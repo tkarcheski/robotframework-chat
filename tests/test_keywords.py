@@ -462,6 +462,74 @@ class TestAskAndGradeWithRetry:
         # 1 initial + 3 retries = 4 total
         assert kw.client.generate.call_count == 4
 
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_grading_question_separates_prompt_from_grading(
+        self, MockGrader, mock_create
+    ):
+        """grading_question should be passed to grader, not the full prompt."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "auto-renewal after 12 months"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 1024
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.return_value = success
+
+        big_prompt = "BEGIN AGREEMENT\n" + ("x" * 10000) + "\nEND\nQuestion: renewal?"
+        short_q = "What is the auto-renewal clause?"
+
+        kw.ask_and_grade_with_retry(big_prompt, "12 months", grading_question=short_q)
+
+        # LLM should receive the full prompt
+        kw.client.generate.assert_called_once_with(big_prompt)
+        # Grader should receive the short question, not the 10KB prompt
+        kw.grader.grade.assert_called_once_with(
+            short_q, "12 months", "auto-renewal after 12 months"
+        )
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_grading_question_defaults_to_prompt(self, MockGrader, mock_create):
+        """When grading_question is not provided, prompt is used for grading."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.return_value = success
+
+        kw.ask_and_grade_with_retry("What is 6*7?", "42")
+
+        kw.grader.grade.assert_called_once_with("What is 6*7?", "42", "42")
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_token_scaling_capped_at_ceiling(self, MockGrader, mock_create):
+        """Token scaling must not exceed _MAX_TOKEN_CEILING (131072)."""
+        kw = LLMKeywords()
+        kw.client.max_tokens = 32768  # 32K — one 8x would be 262144
+        kw.client.num_ctx = None
+        kw.client.last_metrics = None
+
+        kw.client.generate.side_effect = ["wrong", "correct"]
+        fail = MagicMock()
+        fail.score = 0.0
+        fail.reason = "incorrect"
+        success = MagicMock()
+        success.score = 1.0
+        success.reason = "correct"
+        kw.grader.grade.side_effect = [fail, success]
+
+        kw.ask_and_grade_with_retry("Q", "correct", max_retries=3)
+        # 32768 * 8 = 262144, but capped at 131072
+        assert kw.client.max_tokens == 131072
+
 
 class TestLLMKeywordsWait:
     @patch("rfc.keywords.create_provider")
