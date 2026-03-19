@@ -4,6 +4,7 @@ set -euo pipefail
 RESULTS_DIR="${RESULTS_DIR:-/app/results}"
 OUTPUT_DIR="${OUTPUT_DIR:-/var/www/html/metrics}"
 REFRESH_INTERVAL="${METRICS_REFRESH_INTERVAL:-300}"  # seconds (default: 5 min)
+NAV_INDEX_NAME="${METRICS_NAV_INDEX_NAME:-navigation.html}"
 
 relative_path() {
     local root path
@@ -26,37 +27,39 @@ suite_label() {
     fi
 }
 
-suite_href() {
-    local rel_path="${1:-.}"
-    if [ "$rel_path" = "." ]; then
-        printf './'
+find_suite_entry() {
+    local dir="${1:?suite dir required}"
+    local candidate=""
+
+    if [ -f "${dir}/index.html" ]; then
+        candidate="${dir}/index.html"
+    elif [ -f "${dir}/dashboard.html" ]; then
+        candidate="${dir}/dashboard.html"
     else
-        printf '%s/' "$rel_path"
+        while IFS= read -r html_file; do
+            case "$(basename "$html_file")" in
+                index.html|"${NAV_INDEX_NAME}")
+                    continue
+                    ;;
+            esac
+            candidate="$html_file"
+            break
+        done < <(find "$dir" -maxdepth 1 -name "*.html" -type f | sort)
     fi
+
+    if [ -z "$candidate" ]; then
+        return 1
+    fi
+
+    relative_path "$OUTPUT_DIR" "$candidate"
 }
 
-generate_index() {
-    # Build an index page listing all suite metric dashboards.
-    local index="${OUTPUT_DIR}/index.html"
-    local suites=()
+render_navigation_page() {
+    local nav_index="$1"
+    shift
+    local entries=("$@")
 
-    # Walk all metrics HTML files, including root-level dashboards.
-    while IFS= read -r html_file; do
-        local dir rel_dir
-        dir=$(dirname "$html_file")
-        rel_dir=$(relative_path "$OUTPUT_DIR" "$dir")
-        # Deduplicate (multiple .html files per suite dir)
-        local already=false
-        for s in "${suites[@]+"${suites[@]}"}"; do
-        [ "$s" = "$rel_dir" ] && already=true && break
-        done
-        "$already" || suites+=("$rel_dir")
-    done < <(
-        find "$OUTPUT_DIR" -mindepth 1 -name "*.html" -type f 2>/dev/null \
-            ! -path "${index}" | sort
-    )
-
-    cat > "$index" <<'HEADER'
+    cat > "$nav_index" <<'HEADER'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,23 +84,64 @@ generate_index() {
   <h1>Robot Framework Metrics</h1>
 HEADER
 
-    if [ ${#suites[@]} -eq 0 ]; then
-        echo '  <p class="empty">No metrics generated yet. Run some Robot Framework tests and wait for the next refresh cycle.</p>' >> "$index"
+    if [ ${#entries[@]} -eq 0 ]; then
+        echo '  <p class="empty">No metrics generated yet. Run some Robot Framework tests and wait for the next refresh cycle.</p>' >> "$nav_index"
     else
-        echo '  <ul class="suite-list">' >> "$index"
-        for suite in "${suites[@]}"; do
-            echo "    <li><a href=\"$(suite_href "$suite")\">$(suite_label "$suite")</a></li>" >> "$index"
+        echo '  <ul class="suite-list">' >> "$nav_index"
+        local entry suite link label
+        for entry in "${entries[@]}"; do
+            suite="${entry%%|*}"
+            link="${entry#*|}"
+            label=$(suite_label "$suite")
+            echo "    <li><a href=\"${link}\">${label}</a></li>" >> "$nav_index"
         done
-        echo '  </ul>' >> "$index"
+        echo '  </ul>' >> "$nav_index"
     fi
 
     local ts
     ts=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-    cat >> "$index" <<FOOTER
+    cat >> "$nav_index" <<FOOTER
   <p class="meta">Last updated: ${ts} &mdash; refreshes every ${REFRESH_INTERVAL}s</p>
 </body>
 </html>
 FOOTER
+}
+
+generate_index() {
+    # Build a navigation page listing all suite metric dashboards.
+    local nav_index="${OUTPUT_DIR}/${NAV_INDEX_NAME}"
+    local entries=()
+    local suite_dirs=()
+
+    while IFS= read -r html_file; do
+        local dir rel_dir already=false
+        dir=$(dirname "$html_file")
+        rel_dir=$(relative_path "$OUTPUT_DIR" "$dir")
+        for s in "${suite_dirs[@]+"${suite_dirs[@]}"}"; do
+            [ "$s" = "$rel_dir" ] && already=true && break
+        done
+        "$already" || suite_dirs+=("$rel_dir")
+    done < <(
+        find "$OUTPUT_DIR" -mindepth 1 -name "*.html" -type f 2>/dev/null \
+            ! -name "${NAV_INDEX_NAME}" | sort
+    )
+
+    local rel_dir link
+    for rel_dir in "${suite_dirs[@]+"${suite_dirs[@]}"}"; do
+        local dir_path="$OUTPUT_DIR"
+        if [ "$rel_dir" != "." ]; then
+            dir_path="${OUTPUT_DIR}/${rel_dir}"
+        fi
+        if link=$(find_suite_entry "$dir_path"); then
+            entries+=("${rel_dir}|${link}")
+        fi
+    done
+
+    render_navigation_page "$nav_index" "${entries[@]+"${entries[@]}"}"
+
+    if [ ! -f "${OUTPUT_DIR}/index.html" ]; then
+        cp "$nav_index" "${OUTPUT_DIR}/index.html"
+    fi
 }
 
 generate_metrics() {
