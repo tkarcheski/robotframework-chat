@@ -109,11 +109,15 @@ class LLMKeywords:
             return False
         return self.client.unload_model(model)
 
+    # Hard ceiling: no retry should exceed this token count.
+    _MAX_TOKEN_CEILING = 131072
+
     @keyword("Ask And Grade With Retry")
     def ask_and_grade_with_retry(
         self,
-        question: str,
+        prompt: str,
         expected: str,
+        grading_question: Optional[str] = None,
         max_retries: int = 3,
     ) -> Tuple[float, str, str]:
         """Ask the LLM and grade; retry with 8x tokens on wrong non-empty answers.
@@ -124,10 +128,17 @@ class LLMKeywords:
         responses are never retried (they indicate a different problem, not
         a token budget issue).
 
+        Token scaling is capped at ``_MAX_TOKEN_CEILING`` (131072) to avoid
+        exceeding provider limits.
+
         Args:
-            question: The prompt to send to the LLM.
+            prompt: The full prompt to send to the LLM (may be large).
             expected: The expected answer for grading.
-            max_retries: Maximum number of retries with doubled tokens (default 3).
+            grading_question: A shorter question passed to the grader instead
+                of the full prompt.  Defaults to *prompt* when not provided.
+                Use this when the prompt contains large context (e.g. legal
+                agreements) that should not be sent to the grader.
+            max_retries: Maximum number of retries with 8x tokens (default 3).
 
         Returns:
             A tuple of ``(score, reason, answer)`` from the final attempt.
@@ -135,10 +146,11 @@ class LLMKeywords:
         max_retries = int(max_retries)
         original_max_tokens = self.client.max_tokens
         retries_used = 0
+        grade_q = grading_question if grading_question is not None else prompt
 
         for attempt in range(1 + max_retries):
-            answer = self.ask_llm(question)
-            result = self.grader.grade(question, expected, answer)
+            answer = self.ask_llm(prompt)
+            result = self.grader.grade(grade_q, expected, answer)
             emit_rfc_data("score", str(result.score))
             emit_rfc_data("expected_answer", expected)
             emit_rfc_data("grading_reason", result.reason)
@@ -153,10 +165,11 @@ class LLMKeywords:
                 )
                 return result.score, result.reason, answer
 
-            # Non-empty but wrong — 8x tokens and retry
+            # Non-empty but wrong — 8x tokens and retry (capped)
             if answer.strip() and attempt < max_retries:
                 retries_used += 1
-                self.client.max_tokens *= 8
+                new_tokens = self.client.max_tokens * 8
+                self.client.max_tokens = min(new_tokens, self._MAX_TOKEN_CEILING)
                 logger.warn(
                     f"Grading failed (score={result.score}) with non-empty "
                     f"response on attempt {attempt + 1}. "
