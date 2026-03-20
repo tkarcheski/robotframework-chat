@@ -1,14 +1,7 @@
 *** Settings ***
 Documentation     Tests LLM task management abilities: prioritization, decomposition,
 ...               dependency analysis, triage, scheduling, and planning.
-Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
-
-*** Keywords ***
-Ask And Validate
-    [Arguments]    ${question}    ${expected}
-    ${score}    ${reason}    ${answer}=    LLM.Ask And Grade With Retry    ${question}    ${expected}
-    Should Be Equal As Integers    ${score}    1
-    Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
+Resource          ../../resources/ask_and_validate.resource
 
 *** Test Cases ***
 IQ 100 Simple Task Prioritization
