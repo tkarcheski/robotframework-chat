@@ -40,6 +40,39 @@ def parse_thinking(text: str) -> tuple[str, Optional[str]]:
     return clean, thinking
 
 
+def extract_json(text: str) -> str:
+    """Extract JSON from text that may contain markdown or thinking tags.
+
+    Handles:
+    - Markdown code blocks (``\\`\\`\\`json...\\`\\`\\```)
+    - Thinking tags (``<think>`` / ``<thinking>``)
+    - Text before/after JSON
+
+    Returns the extracted JSON string, or the original text if no JSON is found.
+    """
+    text, _ = parse_thinking(text)
+
+    # Try to find JSON in markdown code blocks
+    json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+    matches = re.findall(json_block_pattern, text, re.DOTALL)
+    if matches:
+        return matches[0]
+
+    # Try to find bare JSON with score/reason fields
+    json_pattern = r'(\{.*"score".*"reason".*?\})'
+    matches = re.findall(json_pattern, text, re.DOTALL)
+    if matches:
+        return matches[0]
+
+    # Last resort: any JSON object, pick the largest match
+    json_pattern = r"(\{.*?\})"
+    matches = re.findall(json_pattern, text, re.DOTALL)
+    if matches:
+        return max(matches, key=len)
+
+    return text
+
+
 def estimate_token_count(text: Optional[str]) -> int:
     """Estimate token count using whitespace splitting.
 

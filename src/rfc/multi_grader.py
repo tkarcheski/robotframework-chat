@@ -7,12 +7,11 @@ score with agreement tracking.
 from __future__ import annotations
 
 import json
-import re
 from statistics import median
 from dataclasses import dataclass
 from typing import Any, List, Sequence
 
-from .thinking import parse_thinking
+from .thinking import extract_json
 
 
 @dataclass
@@ -31,28 +30,6 @@ class MultiGradeResult:
     @property
     def unanimous(self) -> bool:
         return self.agreement_ratio == 1.0
-
-
-def _extract_json(text: str) -> str:
-    """Extract JSON from text that may contain markdown or thinking tags."""
-    text, _ = parse_thinking(text)
-
-    json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
-    matches = re.findall(json_block_pattern, text, re.DOTALL)
-    if matches:
-        return matches[0]
-
-    json_pattern = r'(\{.*"score".*"reason".*?\})'
-    matches = re.findall(json_pattern, text, re.DOTALL)
-    if matches:
-        return matches[0]
-
-    json_pattern = r"(\{.*?\})"
-    matches = re.findall(json_pattern, text, re.DOTALL)
-    if matches:
-        return max(matches, key=len)
-
-    return text
 
 
 class MultiGrader:
@@ -144,7 +121,7 @@ Format:
         """Get a single grade from one provider. Returns (0.0, error) on failure."""
         try:
             raw = provider.generate(prompt)
-            json_text = _extract_json(raw)
+            json_text = extract_json(raw)
             parsed = json.loads(json_text)
             score = float(parsed.get("score", 0))
             reason = str(parsed.get("reason", ""))
