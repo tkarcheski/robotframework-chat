@@ -219,6 +219,28 @@ LLM Can Do Basic Math
 
 ---
 
+## Screenshots
+
+### Model Analytics Dashboard
+
+![Model Analytics Dashboard](https://raw.githubusercontent.com/tkarcheski/robotframework-chat/main/docs/pics/superset_example_dashboard_2_27.png)
+
+Suite performance, per-model test distribution, keyword pass/fail breakdown, and model catalog — all in one view.
+
+### Host Metrics Dashboard
+
+![Host Metrics Dashboard](https://raw.githubusercontent.com/tkarcheski/robotframework-chat/main/docs/pics/superset_demo_3_19_hosts.png)
+
+Passing test counts by model and outcome, recent test runs, previous domain counts, and pass-rate trends over time across hosts.
+
+### Model Details Dashboard
+
+![Model Details Dashboard](https://raw.githubusercontent.com/tkarcheski/robotframework-chat/main/docs/pics/superset_demo_3_19_models.png)
+
+Drill into individual models: passing test counts, recent test rates, per-model metrics, and full test detail with prompts and responses.
+
+---
+
 ## Core Philosophy
 
 - **LLMs are software** — test them like software
