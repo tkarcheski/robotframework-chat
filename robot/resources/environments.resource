@@ -11,11 +11,12 @@ ${SHARED_VOLUME_BASE}    /tmp/rfc-environments
 ${DEFAULT_TIMEOUT}       30
 
 *** Keywords ***
-Setup Python Environment
-    [Documentation]    Setup Python container with shared workspace for the test suite
-    [Arguments]    ${profile}=PYTHON_STANDARD    ${suite_name}=python-suite
+Setup Container Environment
+    [Documentation]    Generic container setup with shared workspace. Sets global variables
+    ...                ${language_prefix}_CONTAINER, ${language_prefix}_WORKSPACE, and
+    ...                ${language_prefix}_CONTAINER_NAME.
+    [Arguments]    ${language_prefix}    ${profile}    ${suite_name}
 
-    # Generate unique container name using timestamp
     ${timestamp}=    Evaluate    int(__import__('time').time())
     ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
 
@@ -23,38 +24,27 @@ Setup Python Environment
     Create Directory    ${volume_path}
 
     ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${container_id}=    Create Container From Profile    ${profile}
-    ...    container_name=rfc-${unique_name}
-    ...    custom_volumes=${volumes}
+    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
+    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
 
-    Set Global Variable    ${PYTHON_CONTAINER}    ${container_id}
-    Set Global Variable    ${PYTHON_WORKSPACE}    ${volume_path}
-    Set Global Variable    ${PYTHON_CONTAINER_NAME}    rfc-${unique_name}
+    Set Global Variable    ${${language_prefix}_CONTAINER}    ${container_id}
+    Set Global Variable    ${${language_prefix}_WORKSPACE}    ${volume_path}
+    Set Global Variable    ${${language_prefix}_CONTAINER_NAME}    rfc-${unique_name}
 
-    Log    Python environment ready: ${container_id} (${PYTHON_CONTAINER_NAME})
+    Log    ${language_prefix} environment ready: ${container_id} (rfc-${unique_name})
+    RETURN    ${container_id}
+
+Setup Python Environment
+    [Documentation]    Setup Python container with shared workspace for the test suite
+    [Arguments]    ${profile}=PYTHON_STANDARD    ${suite_name}=python-suite
+    ${container_id}=    Setup Container Environment    PYTHON    ${profile}    ${suite_name}
     RETURN    ${container_id}
 
 Setup Node Environment
     [Documentation]    Setup Node.js container for JavaScript/TypeScript testing
     [Arguments]    ${profile}=NODE_STANDARD    ${suite_name}=node-suite
-
-    # Generate unique container name using timestamp
-    ${timestamp}=    Evaluate    int(__import__('time').time())
-    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
-
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
-    Create Directory    ${volume_path}
-
-    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${container_id}=    Create Container From Profile    ${profile}
-    ...    container_name=rfc-${unique_name}
-    ...    custom_volumes=${volumes}
-
-    Set Global Variable    ${NODE_CONTAINER}    ${container_id}
-    Set Global Variable    ${NODE_WORKSPACE}    ${volume_path}
-    Set Global Variable    ${NODE_CONTAINER_NAME}    rfc-${unique_name}
-
-    Log    Node environment ready: ${container_id} (${NODE_CONTAINER_NAME})
+    ${container_id}=    Setup Container Environment    NODE    ${profile}    ${suite_name}
     RETURN    ${container_id}
 
 Setup Shell Environment
@@ -83,67 +73,19 @@ Setup Shell Environment
 Setup C Environment
     [Documentation]    Setup GCC container for C code compilation and execution
     [Arguments]    ${profile}=GCC_STANDARD    ${suite_name}=c-suite
-
-    ${timestamp}=    Evaluate    int(__import__('time').time())
-    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
-
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
-    Create Directory    ${volume_path}
-
-    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${profile_dict}=    Get Variable Value    ${${profile}}
-    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
-    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
-
-    Set Global Variable    ${C_CONTAINER}    ${container_id}
-    Set Global Variable    ${C_WORKSPACE}    ${volume_path}
-    Set Global Variable    ${C_CONTAINER_NAME}    rfc-${unique_name}
-
-    Log    C environment ready: ${container_id} (${C_CONTAINER_NAME})
+    ${container_id}=    Setup Container Environment    C    ${profile}    ${suite_name}
     RETURN    ${container_id}
 
 Setup Rust Environment
     [Documentation]    Setup Rust container for Rust code compilation and execution
     [Arguments]    ${profile}=RUST_STANDARD    ${suite_name}=rust-suite
-
-    ${timestamp}=    Evaluate    int(__import__('time').time())
-    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
-
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
-    Create Directory    ${volume_path}
-
-    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${profile_dict}=    Get Variable Value    ${${profile}}
-    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
-    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
-
-    Set Global Variable    ${RUST_CONTAINER}    ${container_id}
-    Set Global Variable    ${RUST_WORKSPACE}    ${volume_path}
-    Set Global Variable    ${RUST_CONTAINER_NAME}    rfc-${unique_name}
-
-    Log    Rust environment ready: ${container_id} (${RUST_CONTAINER_NAME})
+    ${container_id}=    Setup Container Environment    RUST    ${profile}    ${suite_name}
     RETURN    ${container_id}
 
 Setup Bash Environment
     [Documentation]    Setup Bash container for bash script execution
     [Arguments]    ${profile}=BASH_STANDARD    ${suite_name}=bash-suite
-
-    ${timestamp}=    Evaluate    int(__import__('time').time())
-    ${unique_name}=    Set Variable    ${suite_name}-${timestamp}
-
-    ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
-    Create Directory    ${volume_path}
-
-    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${profile_dict}=    Get Variable Value    ${${profile}}
-    ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
-    ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
-
-    Set Global Variable    ${BASH_CONTAINER}    ${container_id}
-    Set Global Variable    ${BASH_WORKSPACE}    ${volume_path}
-    Set Global Variable    ${BASH_CONTAINER_NAME}    rfc-${unique_name}
-
-    Log    Bash environment ready: ${container_id} (${BASH_CONTAINER_NAME})
+    ${container_id}=    Setup Container Environment    BASH    ${profile}    ${suite_name}
     RETURN    ${container_id}
 
 Write Source File In Container
