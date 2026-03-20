@@ -27,7 +27,7 @@ from .ceo_prompts import (
     build_market_research_prompt,
     build_patent_strategy_prompt,
 )
-from .grader import Grader
+from .thinking import extract_json
 from .llm_client import create_provider
 from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
@@ -131,8 +131,7 @@ class CEOKeywords:
 
     def _extract_json_response(self, raw: str) -> Dict[str, Any]:
         """Extract and parse JSON from LLM response."""
-        extractor = Grader(self.client)
-        json_text = extractor._extract_json(raw)
+        json_text = extract_json(raw)
         return json.loads(json_text)
 
     # ------------------------------------------------------------------
