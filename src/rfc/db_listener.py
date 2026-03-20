@@ -15,7 +15,6 @@ The listener reads DATABASE_URL from the environment if no explicit
 URL is provided.
 """
 
-import gzip
 import os
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
@@ -42,6 +41,14 @@ from .metrics import (
     safe_int,
     warn_near_miss,
 )
+from .output_xml import (
+    build_output_xml_source,
+    build_output_xml_url,
+    format_size,
+    read_and_compress_output_xml,
+    resolve_output_dir,
+    resolve_output_file,
+)
 from .rfc_data import RFC_DATA_PREFIX
 from .test_database import (
     TestDatabase,
@@ -57,6 +64,14 @@ _extract_llm_metrics = extract_llm_metrics
 _warn_near_miss = warn_near_miss
 _get_robot_float = get_robot_float
 _get_robot_int = get_robot_int
+
+# Backward-compatible aliases for output_xml functions.
+_resolve_output_dir = resolve_output_dir
+_resolve_output_file = resolve_output_file
+_read_and_compress_output_xml = read_and_compress_output_xml
+_build_output_xml_source = build_output_xml_source
+_build_output_xml_url = build_output_xml_url
+_format_size = format_size
 
 
 class DbListener(ListenerV3):
@@ -365,14 +380,14 @@ class DbListener(ListenerV3):
         if self._last_run_id is None:
             return
 
-        output_xml_gz = _read_and_compress_output_xml()
+        output_xml_gz = read_and_compress_output_xml()
         if not output_xml_gz:
             return
 
         try:
             db = self._get_db()
             db.update_output_xml(self._last_run_id, output_xml_gz)
-            blob_size = _format_size(len(output_xml_gz))
+            blob_size = format_size(len(output_xml_gz))
             msg = (
                 f"DbListener: updated output.xml ({blob_size}) "
                 f"for run_id={self._last_run_id}"
@@ -386,103 +401,3 @@ class DbListener(ListenerV3):
             )
             logger.warn(error_msg)
             logger.console(error_msg)
-
-
-def _resolve_output_dir() -> str:
-    """Resolve the Robot Framework output directory.
-
-    Priority:
-    1. ``ROBOT_OUTPUT_DIR`` environment variable (explicit override).
-    2. Robot Framework's ``${OUTPUT DIR}`` built-in variable.
-    3. Empty string if neither is available.
-    """
-    env_dir = os.getenv("ROBOT_OUTPUT_DIR")
-    if env_dir:
-        return env_dir
-    try:
-        robot_dir = BuiltIn().get_variable_value("${OUTPUT DIR}")
-        if robot_dir:
-            return str(robot_dir)
-    except Exception:
-        pass  # Not running inside Robot context
-    return ""
-
-
-def _resolve_output_file() -> str:
-    """Resolve the full path to Robot Framework's output XML file.
-
-    Priority:
-    1. ``ROBOT_OUTPUT_DIR`` env var + ``output.xml`` (backward compatible).
-    2. Robot Framework's ``${OUTPUT FILE}`` built-in variable (respects
-       ``--output`` flag and ``--output NONE``).
-    3. Empty string if neither is available.
-    """
-    env_dir = os.getenv("ROBOT_OUTPUT_DIR")
-    if env_dir:
-        return os.path.join(env_dir, "output.xml")
-    try:
-        output_file = BuiltIn().get_variable_value("${OUTPUT FILE}")
-        if output_file and str(output_file).upper() != "NONE":
-            return str(output_file)
-    except Exception:
-        pass  # Not running inside Robot context
-    return ""
-
-
-def _read_and_compress_output_xml() -> bytes:
-    """Read output.xml from Robot's output directory and gzip-compress it."""
-    output_path = _resolve_output_file()
-    if not output_path:
-        return b""
-    if not os.path.isfile(output_path):
-        return b""
-    try:
-        with open(output_path, "rb") as f:
-            return gzip.compress(f.read())
-    except OSError:
-        return b""
-
-
-def _build_output_xml_source() -> str:
-    """Return the filesystem path to the Robot Framework output.xml.
-
-    This traces the test run back to the original output.xml that was
-    produced by Robot Framework, enabling audit and replay.
-    """
-    output_path = _resolve_output_file()
-    if output_path:
-        if os.path.isfile(output_path):
-            return os.path.abspath(output_path)
-        return output_path
-    return ""
-
-
-def _build_output_xml_url() -> str:
-    """Build a URL to the output.xml file from environment variables.
-
-    Only returns proper web URLs. Returns empty string when no web URL
-    is available (never stores filesystem paths).
-
-    Priority:
-    1. REPORT_BASE_URL — explicit base URL
-    2. CI_JOB_URL — GitLab CI artifact URL pattern
-    """
-    base = os.getenv("REPORT_BASE_URL")
-    if base:
-        return f"{base.rstrip('/')}/output.xml"
-
-    ci_job_url = os.getenv("CI_JOB_URL")
-    if ci_job_url:
-        return f"{ci_job_url}/artifacts/browse/output.xml"
-
-    return ""
-
-
-def _format_size(size_bytes: int) -> str:
-    """Format a byte count as a human-readable string."""
-    if size_bytes < 1024:
-        return f"{size_bytes}B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f}KB"
-    else:
-        return f"{size_bytes / (1024 * 1024):.1f}MB"
