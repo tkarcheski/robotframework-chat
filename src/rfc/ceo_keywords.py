@@ -28,10 +28,9 @@ from .ceo_prompts import (
     build_patent_strategy_prompt,
 )
 from .thinking import extract_json
-from .llm_client import create_provider
+from .llm_client import create_provider, resolve_timeout
 from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
-from .constants import DEFAULT_TIMEOUT
 from .web_cache import SearchResult, WebSearchCache
 
 _DEFAULT_CEO_MAX_TOKENS = 4096
@@ -49,9 +48,7 @@ class CEOKeywords:
         timeout: Optional[int] = None,
         max_retries: int = 2,
     ) -> None:
-        if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
-        self._timeout = int(timeout)
+        self._timeout = resolve_timeout(timeout)
         self._max_retries = int(max_retries)
         self._client: Optional[Any] = None
         self.web_cache = WebSearchCache()

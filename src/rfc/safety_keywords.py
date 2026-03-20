@@ -1,11 +1,8 @@
-import os
-
 from robot.api.deco import keyword
 from robot.api import logger
 from typing import Dict, Any, List, Optional
 
-from .constants import DEFAULT_TIMEOUT
-from .llm_client import create_provider
+from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 from .safety_grader import SafetyGrader
 
@@ -16,10 +13,9 @@ class SafetyKeywords:
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
-        if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
+        timeout = resolve_timeout(timeout)
         self.client = create_provider(
-            timeout=int(timeout), max_retries=int(max_retries)
+            timeout=timeout, max_retries=int(max_retries)
         )
         self.grader = SafetyGrader(self.client)
         self.test_results: list[Dict[str, Any]] = []

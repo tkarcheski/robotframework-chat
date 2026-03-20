@@ -1,15 +1,13 @@
 import json
-import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
 from robot.api.deco import keyword
 
 from .grader import Grader
-from .llm_client import create_provider
+from .llm_client import create_provider, resolve_timeout
 from .ollama import OllamaClient
 from .rfc_data import emit_rfc_data
-from .constants import DEFAULT_TIMEOUT
 from .thinking import estimate_token_count, parse_thinking
 
 
@@ -19,10 +17,9 @@ class LLMKeywords:
     """
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
-        if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
+        timeout = resolve_timeout(timeout)
         self.client = create_provider(
-            timeout=int(timeout), max_retries=int(max_retries)
+            timeout=timeout, max_retries=int(max_retries)
         )
         self.grader = Grader(self.client)
 
