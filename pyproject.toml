@@ -87,7 +87,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-exclude = ["^scripts/", "^tests/", "^superset/"]
+exclude = ["^scripts/", "^tests/"]
 
 [[tool.mypy.overrides]]
 module = ["robot.*"]
@@ -96,6 +96,14 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["scripts.*"]
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = [
+    "sqlalchemy",
+    "sqlalchemy.*",
+    "superset.*",
+]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc"]
