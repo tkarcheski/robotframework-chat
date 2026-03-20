@@ -8,6 +8,7 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .retry import retry_on_transient
 
 
 def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[float]:
@@ -142,39 +143,21 @@ class OllamaClient:
             payload["keep_alive"] = self.keep_alive
 
         self.last_metrics = None
-        last_exception: Exception | None = None
-        for attempt in range(1 + self.max_retries):
-            try:
-                response = requests.post(
-                    f"{self.base_url}/api/generate",
-                    json=payload,
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
-                data = response.json()
-                text = data["response"].strip()
-                self.last_metrics = _extract_metrics(data, self.model)
-                logger.info(f"{self.model} >> {text}")
-                return text
-            except (
-                requests.exceptions.ReadTimeout,
-                requests.exceptions.ConnectionError,
-            ) as exc:
-                last_exception = exc
-                if attempt < self.max_retries:
-                    delay = 2 ** (attempt + 1)
-                    logger.warn(
-                        f"generate() attempt {attempt + 1} failed: {exc}. "
-                        f"Retrying in {delay}s "
-                        f"({self.max_retries - attempt} retries left)"
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.error(
-                        f"generate() failed after {attempt + 1} attempts: {exc}"
-                    )
 
-        raise last_exception  # type: ignore[misc]
+        def _do_request() -> str:
+            response = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            text = data["response"].strip()
+            self.last_metrics = _extract_metrics(data, self.model)
+            logger.info(f"{self.model} >> {text}")
+            return text
+
+        return retry_on_transient(_do_request, max_retries=self.max_retries)
 
     def unload_model(self, model: Optional[str] = None) -> bool:
         """Unload a model from VRAM by sending keep_alive=0.

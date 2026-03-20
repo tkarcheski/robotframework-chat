@@ -1,13 +1,13 @@
 """OpenAI Chat Completions API client for LLM generation."""
 
 import os
-import time
 from typing import Any, Dict, Optional
 
 from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .retry import retry_on_transient
 
 
 class OpenAIClient:
@@ -108,40 +108,22 @@ class OpenAIClient:
         }
 
         self.last_metrics = None
-        last_exception: Exception | None = None
-        for attempt in range(1 + self.max_retries):
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
-                data = response.json()
-                text = data["choices"][0]["message"]["content"].strip()
-                self.last_metrics = _extract_metrics(data, self.model)
-                logger.info(f"{self.model} >> {text}")
-                return text
-            except (
-                requests.exceptions.ReadTimeout,
-                requests.exceptions.ConnectionError,
-            ) as exc:
-                last_exception = exc
-                if attempt < self.max_retries:
-                    delay = 2 ** (attempt + 1)
-                    logger.warn(
-                        f"generate() attempt {attempt + 1} failed: {exc}. "
-                        f"Retrying in {delay}s "
-                        f"({self.max_retries - attempt} retries left)"
-                    )
-                    time.sleep(delay)
-                else:
-                    logger.error(
-                        f"generate() failed after {attempt + 1} attempts: {exc}"
-                    )
 
-        raise last_exception  # type: ignore[misc]
+        def _do_request() -> str:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            self.last_metrics = _extract_metrics(data, self.model)
+            logger.info(f"{self.model} >> {text}")
+            return text
+
+        return retry_on_transient(_do_request, max_retries=self.max_retries)
 
 
 def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:

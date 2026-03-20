@@ -136,8 +136,8 @@ class TestGenerate:
 
 
 class TestGenerateRetry:
-    @patch("rfc.openai_client.logger")
-    @patch("rfc.openai_client.time.sleep")
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     @patch("rfc.openai_client.requests.post")
     def test_retries_on_read_timeout(self, mock_post, mock_sleep, mock_logger):
         mock_resp = MagicMock()
@@ -158,8 +158,8 @@ class TestGenerateRetry:
         assert mock_post.call_count == 2
         mock_sleep.assert_called_once_with(2)
 
-    @patch("rfc.openai_client.logger")
-    @patch("rfc.openai_client.time.sleep")
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     @patch("rfc.openai_client.requests.post")
     def test_retries_on_connection_error(self, mock_post, mock_sleep, mock_logger):
         mock_resp = MagicMock()
@@ -179,8 +179,8 @@ class TestGenerateRetry:
         assert result == "ok"
         assert mock_post.call_count == 2
 
-    @patch("rfc.openai_client.logger")
-    @patch("rfc.openai_client.time.sleep")
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     @patch("rfc.openai_client.requests.post")
     def test_exhausts_retries_then_raises(self, mock_post, mock_sleep, mock_logger):
         mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
@@ -190,8 +190,8 @@ class TestGenerateRetry:
             client.generate("test")
         assert mock_post.call_count == 3
 
-    @patch("rfc.openai_client.logger")
-    @patch("rfc.openai_client.time.sleep")
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     @patch("rfc.openai_client.requests.post")
     def test_no_retry_on_http_error(self, mock_post, mock_sleep, mock_logger):
         mock_post.side_effect = req_lib.exceptions.HTTPError("401 Unauthorized")
@@ -202,7 +202,7 @@ class TestGenerateRetry:
         assert mock_post.call_count == 1
         mock_sleep.assert_not_called()
 
-    @patch("rfc.openai_client.logger")
+    @patch("rfc.retry.logger")
     @patch("rfc.openai_client.requests.post")
     def test_no_retry_when_max_retries_zero(self, mock_post, mock_logger):
         mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
@@ -212,8 +212,8 @@ class TestGenerateRetry:
             client.generate("test")
         assert mock_post.call_count == 1
 
-    @patch("rfc.openai_client.logger")
-    @patch("rfc.openai_client.time.sleep")
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     @patch("rfc.openai_client.requests.post")
     def test_exponential_backoff_timing(self, mock_post, mock_sleep, mock_logger):
         mock_post.side_effect = req_lib.exceptions.ReadTimeout("timed out")
