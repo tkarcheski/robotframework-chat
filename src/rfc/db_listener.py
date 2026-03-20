@@ -21,15 +21,10 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
-from robot.api.interfaces import ListenerV3  # type: ignore
 from robot.libraries.BuiltIn import BuiltIn  # type: ignore
-from robot.result.model import Message  # type: ignore
-from robot.result.model import TestCase as ResultTest  # type: ignore
-from robot.result.model import TestSuite as ResultSuite  # type: ignore
-from robot.running.model import TestCase as RunningTest  # type: ignore
-from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
 from . import __version__
+from .base_listener import BaseListener
 from .git_metadata import collect_ci_metadata
 from .host_info import collect_host_info
 from .metrics import (
@@ -49,7 +44,6 @@ from .output_xml import (
     resolve_output_dir,
     resolve_output_file,
 )
-from .rfc_data import RFC_DATA_PREFIX
 from .test_database import (
     TestDatabase,
     TestResult,
@@ -74,15 +68,19 @@ _build_output_xml_url = build_output_xml_url
 _format_size = format_size
 
 
-class DbListener(ListenerV3):
+class DbListener(BaseListener):
     """Listener that archives Robot Framework results to a SQL database.
 
-    Captures structured data emitted by keywords via log messages with
-    the ``RFC_DATA:`` prefix. Recognised keys:
+    Extends :class:`~rfc.base_listener.BaseListener` for suite depth
+    tracking and RFC_DATA capture.  Recognised keys:
 
     - ``RFC_DATA:actual_answer:<text>``
     - ``RFC_DATA:expected_answer:<text>``
     - ``RFC_DATA:grading_reason:<text>``
+    - ``RFC_DATA:llm_metrics:<json>``
+    - ``RFC_DATA:score:<float>``
+    - ``RFC_DATA:thinking_text:<text>``
+    - ``RFC_DATA:thinking_tokens:<int>``
 
     At end_suite, stores run-level and test-level summaries.  In close()
     — after Robot has flushed the output file — reads output.xml,
@@ -93,20 +91,20 @@ class DbListener(ListenerV3):
         robot --listener rfc.db_listener.DbListener:database_url=<URL> tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 3
-
     def __init__(self, database_url: Optional[str] = None):
+        super().__init__()
         self._database_url = database_url or os.getenv("DATABASE_URL")
         self._db: Optional[TestDatabase] = None
         self._start_time: Optional[datetime] = None
         self._ci_info: Dict[str, str] = {}
         self._host_info: Dict[str, Any] = {}
         self._test_cases: List[Dict[str, Any]] = []
-        self._suite_depth = 0
-        # Per-test structured data captured from RFC_DATA: log messages.
-        self._current_test_data: Dict[str, str] = {}
         self._current_test_name: Optional[str] = None
         self._last_run_id: Optional[int] = None
+
+    # ------------------------------------------------------------------
+    # Database helpers
+    # ------------------------------------------------------------------
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -134,38 +132,28 @@ class DbListener(ListenerV3):
             return f"SQLite: {path}"
         return "NOT CONFIGURED (DATABASE_URL is not set)"
 
-    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        self._suite_depth += 1
-        if self._suite_depth == 1:
-            self._start_time = datetime.now(UTC)
-            self._ci_info = collect_ci_metadata()
-            self._host_info = collect_host_info()
-            self._test_cases = []
-            dest = self._describe_database_destination()
-            banner = f"DbListener: archiving results to {dest}"
-            logger.info(banner)
-            logger.console(banner)
+    # ------------------------------------------------------------------
+    # BaseListener hooks
+    # ------------------------------------------------------------------
 
-    def start_test(self, data: RunningTest, result: ResultTest) -> None:
-        """Reset per-test structured data at the start of each test."""
-        self._current_test_data = {}
+    def on_suite_start(self, data: Any, result: Any) -> None:
+        self._start_time = datetime.now(UTC)
+        self._ci_info = collect_ci_metadata()
+        self._host_info = collect_host_info()
+        self._test_cases = []
+        dest = self._describe_database_destination()
+        banner = f"DbListener: archiving results to {dest}"
+        logger.info(banner)
+        logger.console(banner)
+
+    def on_test_start(self, data: Any, result: Any) -> None:
         self._current_test_name = data.name
 
-    def log_message(self, message: Message) -> None:
-        """Capture structured data from ``RFC_DATA:`` log messages."""
-        text = message.message
-        if not isinstance(text, str):
-            return
-        if text.startswith(RFC_DATA_PREFIX):
-            payload = text[len(RFC_DATA_PREFIX) :]
-            key, _, value = payload.partition(":")
-            if key:
-                self._current_test_data[key] = value
-            return
-        # Detect near-miss typos to prevent silent data loss.
-        _warn_near_miss(text)
+    def on_log_message(self, message: Any) -> None:
+        """Detect near-miss typos to prevent silent data loss."""
+        warn_near_miss(message.message)
 
-    def end_test(self, data: RunningTest, result: ResultTest) -> None:
+    def on_test_end(self, data: Any, result: Any) -> None:
         doc = data.doc
         tags = list(data.tags)
 
@@ -185,11 +173,11 @@ class DbListener(ListenerV3):
                 except (ValueError, TypeError):
                     pass
 
-        parsed = _parse_tags(tags)
+        parsed = parse_tags(tags)
         tags_str = parsed["tags_sorted"]
 
         # Extract performance metrics from llm_metrics JSON
-        metrics = _extract_llm_metrics(self._current_test_data.get("llm_metrics"))
+        metrics = extract_llm_metrics(self._current_test_data.get("llm_metrics"))
 
         self._test_cases.append(
             {
@@ -206,12 +194,12 @@ class DbListener(ListenerV3):
                 "tag_tier": parsed["tag_tier"],
                 "tag_verify": parsed["tag_verify"],
                 "thinking_text": self._current_test_data.get("thinking_text"),
-                "thinking_tokens": _safe_int(
+                "thinking_tokens": safe_int(
                     self._current_test_data.get("thinking_tokens")
                 ),
-                "num_ctx": _safe_int(self._current_test_data.get("num_ctx"))
+                "num_ctx": safe_int(self._current_test_data.get("num_ctx"))
                 or metrics.get("num_ctx"),
-                "num_predict": _safe_int(self._current_test_data.get("num_predict"))
+                "num_predict": safe_int(self._current_test_data.get("num_predict"))
                 or metrics.get("num_predict"),
                 "eval_count": metrics.get("eval_count"),
                 "eval_duration_ns": metrics.get("eval_duration_ns"),
@@ -224,22 +212,17 @@ class DbListener(ListenerV3):
                 "cached_tokens": metrics.get("cached_tokens"),
                 "accepted_prediction_tokens": metrics.get("accepted_prediction_tokens"),
                 "rejected_prediction_tokens": metrics.get("rejected_prediction_tokens"),
-                "token_retry_count": _safe_int(
+                "token_retry_count": safe_int(
                     self._current_test_data.get("token_retry_count")
                 ),
-                "token_retry_max_tokens": _safe_int(
+                "token_retry_max_tokens": safe_int(
                     self._current_test_data.get("token_retry_max_tokens")
                 ),
             }
         )
-        self._current_test_data = {}
         self._current_test_name = None
 
-    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        self._suite_depth -= 1
-        if self._suite_depth > 0:
-            return
-
+    def on_suite_end(self, data: Any, result: Any) -> None:
         end_time = datetime.now(UTC)
         duration = (
             (end_time - self._start_time).total_seconds() if self._start_time else 0.0
@@ -279,14 +262,14 @@ class DbListener(ListenerV3):
         hostname = self._host_info.get("hostname", "")
 
         # output.xml is read later in close(), after Robot flushes the file.
-        output_xml_url = _build_output_xml_url()
-        output_xml_source = _build_output_xml_source()
+        output_xml_url = build_output_xml_url()
+        output_xml_source = build_output_xml_source()
 
         # Collect inference params from Robot variables or environment
-        run_temperature = _get_robot_float("TEMPERATURE")
-        run_seed = _get_robot_int("SEED")
-        run_top_p = _get_robot_float("TOP_P")
-        run_top_k = _get_robot_int("TOP_K")
+        run_temperature = get_robot_float("TEMPERATURE")
+        run_seed = get_robot_int("SEED")
+        run_top_p = get_robot_float("TOP_P")
+        run_top_k = get_robot_int("TOP_K")
 
         run = TestRun(
             timestamp=self._start_time or end_time,
@@ -320,37 +303,37 @@ class DbListener(ListenerV3):
                     run_id=run_id,
                     test_name=tc["name"],
                     test_status=tc["status"],
-                    score=_nvl(tc.get("score"), -1.0),
-                    tags=_nvl(tc.get("tags"), ""),
-                    question=_nvl(tc.get("question"), ""),
-                    expected_answer=_nvl(tc.get("expected_answer"), ""),
-                    actual_answer=_nvl(tc.get("actual_answer"), ""),
-                    grading_reason=_nvl(tc.get("grading_reason"), ""),
+                    score=nvl(tc.get("score"), -1.0),
+                    tags=nvl(tc.get("tags"), ""),
+                    question=nvl(tc.get("question"), ""),
+                    expected_answer=nvl(tc.get("expected_answer"), ""),
+                    actual_answer=nvl(tc.get("actual_answer"), ""),
+                    grading_reason=nvl(tc.get("grading_reason"), ""),
                     rfc_version=__version__,
-                    tag_severity=_nvl(tc.get("tag_severity"), ""),
-                    tag_tier=_nvl(tc.get("tag_tier"), -1),
-                    tag_verify=_nvl(tc.get("tag_verify"), ""),
-                    thinking_text=_nvl(tc.get("thinking_text"), ""),
-                    thinking_tokens=_nvl(tc.get("thinking_tokens"), 0),
-                    reasoning_tokens=_nvl(tc.get("reasoning_tokens"), 0),
-                    cached_tokens=_nvl(tc.get("cached_tokens"), 0),
-                    accepted_prediction_tokens=_nvl(
+                    tag_severity=nvl(tc.get("tag_severity"), ""),
+                    tag_tier=nvl(tc.get("tag_tier"), -1),
+                    tag_verify=nvl(tc.get("tag_verify"), ""),
+                    thinking_text=nvl(tc.get("thinking_text"), ""),
+                    thinking_tokens=nvl(tc.get("thinking_tokens"), 0),
+                    reasoning_tokens=nvl(tc.get("reasoning_tokens"), 0),
+                    cached_tokens=nvl(tc.get("cached_tokens"), 0),
+                    accepted_prediction_tokens=nvl(
                         tc.get("accepted_prediction_tokens"), 0
                     ),
-                    rejected_prediction_tokens=_nvl(
+                    rejected_prediction_tokens=nvl(
                         tc.get("rejected_prediction_tokens"), 0
                     ),
-                    num_ctx=_nvl(tc.get("num_ctx"), 0),
-                    num_predict=_nvl(tc.get("num_predict"), 0),
-                    eval_count=_nvl(tc.get("eval_count"), 0),
-                    eval_duration_ns=_nvl(tc.get("eval_duration_ns"), 0),
-                    prompt_eval_count=_nvl(tc.get("prompt_eval_count"), 0),
-                    prompt_eval_duration_ns=_nvl(tc.get("prompt_eval_duration_ns"), 0),
-                    load_duration_ns=_nvl(tc.get("load_duration_ns"), 0),
-                    total_duration_ns=_nvl(tc.get("total_duration_ns"), 0),
-                    tokens_per_second=_nvl(tc.get("tokens_per_second"), 0.0),
-                    token_retry_count=_nvl(tc.get("token_retry_count"), 0),
-                    token_retry_max_tokens=_nvl(tc.get("token_retry_max_tokens"), 0),
+                    num_ctx=nvl(tc.get("num_ctx"), 0),
+                    num_predict=nvl(tc.get("num_predict"), 0),
+                    eval_count=nvl(tc.get("eval_count"), 0),
+                    eval_duration_ns=nvl(tc.get("eval_duration_ns"), 0),
+                    prompt_eval_count=nvl(tc.get("prompt_eval_count"), 0),
+                    prompt_eval_duration_ns=nvl(tc.get("prompt_eval_duration_ns"), 0),
+                    load_duration_ns=nvl(tc.get("load_duration_ns"), 0),
+                    total_duration_ns=nvl(tc.get("total_duration_ns"), 0),
+                    tokens_per_second=nvl(tc.get("tokens_per_second"), 0.0),
+                    token_retry_count=nvl(tc.get("token_retry_count"), 0),
+                    token_retry_max_tokens=nvl(tc.get("token_retry_max_tokens"), 0),
                 )
                 for tc in self._test_cases
             ]
