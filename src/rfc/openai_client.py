@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 from robot.api import logger
 import requests
 
+from .constants import DEFAULT_TIMEOUT
+
 
 class OpenAIClient:
     """HTTP client for the OpenAI Chat Completions API.
@@ -14,8 +16,6 @@ class OpenAIClient:
     Works with OpenAI, Azure OpenAI, and any OpenAI-compatible API
     (Together, Groq, Fireworks, etc.) by setting base_url.
     """
-
-    _DEFAULT_TIMEOUT = 5400
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class OpenAIClient:
         if not model:
             model = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
         if timeout is None:
-            timeout = int(os.getenv("OPENAI_TIMEOUT", str(self._DEFAULT_TIMEOUT)))
+            timeout = int(os.getenv("OPENAI_TIMEOUT", str(DEFAULT_TIMEOUT)))
 
         if not isinstance(base_url, str) or not base_url:
             raise ValueError("base_url must be a non-empty string")
