@@ -274,6 +274,7 @@ class TestChatLogListener:
 
     def test_end_suite_saves_chat_log(self) -> None:
         listener = ChatLogListener()
+        listener.start_suite(_mock_suite_data("Test Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
@@ -301,6 +302,7 @@ class TestChatLogListener:
 
     def test_end_suite_no_entries_no_file(self) -> None:
         listener = ChatLogListener()
+        listener.start_suite(_mock_suite_data("Empty"), _mock_suite_result())
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
                 listener.end_suite(_mock_suite_data("Empty"), _mock_suite_result())
@@ -329,6 +331,7 @@ class TestChatLogListener:
 
     def test_multiline_message_flattened(self) -> None:
         listener = ChatLogListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["line1\nline2\nline3"]),
             _mock_keyword_result(),
@@ -364,6 +367,7 @@ class TestChatLogListener:
 
     def test_tab_separated_format(self) -> None:
         listener = ChatLogListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello world"]),
             _mock_keyword_result(),

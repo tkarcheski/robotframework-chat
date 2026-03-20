@@ -16,30 +16,14 @@ Usage:
 
 import os
 from datetime import datetime, UTC
-from typing import Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Tuple
 
 from robot.api import logger  # type: ignore
-from robot.api.interfaces import ListenerV3  # type: ignore
-from robot.result.model import Keyword as ResultKeyword  # type: ignore
-from robot.result.model import Message  # type: ignore
-from robot.result.model import TestSuite as ResultSuite  # type: ignore
-from robot.running.model import Keyword as RunningKeyword  # type: ignore
-from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
-# Keywords worth logging and their prompt types.
-_KEYWORD_TYPES: Dict[str, str] = {
-    "Ask LLM": "input",
-    "Grade Answer": "grading",
-    "Set LLM Endpoint": "config",
-    "Set LLM Model": "config",
-    "Set LLM Parameters": "config",
-    "Wait For LLM": "system",
-    "Get Running Models": "system",
-    "LLM Is Busy": "system",
-}
+from .base_listener import BaseListener
 
 
-class ChatLogListener(ListenerV3):
+class ChatLogListener(BaseListener):
     """Listener that writes a plain-text ``chat.log`` of all Ollama interactions.
 
     Tracks the active model name and classifies each keyword call into a
@@ -51,40 +35,33 @@ class ChatLogListener(ListenerV3):
         robot --listener rfc.chat_log_listener.ChatLogListener tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 3
+    TRACKED_KEYWORDS: ClassVar[Dict[str, str]] = {
+        "Ask LLM": "input",
+        "Grade Answer": "grading",
+        "Set LLM Endpoint": "config",
+        "Set LLM Model": "config",
+        "Set LLM Parameters": "config",
+        "Wait For LLM": "system",
+        "Get Running Models": "system",
+        "LLM Is Busy": "system",
+    }
 
     def __init__(self) -> None:
+        super().__init__()
         self._model: str = os.getenv("DEFAULT_MODEL", "unknown")
         self._entries: List[Tuple[str, str, str, str]] = []
-        self._in_tracked_keyword: Optional[str] = None
-        self._suite_depth: int = 0
 
     # ------------------------------------------------------------------
-    # Suite tracking
+    # BaseListener hooks
     # ------------------------------------------------------------------
 
-    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        self._suite_depth += 1
-
-    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        self._suite_depth -= 1
-        if self._suite_depth > 0:
-            return
+    def on_suite_end(self, data: Any, result: Any) -> None:
         if not self._entries:
             return
         self._save_chat_log(data.name)
 
-    # ------------------------------------------------------------------
-    # Keyword tracking
-    # ------------------------------------------------------------------
-
-    def start_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
+    def on_keyword_start(self, data: Any, result: Any, keyword_type: str) -> None:
         name = data.name
-        prompt_type = _KEYWORD_TYPES.get(name)
-        if prompt_type is None:
-            return
-
-        self._in_tracked_keyword = name
         args = list(data.args)
 
         if name == "Set LLM Model":
@@ -116,15 +93,7 @@ class ChatLogListener(ListenerV3):
         elif name == "LLM Is Busy":
             self._log("system", "checking busy status")
 
-    def end_keyword(self, data: RunningKeyword, result: ResultKeyword) -> None:
-        if self._in_tracked_keyword == data.name:
-            self._in_tracked_keyword = None
-
-    # ------------------------------------------------------------------
-    # Log message capture (for LLM responses)
-    # ------------------------------------------------------------------
-
-    def log_message(self, message: Message) -> None:
+    def on_log_message(self, message: Any) -> None:
         """Capture LLM responses logged by OllamaClient.generate().
 
         The client logs ``"{model} >> {text}"`` on successful generation.
