@@ -113,6 +113,28 @@ After a working solution is committed and tests pass:
    to submit, not while still mid-implementation. Do not block the user with
    questions while other agents need attention.
 
+### PR review workflow (mandatory)
+
+After pushing the PR, check for review feedback using the `gh` CLI. Codex
+reviews can be slow — wait patiently and poll periodically.
+
+```bash
+# List comments on a PR (replace 123 with PR number)
+gh pr view 123 --comments
+gh api repos/tkarcheski/robotframework-chat/pulls/123/comments
+gh api repos/tkarcheski/robotframework-chat/pulls/123/reviews
+
+# Check PR status and review state
+gh pr checks 123
+gh pr status
+```
+
+1. **After pushing**, run `gh pr view <number> --comments` to check for review
+   feedback. Codex reviews are slow — wait and re-check if no comments yet.
+2. **Address all review comments** before requesting re-review. Make fixes in
+   new commits (do not amend or squash until the reviewer approves).
+3. **Re-push** and re-check for additional feedback until the PR is approved.
+
 ---
 
 ## Architecture guardrails
