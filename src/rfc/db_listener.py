@@ -16,7 +16,6 @@ URL is provided.
 """
 
 import gzip
-import json
 import os
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
@@ -34,63 +33,30 @@ from robot.running.model import TestSuite as RunningSuite  # type: ignore
 from . import __version__
 from .git_metadata import collect_ci_metadata
 from .host_info import collect_host_info
+from .metrics import (
+    extract_llm_metrics,
+    get_robot_float,
+    get_robot_int,
+    nvl,
+    parse_tags,
+    safe_int,
+    warn_near_miss,
+)
+from .rfc_data import RFC_DATA_PREFIX
 from .test_database import (
     TestDatabase,
     TestResult,
     TestRun,
 )
 
-from .rfc_data import RFC_DATA_PREFIX
-
-T = Any  # type alias for _nvl generic usage
-
-
-def _nvl(value: Any, default: T) -> T:
-    """Return *default* when *value* is ``None`` (SQL NVL / COALESCE).
-
-    Unlike ``dict.get(key, default)``, this replaces an explicit ``None``
-    value — not just a missing key.
-    """
-    return default if value is None else value
-
-
-def _parse_tags(tags: list[str]) -> Dict[str, Any]:
-    """Parse structured tag prefixes and sort remaining tags.
-
-    Extracts ``severity:<val>``, ``tier:<int>``, and ``verify:<val>`` into
-    dedicated fields.  Remaining tags are sorted alphabetically and joined
-    with commas.  The structured prefixes are removed from the remaining
-    tag string to avoid duplication.
-
-    Args:
-        tags: List of tag strings from Robot Framework test attributes.
-
-    Returns:
-        Dict with keys ``tag_severity``, ``tag_tier``, ``tag_verify``,
-        and ``tags_sorted`` (comma-separated remaining tags or None).
-    """
-    severity: str = ""
-    tier: int = -1
-    verify: str = ""
-    other: list[str] = []
-    for tag in sorted(tags):
-        if tag.startswith("severity:"):
-            severity = tag.split(":", 1)[1]
-        elif tag.startswith("tier:"):
-            try:
-                tier = int(tag.split(":", 1)[1])
-            except ValueError:
-                other.append(tag)
-        elif tag.startswith("verify:"):
-            verify = tag.split(":", 1)[1]
-        else:
-            other.append(tag)
-    return {
-        "tag_severity": severity,
-        "tag_tier": tier,
-        "tag_verify": verify,
-        "tags_sorted": ",".join(other) if other else "",
-    }
+# Backward-compatible aliases (these names are imported by tests).
+_nvl = nvl
+_parse_tags = parse_tags
+_safe_int = safe_int
+_extract_llm_metrics = extract_llm_metrics
+_warn_near_miss = warn_near_miss
+_get_robot_float = get_robot_float
+_get_robot_int = get_robot_int
 
 
 class DbListener(ListenerV3):
@@ -520,92 +486,3 @@ def _format_size(size_bytes: int) -> str:
         return f"{size_bytes / 1024:.1f}KB"
     else:
         return f"{size_bytes / (1024 * 1024):.1f}MB"
-
-
-def _safe_int(value: Optional[str]) -> Optional[int]:
-    """Convert a string to int, returning None on failure."""
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return None
-
-
-def _warn_near_miss(text: str) -> None:
-    """Warn if *text* looks like a malformed ``RFC_DATA:`` message.
-
-    Called only when *text* did NOT match the real prefix.  Checks for
-    common typos: wrong case, missing underscore, space instead of
-    underscore.
-    """
-    normalized = text.lstrip().upper().replace(" ", "_")
-    if normalized.startswith("RFC_DATA:") or normalized.startswith("RFCDATA:"):
-        logger.warn(
-            f"DbListener: possible RFC_DATA typo (message ignored): "
-            f"{text[:80]!r} — expected prefix 'RFC_DATA:'"
-        )
-
-
-def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
-    """Extract individual metrics from the llm_metrics JSON string.
-
-    Returns a dict with keys matching the Ollama metrics names.
-    Missing or unparseable data returns an empty dict.
-    """
-    if not metrics_json:
-        return {}
-    try:
-        data = json.loads(metrics_json)
-    except (json.JSONDecodeError, TypeError):
-        return {}
-    return {
-        "eval_count": data.get("eval_count"),
-        "eval_duration_ns": data.get("eval_duration_ns"),
-        "prompt_eval_count": data.get("prompt_eval_count"),
-        "prompt_eval_duration_ns": data.get("prompt_eval_duration_ns"),
-        "load_duration_ns": data.get("load_duration_ns"),
-        "total_duration_ns": data.get("total_duration_ns"),
-        "eval_rate": data.get("eval_rate"),
-        "num_ctx": data.get("num_ctx"),
-        "num_predict": data.get("num_predict"),
-        # OpenAI token detail fields
-        "reasoning_tokens": data.get("reasoning_tokens"),
-        "cached_tokens": data.get("cached_tokens"),
-        "accepted_prediction_tokens": data.get("accepted_prediction_tokens"),
-        "rejected_prediction_tokens": data.get("rejected_prediction_tokens"),
-    }
-
-
-def _get_robot_float(var_name: str) -> float:
-    """Get a float Robot variable, falling back to env var."""
-    try:
-        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
-        if val is not None:
-            return float(val)
-    except Exception:
-        pass
-    env_val = os.getenv(var_name)
-    if env_val is not None:
-        try:
-            return float(env_val)
-        except ValueError:
-            pass
-    return 0.0
-
-
-def _get_robot_int(var_name: str) -> int:
-    """Get an int Robot variable, falling back to env var."""
-    try:
-        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
-        if val is not None:
-            return int(val)
-    except Exception:
-        pass
-    env_val = os.getenv(var_name)
-    if env_val is not None:
-        try:
-            return int(env_val)
-        except ValueError:
-            pass
-    return 0
