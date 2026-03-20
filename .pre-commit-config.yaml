@@ -24,7 +24,7 @@ repos:
           - types-requests
           - types-PyYAML
           - types-docker
-        exclude: ^(scripts/|tests/)
+        exclude: ^(scripts|tests|superset)/
 
   - repo: local
     hooks:
