@@ -9,9 +9,8 @@ from .grader import Grader
 from .llm_client import create_provider
 from .ollama import OllamaClient
 from .rfc_data import emit_rfc_data
+from .constants import DEFAULT_TIMEOUT
 from .thinking import estimate_token_count, parse_thinking
-
-_DEFAULT_TIMEOUT = 5400
 
 
 class LLMKeywords:
@@ -21,7 +20,7 @@ class LLMKeywords:
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
         self.client = create_provider(
             timeout=int(timeout), max_retries=int(max_retries)
         )

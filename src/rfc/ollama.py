@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from robot.api import logger
 import requests
 
+from .constants import DEFAULT_TIMEOUT
+
 
 def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[float]:
     """Compute tokens/s from token count and nanosecond duration."""
@@ -42,8 +44,6 @@ class OllamaClient:
     integration point for all Ollama interactions.
     """
 
-    _DEFAULT_TIMEOUT = 5400
-
     def __init__(
         self,
         base_url: str = "",
@@ -63,7 +63,7 @@ class OllamaClient:
         if not model:
             model = os.getenv("DEFAULT_MODEL", "phi4:14b")
         if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(self._DEFAULT_TIMEOUT)))
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
         if not isinstance(base_url, str) or not base_url:
             raise ValueError("base_url must be a non-empty string")
         if not isinstance(model, str) or not model:

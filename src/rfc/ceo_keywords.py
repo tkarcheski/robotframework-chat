@@ -31,9 +31,9 @@ from .thinking import extract_json
 from .llm_client import create_provider
 from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
+from .constants import DEFAULT_TIMEOUT
 from .web_cache import SearchResult, WebSearchCache
 
-_DEFAULT_TIMEOUT = 5400
 _DEFAULT_CEO_MAX_TOKENS = 4096
 _DEFAULT_LLM_PROVIDER = "ollama"
 _COMPAT_OPENAI_PROVIDER = "openai"
@@ -50,7 +50,7 @@ class CEOKeywords:
         max_retries: int = 2,
     ) -> None:
         if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
+            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
         self._timeout = int(timeout)
         self._max_retries = int(max_retries)
         self._client: Optional[Any] = None
