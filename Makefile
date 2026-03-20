@@ -126,7 +126,7 @@ code-quality-format: ## Auto-format code
 	uv run ruff format .
 
 code-quality-typecheck: ## Run mypy type checker
-	uv run mypy src/
+	MYPYPATH=src uv run mypy --explicit-package-bases -p rfc
 
 code-quality-check: code-quality-lint code-quality-typecheck code-quality-coverage ## Run all code quality checks
 
