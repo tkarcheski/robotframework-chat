@@ -48,8 +48,6 @@ class TestGitHubPlatform:
             GITHUB_RUN_ID="12345",
             GITHUB_REF_NAME="main",
             GITHUB_RUN_NUMBER="42",
-            RUNNER_NAME="ubuntu-latest",
-            RUNNER_OS="Linux",
             OLLAMA_ENDPOINT="http://my-ollama:11434",
             DEFAULT_MODEL="mistral",
         )
@@ -67,9 +65,6 @@ class TestGitHubPlatform:
         assert data["ci"]["commit_short_sha"] == "abc12345"
         assert data["ci"]["branch"] == "main"
         assert data["ci"]["job_id"] == "42"
-        assert "actions/runs/12345" in data["ci"]["pipeline_url"]
-        assert data["runner"]["id"] == "ubuntu-latest"
-        assert data["runner"]["description"] == "Linux"
         assert data["ollama"]["endpoint"] == "http://my-ollama:11434"
         assert data["ollama"]["default_model"] == "mistral"
         assert "version" in data
@@ -91,7 +86,7 @@ class TestGitHubPlatform:
         assert data["ci_platform"] == "github"
         assert data["ci"]["project_url"] == ""
         assert data["ci"]["commit_short_sha"] == ""
-        assert data["ci"]["pipeline_url"] == ""
+        assert data["ci"]["job_url"] == ""
 
 
 class TestGitLabPlatform:
@@ -102,12 +97,8 @@ class TestGitLabPlatform:
             CI_COMMIT_SHA="deadbeefcafe1234",
             CI_COMMIT_SHORT_SHA="deadbeef",
             CI_COMMIT_REF_NAME="develop",
-            CI_PIPELINE_URL="https://gitlab.example.com/group/project/pipelines/999",
             CI_JOB_URL="https://gitlab.example.com/group/project/-/jobs/1234",
             CI_JOB_ID="1234",
-            CI_RUNNER_ID="77",
-            CI_RUNNER_DESCRIPTION="shared-runner",
-            CI_RUNNER_TAGS="docker,linux",
         )
         result = _run_script(tmp_path, env)
         assert result.returncode == 0, result.stderr
@@ -121,9 +112,7 @@ class TestGitLabPlatform:
         assert data["ci"]["commit_short_sha"] == "deadbeef"
         assert data["ci"]["branch"] == "develop"
         assert data["ci"]["job_id"] == "1234"
-        assert data["runner"]["id"] == "77"
-        assert data["runner"]["description"] == "shared-runner"
-        assert data["runner"]["tags"] == "docker,linux"
+        assert "runner" not in data
 
 
 class TestNoPlatform:
@@ -153,7 +142,7 @@ class TestDefaults:
             (tmp_path / "results" / "combined" / "ci_metadata.json").read_text()
         )
         assert data["ollama"]["endpoint"] == "http://localhost:11434"
-        assert data["ollama"]["default_model"] == "gpt-oss:20b"
+        assert data["ollama"]["default_model"] == "phi4:14b"
 
     def test_creates_output_directory(self, tmp_path):
         env = _clean_env()

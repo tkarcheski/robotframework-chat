@@ -1,102 +1,65 @@
-"""Robot Framework listener for archiving dry-run validation results.
+"""Robot Framework listener for dry-run validation results.
 
-Stores dry-run results in the robot_dry_run_results table, separate from
-real test execution data. Useful for quickly validating test syntax and
-keyword availability, and tracking validation health over time.
+Logs dry-run results to the console. The robot_dry_run_results table
+has been dropped in the 2-table schema redesign — dry-run validation
+results are now logged only, not persisted to the database.
 
 Usage:
     robot --dryrun --listener rfc.dry_run_listener.DryRunListener robot/
 """
 
-import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from robot.api import logger  # type: ignore
+from robot.api.interfaces import ListenerV3  # type: ignore
+from robot.result.model import TestCase as ResultTest  # type: ignore
+from robot.result.model import TestSuite as ResultSuite  # type: ignore
+from robot.running.model import TestCase as RunningTest  # type: ignore
+from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
-from . import __version__
-from .git_metadata import collect_ci_metadata
-from .test_database import DryRunResult, TestDatabase
 
+class DryRunListener(ListenerV3):
+    """Listener that logs Robot Framework dry-run results."""
 
-class DryRunListener:
-    """Listener that archives Robot Framework dry-run results to a SQL database."""
-
-    ROBOT_LISTENER_API_VERSION = 2
+    ROBOT_LISTENER_API_VERSION = 3
 
     def __init__(self, database_url: Optional[str] = None):
-        self._database_url = database_url or os.getenv("DATABASE_URL")
-        self._db: Optional[TestDatabase] = None
         self._start_time: Optional[datetime] = None
-        self._ci_info: Dict[str, str] = {}
         self._test_cases: List[Dict[str, Any]] = []
         self._errors: List[str] = []
         self._suite_depth = 0
 
-    def _get_db(self) -> TestDatabase:
-        if self._db is None:
-            if self._database_url:
-                self._db = TestDatabase(database_url=self._database_url)
-            else:
-                self._db = TestDatabase()
-        return self._db
-
-    def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth += 1
         if self._suite_depth == 1:
-            self._start_time = datetime.utcnow()
-            self._ci_info = collect_ci_metadata()
+            self._start_time = datetime.now(UTC)
             self._test_cases = []
             self._errors = []
 
-    def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
-        status = attributes.get("status", "UNKNOWN")
-        self._test_cases.append({"name": name, "status": status})
+    def end_test(self, data: RunningTest, result: ResultTest) -> None:
+        status = result.status
+        self._test_cases.append({"name": data.name, "status": status})
         if status == "FAIL":
-            msg = attributes.get("message", "")
+            msg = result.message
             if msg:
-                self._errors.append(f"{name}: {msg}")
+                self._errors.append(f"{data.name}: {msg}")
 
-    def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth -= 1
         if self._suite_depth > 0:
             return
 
-        end_time = datetime.utcnow()
-        duration = (
-            (end_time - self._start_time).total_seconds() if self._start_time else 0.0
-        )
-
-        total = int(attributes.get("totaltests", 0))
+        total = len(self._test_cases)
         pass_count = sum(1 for tc in self._test_cases if tc["status"] == "PASS")
         fail_count = sum(1 for tc in self._test_cases if tc["status"] == "FAIL")
-        skip_count = sum(
-            1 for tc in self._test_cases if tc["status"] not in ("PASS", "FAIL")
+
+        summary = (
+            f"DryRunListener: {total} tests, {pass_count} passed, {fail_count} failed"
         )
+        logger.info(summary)
+        logger.console(summary)
 
-        if total == 0:
-            total = len(self._test_cases)
-
-        result = DryRunResult(
-            timestamp=self._start_time or end_time,
-            test_suite=name,
-            total_tests=total,
-            passed=pass_count,
-            failed=fail_count,
-            skipped=skip_count,
-            duration_seconds=duration,
-            git_commit=self._ci_info.get("Commit_SHA", ""),
-            git_branch=self._ci_info.get("Branch", ""),
-            rfc_version=__version__,
-            errors="\n".join(self._errors) if self._errors else None,
-        )
-
-        try:
-            db = self._get_db()
-            row_id = db.add_dry_run_result(result)
-            logger.info(
-                f"Archived dry-run result to database (id={row_id}): "
-                f"{total} tests, {pass_count} passed, {fail_count} failed"
-            )
-        except Exception as e:
-            logger.warn(f"Failed to archive dry-run result to database: {e}")
+        if self._errors:
+            for error in self._errors:
+                logger.warn(error)

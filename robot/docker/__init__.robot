@@ -3,17 +3,23 @@ Documentation     Docker-based testing suite root configuration
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 
 Suite Setup       Run Keywords
-...               Cleanup Docker Infrastructure
+...               Verify Docker Setup
 ...               AND
-...               Verify Docker Infrastructure
+...               Cleanup Docker Infrastructure
 Suite Teardown    Cleanup Docker Infrastructure
 
 *** Keywords ***
-Verify Docker Infrastructure
-    [Documentation]    Verify Docker is available and healthy
-    ${available}=    Docker.Docker Is Available
-    Should Be True    ${available}    Docker is not available. Please ensure Docker is installed and running.
-    Log    Docker infrastructure verified and ready
+Verify Docker Setup
+    [Documentation]    Verify Docker CLI is installed and daemon is running.
+    ...    Fails the suite with a diagnostic message if any check fails.
+    ${result}=    Docker.Check Docker Setup
+    IF    not ${result}[docker_cli]
+        Fail    Docker CLI is not installed or not on PATH. Install Docker: https://docs.docker.com/get-docker/
+    END
+    IF    not ${result}[daemon_running]
+        Fail    Docker daemon is not running. Please start Docker and try again.
+    END
+    Log    Docker setup OK: v${result}[docker_version] (API v${result}[api_version]) at ${result}[docker_cli_path]
 
 Cleanup Docker Infrastructure
     [Documentation]    Cleanup any orphaned containers from previous runs

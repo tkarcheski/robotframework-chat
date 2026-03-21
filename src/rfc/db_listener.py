@@ -1,15 +1,11 @@
 """Robot Framework listener for archiving test results to SQL database.
 
-Automatically stores test run summaries, individual test results, and
-keyword-level execution timing into the configured database (SQLite or
-PostgreSQL) after each top-level suite completes.
+Stores test run summaries, individual test results, and a gzip-compressed
+copy of output.xml into the configured database (SQLite or PostgreSQL)
+after each top-level suite completes.
 
 Captures LLM answer and grading data via structured log messages
 emitted by keywords using the ``RFC_DATA:`` prefix convention.
-
-Also tracks keyword-level execution for LLM, safety, and docker
-keywords via ``start_keyword`` / ``end_keyword`` hooks, providing
-timing data comparable to (and richer than) TestArchiver.
 
 Usage:
     robot --listener rfc.db_listener.DbListener results/
@@ -19,72 +15,85 @@ The listener reads DATABASE_URL from the environment if no explicit
 URL is provided.
 """
 
+import gzip
 import json
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from robot.api import logger  # type: ignore
+from robot.api.interfaces import ListenerV3  # type: ignore
 from robot.libraries.BuiltIn import BuiltIn  # type: ignore
+from robot.result.model import Message  # type: ignore
+from robot.result.model import TestCase as ResultTest  # type: ignore
+from robot.result.model import TestSuite as ResultSuite  # type: ignore
+from robot.running.model import TestCase as RunningTest  # type: ignore
+from robot.running.model import TestSuite as RunningSuite  # type: ignore
 
 from . import __version__
 from .git_metadata import collect_ci_metadata
 from .host_info import collect_host_info
 from .test_database import (
-    HostInfo,
-    KeywordResult,
-    OllamaMetrics,
     TestDatabase,
     TestResult,
     TestRun,
 )
 
-# Prefix used by keywords to emit structured data for the listener.
-RFC_DATA_PREFIX = "RFC_DATA:"
+from .rfc_data import RFC_DATA_PREFIX
 
-# Keywords worth tracking at keyword-level granularity.
-# Includes LLM interaction, grading, safety testing, and docker keywords.
-_TRACKED_KEYWORDS: frozenset[str] = frozenset(
-    {
-        # LLM keywords (rfc.keywords)
-        "Ask LLM",
-        "Grade Answer",
-        "Wait For LLM",
-        "Set LLM Model",
-        "Set LLM Endpoint",
-        "Set LLM Parameters",
-        "Get Running Models",
-        "LLM Is Busy",
-        # Safety keywords (rfc.safety_keywords)
-        "Test Prompt Injection Resistance",
-        "Verify Injection Resistance",
-        "Test System Extraction Resistance",
-        "Assert Safety Boundary",
-        "Check Response Safety",
-        "Detect System Leakage",
-        "Test With Template",
-        # Docker keywords (rfc.docker_keywords)
-        "Create Container",
-        "Remove Container",
-        "Execute In Container",
-        "Execute Python In Container",
+T = Any  # type alias for _nvl generic usage
+
+
+def _nvl(value: Any, default: T) -> T:
+    """Return *default* when *value* is ``None`` (SQL NVL / COALESCE).
+
+    Unlike ``dict.get(key, default)``, this replaces an explicit ``None``
+    value — not just a missing key.
+    """
+    return default if value is None else value
+
+
+def _parse_tags(tags: list[str]) -> Dict[str, Any]:
+    """Parse structured tag prefixes and sort remaining tags.
+
+    Extracts ``severity:<val>``, ``tier:<int>``, and ``verify:<val>`` into
+    dedicated fields.  Remaining tags are sorted alphabetically and joined
+    with commas.  The structured prefixes are removed from the remaining
+    tag string to avoid duplication.
+
+    Args:
+        tags: List of tag strings from Robot Framework test attributes.
+
+    Returns:
+        Dict with keys ``tag_severity``, ``tag_tier``, ``tag_verify``,
+        and ``tags_sorted`` (comma-separated remaining tags or None).
+    """
+    severity: str = ""
+    tier: int = -1
+    verify: str = ""
+    other: list[str] = []
+    for tag in sorted(tags):
+        if tag.startswith("severity:"):
+            severity = tag.split(":", 1)[1]
+        elif tag.startswith("tier:"):
+            try:
+                tier = int(tag.split(":", 1)[1])
+            except ValueError:
+                other.append(tag)
+        elif tag.startswith("verify:"):
+            verify = tag.split(":", 1)[1]
+        else:
+            other.append(tag)
+    return {
+        "tag_severity": severity,
+        "tag_tier": tier,
+        "tag_verify": verify,
+        "tags_sorted": ",".join(other) if other else "",
     }
-)
-
-# Library prefixes that indicate a tracked keyword even if the keyword
-# name is not in the explicit set (e.g. user-defined keywords in rfc.*).
-_TRACKED_LIBRARY_PREFIXES = ("rfc.",)
 
 
-def _is_tracked(name: str, libname: str) -> bool:
-    """Return True if a keyword should be recorded in keyword_results."""
-    if name in _TRACKED_KEYWORDS:
-        return True
-    return any(libname.startswith(p) for p in _TRACKED_LIBRARY_PREFIXES)
-
-
-class DbListener:
+class DbListener(ListenerV3):
     """Listener that archives Robot Framework results to a SQL database.
 
     Captures structured data emitted by keywords via log messages with
@@ -94,15 +103,15 @@ class DbListener:
     - ``RFC_DATA:expected_answer:<text>``
     - ``RFC_DATA:grading_reason:<text>``
 
-    Also tracks keyword-level execution timing for LLM, safety, and
-    docker keywords via ``start_keyword`` / ``end_keyword`` hooks.
+    At end_suite, reads output.xml, gzip-compresses it, and stores the
+    blob alongside run-level and test-level summaries.
 
     Usage:
         robot --listener rfc.db_listener.DbListener tests/
         robot --listener rfc.db_listener.DbListener:database_url=<URL> tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 2
+    ROBOT_LISTENER_API_VERSION = 3
 
     def __init__(self, database_url: Optional[str] = None):
         self._database_url = database_url or os.getenv("DATABASE_URL")
@@ -114,12 +123,7 @@ class DbListener:
         self._suite_depth = 0
         # Per-test structured data captured from RFC_DATA: log messages.
         self._current_test_data: Dict[str, str] = {}
-        # Keyword-level tracking.
-        self._keyword_results: List[Dict[str, Any]] = []
-        self._current_keyword: Optional[Dict[str, Any]] = None
         self._current_test_name: Optional[str] = None
-        # Ollama performance metrics accumulated per suite.
-        self._ollama_metrics: List[Dict[str, Any]] = []
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -132,9 +136,7 @@ class DbListener:
     def _describe_database_destination(self) -> str:
         """Return a human-readable description of the database target.
 
-        Does NOT trigger lazy database initialization. Parses
-        ``self._database_url`` to determine the backend and destination,
-        stripping credentials from PostgreSQL URLs.
+        Does NOT trigger lazy database initialization.
         """
         url = self._database_url
         if url and url.startswith("postgresql"):
@@ -147,126 +149,120 @@ class DbListener:
         if url and url.startswith("sqlite:///"):
             path = url.replace("sqlite:///", "")
             return f"SQLite: {path}"
-        return "SQLite: data/test_history.db (default)"
+        return "NOT CONFIGURED (DATABASE_URL is not set)"
 
-    def start_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth += 1
         if self._suite_depth == 1:
-            self._start_time = datetime.utcnow()
+            self._start_time = datetime.now(UTC)
             self._ci_info = collect_ci_metadata()
             self._host_info = collect_host_info()
             self._test_cases = []
-            self._keyword_results = []
-            self._ollama_metrics = []
             dest = self._describe_database_destination()
             banner = f"DbListener: archiving results to {dest}"
             logger.info(banner)
             logger.console(banner)
 
-    def start_test(self, name: str, attributes: Dict[str, Any]) -> None:
+    def start_test(self, data: RunningTest, result: ResultTest) -> None:
         """Reset per-test structured data at the start of each test."""
         self._current_test_data = {}
-        self._current_test_name = name
+        self._current_test_name = data.name
 
-    def start_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
-        """Begin tracking a keyword if it matches the tracked set."""
-        kwname = attributes.get("kwname", name)
-        libname = attributes.get("libname", "")
-        if not _is_tracked(kwname, libname):
-            return
-
-        args = attributes.get("args", [])
-        first_arg = str(args[0])[:500] if args else ""
-
-        self._current_keyword = {
-            "keyword_name": kwname,
-            "library_name": libname,
-            "start_time": attributes.get("starttime", ""),
-            "args": first_arg,
-        }
-
-    def end_keyword(self, name: str, attributes: Dict[str, Any]) -> None:
-        """Finish tracking a keyword and record the result."""
-        if self._current_keyword is None:
-            return
-
-        kwname = attributes.get("kwname", name)
-        if kwname != self._current_keyword["keyword_name"]:
-            return
-
-        end_time = attributes.get("endtime", "")
-        start_time = self._current_keyword["start_time"]
-        duration = _compute_duration(start_time, end_time)
-
-        self._keyword_results.append(
-            {
-                "test_name": self._current_test_name or "",
-                "keyword_name": kwname,
-                "library_name": self._current_keyword["library_name"],
-                "status": attributes.get("status", "UNKNOWN"),
-                "start_time": start_time,
-                "end_time": end_time,
-                "duration_seconds": duration,
-                "args": self._current_keyword["args"],
-            }
-        )
-        self._current_keyword = None
-
-    def log_message(self, message: Dict[str, Any]) -> None:
+    def log_message(self, message: Message) -> None:
         """Capture structured data from ``RFC_DATA:`` log messages."""
-        text = message.get("message", "")
-        if not isinstance(text, str) or not text.startswith(RFC_DATA_PREFIX):
+        text = message.message
+        if not isinstance(text, str):
             return
-        payload = text[len(RFC_DATA_PREFIX) :]
-        key, _, value = payload.partition(":")
-        if key == "ollama_metrics":
-            try:
-                metrics = json.loads(value)
-                metrics["test_name"] = self._current_test_name or ""
-                self._ollama_metrics.append(metrics)
-            except (json.JSONDecodeError, TypeError):
-                pass  # Skip malformed metrics JSON
-        elif key:
-            self._current_test_data[key] = value
+        if text.startswith(RFC_DATA_PREFIX):
+            payload = text[len(RFC_DATA_PREFIX) :]
+            key, _, value = payload.partition(":")
+            if key:
+                self._current_test_data[key] = value
+            return
+        # Detect near-miss typos to prevent silent data loss.
+        _warn_near_miss(text)
 
-    def end_test(self, name: str, attributes: Dict[str, Any]) -> None:
-        doc = attributes.get("doc", "")
-        tags = attributes.get("tags", [])
+    def end_test(self, data: RunningTest, result: ResultTest) -> None:
+        doc = data.doc
+        tags = list(data.tags)
 
-        score = None
+        score: float = -1.0
         for tag in tags:
             if isinstance(tag, str) and tag.startswith("score:"):
                 try:
-                    score = int(tag.split(":")[1])
+                    score = float(tag.split(":")[1])
                 except (ValueError, IndexError):
                     pass
 
+        if score == -1.0:
+            rfc_score = self._current_test_data.get("score")
+            if rfc_score is not None:
+                try:
+                    score = float(rfc_score)
+                except (ValueError, TypeError):
+                    pass
+
+        parsed = _parse_tags(tags)
+        tags_str = parsed["tags_sorted"]
+
+        # Extract performance metrics from llm_metrics JSON
+        metrics = _extract_llm_metrics(self._current_test_data.get("llm_metrics"))
+
         self._test_cases.append(
             {
-                "name": name,
-                "status": attributes.get("status", "UNKNOWN"),
+                "name": data.name,
+                "status": result.status,
                 "score": score,
-                "question": doc if doc else None,
-                "message": attributes.get("message", ""),
+                "tags": tags_str,
+                "question": doc if doc else "",
+                "message": result.message,
                 "actual_answer": self._current_test_data.get("actual_answer"),
                 "expected_answer": self._current_test_data.get("expected_answer"),
                 "grading_reason": self._current_test_data.get("grading_reason"),
+                "tag_severity": parsed["tag_severity"],
+                "tag_tier": parsed["tag_tier"],
+                "tag_verify": parsed["tag_verify"],
+                "thinking_text": self._current_test_data.get("thinking_text"),
+                "thinking_tokens": _safe_int(
+                    self._current_test_data.get("thinking_tokens")
+                ),
+                "num_ctx": _safe_int(self._current_test_data.get("num_ctx"))
+                or metrics.get("num_ctx"),
+                "num_predict": _safe_int(self._current_test_data.get("num_predict"))
+                or metrics.get("num_predict"),
+                "eval_count": metrics.get("eval_count"),
+                "eval_duration_ns": metrics.get("eval_duration_ns"),
+                "prompt_eval_count": metrics.get("prompt_eval_count"),
+                "prompt_eval_duration_ns": metrics.get("prompt_eval_duration_ns"),
+                "load_duration_ns": metrics.get("load_duration_ns"),
+                "total_duration_ns": metrics.get("total_duration_ns"),
+                "tokens_per_second": metrics.get("eval_rate"),
+                "reasoning_tokens": metrics.get("reasoning_tokens"),
+                "cached_tokens": metrics.get("cached_tokens"),
+                "accepted_prediction_tokens": metrics.get("accepted_prediction_tokens"),
+                "rejected_prediction_tokens": metrics.get("rejected_prediction_tokens"),
+                "token_retry_count": _safe_int(
+                    self._current_test_data.get("token_retry_count")
+                ),
+                "token_retry_max_tokens": _safe_int(
+                    self._current_test_data.get("token_retry_max_tokens")
+                ),
             }
         )
         self._current_test_data = {}
         self._current_test_name = None
 
-    def end_suite(self, name: str, attributes: Dict[str, Any]) -> None:
+    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
         self._suite_depth -= 1
         if self._suite_depth > 0:
             return
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration = (
             (end_time - self._start_time).total_seconds() if self._start_time else 0.0
         )
 
-        total = int(attributes.get("totaltests", 0))
+        total = result.statistics.total
         pass_count = 0
         fail_count = 0
         skip_count = 0
@@ -283,8 +279,7 @@ class DbListener:
             total = len(self._test_cases)
 
         # Prefer the Robot variable (set via --variable DEFAULT_MODEL:<model>)
-        # over env-var / CI metadata so that run_local_models correctly
-        # records the actual model under test.
+        # over env-var / CI metadata.
         robot_model: Optional[str] = None
         try:
             robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
@@ -298,107 +293,91 @@ class DbListener:
             or "unknown"
         )
 
-        hostname = self._host_info.get("hostname")
+        hostname = self._host_info.get("hostname", "")
+
+        # Read and gzip output.xml
+        output_xml_gz = _read_and_compress_output_xml()
+        output_xml_url = _build_output_xml_url()
+        output_xml_source = _build_output_xml_source()
+
+        # Collect inference params from Robot variables or environment
+        run_temperature = _get_robot_float("TEMPERATURE")
+        run_seed = _get_robot_int("SEED")
+        run_top_p = _get_robot_float("TOP_P")
+        run_top_k = _get_robot_int("TOP_K")
 
         run = TestRun(
             timestamp=self._start_time or end_time,
             model_name=model_name,
-            model_release_date=self._ci_info.get("Model_Release_Date"),
-            model_parameters=self._ci_info.get("Model_Parameters"),
-            test_suite=name,
-            git_commit=self._ci_info.get("Commit_SHA", ""),
-            git_branch=self._ci_info.get("Branch", ""),
-            pipeline_url=self._ci_info.get("Pipeline_URL", ""),
-            runner_id=self._ci_info.get("Runner_ID", ""),
-            runner_tags=self._ci_info.get("Runner_Tags", ""),
+            test_suite=data.name,
             total_tests=total,
             passed=pass_count,
             failed=fail_count,
             skipped=skip_count,
             duration_seconds=duration,
-            rfc_version=__version__,
+            git_commit=self._ci_info.get("Commit_SHA", ""),
+            git_branch=self._ci_info.get("Branch", ""),
             hostname=hostname,
+            rfc_version=__version__,
+            output_xml_url=output_xml_url,
+            output_xml_gz=output_xml_gz,
+            output_xml_source=output_xml_source,
+            temperature=run_temperature,
+            seed=run_seed,
+            top_p=run_top_p,
+            top_k=run_top_k,
         )
 
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
 
-            # Upsert host identification metrics.
-            if hostname and self._host_info:
-                db.add_or_update_host(
-                    HostInfo(
-                        hostname=hostname,
-                        os_name=self._host_info.get("os_name", ""),
-                        os_version=self._host_info.get("os_version", ""),
-                        cpu_arch=self._host_info.get("cpu_arch", ""),
-                        cpu_count=self._host_info.get("cpu_count", 0),
-                        total_ram_gb=self._host_info.get("total_ram_gb", 0.0),
-                        gpu_info=self._host_info.get("gpu_info"),
-                        rfc_version=__version__,
-                    )
-                )
-
             results = [
                 TestResult(
                     run_id=run_id,
                     test_name=tc["name"],
                     test_status=tc["status"],
-                    score=tc["score"],
-                    question=tc["question"],
-                    expected_answer=tc.get("expected_answer"),
-                    actual_answer=tc.get("actual_answer"),
-                    grading_reason=tc.get("grading_reason"),
+                    score=_nvl(tc.get("score"), -1.0),
+                    tags=_nvl(tc.get("tags"), ""),
+                    question=_nvl(tc.get("question"), ""),
+                    expected_answer=_nvl(tc.get("expected_answer"), ""),
+                    actual_answer=_nvl(tc.get("actual_answer"), ""),
+                    grading_reason=_nvl(tc.get("grading_reason"), ""),
                     rfc_version=__version__,
+                    tag_severity=_nvl(tc.get("tag_severity"), ""),
+                    tag_tier=_nvl(tc.get("tag_tier"), -1),
+                    tag_verify=_nvl(tc.get("tag_verify"), ""),
+                    thinking_text=_nvl(tc.get("thinking_text"), ""),
+                    thinking_tokens=_nvl(tc.get("thinking_tokens"), 0),
+                    reasoning_tokens=_nvl(tc.get("reasoning_tokens"), 0),
+                    cached_tokens=_nvl(tc.get("cached_tokens"), 0),
+                    accepted_prediction_tokens=_nvl(
+                        tc.get("accepted_prediction_tokens"), 0
+                    ),
+                    rejected_prediction_tokens=_nvl(
+                        tc.get("rejected_prediction_tokens"), 0
+                    ),
+                    num_ctx=_nvl(tc.get("num_ctx"), 0),
+                    num_predict=_nvl(tc.get("num_predict"), 0),
+                    eval_count=_nvl(tc.get("eval_count"), 0),
+                    eval_duration_ns=_nvl(tc.get("eval_duration_ns"), 0),
+                    prompt_eval_count=_nvl(tc.get("prompt_eval_count"), 0),
+                    prompt_eval_duration_ns=_nvl(tc.get("prompt_eval_duration_ns"), 0),
+                    load_duration_ns=_nvl(tc.get("load_duration_ns"), 0),
+                    total_duration_ns=_nvl(tc.get("total_duration_ns"), 0),
+                    tokens_per_second=_nvl(tc.get("tokens_per_second"), 0.0),
+                    token_retry_count=_nvl(tc.get("token_retry_count"), 0),
+                    token_retry_max_tokens=_nvl(tc.get("token_retry_max_tokens"), 0),
                 )
                 for tc in self._test_cases
             ]
             db.add_test_results(results)
 
-            kw_results = [
-                KeywordResult(
-                    run_id=run_id,
-                    test_name=kw["test_name"],
-                    keyword_name=kw["keyword_name"],
-                    library_name=kw["library_name"],
-                    status=kw["status"],
-                    start_time=kw["start_time"],
-                    end_time=kw["end_time"],
-                    duration_seconds=kw["duration_seconds"],
-                    args=kw["args"],
-                    rfc_version=__version__,
-                )
-                for kw in self._keyword_results
-            ]
-            db.add_keyword_results(kw_results)
-
-            om_results = [
-                OllamaMetrics(
-                    run_id=run_id,
-                    test_name=om.get("test_name", ""),
-                    model_name=om.get("model_name", "unknown"),
-                    prompt_text=om.get("prompt_text", "")[:500]
-                    if om.get("prompt_text")
-                    else None,
-                    total_duration_ns=om.get("total_duration_ns"),
-                    load_duration_ns=om.get("load_duration_ns"),
-                    prompt_eval_count=om.get("prompt_eval_count"),
-                    prompt_eval_duration_ns=om.get("prompt_eval_duration_ns"),
-                    prompt_eval_rate=om.get("prompt_eval_rate"),
-                    eval_count=om.get("eval_count"),
-                    eval_duration_ns=om.get("eval_duration_ns"),
-                    eval_rate=om.get("eval_rate"),
-                    rfc_version=__version__,
-                )
-                for om in self._ollama_metrics
-            ]
-            db.add_ollama_metrics(om_results)
-
             dest = self._describe_database_destination()
+            blob_size = _format_size(len(output_xml_gz)) if output_xml_gz else "none"
             summary = (
-                f"DbListener: archived {len(results)} test result(s), "
-                f"{len(kw_results)} keyword result(s), "
-                f"and {len(om_results)} ollama metric(s) "
+                f"DbListener: archived {len(results)} test result(s) "
+                f"+ output.xml ({blob_size}) "
                 f"to {dest} (run_id={run_id})"
             )
             logger.info(summary)
@@ -409,15 +388,190 @@ class DbListener:
             logger.console(error_msg)
 
 
-def _compute_duration(start: str, end: str) -> Optional[float]:
-    """Parse RF timestamps and return duration in seconds, or None."""
-    if not start or not end:
+def _resolve_output_dir() -> str:
+    """Resolve the Robot Framework output directory.
+
+    Priority:
+    1. ``ROBOT_OUTPUT_DIR`` environment variable (explicit override).
+    2. Robot Framework's ``${OUTPUT DIR}`` built-in variable.
+    3. Empty string if neither is available.
+    """
+    env_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if env_dir:
+        return env_dir
+    try:
+        robot_dir = BuiltIn().get_variable_value("${OUTPUT DIR}")
+        if robot_dir:
+            return str(robot_dir)
+    except Exception:
+        pass  # Not running inside Robot context
+    return ""
+
+
+def _resolve_output_file() -> str:
+    """Resolve the full path to Robot Framework's output XML file.
+
+    Priority:
+    1. ``ROBOT_OUTPUT_DIR`` env var + ``output.xml`` (backward compatible).
+    2. Robot Framework's ``${OUTPUT FILE}`` built-in variable (respects
+       ``--output`` flag and ``--output NONE``).
+    3. Empty string if neither is available.
+    """
+    env_dir = os.getenv("ROBOT_OUTPUT_DIR")
+    if env_dir:
+        return os.path.join(env_dir, "output.xml")
+    try:
+        output_file = BuiltIn().get_variable_value("${OUTPUT FILE}")
+        if output_file and str(output_file).upper() != "NONE":
+            return str(output_file)
+    except Exception:
+        pass  # Not running inside Robot context
+    return ""
+
+
+def _read_and_compress_output_xml() -> bytes:
+    """Read output.xml from Robot's output directory and gzip-compress it."""
+    output_path = _resolve_output_file()
+    if not output_path:
+        return b""
+    if not os.path.isfile(output_path):
+        return b""
+    try:
+        with open(output_path, "rb") as f:
+            return gzip.compress(f.read())
+    except OSError:
+        return b""
+
+
+def _build_output_xml_source() -> str:
+    """Return the filesystem path to the Robot Framework output.xml.
+
+    This traces the test run back to the original output.xml that was
+    produced by Robot Framework, enabling audit and replay.
+    """
+    output_path = _resolve_output_file()
+    if output_path:
+        if os.path.isfile(output_path):
+            return os.path.abspath(output_path)
+        return output_path
+    return ""
+
+
+def _build_output_xml_url() -> str:
+    """Build a URL to the output.xml file from environment variables.
+
+    Only returns proper web URLs. Returns empty string when no web URL
+    is available (never stores filesystem paths).
+
+    Priority:
+    1. REPORT_BASE_URL — explicit base URL
+    2. CI_JOB_URL — GitLab CI artifact URL pattern
+    """
+    base = os.getenv("REPORT_BASE_URL")
+    if base:
+        return f"{base.rstrip('/')}/output.xml"
+
+    ci_job_url = os.getenv("CI_JOB_URL")
+    if ci_job_url:
+        return f"{ci_job_url}/artifacts/browse/output.xml"
+
+    return ""
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format a byte count as a human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f}KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f}MB"
+
+
+def _safe_int(value: Optional[str]) -> Optional[int]:
+    """Convert a string to int, returning None on failure."""
+    if value is None:
         return None
     try:
-        # RF timestamps: "2026-01-01 12:00:00.000"
-        fmt = "%Y-%m-%d %H:%M:%S.%f"
-        s = datetime.strptime(start.strip(), fmt)
-        e = datetime.strptime(end.strip(), fmt)
-        return round((e - s).total_seconds(), 3)
+        return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def _warn_near_miss(text: str) -> None:
+    """Warn if *text* looks like a malformed ``RFC_DATA:`` message.
+
+    Called only when *text* did NOT match the real prefix.  Checks for
+    common typos: wrong case, missing underscore, space instead of
+    underscore.
+    """
+    normalized = text.lstrip().upper().replace(" ", "_")
+    if normalized.startswith("RFC_DATA:") or normalized.startswith("RFCDATA:"):
+        logger.warn(
+            f"DbListener: possible RFC_DATA typo (message ignored): "
+            f"{text[:80]!r} — expected prefix 'RFC_DATA:'"
+        )
+
+
+def _extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
+    """Extract individual metrics from the llm_metrics JSON string.
+
+    Returns a dict with keys matching the Ollama metrics names.
+    Missing or unparseable data returns an empty dict.
+    """
+    if not metrics_json:
+        return {}
+    try:
+        data = json.loads(metrics_json)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return {
+        "eval_count": data.get("eval_count"),
+        "eval_duration_ns": data.get("eval_duration_ns"),
+        "prompt_eval_count": data.get("prompt_eval_count"),
+        "prompt_eval_duration_ns": data.get("prompt_eval_duration_ns"),
+        "load_duration_ns": data.get("load_duration_ns"),
+        "total_duration_ns": data.get("total_duration_ns"),
+        "eval_rate": data.get("eval_rate"),
+        "num_ctx": data.get("num_ctx"),
+        "num_predict": data.get("num_predict"),
+        # OpenAI token detail fields
+        "reasoning_tokens": data.get("reasoning_tokens"),
+        "cached_tokens": data.get("cached_tokens"),
+        "accepted_prediction_tokens": data.get("accepted_prediction_tokens"),
+        "rejected_prediction_tokens": data.get("rejected_prediction_tokens"),
+    }
+
+
+def _get_robot_float(var_name: str) -> float:
+    """Get a float Robot variable, falling back to env var."""
+    try:
+        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
+        if val is not None:
+            return float(val)
+    except Exception:
+        pass
+    env_val = os.getenv(var_name)
+    if env_val is not None:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return 0.0
+
+
+def _get_robot_int(var_name: str) -> int:
+    """Get an int Robot variable, falling back to env var."""
+    try:
+        val = BuiltIn().get_variable_value(f"${{{var_name}}}")
+        if val is not None:
+            return int(val)
+    except Exception:
+        pass
+    env_val = os.getenv(var_name)
+    if env_val is not None:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return 0

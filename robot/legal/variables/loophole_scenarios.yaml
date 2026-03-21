@@ -1,0 +1,69 @@
+# Loophole Detection Test Scenarios
+# Each scenario tests the LLM's ability to identify contradictions,
+# overreach, imbalances, or exploitable ambiguities in the agreement.
+
+LOOPHOLE_SCENARIOS:
+  - name: "Contradictory Liability and Indemnification"
+    question: >
+      Are there any contradictions between the limitation of liability
+      (Section 9) and the indemnification clause (Section 10)? Explain
+      the conflict.
+    expected: >
+      Section 9.2 caps Licensor's total liability at 12 months of Fees,
+      but Section 10.1 requires Licensee to provide unlimited indemnification
+      covering all claims, damages, losses, and attorneys' fees. The
+      indemnification obligation has no cap, contradicting the mutual
+      liability limitation language in Section 9.1.
+    category: contradiction
+    difficulty: hard
+
+  - name: "Overbroad IP Assignment"
+    question: >
+      Does the intellectual property clause contain any terms that extend
+      beyond what is reasonable for a software license? Identify any overreach
+      in Section 7.
+    expected: >
+      Section 7.3 requires irrevocable assignment of all Feedback and
+      Derivative Works to Licensor, including works independently developed
+      or conceived after the Term. This extends far beyond normal software
+      licensing since it captures IP created outside the scope of the
+      agreement and even after it ends.
+    category: overreach
+    difficulty: hard
+
+  - name: "One-Sided Indemnification"
+    question: >
+      Is the indemnification in this agreement mutual or one-sided? Explain
+      any imbalance.
+    expected: >
+      The indemnification is one-sided. Section 10.1 requires Licensee to
+      indemnify Licensor broadly, but Section 10.2 only gives Licensor
+      a choice to modify, re-license, or terminate — with no obligation
+      to defend or indemnify the Licensee against IP infringement claims.
+    category: imbalance
+    difficulty: medium
+
+  - name: "Unilateral Amendment Power"
+    question: >
+      Can either party modify this agreement unilaterally after execution?
+      Identify any clause that allows one-sided changes.
+    expected: >
+      Section 14.4 allows Licensor to modify terms at any time by posting
+      updates on its website or through the Software interface. Continued
+      use constitutes acceptance. This gives Licensor unilateral power to
+      change any term without Licensee's affirmative consent.
+    category: overreach
+    difficulty: medium
+
+  - name: "Arbitration Venue and Cost Imbalance"
+    question: >
+      Analyze the dispute resolution clause in Section 11. Are there any
+      terms that unfairly disadvantage one party?
+    expected: >
+      Section 11.1 has multiple imbalances. The arbitrator is selected by
+      the Licensor alone, not jointly. All costs are borne by the non-prevailing
+      party, which discourages smaller licensees from pursuing valid claims.
+      The venue is fixed in Wilmington, Delaware, favoring the Licensor who
+      is incorporated there.
+    category: imbalance
+    difficulty: hard

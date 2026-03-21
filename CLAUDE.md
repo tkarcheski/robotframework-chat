@@ -28,6 +28,52 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 
 ---
 
+## Clarifying Questions (Default Behavior)
+
+**Short or ambiguous prompts require clarification before acting.** When a user
+prompt is brief, vague, or could be interpreted multiple ways, do NOT guess —
+ask first. Review the codebase for current context, then ask targeted questions.
+
+### When to ask
+
+- The prompt is fewer than ~15 words and doesn't reference a specific file/function.
+- The intent could mean multiple things (e.g. "fix the tests" — which tests? what's broken?).
+- The request touches existing code but doesn't specify *how* to change it.
+- The scope is unclear (one file vs. many, new feature vs. modification).
+
+### What to ask
+
+Always ground your questions in the current state of the codebase. Before asking,
+scan relevant files so your questions are informed, not generic. Then ask questions
+like:
+
+1. **Intent** — Are you looking to simplify, refactor, extend an existing feature,
+   or build something new?
+2. **Scope** — Should this change be limited to a specific file/module, or is it
+   cross-cutting?
+3. **Existing patterns** — I see `<existing thing>` already does something similar.
+   Should I build on that, replace it, or start fresh?
+4. **Trade-offs** — There are a few ways to do this: `<option A>` vs `<option B>`.
+   Which direction do you prefer?
+5. **Priority** — Is this a quick fix, or should I invest in a robust solution?
+6. **Testing** — What tier of testing should this have? (See `ai/CLAUDE.md` § Grading Tiers)
+7. **Side effects** — This change would also affect `<X>`. Is that intended?
+
+### How many questions
+
+- Aim for 2–4 focused questions. Not a wall of text.
+- If you can answer some questions yourself by reading the code, do that instead
+  of asking.
+- Group related questions together.
+
+### When NOT to ask
+
+- The prompt is specific and unambiguous (e.g. "rename `foo` to `bar` in `keywords.py`").
+- The user has already provided detailed context or a multi-step plan.
+- The user says "just do it" or explicitly asks you to skip questions.
+
+---
+
 ## Rules
 
 - **Always read `ai/AGENTS.md` before starting any task.** This file contains critical agent architecture guidance and must be consulted first.
@@ -40,9 +86,32 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 - **Never bundle unrelated changes** in a single commit.
 - **Never mix formatting changes with logic changes.**
 - **Type hints are required** on all new Python code. mypy must pass.
+- **Never use `Optional` for database dataclass fields.** Use concrete defaults instead
+  (`str = ""`, `int = 0`, `float = 0.0`, `bytes = b""`). Use `int = -1` for sentinel
+  values like unassigned IDs or scores. `Optional` obscures intent and complicates
+  null-checking throughout the codebase.
 - **Use `RETURN` (not `[Return]`)** in Robot Framework keywords.
 - **Every Robot test must be tagged** with exactly one `tier:*` (0–6) and one `verify:*` tag per `ai/CLAUDE.md` § Tagging Rules.
+- **When adding a new Robot test suite**, register it in both `config/test_suites.yaml` (CI) and `config/local_models.yaml` (local cron). The hourly cron job (`scripts/cron_run_local_models.sh`) runs every suite listed in `local_models.yaml`.
 - **Assume the user will make mistakes.** Validate requests against the codebase and confirmed decisions before executing. See `ai/AGENTS.md` § User Input Validation.
+- **Always rebase onto `claude-code-staging`**, not `main`. This is the integration branch for all Claude Code work.
+- **Always include a version bump when submitting a PR.** Ask the user what the next version should be before bumping. Update the version in both `pyproject.toml` and `src/rfc/__init__.py`.
+
+### PR workflow (mandatory)
+
+After a working solution is committed and tests pass:
+
+1. **Rebase onto `claude-code-staging`** before creating the PR. Other agents may
+   have merged work since you branched — always `git fetch origin claude-code-staging`
+   and rebase. Resolve conflicts if any.
+2. **Ask the user for the version bump** (`pyproject.toml` + `src/rfc/__init__.py`).
+   Wait for their answer before bumping.
+3. **Create the PR** using `gh pr create`. This is not optional — every working
+   solution must result in a PR. Use `gh` CLI (install it first if missing).
+4. **Multiple agents may be working concurrently.** Only ask the user questions
+   (version bump, clarifications) when it is your turn — i.e., when you are ready
+   to submit, not while still mid-implementation. Do not block the user with
+   questions while other agents need attention.
 
 ---
 
@@ -52,6 +121,22 @@ uv run python tasks.py robot-dryrun   # Validate Robot tests
 - `robot/` is the single home for all Robot Framework test suites.
 - Never duplicate logic outside these directories.
 - Listeners are always active in make targets — don't strip them.
+
+---
+
+## Tool prerequisites
+
+- **`gh` CLI is required.** If `gh` is not available, install it before proceeding:
+  ```bash
+  # Debian/Ubuntu
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+  sudo apt-get update && sudo apt-get install gh -y
+  ```
+  The `gh` CLI is used for creating PRs, reading PR review comments, and interacting
+  with GitHub Issues. Do not attempt GitHub API operations without it.
 
 ---
 

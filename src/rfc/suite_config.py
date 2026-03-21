@@ -35,6 +35,7 @@ def _find_config_path() -> Path:
 # its value replaces the corresponding YAML key.
 _ENV_OVERRIDES: list[tuple[str, list[str]]] = [
     ("DEFAULT_MODEL", ["defaults", "model"]),
+    ("LLM_PROVIDER", ["defaults", "llm_provider"]),
     ("OLLAMA_ENDPOINT", ["defaults", "ollama_endpoint"]),
     ("GITLAB_API_URL", ["monitoring", "gitlab_api_url"]),
     ("GITLAB_PROJECT_ID", ["monitoring", "gitlab_project_id"]),
@@ -158,7 +159,7 @@ def node_dropdown_options() -> list[dict[str, str]]:
 
 
 def default_model() -> str:
-    return defaults().get("model", "gpt-oss:20b")
+    return defaults().get("model", "phi4:14b")
 
 
 def default_iq_levels() -> list[str]:

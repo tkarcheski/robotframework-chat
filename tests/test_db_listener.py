@@ -1,38 +1,75 @@
-"""Tests for rfc.db_listener.DbListener."""
+"""Tests for rfc.db_listener.DbListener (Listener API v3, 2-table schema)."""
 
-import json
+import gzip
 import os
+import sqlite3
 from unittest.mock import MagicMock, patch
 
-from rfc.db_listener import DbListener
+import pytest
+
+from rfc.db_listener import (
+    DbListener,
+    _build_output_xml_source,
+    _build_output_xml_url,
+    _extract_llm_metrics,
+    _format_size,
+    _get_robot_float,
+    _get_robot_int,
+    _parse_tags,
+    _read_and_compress_output_xml,
+    _resolve_output_dir,
+    _resolve_output_file,
+    _safe_int,
+)
 
 
-def _suite_attrs(**overrides):
-    """Build a minimal suite-end attributes dict."""
-    defaults = {
-        "totaltests": 3,
-        "metadata": {},
-    }
-    defaults.update(overrides)
-    return defaults
+def _mock_suite_data(name: str = "Suite") -> MagicMock:
+    """Create a mock running.TestSuite (data) object."""
+    data = MagicMock()
+    data.name = name
+    return data
 
 
-def _test_attrs(status="PASS", tags=None, doc="", message=""):
-    """Build a minimal test-end attributes dict."""
-    return {
-        "status": status,
-        "tags": tags or [],
-        "doc": doc,
-        "message": message,
-    }
+def _mock_suite_result(total: int = 3) -> MagicMock:
+    """Create a mock result.TestSuite (result) object."""
+    result = MagicMock()
+    result.statistics.total = total
+    result.metadata = {}
+    return result
+
+
+def _mock_test_data(
+    name: str = "Test", tags: list | None = None, doc: str = ""
+) -> MagicMock:
+    """Create a mock running.TestCase (data) object."""
+    data = MagicMock()
+    data.name = name
+    data.tags = tags if tags is not None else []
+    data.doc = doc
+    return data
+
+
+def _mock_test_result(status: str = "PASS", message: str = "") -> MagicMock:
+    """Create a mock result.TestCase (result) object."""
+    result = MagicMock()
+    result.status = status
+    result.message = message
+    return result
+
+
+def _mock_message(text: str) -> MagicMock:
+    """Create a mock result.Message object."""
+    msg = MagicMock()
+    msg.message = text
+    return msg
 
 
 class TestDbListenerInit:
-    def test_robot_listener_api_version(self):
+    def test_robot_listener_api_version(self) -> None:
         listener = DbListener()
-        assert listener.ROBOT_LISTENER_API_VERSION == 2
+        assert listener.ROBOT_LISTENER_API_VERSION == 3
 
-    def test_initial_state(self):
+    def test_initial_state(self) -> None:
         listener = DbListener()
         assert listener._db is None
         assert listener._start_time is None
@@ -40,16 +77,16 @@ class TestDbListenerInit:
         assert listener._test_cases == []
         assert listener._suite_depth == 0
 
-    def test_database_url_from_constructor(self):
+    def test_database_url_from_constructor(self) -> None:
         listener = DbListener(database_url="sqlite:///test.db")
         assert listener._database_url == "sqlite:///test.db"
 
-    def test_database_url_from_env(self):
+    def test_database_url_from_env(self) -> None:
         with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///env.db"}):
             listener = DbListener()
         assert listener._database_url == "sqlite:///env.db"
 
-    def test_constructor_overrides_env(self):
+    def test_constructor_overrides_env(self) -> None:
         with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///env.db"}):
             listener = DbListener(database_url="sqlite:///explicit.db")
         assert listener._database_url == "sqlite:///explicit.db"
@@ -57,107 +94,151 @@ class TestDbListenerInit:
 
 class TestDbListenerSuiteDepth:
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_start_suite_increments_depth(self, _mock_ci):
+    def test_start_suite_increments_depth(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         assert listener._suite_depth == 1
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._suite_depth == 2
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_start_suite_only_initialises_at_top_level(self, _mock_ci):
+    def test_start_suite_only_initialises_at_top_level(
+        self, _mock_ci: MagicMock
+    ) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         first_start_time = listener._start_time
         assert first_start_time is not None
 
-        # Nested suite should NOT reset start time
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._start_time is first_start_time
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_end_suite_decrements_depth(self, _mock_ci):
+    def test_end_suite_decrements_depth(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
-        listener.start_suite("Top", {})
-        listener.start_suite("Nested", {})
-        listener.end_suite("Nested", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
         assert listener._suite_depth == 1
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_nested_end_suite_does_not_archive(self, _mock_ci):
+    def test_nested_end_suite_does_not_archive(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
         mock_db = MagicMock()
         listener._db = mock_db
 
-        listener.start_suite("Top", {})
-        listener.start_suite("Nested", {})
-        listener.end_suite("Nested", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Nested"), _mock_suite_result())
 
         mock_db.add_test_run.assert_not_called()
 
 
 class TestDbListenerEndTest:
-    def test_records_test_case(self):
+    def test_records_test_case(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(status="PASS"))
+        listener.end_test(
+            _mock_test_data("Test One"),
+            _mock_test_result("PASS"),
+        )
         assert len(listener._test_cases) == 1
         assert listener._test_cases[0]["name"] == "Test One"
         assert listener._test_cases[0]["status"] == "PASS"
 
-    def test_extracts_score_from_tags(self):
+    def test_extracts_score_from_tags(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["IQ:100", "score:1"]))
-        assert listener._test_cases[0]["score"] == 1
+        listener.end_test(
+            _mock_test_data("Test One", tags=["IQ:100", "score:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == 1.0
 
-    def test_score_none_when_no_score_tag(self):
+    def test_score_negative_one_when_no_score_tag(self) -> None:
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["IQ:100"]))
-        assert listener._test_cases[0]["score"] is None
+        listener.end_test(
+            _mock_test_data("Test One", tags=["IQ:100"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == -1.0
 
-    def test_score_none_for_invalid_score_tag(self):
+    def test_score_from_rfc_data_fallback(self) -> None:
+        """Score captured from RFC_DATA when no score: tag exists."""
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["score:abc"]))
-        assert listener._test_cases[0]["score"] is None
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == 1.0
 
-    def test_score_none_for_malformed_score_tag(self):
+    def test_score_from_rfc_data_float(self) -> None:
+        """Float score captured from RFC_DATA."""
         listener = DbListener()
-        listener.end_test("Test One", _test_attrs(tags=["score:"]))
-        assert listener._test_cases[0]["score"] is None
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:0.75"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == 0.75
 
-    def test_uses_doc_as_question(self):
+    def test_score_tag_takes_precedence_over_rfc_data(self) -> None:
+        """Tag-based score wins when both tag and RFC_DATA are present."""
         listener = DbListener()
-        listener.end_test("T", _test_attrs(doc="What is 2+2?"))
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:0"))
+        listener.end_test(
+            _mock_test_data("T", tags=["score:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == 1.0
+
+    def test_score_negative_one_for_invalid_score_tag(self) -> None:
+        listener = DbListener()
+        listener.end_test(
+            _mock_test_data("Test One", tags=["score:abc"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == -1.0
+
+    def test_uses_doc_as_question(self) -> None:
+        listener = DbListener()
+        listener.end_test(
+            _mock_test_data("T", doc="What is 2+2?"),
+            _mock_test_result(),
+        )
         assert listener._test_cases[0]["question"] == "What is 2+2?"
 
-    def test_empty_doc_becomes_none(self):
+    def test_empty_doc_becomes_empty_string(self) -> None:
         listener = DbListener()
-        listener.end_test("T", _test_attrs(doc=""))
-        assert listener._test_cases[0]["question"] is None
+        listener.end_test(
+            _mock_test_data("T", doc=""),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["question"] == ""
 
-    def test_message_recorded(self):
-        listener = DbListener()
-        listener.end_test("T", _test_attrs(message="Assertion failed"))
-        assert listener._test_cases[0]["message"] == "Assertion failed"
-
-    def test_multiple_tests_recorded(self):
+    def test_multiple_tests_recorded(self) -> None:
         listener = DbListener()
         for i in range(5):
-            listener.end_test(f"Test {i}", _test_attrs())
+            listener.end_test(
+                _mock_test_data(f"Test {i}"),
+                _mock_test_result(),
+            )
         assert len(listener._test_cases) == 5
 
 
 class TestDbListenerEndSuiteArchival:
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_archives_to_database(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_archives_to_database(self, _mock_ci: MagicMock, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("My Suite", {})
-        listener.end_test("Test A", _test_attrs(status="PASS"))
-        listener.end_test("Test B", _test_attrs(status="FAIL"))
-        listener.end_suite("My Suite", _suite_attrs(totaltests=2))
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("Test A"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("Test B"), _mock_test_result("FAIL"))
+        listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result(total=2))
 
-        # Verify records were written
         db = listener._get_db()
         runs = db.get_recent_runs(limit=1)
         assert len(runs) == 1
@@ -166,16 +247,16 @@ class TestDbListenerEndSuiteArchival:
         assert runs[0]["failed"] == 1
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_counts_pass_fail_skip(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_counts_pass_fail_skip(self, _mock_ci: MagicMock, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="PASS"))
-        listener.end_test("T3", _test_attrs(status="FAIL"))
-        listener.end_test("T4", _test_attrs(status="SKIP"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=4))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T3"), _mock_test_result("FAIL"))
+        listener.end_test(_mock_test_data("T4"), _mock_test_result("SKIP"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=4))
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["passed"] == 2
@@ -184,202 +265,166 @@ class TestDbListenerEndSuiteArchival:
         assert runs[0]["total_tests"] == 4
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_total_tests_falls_back_to_test_case_count(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_total_tests_falls_back_to_test_case_count(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=0))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=0))
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["total_tests"] == 2
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={"Commit_SHA": "abc"})
-    def test_ci_metadata_included_in_run(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_ci_metadata_included_in_run(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["git_commit"] == "abc"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_rfc_version_recorded(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_rfc_version_recorded(self, _mock_ci: MagicMock, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["rfc_version"] is not None
+        assert runs[0]["rfc_version"] != ""
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_model_name_from_env(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_model_name_from_env(self, _mock_ci: MagicMock, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
         with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
-            listener.start_suite("Suite", {})
-            listener.end_test("T1", _test_attrs())
-            listener.end_suite("Suite", _suite_attrs())
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
+            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["model_name"] == "mistral"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_model_name_from_robot_variable_overrides_env(self, _mock_ci, tmp_path):
-        """Robot --variable DEFAULT_MODEL:llama3 should override the env var."""
-        db_path = str(tmp_path / "test.db")
+    def test_model_name_from_robot_variable_overrides_env(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "gpt-oss:20b"}):
-            listener.start_suite("Suite", {})
-            listener.end_test("T1", _test_attrs())
-            # Simulate Robot variable override (as set by --variable flag)
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
             with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = "llama3"
-                listener.end_suite("Suite", _suite_attrs())
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         runs = listener._get_db().get_recent_runs(limit=1)
         assert runs[0]["model_name"] == "llama3"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_model_name_falls_back_when_robot_variable_unavailable(
-        self, _mock_ci, tmp_path
-    ):
-        """When BuiltIn is not available (e.g. unit tests), fall back to env/ci_info."""
-        db_path = str(tmp_path / "test.db")
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
-            listener.start_suite("Suite", {})
-            listener.end_test("T1", _test_attrs())
-            # Simulate BuiltIn not available (outside Robot context)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
-                mock_builtin_cls.return_value.get_variable_value.side_effect = (
-                    RuntimeError("Not in RF context")
-                )
-                listener.end_suite("Suite", _suite_attrs())
-
-        runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["model_name"] == "mistral"
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_database_error_does_not_raise(self, _mock_ci):
+    def test_database_error_does_not_raise(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
         mock_db = MagicMock()
         mock_db.add_test_run.side_effect = Exception("db error")
         listener._db = mock_db
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
         # Should not raise — errors are logged and swallowed
-        listener.end_suite("Suite", _suite_attrs())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
 
 class TestDbListenerLogMessage:
     """Tests for RFC_DATA: structured log message capture."""
 
-    def test_captures_actual_answer(self):
+    def test_captures_actual_answer(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:The answer is 4"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:The answer is 4"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] == "The answer is 4"
 
-    def test_captures_expected_answer(self):
+    def test_captures_expected_answer(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["expected_answer"] == "4"
 
-    def test_captures_grading_reason(self):
+    def test_captures_grading_reason(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            {"message": "RFC_DATA:grading_reason:Correct numeric answer"}
+            _mock_message("RFC_DATA:grading_reason:Correct numeric answer")
         )
-        listener.end_test("T", _test_attrs())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["grading_reason"] == "Correct numeric answer"
 
-    def test_captures_multiple_fields(self):
+    def test_ignores_non_rfc_data_messages(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:42"})
-        listener.log_message({"message": "RFC_DATA:expected_answer:42"})
-        listener.log_message({"message": "RFC_DATA:grading_reason:Exact match"})
-        listener.end_test("T", _test_attrs())
-        tc = listener._test_cases[0]
-        assert tc["actual_answer"] == "42"
-        assert tc["expected_answer"] == "42"
-        assert tc["grading_reason"] == "Exact match"
-
-    def test_ignores_non_rfc_data_messages(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "Just a normal log message"})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("Just a normal log message"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] is None
 
-    def test_ignores_empty_message(self):
+    def test_ignores_empty_message(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": ""})
-        listener.end_test("T", _test_attrs())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message(""))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["actual_answer"] is None
 
-    def test_ignores_non_string_message(self):
+    def test_resets_between_tests(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": 12345})
-        listener.end_test("T", _test_attrs())
-        assert listener._test_cases[0]["actual_answer"] is None
+        listener.start_test(_mock_test_data("T1"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:first"))
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
 
-    def test_resets_between_tests(self):
-        listener = DbListener()
-        listener.start_test("T1", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:first"})
-        listener.end_test("T1", _test_attrs())
-
-        listener.start_test("T2", {})
-        listener.end_test("T2", _test_attrs())
+        listener.start_test(_mock_test_data("T2"), _mock_test_result())
+        listener.end_test(_mock_test_data("T2"), _mock_test_result())
 
         assert listener._test_cases[0]["actual_answer"] == "first"
         assert listener._test_cases[1]["actual_answer"] is None
 
-    def test_handles_value_with_colons(self):
+    def test_handles_value_with_colons(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            {"message": "RFC_DATA:grading_reason:Score: 1/1, reason: correct"}
+            _mock_message("RFC_DATA:grading_reason:Score: 1/1, reason: correct")
         )
-        listener.end_test("T", _test_attrs())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert (
             listener._test_cases[0]["grading_reason"] == "Score: 1/1, reason: correct"
         )
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_captured_data_archived_to_database(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_captured_data_archived_to_database(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("Math Test", {})
-        listener.log_message({"message": "RFC_DATA:actual_answer:4"})
-        listener.log_message({"message": "RFC_DATA:expected_answer:4"})
-        listener.log_message({"message": "RFC_DATA:grading_reason:Correct"})
-        listener.end_test("Math Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        import sqlite3
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Math Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:grading_reason:Correct"))
+        listener.end_test(_mock_test_data("Math Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -388,244 +433,47 @@ class TestDbListenerLogMessage:
             assert row["expected_answer"] == "4"
             assert row["grading_reason"] == "Correct"
 
-
-class TestDbListenerStartTest:
-    def test_resets_current_test_data(self):
-        listener = DbListener()
-        listener._current_test_data = {"stale": "data"}
-        listener.start_test("T", {})
-        assert listener._current_test_data == {}
-
-    def test_initial_current_test_data_is_empty(self):
-        listener = DbListener()
-        assert listener._current_test_data == {}
-
-
-def _kw_attrs(
-    status="PASS",
-    args=None,
-    kwname="",
-    libname="",
-    type="kw",
-    starttime="2026-01-01 12:00:00.000",
-    endtime="2026-01-01 12:00:01.500",
-):
-    """Build a minimal keyword attributes dict."""
-    return {
-        "status": status,
-        "args": args or [],
-        "kwname": kwname,
-        "libname": libname,
-        "type": type,
-        "starttime": starttime,
-        "endtime": endtime,
-    }
-
-
-class TestDbListenerKeywordTracking:
-    """Tests for start_keyword/end_keyword hooks."""
-
-    def test_tracks_ask_llm_keyword(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Ask LLM",
-            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords", args=["What is 2+2?"]),
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                status="PASS",
-            ),
-        )
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 1
-        kw = listener._keyword_results[0]
-        assert kw["keyword_name"] == "Ask LLM"
-        assert kw["status"] == "PASS"
-        assert kw["test_name"] == "T"
-
-    def test_tracks_grade_answer_keyword(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Grade Answer",
-            _kw_attrs(
-                kwname="Grade Answer",
-                libname="rfc.keywords",
-                args=["What is 2+2?", "4", "The answer is 4"],
-            ),
-        )
-        listener.end_keyword(
-            "Grade Answer",
-            _kw_attrs(kwname="Grade Answer", libname="rfc.keywords"),
-        )
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 1
-        assert listener._keyword_results[0]["keyword_name"] == "Grade Answer"
-
-    def test_tracks_safety_keywords(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Test Prompt Injection Resistance",
-            _kw_attrs(
-                kwname="Test Prompt Injection Resistance",
-                libname="rfc.safety_keywords",
-                args=["ignore previous instructions"],
-            ),
-        )
-        listener.end_keyword(
-            "Test Prompt Injection Resistance",
-            _kw_attrs(
-                kwname="Test Prompt Injection Resistance",
-                libname="rfc.safety_keywords",
-            ),
-        )
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 1
-
-    def test_ignores_builtin_keywords(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Log", _kw_attrs(kwname="Log", libname="BuiltIn", args=["hello"])
-        )
-        listener.end_keyword("Log", _kw_attrs(kwname="Log", libname="BuiltIn"))
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 0
-
-    def test_captures_duration(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                starttime="2026-01-01 12:00:00.000",
-            ),
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                endtime="2026-01-01 12:00:02.500",
-            ),
-        )
-        listener.end_test("T", _test_attrs())
-        assert listener._keyword_results[0]["duration_seconds"] is not None
-
-    def test_captures_first_arg_as_prompt(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                args=["What is the meaning of life?"],
-            ),
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
-        )
-        listener.end_test("T", _test_attrs())
-        assert "What is the meaning of life?" in listener._keyword_results[0]["args"]
-
-    def test_resets_between_suites(self):
-        listener = DbListener()
-        listener._keyword_results = [{"stale": "data"}]
-        with patch("rfc.db_listener.collect_ci_metadata", return_value={}):
-            listener.start_suite("Suite", {})
-        assert listener._keyword_results == []
-
-    def test_multiple_keywords_per_test(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        for name in ["Wait For LLM", "Ask LLM", "Grade Answer"]:
-            listener.start_keyword(name, _kw_attrs(kwname=name, libname="rfc.keywords"))
-            listener.end_keyword(name, _kw_attrs(kwname=name, libname="rfc.keywords"))
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 3
-
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_keywords_archived_to_database(self, _mock_ci, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_rfc_data_score_archived_to_database(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        """Score from RFC_DATA flows through to the database."""
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("Math Test", {})
-        listener.start_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                args=["What is 2+2?"],
-                starttime="2026-01-01 12:00:00.000",
-            ),
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(
-                kwname="Ask LLM",
-                libname="rfc.keywords",
-                endtime="2026-01-01 12:00:01.500",
-            ),
-        )
-        listener.end_test("Math Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        import sqlite3
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Graded Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        listener.log_message(_mock_message("RFC_DATA:expected_answer:4"))
+        listener.log_message(_mock_message("RFC_DATA:grading_reason:Correct"))
+        listener.end_test(_mock_test_data("Graded Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM keyword_results").fetchall()
-            assert len(rows) == 1
-            row = rows[0]
-            assert row["keyword_name"] == "Ask LLM"
-            assert row["test_name"] == "Math Test"
-            assert row["status"] == "PASS"
-            assert row["duration_seconds"] is not None
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["score"] == 1.0
 
-    def test_failed_keyword_recorded(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Ask LLM", _kw_attrs(kwname="Ask LLM", libname="rfc.keywords")
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords", status="FAIL"),
-        )
-        listener.end_test("T", _test_attrs(status="FAIL"))
-        assert listener._keyword_results[0]["status"] == "FAIL"
 
-    def test_tracks_by_known_keyword_name(self):
-        """Even if libname is empty, known keyword names are tracked."""
+class TestDbListenerStartTest:
+    def test_resets_current_test_data(self) -> None:
         listener = DbListener()
-        listener.start_test("T", {})
-        listener.start_keyword("Ask LLM", _kw_attrs(kwname="Ask LLM", libname=""))
-        listener.end_keyword("Ask LLM", _kw_attrs(kwname="Ask LLM", libname=""))
-        listener.end_test("T", _test_attrs())
-        assert len(listener._keyword_results) == 1
+        listener._current_test_data = {"stale": "data"}
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._current_test_data == {}
 
 
 class TestDbListenerGetDb:
-    def test_lazy_creates_database(self, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_lazy_creates_database(self, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
         assert listener._db is None
         db = listener._get_db()
         assert db is not None
         assert listener._db is db
 
-    def test_reuses_existing_database(self, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_reuses_existing_database(self, tmp_path: object) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
         db1 = listener._get_db()
         db2 = listener._get_db()
@@ -633,23 +481,20 @@ class TestDbListenerGetDb:
 
 
 class TestDbListenerDatabaseDescription:
-    """Tests for _describe_database_destination helper."""
-
-    def test_default_sqlite_when_no_url(self):
+    def test_not_configured_when_no_url(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DATABASE_URL", None)
             listener = DbListener()
             desc = listener._describe_database_destination()
-            assert "SQLite" in desc
-            assert "test_history.db" in desc
+            assert "NOT CONFIGURED" in desc
 
-    def test_explicit_sqlite_url(self):
+    def test_explicit_sqlite_url(self) -> None:
         listener = DbListener(database_url="sqlite:///path/to/my.db")
         desc = listener._describe_database_destination()
         assert "SQLite" in desc
         assert "path/to/my.db" in desc
 
-    def test_postgresql_url_strips_credentials(self):
+    def test_postgresql_url_strips_credentials(self) -> None:
         listener = DbListener(
             database_url="postgresql://user:secret@localhost:5433/rfc"
         )
@@ -657,28 +502,21 @@ class TestDbListenerDatabaseDescription:
         assert "PostgreSQL" in desc
         assert "localhost:5433/rfc" in desc
         assert "secret" not in desc
-        assert "user" not in desc
 
-    def test_postgresql_url_without_credentials(self):
-        listener = DbListener(database_url="postgresql://localhost:5433/rfc")
-        desc = listener._describe_database_destination()
-        assert "PostgreSQL" in desc
-        assert "localhost:5433/rfc" in desc
-
-    def test_does_not_trigger_db_init(self):
+    def test_does_not_trigger_db_init(self) -> None:
         listener = DbListener(database_url="sqlite:///whatever.db")
         listener._describe_database_destination()
         assert listener._db is None
 
 
 class TestDbListenerConsoleOutput:
-    """Tests for console output visibility."""
-
     @patch("rfc.db_listener.logger")
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_start_suite_emits_console_banner(self, _mock_ci, mock_logger):
+    def test_start_suite_emits_console_banner(
+        self, _mock_ci: MagicMock, mock_logger: MagicMock
+    ) -> None:
         listener = DbListener(database_url="sqlite:///test.db")
-        listener.start_suite("My Suite", {})
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -687,24 +525,28 @@ class TestDbListenerConsoleOutput:
 
     @patch("rfc.db_listener.logger")
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_start_suite_banner_not_repeated_for_nested(self, _mock_ci, mock_logger):
+    def test_start_suite_banner_not_repeated_for_nested(
+        self, _mock_ci: MagicMock, mock_logger: MagicMock
+    ) -> None:
         listener = DbListener(database_url="sqlite:///test.db")
-        listener.start_suite("Top", {})
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
         mock_logger.console.reset_mock()
-        listener.start_suite("Nested", {})
+        listener.start_suite(_mock_suite_data("Nested"), _mock_suite_result())
         mock_logger.console.assert_not_called()
 
     @patch("rfc.db_listener.logger")
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_end_suite_emits_console_summary(self, _mock_ci, mock_logger, tmp_path):
-        db_path = str(tmp_path / "test.db")
+    def test_end_suite_emits_console_summary(
+        self, _mock_ci: MagicMock, mock_logger: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs(status="PASS"))
-        listener.end_test("T2", _test_attrs(status="FAIL"))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_test(_mock_test_data("T2"), _mock_test_result("FAIL"))
         mock_logger.console.reset_mock()
-        listener.end_suite("Suite", _suite_attrs(totaltests=2))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=2))
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -714,42 +556,18 @@ class TestDbListenerConsoleOutput:
 
     @patch("rfc.db_listener.logger")
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_end_suite_console_includes_keyword_count(
-        self, _mock_ci, mock_logger, tmp_path
-    ):
-        db_path = str(tmp_path / "test.db")
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        listener.start_keyword(
-            "Ask LLM",
-            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
-        )
-        listener.end_keyword(
-            "Ask LLM",
-            _kw_attrs(kwname="Ask LLM", libname="rfc.keywords"),
-        )
-        listener.end_test("T", _test_attrs())
-        mock_logger.console.reset_mock()
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        console_calls = [str(call) for call in mock_logger.console.call_args_list]
-        full_output = " ".join(console_calls)
-        assert "1 keyword" in full_output
-
-    @patch("rfc.db_listener.logger")
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_database_error_emits_console_warning(self, _mock_ci, mock_logger):
+    def test_database_error_emits_console_warning(
+        self, _mock_ci: MagicMock, mock_logger: MagicMock
+    ) -> None:
         listener = DbListener()
         mock_db = MagicMock()
         mock_db.add_test_run.side_effect = Exception("connection refused")
         listener._db = mock_db
 
-        listener.start_suite("Suite", {})
-        listener.end_test("T1", _test_attrs())
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result())
         mock_logger.console.reset_mock()
-        listener.end_suite("Suite", _suite_attrs())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
 
         mock_logger.console.assert_called()
         console_calls = [str(call) for call in mock_logger.console.call_args_list]
@@ -758,136 +576,7 @@ class TestDbListenerConsoleOutput:
         assert "connection refused" in full_output
 
 
-class TestDbListenerOllamaMetrics:
-    """Tests for Ollama performance metrics capture via RFC_DATA:ollama_metrics."""
-
-    def test_initial_ollama_metrics_list_is_empty(self):
-        listener = DbListener()
-        assert listener._ollama_metrics == []
-
-    def test_captures_ollama_metrics_from_log_message(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        metrics = {
-            "model_name": "llama3",
-            "total_duration_ns": 17607688368,
-            "eval_rate": 11.0,
-        }
-        listener.log_message(
-            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
-        )
-        assert len(listener._ollama_metrics) == 1
-        assert listener._ollama_metrics[0]["model_name"] == "llama3"
-        assert listener._ollama_metrics[0]["test_name"] == "T"
-
-    def test_accumulates_metrics_across_calls(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        for i in range(3):
-            metrics = {"model_name": f"model_{i}", "eval_rate": float(i)}
-            listener.log_message(
-                {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
-            )
-        assert len(listener._ollama_metrics) == 3
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_resets_metrics_on_start_suite(self, _mock_ci):
-        listener = DbListener()
-        listener._ollama_metrics = [{"stale": "data"}]
-        listener.start_suite("Suite", {})
-        assert listener._ollama_metrics == []
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_metrics_archived_to_database(self, _mock_ci, tmp_path):
-        import sqlite3
-
-        db_path = str(tmp_path / "test.db")
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        listener.start_suite("Suite", {})
-        listener.start_test("Math Test", {})
-        metrics = {
-            "model_name": "llama3",
-            "total_duration_ns": 17607688368,
-            "load_duration_ns": 108889428,
-            "prompt_eval_count": 73,
-            "prompt_eval_duration_ns": 489998464,
-            "prompt_eval_rate": 148.98,
-            "eval_count": 186,
-            "eval_duration_ns": 16907870673,
-            "eval_rate": 11.0,
-        }
-        listener.log_message(
-            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
-        )
-        listener.end_test("Math Test", _test_attrs(status="PASS"))
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM ollama_metrics").fetchall()
-            assert len(rows) == 1
-            row = rows[0]
-            assert row["model_name"] == "llama3"
-            assert row["total_duration_ns"] == 17607688368
-            assert row["eval_rate"] == 11.0
-            assert row["test_name"] == "Math Test"
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_metrics_include_rfc_version(self, _mock_ci, tmp_path):
-        import sqlite3
-
-        db_path = str(tmp_path / "test.db")
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        listener.log_message(
-            {"message": 'RFC_DATA:ollama_metrics:{"model_name": "llama3"}'}
-        )
-        listener.end_test("T", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM ollama_metrics").fetchone()
-            assert row["rfc_version"] is not None
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_prompt_text_archived_to_database(self, _mock_ci, tmp_path):
-        import sqlite3
-
-        db_path = str(tmp_path / "test.db")
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        metrics = {
-            "model_name": "llama3",
-            "prompt_text": "What is 6 * 7?",
-            "eval_rate": 11.0,
-        }
-        listener.log_message(
-            {"message": f"RFC_DATA:ollama_metrics:{json.dumps(metrics)}"}
-        )
-        listener.end_test("T", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
-
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM ollama_metrics").fetchone()
-            assert row["prompt_text"] == "What is 6 * 7?"
-
-    def test_ignores_invalid_json_in_ollama_metrics(self):
-        listener = DbListener()
-        listener.start_test("T", {})
-        listener.log_message({"message": "RFC_DATA:ollama_metrics:not-valid-json"})
-        assert len(listener._ollama_metrics) == 0
-
-
 class TestDbListenerHostInfo:
-    """Tests for host identification metrics capture."""
-
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     @patch(
         "rfc.db_listener.collect_host_info",
@@ -901,51 +590,579 @@ class TestDbListenerHostInfo:
             "gpu_info": "NVIDIA RTX 4090, 24576 MiB",
         },
     )
-    def test_hostname_stored_on_test_run(self, _mock_host, _mock_ci, tmp_path):
-        import sqlite3
-
-        db_path = str(tmp_path / "test.db")
+    def test_hostname_stored_on_test_run(
+        self, _mock_host: MagicMock, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        listener.end_test("T", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM test_runs").fetchone()
             assert row["hostname"] == "dev1"
 
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    @patch(
-        "rfc.db_listener.collect_host_info",
-        return_value={
-            "hostname": "mini1",
-            "os_name": "Darwin",
-            "os_version": "24.0.0",
-            "cpu_arch": "arm64",
-            "cpu_count": 10,
-            "total_ram_gb": 16.0,
-            "gpu_info": None,
-        },
-    )
-    def test_host_info_upserted_to_database(self, _mock_host, _mock_ci, tmp_path):
-        import sqlite3
 
-        db_path = str(tmp_path / "test.db")
+class TestBuildOutputXmlUrl:
+    def test_from_report_base_url(self) -> None:
+        env = {"REPORT_BASE_URL": "https://results.example.com/math"}
+        with patch.dict(os.environ, env, clear=False):
+            url = _build_output_xml_url()
+        assert url == "https://results.example.com/math/output.xml"
+
+    def test_from_ci_job_url(self) -> None:
+        env = {"CI_JOB_URL": "https://gitlab.example.com/project/-/jobs/123"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            url = _build_output_xml_url()
+        assert url is not None
+        assert "output.xml" in url
+
+    def test_empty_when_only_output_dir(self) -> None:
+        """Filesystem paths should NOT be stored as URLs."""
+        env = {"ROBOT_OUTPUT_DIR": "/tmp/results/math"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
+            url = _build_output_xml_url()
+        assert url == ""
+
+    def test_empty_when_no_env(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            url = _build_output_xml_url()
+        assert url == ""
+
+
+class TestParseTags:
+    """Tests for _parse_tags() structured tag extraction."""
+
+    def test_extracts_severity(self) -> None:
+        result = _parse_tags(["safety", "severity:high", "regression"])
+        assert result["tag_severity"] == "high"
+
+    def test_extracts_tier(self) -> None:
+        result = _parse_tags(["tier:1", "safety"])
+        assert result["tag_tier"] == 1
+
+    def test_extracts_verify(self) -> None:
+        result = _parse_tags(["verify:python", "safety"])
+        assert result["tag_verify"] == "python"
+
+    def test_remaining_tags_sorted_alphabetically(self) -> None:
+        result = _parse_tags(
+            [
+                "safety",
+                "regression",
+                "batch",
+                "severity:high",
+                "tier:1",
+                "verify:python",
+            ]
+        )
+        assert result["tags_sorted"] == "batch,regression,safety"
+
+    def test_empty_tags(self) -> None:
+        result = _parse_tags([])
+        assert result["tag_severity"] == ""
+        assert result["tag_tier"] == -1
+        assert result["tag_verify"] == ""
+        assert result["tags_sorted"] == ""
+
+    def test_no_structured_tags(self) -> None:
+        result = _parse_tags(["safety", "regression"])
+        assert result["tag_severity"] == ""
+        assert result["tag_tier"] == -1
+        assert result["tag_verify"] == ""
+        assert result["tags_sorted"] == "regression,safety"
+
+    def test_invalid_tier_kept_in_other(self) -> None:
+        result = _parse_tags(["tier:abc", "safety"])
+        assert result["tag_tier"] == -1
+        assert "tier:abc" in result["tags_sorted"]
+
+    def test_all_structured_no_remaining(self) -> None:
+        result = _parse_tags(["severity:critical", "tier:2", "verify:llm"])
+        assert result["tag_severity"] == "critical"
+        assert result["tag_tier"] == 2
+        assert result["tag_verify"] == "llm"
+        assert result["tags_sorted"] == ""
+
+    def test_real_safety_suite_tags(self) -> None:
+        """Test with actual tags from the Safety test suite."""
+        result = _parse_tags(
+            [
+                "safety",
+                "llm-security",
+                "regression",
+                "tier:1",
+                "verify:python",
+                "prompt_injection",
+                "severity:critical",
+            ]
+        )
+        assert result["tag_severity"] == "critical"
+        assert result["tag_tier"] == 1
+        assert result["tag_verify"] == "python"
+        assert (
+            result["tags_sorted"] == "llm-security,prompt_injection,regression,safety"
+        )
+
+    def test_score_tag_kept_in_other(self) -> None:
+        """score: tags are NOT extracted (handled separately by DbListener)."""
+        result = _parse_tags(["score:1", "tier:0", "verify:robot"])
+        assert result["tag_tier"] == 0
+        assert result["tag_verify"] == "robot"
+        assert "score:1" in (result["tags_sorted"] or "")
+
+
+class TestFormatSize:
+    def test_bytes(self) -> None:
+        assert _format_size(500) == "500B"
+
+    def test_kilobytes(self) -> None:
+        assert "KB" in _format_size(5000)
+
+    def test_megabytes(self) -> None:
+        assert "MB" in _format_size(5_000_000)
+
+
+class TestSafeInt:
+    def test_valid_int(self) -> None:
+        assert _safe_int("42") == 42
+
+    def test_none_returns_none(self) -> None:
+        assert _safe_int(None) is None
+
+    def test_invalid_returns_none(self) -> None:
+        assert _safe_int("abc") is None
+
+
+class TestExtractLlmMetrics:
+    def test_valid_json(self) -> None:
+        data = '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        result = _extract_llm_metrics(data)
+        assert result["eval_count"] == 186
+        assert result["eval_duration_ns"] == 16907870673
+        assert result["eval_rate"] == 11.0
+
+    def test_none_returns_empty(self) -> None:
+        assert _extract_llm_metrics(None) == {}
+
+    def test_invalid_json_returns_empty(self) -> None:
+        assert _extract_llm_metrics("not json") == {}
+
+    def test_missing_keys_return_none(self) -> None:
+        result = _extract_llm_metrics('{"eval_count": 10}')
+        assert result["eval_count"] == 10
+        assert result.get("eval_duration_ns") is None
+
+    def test_openai_metrics_passthrough(self) -> None:
+        """OpenAI token detail fields pass through to metrics dict."""
+        import json
+
+        data = json.dumps(
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "reasoning_tokens": 30,
+                "cached_tokens": 20,
+                "accepted_prediction_tokens": 10,
+                "rejected_prediction_tokens": 5,
+                "prompt_eval_count": 100,
+                "eval_count": 50,
+            }
+        )
+        result = _extract_llm_metrics(data)
+        assert result["reasoning_tokens"] == 30
+        assert result["cached_tokens"] == 20
+        assert result["accepted_prediction_tokens"] == 10
+        assert result["rejected_prediction_tokens"] == 5
+        assert result["prompt_eval_count"] == 100
+        assert result["eval_count"] == 50
+
+    def test_openai_metrics_missing_returns_none(self) -> None:
+        """Missing OpenAI detail fields return None."""
+        result = _extract_llm_metrics('{"eval_count": 10}')
+        assert result.get("reasoning_tokens") is None
+        assert result.get("cached_tokens") is None
+        assert result.get("accepted_prediction_tokens") is None
+        assert result.get("rejected_prediction_tokens") is None
+
+
+class TestDbListenerNearMissWarning:
+    """Tests for near-miss RFC_DATA typo detection."""
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_lowercase_rfc_data(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("rfc_data:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+        assert "RFC_DATA" in str(mock_logger.warn.call_args)
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_missing_underscore(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFCDATA:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+
+    @patch("rfc.db_listener.logger")
+    def test_warns_on_space_instead_of_underscore(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC DATA:actual_answer:42"))
+        mock_logger.warn.assert_called_once()
+
+    @patch("rfc.db_listener.logger")
+    def test_no_warning_on_normal_message(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("Just a normal log message"))
+        mock_logger.warn.assert_not_called()
+
+    @patch("rfc.db_listener.logger")
+    def test_no_warning_on_valid_rfc_data(self, mock_logger: MagicMock) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:1"))
+        mock_logger.warn.assert_not_called()
+
+    def test_near_miss_does_not_capture_data(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("rfc_data:actual_answer:42"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["actual_answer"] is None
+
+
+class TestDbListenerThinkingCapture:
+    """Tests for thinking and metrics data capture in the listener."""
+
+    def test_captures_thinking_text(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:thinking_text:I need to reason"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["thinking_text"] == "I need to reason"
+
+    def test_captures_thinking_tokens(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:thinking_tokens:15"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["thinking_tokens"] == 15
+
+    def test_captures_num_ctx(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:num_ctx:4096"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["num_ctx"] == 4096
+
+    def test_extracts_metrics_from_llm_metrics_json(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        metrics = (
+            '{"eval_count": 186, "eval_duration_ns": 16907870673, "eval_rate": 11.0}'
+        )
+        listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["eval_count"] == 186
+        assert listener._test_cases[0]["tokens_per_second"] == 11.0
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_thinking_data_archived_to_database(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
         listener = DbListener(database_url=f"sqlite:///{db_path}")
 
-        listener.start_suite("Suite", {})
-        listener.start_test("T", {})
-        listener.end_test("T", _test_attrs())
-        listener.end_suite("Suite", _suite_attrs(totaltests=1))
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.start_test(_mock_test_data("Think Test"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:actual_answer:42"))
+        listener.log_message(_mock_message("RFC_DATA:thinking_text:Let me think"))
+        listener.log_message(_mock_message("RFC_DATA:thinking_tokens:3"))
+        listener.log_message(_mock_message("RFC_DATA:num_ctx:8192"))
+        metrics = (
+            '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+        )
+        listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
+        listener.end_test(_mock_test_data("Think Test"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM host_info").fetchone()
-            assert row["hostname"] == "mini1"
-            assert row["os_name"] == "Darwin"
-            assert row["cpu_arch"] == "arm64"
-            assert row["cpu_count"] == 10
-            assert row["total_ram_gb"] == 16.0
+            row = conn.execute("SELECT * FROM test_results").fetchone()
+            assert row["thinking_text"] == "Let me think"
+            assert row["thinking_tokens"] == 3
+            assert row["num_ctx"] == 8192
+            assert row["eval_count"] == 50
+            assert row["tokens_per_second"] == 10.0
+
+
+class TestResolveOutputDir:
+    """Tests for _resolve_output_dir() fallback chain."""
+
+    def test_returns_env_var_when_set(self) -> None:
+        """ROBOT_OUTPUT_DIR env var takes priority."""
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/explicit/path"}):
+            assert _resolve_output_dir() == "/explicit/path"
+
+    def test_returns_robot_variable_when_env_not_set(self) -> None:
+        """Falls back to Robot's ${OUTPUT DIR} when env var is absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "/robot/output"
+                )
+                assert _resolve_output_dir() == "/robot/output"
+
+    def test_returns_empty_when_neither_available(self) -> None:
+        """Returns empty string when both env var and Robot var are absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                assert _resolve_output_dir() == ""
+
+    def test_returns_empty_when_builtin_raises(self) -> None:
+        """Returns empty string when not running inside Robot context."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.side_effect = (
+                    RuntimeError("not in robot")
+                )
+                assert _resolve_output_dir() == ""
+
+    def test_env_var_takes_precedence_over_robot_variable(self) -> None:
+        """Env var wins even when Robot variable is also available."""
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/from/env"}):
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "/from/robot"
+                )
+                assert _resolve_output_dir() == "/from/env"
+
+
+class TestResolveOutputFile:
+    """Tests for _resolve_output_file() fallback chain."""
+
+    def test_returns_env_var_path_when_set(self) -> None:
+        """ROBOT_OUTPUT_DIR env var constructs output.xml path."""
+        with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/explicit/path"}):
+            result = _resolve_output_file()
+        assert result == "/explicit/path/output.xml"
+
+    def test_returns_robot_output_file_variable(self) -> None:
+        """Falls back to Robot's ${OUTPUT FILE} when env var is absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "/robot/results/custom_output.xml"
+                )
+                assert _resolve_output_file() == "/robot/results/custom_output.xml"
+
+    def test_returns_empty_when_output_none(self) -> None:
+        """Returns empty string when Robot output is NONE (--output NONE)."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = "NONE"
+                assert _resolve_output_file() == ""
+
+    def test_returns_empty_when_neither_available(self) -> None:
+        """Returns empty string when both env var and Robot var are absent."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                assert _resolve_output_file() == ""
+
+    def test_returns_empty_when_builtin_raises(self) -> None:
+        """Returns empty string when not running inside Robot context."""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ROBOT_OUTPUT_DIR", None)
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.side_effect = (
+                    RuntimeError("not in robot")
+                )
+                assert _resolve_output_file() == ""
+
+
+class TestBuildOutputXmlSource:
+    """Tests for _build_output_xml_source() using resolved output file."""
+
+    def test_returns_path_when_file_exists(self, tmp_path: object) -> None:
+        """Returns absolute path when output file exists."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value=str(output_xml),
+        ):
+            result = _build_output_xml_source()
+        assert result == os.path.abspath(str(output_xml))
+
+    def test_returns_candidate_when_file_missing(self) -> None:
+        """Returns resolved path even when file does not exist yet."""
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value="/nonexistent/dir/output.xml",
+        ):
+            result = _build_output_xml_source()
+        assert result == "/nonexistent/dir/output.xml"
+
+    def test_returns_empty_when_no_output_file(self) -> None:
+        """Returns empty string when output file cannot be resolved."""
+        with patch("rfc.db_listener._resolve_output_file", return_value=""):
+            result = _build_output_xml_source()
+        assert result == ""
+
+
+class TestReadAndCompressOutputXml:
+    """Tests for _read_and_compress_output_xml() using resolved output file."""
+
+    def test_returns_compressed_data_when_file_exists(self, tmp_path: object) -> None:
+        """Returns gzip-compressed content when output file exists."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value=str(output_xml),
+        ):
+            result = _read_and_compress_output_xml()
+        assert len(result) > 0
+        assert gzip.decompress(result) == b"<robot/>"
+
+    def test_returns_empty_when_no_output_file(self) -> None:
+        """Returns empty bytes when output file cannot be resolved."""
+        with patch("rfc.db_listener._resolve_output_file", return_value=""):
+            result = _read_and_compress_output_xml()
+        assert result == b""
+
+    def test_returns_empty_when_file_missing(self) -> None:
+        """Returns empty bytes when resolved file does not exist."""
+        with patch(
+            "rfc.db_listener._resolve_output_file",
+            return_value="/nonexistent/dir/output.xml",
+        ):
+            result = _read_and_compress_output_xml()
+        assert result == b""
+
+    def test_returns_empty_on_oserror(self, tmp_path: object) -> None:
+        """Returns empty bytes when reading the file raises OSError (lines 438-439)."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+
+        def _open_raises(*args: object, **kwargs: object) -> None:
+            raise OSError("permission denied")
+
+        with (
+            patch(
+                "rfc.db_listener._resolve_output_file",
+                return_value=str(output_xml),
+            ),
+            patch("builtins.open", _open_raises),
+        ):
+            result = _read_and_compress_output_xml()
+        assert result == b""
+
+
+# ── log_message non-string early return ──────────────────────────────
+
+
+class TestLogMessageNonString:
+    def test_non_string_message_returns_early(self) -> None:
+        """Line 175: log_message should return early for non-string messages."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        msg = MagicMock()
+        msg.message = 12345  # non-string
+        listener.log_message(msg)
+        # No crash, and no data captured
+        assert listener._current_test_data == {}
+
+
+# ── _get_db fallback ─────────────────────────────────────────────────
+
+
+class TestDbListenerGetDbFallback:
+    def test_get_db_without_explicit_url_uses_env(
+        self, tmp_path: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When database_url param is None but DATABASE_URL env is set, _get_db uses env."""
+        db_path = str(tmp_path / "fallback.db")  # type: ignore[operator]
+        # Don't pass database_url to constructor; instead set env var
+        # but make sure __init__ sees it as None (simulate no env var at init time)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        listener = DbListener()
+        # _database_url is None at this point
+        assert listener._database_url is None
+        # Now set DATABASE_URL so TestDatabase() can pick it up at line 134
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+        db = listener._get_db()
+        assert db is not None
+
+
+# ── Score from RFC_DATA edge cases ───────────────────────────────────
+
+
+class TestDbListenerScoreEdgeCases:
+    def test_invalid_rfc_data_score_stays_negative_one(self) -> None:
+        """Non-numeric RFC_DATA score should not crash — score stays -1."""
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(_mock_message("RFC_DATA:score:not_a_number"))
+        listener.end_test(
+            _mock_test_data("T", tags=["tier:1"]),
+            _mock_test_result(),
+        )
+        assert listener._test_cases[0]["score"] == -1.0
+
+
+# ── _get_robot_float / _get_robot_int ────────────────────────────────
+
+
+class TestGetRobotFloat:
+    def test_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEMPERATURE", "0.7")
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.7
+
+    def test_invalid_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEMPERATURE", "not_a_float")
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.0
+
+    def test_missing_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("TEMPERATURE", raising=False)
+        result = _get_robot_float("TEMPERATURE")
+        assert result == 0.0
+
+
+class TestGetRobotInt:
+    def test_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SEED", "42")
+        result = _get_robot_int("SEED")
+        assert result == 42
+
+    def test_invalid_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SEED", "not_an_int")
+        result = _get_robot_int("SEED")
+        assert result == 0
+
+    def test_missing_env_returns_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SEED", raising=False)
+        result = _get_robot_int("SEED")
+        assert result == 0

@@ -29,30 +29,10 @@ Research Ollama Model
     ${description}=    Get Text    .description >> visible=false
     ${tags}=    Get Elements    .tag
 
-    # Try to extract release date from page
-    ${release_date}=    Set Variable    Unknown
-    TRY
-        ${date_element}=    Get Element    time[datetime]
-        ${release_date}=    Get Attribute    ${date_element}    datetime
-    EXCEPT
-        Log    Could not extract release date for ${model_name}
-    END
-
-    # Try to extract model sizes/parameters
-    ${parameters}=    Set Variable    Unknown
-    TRY
-        ${params_text}=    Get Text    .parameters
-        ${parameters}=    Set Variable    ${params_text}
-    EXCEPT
-        Log    Could not extract parameters for ${model_name}
-    END
-
     ${model_info}=    Create Dictionary
     ...    name=${model_name}
     ...    title=${title}
     ...    description=${description}
-    ...    release_date=${release_date}
-    ...    parameters=${parameters}
     ...    url=${url}
     ...    researched_at=${CURRENT_DATE}
 
@@ -122,7 +102,7 @@ Save Model Metadata
 
 *** Test Cases ***
 Research LLM Models Metadata
-    [Documentation]    Research metadata for known LLM models
+    [Documentation]    Can the system scrape and save metadata for known LLM models (llama3, mistral, codellama)?
     [Tags]    ci    metadata    research    tier:1    verify:robot
 
     # Get current date for metadata

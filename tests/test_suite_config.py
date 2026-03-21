@@ -1,10 +1,14 @@
 """Tests for rfc.suite_config."""
 
 import os
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from rfc.suite_config import (
     _apply_env_overrides,
+    _find_config_path,
     defaults,
     test_suites as get_test_suites,
     run_all_entry,
@@ -90,7 +94,7 @@ class TestDropdownBuilders:
     def test_iq_dropdown_format(self, mock_suite_config):
         options = iq_dropdown_options()
         assert options[0]["label"].startswith("IQ:")
-        assert options[0]["value"] in ["100", "110", "120"]
+        assert options[0]["value"] in ["70", "80", "90", "100", "110", "120"]
 
     def test_profile_dropdown_format(self, mock_suite_config):
         options = profile_dropdown_options()
@@ -162,3 +166,46 @@ class TestEnvVarOverrides:
         with patch.dict(os.environ, {"DEFAULT_MODEL": "phi3"}):
             result = _apply_env_overrides(cfg)
         assert result["defaults"]["model"] == "phi3"
+
+
+class TestFindConfigPath:
+    """Tests for _find_config_path CWD fallback (lines 25-29)."""
+
+    def test_finds_config_in_package_relative_path(self) -> None:
+        """Primary path (package-relative) should work in this repo."""
+        path = _find_config_path()
+        assert path.exists()
+        assert path.name == "test_suites.yaml"
+
+    def test_cwd_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the package-relative path doesn't exist, falls back to CWD."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        config_file = config_dir / "test_suites.yaml"
+        config_file.write_text("defaults: {}")
+
+        # Change CWD first, then patch __file__
+        monkeypatch.chdir(tmp_path)
+        # Make the __file__-based path resolve to a nonexistent location
+        # Path(__file__).resolve().parent.parent.parent → /tmp/.../fake
+        import rfc.suite_config as sc
+
+        fake_file = str(tmp_path / "fake" / "pkg" / "rfc" / "suite_config.py")
+        monkeypatch.setattr(sc, "__file__", fake_file)
+        result = _find_config_path()
+        assert result == config_dir / "test_suites.yaml"
+
+    def test_raises_when_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FileNotFoundError when config is in neither location."""
+        monkeypatch.chdir(tmp_path)
+        import rfc.suite_config as sc
+
+        monkeypatch.setattr(
+            sc, "__file__", str(tmp_path / "fake" / "rfc" / "suite_config.py")
+        )
+        with pytest.raises(FileNotFoundError, match="Cannot find"):
+            _find_config_path()

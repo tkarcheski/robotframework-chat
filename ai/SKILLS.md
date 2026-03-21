@@ -30,7 +30,7 @@ This document outlines the capabilities and skills of the AI agent working on ro
 - Tagging and releases
 
 **Pull Request Workflow:**
-- Create feature branches from main
+- Create feature branches from `claude-code-staging` (the integration branch for all Claude Code work)
 - Push branches to remote: `git push origin feature-name`
 - Create PRs/MRs with descriptive titles and bodies
 - Monitor PRs for feedback and respond promptly
@@ -108,7 +108,7 @@ This document outlines the capabilities and skills of the AI agent working on ro
 1. Read ai/AGENTS.md and ai/SKILLS.md
 2. Understand project structure and conventions
 3. Check for existing issues or PRs
-4. Create feature branch: `git checkout -b feature/description`
+4. Create feature branch from `claude-code-staging`: `git checkout -b feature/description claude-code-staging`
 
 ### During Development
 

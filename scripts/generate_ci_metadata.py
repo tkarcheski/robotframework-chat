@@ -29,18 +29,10 @@ if platform == "github":
         "commit_sha": sha,
         "commit_short_sha": sha[:8] if sha else "",
         "branch": os.getenv("GITHUB_REF_NAME", ""),
-        "pipeline_url": f"{project_url}/actions/runs/{run_id}"
-        if project_url and run_id
-        else "",
         "job_url": f"{project_url}/actions/runs/{run_id}"
         if project_url and run_id
         else "",
         "job_id": os.getenv("GITHUB_RUN_NUMBER", ""),
-    }
-    runner_data = {
-        "id": os.getenv("RUNNER_NAME", ""),
-        "description": os.getenv("RUNNER_OS", ""),
-        "tags": "",
     }
 else:
     ci_data = {
@@ -48,24 +40,17 @@ else:
         "commit_sha": os.getenv("CI_COMMIT_SHA", ""),
         "commit_short_sha": os.getenv("CI_COMMIT_SHORT_SHA", ""),
         "branch": os.getenv("CI_COMMIT_REF_NAME", ""),
-        "pipeline_url": os.getenv("CI_PIPELINE_URL", ""),
         "job_url": os.getenv("CI_JOB_URL", ""),
         "job_id": os.getenv("CI_JOB_ID", ""),
-    }
-    runner_data = {
-        "id": os.getenv("CI_RUNNER_ID", ""),
-        "description": os.getenv("CI_RUNNER_DESCRIPTION", ""),
-        "tags": os.getenv("CI_RUNNER_TAGS", ""),
     }
 
 data = {
     "version": __version__,
     "ci_platform": platform or "unknown",
     "ci": ci_data,
-    "runner": runner_data,
     "ollama": {
         "endpoint": os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "gpt-oss:20b"),
+        "default_model": os.getenv("DEFAULT_MODEL", "phi4:14b"),
     },
     "timestamp": datetime.utcnow().isoformat() + "Z",
 }

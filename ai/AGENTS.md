@@ -123,7 +123,7 @@ Read `ai/CLAUDE.md` for grading tiers and test rules.
 - `chore:` - Maintenance
 
 **Pull Request Workflow:**
-1. Create feature branch from main
+1. Create feature branch from `claude-code-staging` (the integration branch for all Claude Code work — not `main`)
 2. Implement changes following all rules above
 3. Push branch to remote: `git push origin feature-name`
 4. Create PR/MR with descriptive title and body
@@ -131,6 +131,11 @@ Read `ai/CLAUDE.md` for grading tiers and test rules.
 6. Address review comments with additional commits
 7. Update PR description if scope changes
 8. Only merge after approval and all checks pass
+
+**Branch Policy:**
+- Always rebase feature branches onto `claude-code-staging` (not `main`).
+- `claude-code-staging` is the integration branch for all Claude Code work.
+- Run `git fetch origin claude-code-staging && git rebase origin/claude-code-staging` before pushing.
 
 ---
 
@@ -334,8 +339,7 @@ robotframework-chat/
 │   ├── DEV.md                  # Development guidelines
 │   ├── PIPELINES.md            # Pipeline strategy & model selection
 │   ├── REFACTOR.md             # Refactoring & maintenance guide
-│   ├── DEVOPS.md               # DevOps practices tracker
-│   └── FEATURES.md             # Feature tracker (prioritized)
+│   └── DEVOPS.md               # DevOps practices tracker
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
 │   ├── lint.sh                 # Code quality checks
@@ -416,7 +420,7 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 | `DATABASE_URL` | Backend | Notes |
 |----------------|---------|-------|
-| Not set | SQLite | Stores to `data/test_history.db` |
+| Not set | `.env` fallback | Read from `.env`; `RuntimeError` if still missing |
 | `postgresql://...` | PostgreSQL | Requires `uv sync --extra superset` |
 
 ---
@@ -490,19 +494,15 @@ During the **review stage** (MR label `opencode-review` or manual trigger), Open
 
 ## Database
 
-Test results are stored in a SQL database with dual-backend support:
-
-- **SQLite** (default) — zero-config, stores in `data/test_history.db`
-- **PostgreSQL** — for production use with Superset visualization
-
-Set `DATABASE_URL` in your environment or `.env` to switch backends:
+Test results are stored in PostgreSQL (required). `DATABASE_URL` must be set
+in the environment or `.env`:
 
 ```bash
-# PostgreSQL (for Superset)
 DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
-
-# SQLite (default when DATABASE_URL is unset)
 ```
+
+SQLite is only used internally by test fixtures (via `db_path=` parameter)
+and is not a supported production backend.
 
 See [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) for schema details, queries, and maintenance.
 
@@ -528,7 +528,7 @@ after loading `config/test_suites.yaml`:
 
 | Env var | YAML path | Example |
 |---------|-----------|---------|
-| `DEFAULT_MODEL` | `defaults.model` | `mistral` |
+| `DEFAULT_MODEL` | `defaults.model` | `qwen3.5:27b` |
 | `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
 | `GITLAB_API_URL` | `monitoring.gitlab_api_url` | `https://gitlab.example.com` |
 | `GITLAB_PROJECT_ID` | `monitoring.gitlab_project_id` | `42` |

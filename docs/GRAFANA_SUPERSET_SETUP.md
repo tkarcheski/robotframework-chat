@@ -169,7 +169,7 @@ DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 # ── Ollama ──────────────────────────────────────────────────────────
 OLLAMA_ENDPOINT=http://localhost:11434
-DEFAULT_MODEL=gpt-oss:20b
+DEFAULT_MODEL=phi4:14b
 OLLAMA_NODES_LIST=localhost
 ```
 
@@ -875,20 +875,19 @@ db.export_to_json("full_export.json")
 | `id` | SERIAL PK | Auto-incrementing ID |
 | `timestamp` | TIMESTAMP | When the test ran |
 | `model_name` | VARCHAR(255) | LLM model identifier (e.g., `llama3.1:8b`) |
-| `model_release_date` | VARCHAR(255) | Model release date from metadata |
-| `model_parameters` | VARCHAR(255) | Model size (e.g., `8B`) |
 | `test_suite` | VARCHAR(255) | Suite name (`math`, `docker`, `safety`) |
 | `git_commit` | VARCHAR(255) | Git commit SHA |
 | `git_branch` | VARCHAR(255) | Git branch name |
-| `pipeline_url` | TEXT | CI pipeline link |
-| `runner_id` | VARCHAR(255) | CI runner identifier |
-| `runner_tags` | TEXT | Runner capability tags |
+| `hostname` | VARCHAR(255) | Machine name where tests ran |
 | `total_tests` | INTEGER | Total test count |
 | `passed` | INTEGER | Passed count |
 | `failed` | INTEGER | Failed count |
 | `skipped` | INTEGER | Skipped count |
 | `duration_seconds` | DOUBLE PRECISION | Execution time |
 | `rfc_version` | VARCHAR(50) | robotframework-chat version |
+| `output_xml_url` | TEXT | URL for web access to output.xml |
+| `output_xml_gz` | BYTEA | Gzip-compressed output.xml blob |
+| `output_xml_source` | TEXT | Filesystem path to source output.xml |
 
 #### `test_results` — One row per individual test case
 
@@ -911,8 +910,6 @@ db.export_to_json("full_export.json")
 | `name` | VARCHAR(255) PK | Model identifier |
 | `full_name` | VARCHAR(255) | Human-readable name |
 | `organization` | VARCHAR(255) | Model creator |
-| `release_date` | VARCHAR(255) | Model release date |
-| `parameters` | VARCHAR(255) | Parameter count |
 | `last_tested` | TIMESTAMP | Last test timestamp |
 
 #### `keyword_results` — Keyword execution timing

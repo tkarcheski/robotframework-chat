@@ -63,35 +63,16 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Unit tests (pytest) | Adopted | 33 test files, ~714 test functions |
+| Unit tests (pytest) | Adopted | `uv run pytest` |
 | Robot Framework integration tests | Adopted | Math, Docker, safety test suites |
 | Browser/E2E tests (Playwright) | Adopted | Dashboard Playwright tests via Robot Framework |
 | Test result archival | Adopted | DbListener writes to SQLite/PostgreSQL |
-| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-quality-coverage` target, 85% overall |
+| Test coverage measurement | Adopted | `pytest-cov` configured, `make code-quality-coverage` target |
 | Coverage thresholds/gates | Not Started | No minimum coverage enforcement in CI |
 | Mutation testing | Not Started | No mutation testing framework |
 | Load/performance testing | Not Started | No load tests for dashboard or API |
 | Contract testing | Not Started | No API contract verification |
 | Property-based testing | Not Started | No Hypothesis or similar framework |
-
-### Pytest Coverage Map
-
-| Source Area | Modules Tested | Total Modules | Coverage % | Test Count |
-|-------------|---------------|---------------|------------|------------|
-| `src/rfc/` | 20 | 20 | 100% | ~461 |
-| `dashboard/core/` | 6 | 6 | 100% | ~127 |
-| `dashboard/` | 3 | 5 | 60% | ~28 |
-| `scripts/` | 8 | 8 | 100% | ~207 |
-| **Total** | **37** | **39** | **95%** | **~714** |
-
-Line coverage (via `pytest-cov`): **85%** overall.
-
-#### Modules Without Tests
-
-- `scripts/generate_ci_metadata.py` — Top-level script (runs at import,
-  not easily unit-testable without refactoring)
-- `dashboard/monitoring.py` — Complex Dash callbacks (72% line coverage
-  from integration tests)
 
 ---
 
@@ -167,7 +148,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Practice | Status | Notes |
 |----------|--------|-------|
 | AI agent docs (`ai/AGENTS.md`) | Adopted | Core philosophy and agent guidelines |
-| Feature tracker (`ai/FEATURES.md`) | Adopted | Priority-ordered feature status |
+| Requirements tracker (`docs/requirements.md`) | Adopted | Priority-ordered requirements and status |
 | Pipeline docs (`ai/PIPELINES.md`) | Adopted | CI pipeline documentation |
 | Dev guide (`ai/DEV.md`) | Adopted | Developer onboarding |
 | Refactoring notes (`ai/REFACTOR.md`) | Adopted | Refactoring plans |
@@ -175,7 +156,6 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | API documentation | Not Started | No OpenAPI/Swagger or generated docs |
 | Architecture decision records (ADRs) | Not Started | No formal decision log |
 | Runbook / incident response | Not Started | No operational runbooks |
-| Changelog | Not Started | No CHANGELOG.md or automated generation |
 
 ---
 
@@ -183,10 +163,9 @@ Line coverage (via `pytest-cov`): **85%** overall.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Semantic versioning | Adopted | `v0.2.0` in `pyproject.toml` |
+| Semantic versioning | Adopted | `pyproject.toml` + `src/rfc/__init__.py` |
 | Version command | Adopted | `make version` prints current version |
 | Git tags for releases | Adopted | `v*` tags trigger release pipeline |
-| Automated release notes | Not Started | No changelog generation |
 | Package publishing (PyPI) | Adopted | `publish-pypi` job in GitLab CI, `ci/release.sh` builds + uploads |
 | GitHub Releases | Not Started | No release workflow |
 
@@ -203,7 +182,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 | Model regression detection | Not Started | No automated pass-rate threshold alerts |
 | Prompt versioning | Not Started | Prompts inline in .robot files, not versioned separately |
 | Model evaluation rubrics | Partial | Binary 0/1 grading done; multi-score rubrics not started |
-| A/B testing framework | Not Started | Planned in FEATURES.md Priority 6+ |
+| A/B testing framework | Not Started | Planned in docs/requirements.md §15 |
 | Dataset management | Not Started | No formal dataset versioning |
 | Experiment tracking (MLflow/W&B) | Not Started | No experiment tracking platform |
 
@@ -224,30 +203,10 @@ Line coverage (via `pytest-cov`): **85%** overall.
 
 ---
 
-## Summary
-
-| Category | Adopted | Partial | Not Started | Total |
-|----------|---------|---------|-------------|-------|
-| Source Control & Branching | 5 | 1 | 2 | 8 |
-| Continuous Integration | 9 | 1 | 2 | 12 |
-| Continuous Deployment | 3 | 0 | 4 | 7 |
-| Testing | 5 | 0 | 5 | 10 |
-| Code Quality | 8 | 0 | 3 | 11 |
-| Configuration & Secrets | 5 | 1 | 1 | 7 |
-| Containerization & Infrastructure | 5 | 1 | 2 | 8 |
-| Monitoring & Observability | 3 | 2 | 7 | 12 |
-| Documentation | 6 | 0 | 4 | 10 |
-| Release Management | 4 | 0 | 2 | 6 |
-| MLOps | 3 | 2 | 5 | 10 |
-| Security | 2 | 2 | 4 | 8 |
-| **Total** | **58** | **10** | **41** | **109** |
-
-**Overall adoption: 58/109 practices adopted (53%), 10 partial (9%), 41 not started (38%)**
-
-### Top Priorities for DevOps Improvement
+## Top Priorities for DevOps Improvement
 
 1. ~~**Test coverage measurement**~~ Done — `pytest-cov` configured,
-   `make code-quality-coverage` target added. Current line coverage: 70%.
+   `make code-quality-coverage` target added.
 2. ~~**Dependency vulnerability scanning**~~ Done — `pip-audit` added to
    dev dependencies, `make code-quality-audit` target added.
 3. **Coverage thresholds in CI** — Enforce minimum coverage (e.g. 70%) as
@@ -255,9 +214,7 @@ Line coverage (via `pytest-cov`): **85%** overall.
 4. **Structured logging** — Adopt JSON logging for listeners and dashboard
    to enable future log aggregation.
 5. **Container image scanning** — Add Trivy or Grype scan to CI pipeline.
-6. **Changelog and release tags** — Automate changelog generation and tag
-   releases for traceability.
-7. **Script test coverage** — Add tests for the 6 remaining untested scripts
+6. **Script test coverage** — Add tests for the remaining untested scripts
    in `scripts/` (discovery, pipeline generation, metrics).
 
 ---
@@ -270,9 +227,8 @@ These decisions from the spec review session impact DevOps practices:
 |----------|--------|-----|
 | 90-day data retention | Need cleanup cron/CI job | `humans/TODO.md` § Data Retention |
 | Semver auto-bump on merge to main | Need CI pipeline rule + version script | `humans/TODO.md` § Versioning |
-| CHANGELOG.rst from conventional commits | Need `git-cliff` or similar in CI | `humans/TODO.md` § Versioning |
 | Discord notifications (future) | New CI integration after DB/Superset stable | `humans/TODO.md` § Alerting |
 | `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
-| Makefile parity with pipeline | Fix 24 broken targets | `ai/FEATURES.md` § Makefile |
+| Makefile parity with pipeline | Fix 24 broken targets | `docs/requirements.md` § CI/CD |
 | Secrets stay in `.env` | No vault needed | `.env.example` |
 | Branching: main / staging / claude/* | Document and enforce | `ai/PIPELINES.md` § Branching Model |

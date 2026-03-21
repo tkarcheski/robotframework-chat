@@ -8,8 +8,8 @@
 # See scripts/generate_pipeline.py for CI pipeline generation.
 
 defaults:
-  model: "gpt-oss:20b"
-  iq_levels: ["100", "110", "120", "130", "140", "150", "160"]
+  iq_levels: ["70", "80", "90", "100", "110", "120", "130", "140", "150", "160"]
+  model: "phi4:14b"
   profile: "STANDARD"
   timeout_seconds: 120
   max_retries: 2
@@ -50,6 +50,7 @@ nodes:
 # can maintain it manually.
 # ---------------------------------------------------------------------------
 master_models:
+  - "qwen3.5:27b"
   - "llama3"
   - "llama3:latest"
   - "llama3.1:latest"
@@ -91,10 +92,30 @@ test_suites:
     path: "robot/docker/shell/tests"
     description: "Shell command execution tests in Docker"
 
+  accounting:
+    label: "Accounting Tests"
+    path: "robot/accounting/tests"
+    description: "Applied accounting and financial math skill measurements"
+
   safety:
     label: "Safety Tests"
-    path: "robot/safety/test_cases"
+    path: "robot/safety/tests"
     description: "Adversarial testing for prompt injection and jailbreaks"
+
+  superset:
+    label: "Superset Connectivity"
+    path: "robot/superset/tests"
+    description: "PostgreSQL connectivity check and host info registration"
+
+  ceo:
+    label: "CEO Agent"
+    path: "robot/ceo/tests"
+    description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
+
+  benchmark:
+    label: "Token Output Benchmark"
+    path: "robot/benchmark/tests"
+    description: "Token output throughput and completion ratio benchmark (512–65536 tokens)"
 
 # Special "run all" entry
 run_all:
@@ -107,11 +128,19 @@ run_all:
 # These map to Robot Framework tags like [Tags]  IQ:100
 # ---------------------------------------------------------------------------
 iq_levels:
+  - "70"
+  - "80"
+  - "90"
   - "100"
+  - "105"
   - "110"
+  - "115"
   - "120"
+  - "125"
   - "130"
+  - "135"
   - "140"
+  - "145"
   - "150"
   - "160"
 
@@ -158,10 +187,20 @@ ci:
       output_dir: "results/docker"
       tags: ["ollama", "docker"]
 
+    robot-accounting-tests:
+      path: "robot/accounting/tests/"
+      output_dir: "results/accounting"
+      tags: ["ollama"]
+
     robot-safety-tests:
       path: "robot/safety/"
       output_dir: "results/safety"
       tags: ["ollama"]
+
+    robot-ceo-tests:
+      path: "robot/ceo/"
+      output_dir: "results/ceo"
+      tags: ["openai", "agentic"]
 
 # ---------------------------------------------------------------------------
 # Monitoring Configuration

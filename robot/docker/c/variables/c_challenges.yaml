@@ -1,0 +1,58 @@
+# C programming challenges for LLM computer skills testing
+# Each challenge tests the LLM's ability to generate compilable and correct C code
+
+C_CODE_CHALLENGES:
+  - name: "Hello World"
+    prompt: "Write a C program that prints 'Hello, World!' to stdout followed by a newline."
+    language: c
+    source_file: "hello.c"
+    compile_command: "gcc -o hello hello.c"
+    run_command: "./hello"
+    expected_output: "Hello, World!"
+    expected_exit_code: 0
+    iq: 100
+    timeout: 15
+
+  - name: "Factorial Function"
+    prompt: "Write a C program with a function that calculates factorial iteratively. The program should print 'factorial(5) = 120' and 'factorial(0) = 1'."
+    language: c
+    source_file: "factorial.c"
+    compile_command: "gcc -o factorial factorial.c"
+    run_command: "./factorial"
+    expected_output: "factorial(5) = 120"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 15
+
+  - name: "String Reverse"
+    prompt: "Write a C program with a function that reverses a string in-place. Print the reversed version of 'Hello' as 'Reversed: olleH'."
+    language: c
+    source_file: "reverse.c"
+    compile_command: "gcc -o reverse reverse.c"
+    run_command: "./reverse"
+    expected_output: "Reversed: olleH"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 15
+
+  - name: "Bubble Sort"
+    prompt: "Write a C program that sorts an integer array {5, 3, 8, 1, 9, 2} using bubble sort and prints the sorted result as 'Sorted: 1 2 3 5 8 9'."
+    language: c
+    source_file: "sort.c"
+    compile_command: "gcc -o sort sort.c"
+    run_command: "./sort"
+    expected_output: "Sorted: 1 2 3 5 8 9"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 15
+
+  - name: "FizzBuzz"
+    prompt: "Write a C program that prints FizzBuzz for numbers 1 to 15. For multiples of 3 print 'Fizz', multiples of 5 print 'Buzz', multiples of both print 'FizzBuzz', otherwise print the number. One output per line."
+    language: c
+    source_file: "fizzbuzz.c"
+    compile_command: "gcc -o fizzbuzz fizzbuzz.c"
+    run_command: "./fizzbuzz"
+    expected_output: "FizzBuzz"
+    expected_exit_code: 0
+    iq: 110
+    timeout: 15

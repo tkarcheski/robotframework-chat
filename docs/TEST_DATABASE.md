@@ -71,20 +71,23 @@ One row per test suite execution (or per pipeline-level combined run):
 | `id` | INTEGER PK | Auto-incrementing primary key |
 | `timestamp` | DATETIME | When the test ran |
 | `model_name` | TEXT | LLM model used (e.g., llama3, mistral) |
-| `model_release_date` | TEXT | Model release date from metadata |
-| `model_parameters` | TEXT | Model size (e.g., 8B, 70B) |
 | `test_suite` | TEXT | Test suite name (math, docker, safety) |
 | `git_commit` | TEXT | Git commit SHA |
 | `git_branch` | TEXT | Git branch name |
-| `pipeline_url` | TEXT | Link to CI pipeline |
-| `runner_id` | TEXT | CI runner identifier |
-| `runner_tags` | TEXT | Runner capabilities |
+| `hostname` | TEXT | Machine name where tests ran |
 | `total_tests` | INTEGER | Total test count |
 | `passed` | INTEGER | Passed test count |
 | `failed` | INTEGER | Failed test count |
 | `skipped` | INTEGER | Skipped test count |
 | `duration_seconds` | REAL | Test execution time in seconds |
 | `rfc_version` | TEXT | Version of robotframework-chat |
+| `output_xml_url` | TEXT | URL for web access to output.xml |
+| `output_xml_gz` | BLOB | Gzip-compressed output.xml blob |
+| `output_xml_source` | TEXT | Filesystem path to source output.xml |
+| `temperature` | REAL | Inference temperature used |
+| `seed` | INTEGER | Random seed for reproducibility |
+| `top_p` | REAL | Top-p sampling parameter |
+| `top_k` | INTEGER | Top-k sampling parameter |
 
 #### `test_results`
 Individual test case results:
@@ -98,65 +101,44 @@ Individual test case results:
 | `score` | INTEGER | Graded score (0 or 1) if applicable |
 | `question` | TEXT | Test question/prompt |
 | `expected_answer` | TEXT | Expected correct answer |
-| `actual_answer` | TEXT | Model's response |
+| `actual_answer` | TEXT | Model's response (thinking tags stripped) |
 | `grading_reason` | TEXT | Explanation from grader |
+| `thinking_text` | TEXT | Extracted `<think>` content from LLM response |
+| `thinking_tokens` | INTEGER | Estimated token count of thinking content |
+| `num_ctx` | INTEGER | Context window size used |
+| `num_predict` | INTEGER | Max generation tokens configured |
+| `eval_count` | INTEGER | Tokens generated |
+| `eval_duration_ns` | INTEGER | Time to generate (nanoseconds) |
+| `prompt_eval_count` | INTEGER | Prompt tokens processed |
+| `prompt_eval_duration_ns` | INTEGER | Time to process prompt (ns) |
+| `load_duration_ns` | INTEGER | Time to load model (ns) |
+| `total_duration_ns` | INTEGER | Total request time (ns) |
+| `tokens_per_second` | REAL | Generation speed (tokens/s) |
 
 #### `models`
-Model metadata:
+LLM model metadata:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `name` | TEXT PK | Model identifier |
-| `full_name` | TEXT | Human-readable name |
-| `organization` | TEXT | Model creator |
-| `release_date` | TEXT | Model release date |
-| `parameters` | TEXT | Model size |
-| `last_tested` | DATETIME | Timestamp of last test |
-
-### Planned Schema Changes (Owner-Confirmed 2026-02-19)
-
-> See `humans/TODO.md` § Database & Schema Changes for the full list.
-
-The following additions are planned for the database schema:
-
-**`test_runs` — new columns:**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `temperature` | REAL | Inference temperature used |
-| `seed` | INTEGER | Random seed for reproducibility |
-| `top_p` | REAL | Top-p sampling parameter |
-| `top_k` | INTEGER | Top-k sampling parameter |
-| `cost_seconds` | REAL | Wall-clock time (local cost) |
-| `cost_dollars` | REAL NULL | Dollar cost (cloud/OpenRouter) |
-| `suite_version` | TEXT | Git SHA of the `.robot` file |
-| `node_hostname` | TEXT | Which hardware node ran this |
-| `hardware_gpu` | TEXT | GPU/TPU model (e.g., "RTX 4090") |
-| `hardware_vram_gb` | REAL | VRAM in GB |
-
-**`models` — new columns:**
-
-| Column | Type | Description |
-|--------|------|-------------|
+| `name` | TEXT PK | Model name (e.g., llama3:8b) |
 | `sha256_digest` | TEXT | Model weights SHA256 from `/api/show` |
 | `size_gb` | REAL | Model size in gigabytes |
 | `quantization` | TEXT | e.g., Q4_K_M, Q8_0, FP16 |
 | `architecture` | TEXT | e.g., llama, mistral, gemma |
 | `context_length` | INTEGER | Max context window |
 | `family` | TEXT | Model family |
-| `license` | TEXT | Model license |
 
-**`llm_performance` — new table (or columns on `test_results`):**
+### Future Schema Additions
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `eval_count` | INTEGER | Tokens generated |
-| `eval_duration` | INTEGER | Time to generate (nanoseconds) |
-| `prompt_eval_count` | INTEGER | Prompt tokens processed |
-| `prompt_eval_duration` | INTEGER | Time to process prompt (ns) |
-| `load_duration` | INTEGER | Time to load model (ns) |
-| `total_duration` | INTEGER | Total request time (ns) |
-| `tokens_per_second` | REAL | Computed: eval_count / (eval_duration / 1e9) |
+The following columns are planned but not yet implemented:
+
+**`test_runs`:**
+- `cost_seconds` (REAL) — Wall-clock time (local cost)
+- `cost_dollars` (REAL NULL) — Dollar cost (cloud/OpenRouter)
+- `suite_version` (TEXT) — Git SHA of the `.robot` file
+- `node_hostname` (TEXT) — Which hardware node ran this
+- `hardware_gpu` (TEXT) — GPU/TPU model (e.g., "RTX 4090")
+- `hardware_vram_gb` (REAL) — VRAM in GB
 
 **Data retention:** 90-day rolling window. Older data archived to compressed exports.
 
