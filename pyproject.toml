@@ -88,7 +88,10 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-exclude = ["^scripts/", "^tests/"]
+mypy_path = "src"
+packages = ["rfc"]
+explicit_package_bases = true
+ignore_missing_imports = false
 
 [[tool.mypy.overrides]]
 module = ["robot.*"]
@@ -96,13 +99,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["scripts.*"]
-follow_imports = "skip"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
     "sqlalchemy",
     "sqlalchemy.*",
     "superset.*",
+    "psycopg2.*",
 ]
 ignore_missing_imports = true
 
