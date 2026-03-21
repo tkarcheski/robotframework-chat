@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
-from rfc.pre_run_modifier import ModelAwarePreRunModifier
+from rfc.pre_run_modifier import ModelAwarePreRunModifier, main
 
 
 class TestPreRunModifierInit:
@@ -17,7 +17,7 @@ class TestPreRunModifierInit:
             mod = ModelAwarePreRunModifier()
             assert mod.ollama_endpoint == "http://localhost:11434"
             assert mod.config_path == "robot/ci/models.yaml"
-            assert mod.default_model == "gpt-oss:20b"
+            assert mod.default_model == "phi4:14b"
             assert mod.available_models == []
             assert mod.model_config == {}
 
@@ -171,8 +171,6 @@ class TestAddMetadata:
         mod.model_config = {
             "llama3": {
                 "full_name": "LLaMA 3",
-                "release_date": "2024-04-01",
-                "parameters": "8B",
                 "organization": "Meta",
             }
         }
@@ -182,7 +180,7 @@ class TestAddMetadata:
 
         mod._add_metadata(suite)
         assert suite.metadata["Model_Name"] == "LLaMA 3"
-        assert suite.metadata["Model_Parameters"] == "8B"
+        assert suite.metadata["Model_Organization"] == "Meta"
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_skips_empty_metadata(self, MockClient):
@@ -196,3 +194,64 @@ class TestAddMetadata:
         mod._add_metadata(suite)
         assert suite.metadata["Branch"] == "main"
         assert "Tag" not in suite.metadata
+
+
+# ── start_suite (full integration of modifier) ──────────────────────
+
+
+class TestPreRunModifierStartSuite:
+    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.collect_ci_metadata", return_value={"Branch": "main"})
+    def test_start_suite_runs_full_pipeline(self, _mock_ci, MockClient, tmp_path):
+        """start_suite should gather CI metadata, load config, query models, filter, and add metadata."""
+        config_file = tmp_path / "models.yaml"
+        config_file.write_text(yaml.dump({"models": {"llama3": {"parameters": "8B"}}}))
+
+        mock_client = MagicMock()
+        mock_client.list_models.return_value = ["llama3", "phi4:14b"]
+        MockClient.return_value = mock_client
+
+        mod = ModelAwarePreRunModifier(
+            config_path=str(config_file), default_model="llama3"
+        )
+
+        suite = MagicMock()
+        suite.name = "Math"
+        suite.metadata = {}
+        test1 = MagicMock()
+        test1.tags = []
+        test1.name = "Test 1"
+        suite.tests = [test1]
+
+        mod.start_suite(suite)
+
+        assert "Branch" in suite.metadata
+        assert "All_Available_Models" in suite.metadata
+        assert "Selected_Model" in suite.metadata
+        assert mod.available_models == ["llama3", "phi4:14b"]
+
+
+# ── main() ───────────────────────────────────────────────────────────
+
+
+class TestPreRunModifierMain:
+    @patch("rfc.pre_run_modifier.OllamaClient")
+    def test_main_with_models(self, MockClient, capsys):
+        mock_client = MagicMock()
+        mock_client.list_models.return_value = ["llama3"]
+        MockClient.return_value = mock_client
+
+        result = main()
+        captured = capsys.readouterr()
+        assert "Available models" in captured.out
+        assert result == 0
+
+    @patch("rfc.pre_run_modifier.OllamaClient")
+    def test_main_no_models(self, MockClient, capsys):
+        mock_client = MagicMock()
+        mock_client.list_models.side_effect = Exception("offline")
+        MockClient.return_value = mock_client
+
+        main()
+        captured = capsys.readouterr()
+        assert "Available models" in captured.out

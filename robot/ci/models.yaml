@@ -12,8 +12,7 @@ models:
     full_name: "Meta Llama 3"
     organization: "Meta AI"
     description: "Meta's open source LLM model"
-    release_date: "2024-04-18"
-    parameters: "8B"
+
     ollama_library_url: "https://ollama.com/library/llama3"
     hugging_face_url: "https://huggingface.co/meta-llama/Meta-Llama-3-8B"
     capabilities:
@@ -33,8 +32,7 @@ models:
     full_name: "Mistral 7B"
     organization: "Mistral AI"
     description: "High-performance open source LLM"
-    release_date: "2023-09-27"
-    parameters: "7B"
+
     ollama_library_url: "https://ollama.com/library/mistral"
     hugging_face_url: "https://huggingface.co/mistralai/Mistral-7B-v0.1"
     capabilities:
@@ -53,8 +51,7 @@ models:
     full_name: "Code Llama"
     organization: "Meta AI"
     description: "Code-focused variant of Llama 2"
-    release_date: "2023-08-24"
-    parameters: "7B"
+
     ollama_library_url: "https://ollama.com/library/codellama"
     hugging_face_url: "https://huggingface.co/codellama/CodeLlama-7b-hf"
     capabilities:
@@ -72,8 +69,7 @@ models:
     full_name: "Meta Llama 3.1"
     organization: "Meta AI"
     description: "Updated version of Llama 3"
-    release_date: "2024-07-23"
-    parameters: "8B"
+
     ollama_library_url: "https://ollama.com/library/llama3.1"
     hugging_face_url: "https://huggingface.co/meta-llama/Meta-Llama-3.1-8B"
     capabilities:
@@ -110,7 +106,7 @@ categories:
 
 # Test configuration
 test_configuration:
-  default_model: "gpt-oss:20b"
+  default_model: "phi4:14b"
   timeout_seconds: 120
   max_retries: 2
 
@@ -126,11 +122,8 @@ ci:
   artifact_retention_days: 30
   metadata_includes:
     - model_name
-    - release_date
-    - parameters
     - git_commit
     - git_branch
-    - pipeline_url
-    - runner_id
-    - runner_description
+    - hostname
     - timestamp
+    - output_xml_source

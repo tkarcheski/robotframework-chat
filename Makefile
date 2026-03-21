@@ -10,21 +10,26 @@
 
 COMPOSE  := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
 ROBOT    := uv run robot
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
 # Load .env if present
 -include .env
 export
 
-.PHONY: help install \
-        robot robot-math robot-docker robot-safety robot-dryrun \
+.PHONY: help install update \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
+        robot-bash robot-c robot-rust robot-computer-skills \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         send-results \
+        rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
+        robot-autopilot \
+        cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush superset-export superset-import \
+        cache-flush superset-sanitize superset-export superset-import superset-diagnose \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -38,16 +43,24 @@ help: ## Show this help
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
 
+update: ## Fetch, pull latest changes, and sync dependencies
+	git fetch
+	git pull
+	uv sync --extra dev --extra superset
+
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
 	@echo "Created .env from .env.example – edit it if needed."
 
 # ── Foundation: Robot Framework Tests ────────────────────────────────
 
-robot: robot-math robot-docker robot-safety ## Run all Robot Framework test suites
+robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+
+robot-accounting: ## Run accounting tests (Robot Framework)
+	$(ROBOT) -d results/accounting $(LISTENER) robot/accounting/tests/
 
 robot-docker: ## Run Docker tests (Robot Framework)
 	$(ROBOT) -d results/docker $(LISTENER) robot/docker/
@@ -55,11 +68,31 @@ robot-docker: ## Run Docker tests (Robot Framework)
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
 
+robot-bash: ## Run bash scripting tests (Robot Framework)
+	$(ROBOT) -d results/bash $(LISTENER) robot/docker/bash/
+
+robot-c: ## Run C programming tests (Robot Framework)
+	$(ROBOT) -d results/c $(LISTENER) robot/docker/c/
+
+robot-rust: ## Run Rust programming tests (Robot Framework)
+	$(ROBOT) -d results/rust $(LISTENER) robot/docker/rust/
+
+robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
+
+robot-superset: ## Test PostgreSQL connection and push host info to database
+	$(ROBOT) -d results/superset $(LISTENER) robot/superset/tests/
+
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
+
+rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/math results/docker"
+	uv run python -m rfc.rebot_merger $(DIRS)
+
+rebot-merge-all: ## Merge all output.xml in results/
+	uv run python -m rfc.rebot_merger results/
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
@@ -71,6 +104,18 @@ discover-local-models: ## Discover Ollama nodes and list their models
 
 run-local-models: ## Run test suites against every model on every local node (ITERATIONS=-1 forever, 0 stop-on-error)
 	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),)
+
+robot-autopilot: ## Poll for git updates → update + install + run-local-models; idle 6h → re-run
+	@scripts/robot_autopilot.sh
+
+cron-install: ## Install hourly cron job for update + sync-models + run-local-models
+	@scripts/cron_run_local_models.sh --install
+
+cron-uninstall: ## Remove hourly cron job
+	@scripts/cron_run_local_models.sh --uninstall
+
+cron-sync-models: ## Pull any master models missing from local Ollama
+	@scripts/cron_run_local_models.sh --sync-models
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 
@@ -93,7 +138,7 @@ code-quality-audit: ## Audit dependencies for known vulnerabilities
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 
-docker-up: .env ## Start the full stack (app + PostgreSQL + Redis + Superset)
+docker-up: .env ## Start the full stack (app + PostgreSQL + Redis + Superset + Metrics)
 	$(COMPOSE) up -d
 
 docker-down: ## Stop all services
@@ -108,10 +153,15 @@ docker-logs: ## Tail service logs
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
 
-cache-flush: ## Flush Superset/Redis cache (forces dashboards to re-query PostgreSQL)
+cache-flush: ## Flush caches and refresh all dashboards (Superset + RF Metrics)
 	@echo "Flushing Redis cache..."
 	$(COMPOSE) exec redis redis-cli FLUSHALL
-	@echo "Cache flushed — reload Superset dashboards to see fresh data."
+	@echo "Triggering RF Metrics dashboard regeneration..."
+	$(COMPOSE) restart metrics
+	@echo "Done — Superset will re-query on next load; RF Metrics are regenerating now."
+
+superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
+	uv run python scripts/sanitize_superset_db.py
 
 superset-export: ## Export Superset dashboards to backups/ directory
 	@mkdir -p backups
@@ -121,6 +171,9 @@ superset-export: ## Export Superset dashboards to backups/ directory
 	$(COMPOSE) cp "superset:/tmp/superset_export_$${TIMESTAMP}.zip" \
 		"./backups/superset_export_$${TIMESTAMP}.zip" && \
 	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
+
+superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
+	uv run python scripts/diagnose_superset_db.py
 
 superset-import: ## Import Superset dashboards from ZIP: make superset-import FILE=backups/export.zip
 	$(COMPOSE) cp $(FILE) superset:/tmp/superset_import.zip

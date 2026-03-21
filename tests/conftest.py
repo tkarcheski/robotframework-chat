@@ -22,13 +22,13 @@ def mock_suite_config():
     config_data = {
         "defaults": {
             "model": "llama3",
-            "iq_levels": ["100", "110"],
+            "iq_levels": ["70", "80", "90", "100", "110"],
             "profile": "STANDARD",
         },
         "test_suites": {
             "math": {"label": "Math Tests", "path": "robot/math/tests"},
         },
-        "iq_levels": ["100", "110", "120"],
+        "iq_levels": ["70", "80", "90", "100", "110", "120"],
         "container_profiles": {
             "STANDARD": {"label": "Standard", "cpu": 0.5, "memory_mb": 512},
         },
@@ -84,14 +84,9 @@ def sample_test_run():
     return TestRun(
         timestamp=datetime(2024, 1, 1, 12, 0, 0),
         model_name="llama3",
-        model_release_date="2024-01-01",
-        model_parameters="8B",
         test_suite="math",
         git_commit="abc123",
         git_branch="main",
-        pipeline_url="",
-        runner_id="",
-        runner_tags="",
         total_tests=10,
         passed=8,
         failed=2,

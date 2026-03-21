@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Terminal workflow and shell command tests
 Resource          ../../../resources/environments.resource
+Resource          ../../../resources/code_extraction.resource
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
@@ -11,7 +12,7 @@ ${PROJECT_SETUP_PROMPT}    Generate shell commands to: create a directory called
 
 *** Test Cases ***
 LLM Generates Project Setup Commands (IQ:120)
-    [Documentation]    LLM generates correct shell workflow
+    [Documentation]    Can the LLM generate shell commands to set up a project directory with files?
     [Tags]    IQ:120    workflow    project-setup    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${PROJECT_SETUP_PROMPT}
@@ -31,7 +32,7 @@ LLM Generates Project Setup Commands (IQ:120)
     Should Contain    ${list_result}[stdout]    README.md
 
 LLM Generates File Processing Pipeline (IQ:130)
-    [Documentation]    LLM creates file processing command pipeline
+    [Documentation]    Can the LLM write a shell pipeline to count line occurrences sorted by frequency?
     [Tags]    IQ:130    pipeline    file-processing    tier:4    verify:robot
 
     # Create test data
@@ -50,7 +51,7 @@ LLM Generates File Processing Pipeline (IQ:130)
     Should Contain    ${result}[stdout]    apple
 
 Container Is Network Isolated (IQ:110)
-    [Documentation]    Verify container network isolation
+    [Documentation]    Can the container block outbound network access (wget to google.com)?
     [Tags]    IQ:110    security    network    tier:1    verify:robot
 
     # Try to access network
@@ -60,7 +61,7 @@ Container Is Network Isolated (IQ:110)
     Should Not Be Equal As Integers    ${result}[exit_code]    0
 
 Custom Shell Container (IQ:120)
-    [Documentation]    Create shell container with custom resources
+    [Documentation]    Can a custom Alpine container (0.25 CPU, 64MB, read-only) execute shell commands?
     [Tags]    IQ:120    custom-resources    tier:1    verify:robot
 
     ${config}=    Create Dictionary
@@ -82,7 +83,7 @@ Custom Shell Container (IQ:120)
     Docker.Stop Container    ${container}
 
 Container Preserves State Between Commands (IQ:130)
-    [Documentation]    Verify container state is maintained
+    [Documentation]    Can the container preserve file state between sequential commands?
     [Tags]    IQ:130    state-management    tier:1    verify:robot
 
     # Create a file
@@ -99,44 +100,3 @@ Container Preserves State Between Commands (IQ:130)
     ${result}=    Docker.Execute In Container    ${SHELL_CONTAINER}    cat /tmp/persist.txt
     Should Contain    ${result}[stdout]    test data
     Should Contain    ${result}[stdout]    more data
-
-*** Keywords ***
-Extract Shell Commands
-    [Documentation]    Extract shell commands from LLM response
-    [Arguments]    ${text}
-
-    ${commands}=    Create List
-
-    # Try to extract from markdown code block
-    # Match content between ``` markers (with or without language)
-    ${pattern}=    Set Variable    (?s)\`\`\`(?:bash|sh|shell)?\n(.*?)\n?\`\`\`
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-
-    ${has_matches}=    Get Length    ${matches}
-    IF    ${has_matches} > 0
-        # Extract lines from first match
-        ${content}=    Set Variable    ${matches}[0]
-        ${lines}=    Split String    ${content}    \n
-        FOR    ${line}    IN    @{lines}
-            ${stripped}=    Strip String    ${line}
-            # Skip empty lines and comments
-            IF    '${stripped}' != '' and not '${stripped}'.startswith('#')
-                Append To List    ${commands}    ${stripped}
-            END
-        END
-        RETURN    ${commands}
-    END
-
-    # If no code block, try to find lines that look like commands
-    # Lines starting with common shell commands
-    ${all_lines}=    Split String    ${text}    \n
-    FOR    ${line}    IN    @{all_lines}
-        ${stripped}=    Strip String    ${line}
-        # Look for common shell command patterns
-        ${is_command}=    Evaluate    bool(__import__('re').match(r'^(mkdir|cd|touch|echo|ls|cat|grep|awk|sed|wget|curl|pip|npm|python|node|docker)\s', '${stripped}'))
-        IF    ${is_command}
-            Append To List    ${commands}    ${stripped}
-        END
-    END
-
-    RETURN    ${commands}

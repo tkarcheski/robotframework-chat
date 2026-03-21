@@ -94,8 +94,8 @@ cause test failures, CI issues, or maintenance headaches.
 - **Tag tests with `tier:N`.** Grading tiers 0-6. See `ai/CLAUDE.md` § Grading
   Tiers for the full breakdown.
 
-- **Tag with `IQ:N` for difficulty.** `IQ:100` (basic), `IQ:120` (intermediate),
-  `IQ:140` (advanced), `IQ:160` (expert).
+- **Tag with `IQ:N` for difficulty.** `IQ:70` (trivial), `IQ:90` (basic),
+  `IQ:100` (standard), `IQ:120` (intermediate), `IQ:140` (advanced), `IQ:160` (expert).
 
 ### LLM Interaction
 

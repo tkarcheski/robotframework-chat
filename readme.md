@@ -17,7 +17,7 @@ A Robot Framework-based test harness for systematically testing Large Language M
 ```bash
 make install                # Install all dependencies
 pre-commit install          # Install pre-commit hooks
-ollama pull llama3          # Pull default LLM model (optional)
+ollama pull phi4:14b         # Pull default LLM model (optional)
 ```
 
 ### Installation (Windows)
@@ -28,7 +28,7 @@ It requires only Python and `uv` — no `make`, `bash`, or Unix tools needed.
 ```powershell
 uv run python tasks.py install      # Install all dependencies
 uv run pre-commit install           # Install pre-commit hooks
-ollama pull llama3                  # Pull default LLM model (optional)
+ollama pull qwen3.5:27b             # Pull default LLM model (optional)
 uv run python tasks.py help         # List all available targets
 ```
 
@@ -66,6 +66,147 @@ Open <http://localhost:8088> to view the dashboard.
 
 ---
 
+## Ollama Configuration
+
+### Pulling Models
+
+The default model is `phi4:14b` (set via `DEFAULT_MODEL` in `.env`).
+Pull additional models depending on how many you want to test against:
+
+**Starter (3 models):**
+
+```bash
+ollama pull phi4:14b
+ollama pull llama3.2:latest
+ollama pull gemma2:latest
+```
+
+**Standard (4–5 models):**
+
+```bash
+ollama pull phi4:14b
+ollama pull llama3.2:latest
+ollama pull gemma2:latest
+ollama pull mistral:latest
+ollama pull qwen3.5:27b
+```
+
+**Full fleet** — pull all models from `config/test_suites.yaml`:
+
+```bash
+make cron-sync-models        # Pulls any master models missing locally
+```
+
+### Loading Multiple Models Simultaneously
+
+By default Ollama keeps up to 3 models loaded in memory (3 × number of GPUs,
+or 3 for CPU inference). To load more models concurrently, configure these
+Ollama server environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OLLAMA_MAX_LOADED_MODELS` | 3 × GPUs (or 3) | Max models resident in memory at once |
+| `OLLAMA_NUM_PARALLEL` | `1` | Parallel requests per loaded model |
+| `OLLAMA_MAX_QUEUE` | `512` | Max queued requests before rejecting |
+
+> **Memory note:** each loaded model consumes VRAM/RAM proportional to its
+> size. A 7B Q4 model uses ~4 GB; a 27B model uses ~16 GB. Setting
+> `OLLAMA_NUM_PARALLEL` > 1 multiplies context memory per model.
+
+**Linux (systemd):**
+
+```bash
+sudo systemctl edit ollama.service
+```
+
+Add under `[Service]`:
+
+```ini
+[Service]
+Environment="OLLAMA_MAX_LOADED_MODELS=5"
+Environment="OLLAMA_NUM_PARALLEL=2"
+```
+
+Then restart:
+
+```bash
+sudo systemctl restart ollama
+```
+
+**macOS:**
+
+```bash
+launchctl setenv OLLAMA_MAX_LOADED_MODELS 5
+launchctl setenv OLLAMA_NUM_PARALLEL 2
+```
+
+Restart the Ollama application after setting these.
+
+**Windows:**
+
+Set `OLLAMA_MAX_LOADED_MODELS` and `OLLAMA_NUM_PARALLEL` as system environment
+variables, then restart Ollama.
+
+### VRAM Sizing Guide
+
+| Models Loaded | Recommended VRAM | Example Hardware |
+|---|---|---|
+| 3 (default) | 24 GB | RTX 4090, M2 Pro |
+| 4 | 32 GB | 2× RTX 4080, M2 Max |
+| 5+ | 48+ GB | 2× RTX 4090, M3 Ultra |
+
+Actual requirements depend on model sizes and quantization levels.
+
+### Auto-Discovery and Multi-Model Testing
+
+The test harness auto-discovers available models at startup and skips tests
+for models that are not installed — you will never get failures from missing
+models.
+
+```bash
+make discover-local-models   # List models available on all configured nodes
+make run-local-models        # Run all test suites against every discovered model
+
+# Windows
+uv run python scripts/run_local_models.py --discover-models
+uv run python scripts/run_local_models.py
+```
+
+Use `ITERATIONS` for continuous testing:
+
+```bash
+make run-local-models ITERATIONS=-1   # Run forever
+make run-local-models ITERATIONS=0    # Stop on first error
+```
+
+### Multi-Node Setup (Optional)
+
+To distribute tests across multiple machines running Ollama, set
+`OLLAMA_NODES_LIST` in `.env`:
+
+```bash
+OLLAMA_NODES_LIST=localhost,gpu-server-1,gpu-server-2
+```
+
+Or edit the `nodes` list in `config/test_suites.yaml` directly. Check node
+status with:
+
+```bash
+make discover-local-nodes
+```
+
+### Project Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` | Provider backend (`ollama` or `openai`) |
+| `OLLAMA_ENDPOINT` | `http://localhost:11434` | Ollama API endpoint |
+| `DEFAULT_MODEL` | `phi4:14b` | Model used for standard test runs |
+| `OLLAMA_TIMEOUT` | `5400` | Request timeout in seconds (90 min) |
+| `OLLAMA_NODES_LIST` | `localhost` | Comma-separated Ollama hostnames |
+
+---
+
 ## Example Test
 
 ```robot
@@ -100,6 +241,7 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 | [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
 | [docs/GRAFANA_SUPERSET_SETUP.md](docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
+| [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |
 
 ---
 

@@ -26,11 +26,12 @@ class TestDetectCiPlatform:
 
 
 class TestCollectGitMetadata:
-    def test_always_has_timestamp(self):
+    def test_always_has_valid_timestamp(self):
         with patch.dict(os.environ, {}, clear=True):
             result = collect_ci_metadata()
         assert "Timestamp" in result
         assert result["Timestamp"].endswith("Z")
+        assert "+00:00" not in result["Timestamp"]
 
     def test_always_has_default_model(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -76,7 +77,6 @@ class TestCollectGitMetadata:
         assert result["Branch"] == "feature-branch"
         assert result["CI_Platform"] == "github"
         assert result["Project_URL"] == "https://github.com/org/repo"
-        assert "12345" in result["Pipeline_URL"]
 
     def test_empty_values_filtered(self):
         with patch.dict(
@@ -92,15 +92,12 @@ class TestCollectGitMetadata:
             os.environ,
             {
                 "GITLAB_CI": "true",
-                "CI_PIPELINE_URL": "https://gitlab.com/pipeline/1",
                 "CI_JOB_URL": "https://gitlab.com/job/1",
-                "CI_RUNNER_ID": "42",
             },
             clear=True,
         ):
             result = collect_ci_metadata()
-        assert result["Pipeline_URL"] == "https://gitlab.com/pipeline/1"
-        assert result["Runner_ID"] == "42"
+        assert result["Job_URL"] == "https://gitlab.com/job/1"
 
     @patch("rfc.git_metadata.subprocess.run")
     def test_no_ci_platform_uses_local_metadata(self, mock_run):

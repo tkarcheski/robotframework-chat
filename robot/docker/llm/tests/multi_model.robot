@@ -50,7 +50,7 @@ Check Ollama Health On Endpoint
 
 *** Test Cases ***
 Compare Models On Code Generation (IQ:130)
-    [Documentation]    Same coding prompt, different models, compare quality
+    [Documentation]    Can the LLM generate a working Python sort function and pass quality grading?
     [Tags]    IQ:130    comparison    code-generation    tier:4    verify:llm
     [Setup]    Switch LLM Model    llama3
 
@@ -76,7 +76,7 @@ Compare Models On Code Generation (IQ:130)
     Should Be Equal As Integers    ${score}    1
 
 LLM Algorithm Explanation (IQ:120)
-    [Documentation]    Test algorithm explanation capabilities
+    [Documentation]    Can the LLM explain merge sort's time complexity (O(n log n)) and space complexity?
     [Tags]    IQ:120    algorithm    explanation    tier:1    verify:robot
 
     ${response}=    LLM.Ask LLM    ${ALGO_PROMPT}
@@ -90,7 +90,7 @@ LLM Algorithm Explanation (IQ:120)
     Run Keyword And Ignore Error    Docker.Execute Python In Container    ${code}    timeout=10
 
 LLM Container Resource Usage (IQ:110)
-    [Documentation]    Monitor resource usage during LLM inference
+    [Documentation]    Can the LLM container stay under 4GB memory during inference?
     [Tags]    IQ:110    monitoring    resources    tier:1    verify:robot
 
     # Start a request
@@ -106,7 +106,7 @@ LLM Container Resource Usage (IQ:110)
     Should Be True    ${metrics}[memory_usage_mb] < 4096
 
 Custom LLM Configuration (IQ:140)
-    [Documentation]    Test with custom resource allocation for LLM
+    [Documentation]    Can a custom Ollama container (1 CPU, 2GB) serve inference for 'What is 2+2?'?
     [Tags]    IQ:140    custom-config    tier:1    verify:robot
 
     # Find available port for custom container

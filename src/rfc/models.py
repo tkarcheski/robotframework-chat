@@ -4,14 +4,15 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class GradeResult:
-    score: int
+    score: float
     reason: str
 
     def __post_init__(self):
-        if not isinstance(self.score, int):
-            raise TypeError(f"score must be an int, got {type(self.score).__name__}")
-        if self.score not in (0, 1):
-            raise ValueError(f"score must be 0 or 1, got {self.score}")
+        if not isinstance(self.score, (int, float)):
+            raise TypeError(f"score must be a float, got {type(self.score).__name__}")
+        self.score = float(self.score)
+        if not 0.0 <= self.score <= 1.0:
+            raise ValueError(f"score must be between 0.0 and 1.0, got {self.score}")
         if not isinstance(self.reason, str):
             raise TypeError(f"reason must be a str, got {type(self.reason).__name__}")
 

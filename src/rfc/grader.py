@@ -1,6 +1,8 @@
 import json
 import re
+
 from .models import GradeResult
+from .thinking import parse_thinking
 
 
 class Grader:
@@ -18,8 +20,7 @@ class Grader:
         - Text before/after JSON
         """
         # Remove thinking tags (various formats used by different models)
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+        text, _ = parse_thinking(text)
 
         # Try to find JSON in markdown code blocks
         json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
@@ -68,11 +69,12 @@ Rules:
 - Respond ONLY with valid JSON
 - No markdown
 - No commentary
-- score must be 0 or 1
+- score must be a number between 0.0 and 1.0
+- use partial credit when the answer is only partially correct
 
 Format:
 {{
-  "score": 0 or 1,
+  "score": 0.0 to 1.0,
   "reason": "short explanation"
 }}
 """
@@ -91,6 +93,6 @@ Format:
             raise ValueError(f"Grader JSON missing required fields: {parsed}")
 
         return GradeResult(
-            score=int(parsed["score"]),
+            score=float(parsed["score"]),
             reason=str(parsed["reason"]),
         )

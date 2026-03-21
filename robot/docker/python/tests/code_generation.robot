@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Python code generation and execution tests using Docker containers
 Resource          ../../../resources/environments.resource
+Resource          ../../../resources/code_extraction.resource
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
@@ -13,7 +14,7 @@ ${REVERSE_STRING_PROMPT}   Write a Python function 'reverse_string(s)' that reve
 
 *** Test Cases ***
 LLM Generates Factorial Function (IQ:120)
-    [Documentation]    LLM generates working factorial function with error handling
+    [Documentation]    Can the LLM generate a working Python factorial function with error handling?
     [Tags]    IQ:120    algorithm    function-generation    tier:4    verify:llm
 
     ${response}=    LLM.Ask LLM    ${FACTORIAL_PROMPT}
@@ -46,7 +47,7 @@ LLM Generates Factorial Function (IQ:120)
 
 
 LLM Generates Efficient Fibonacci (IQ:130)
-    [Documentation]    LLM generates efficient fibonacci implementation
+    [Documentation]    Can the LLM generate an efficient Python fibonacci implementation?
     [Tags]    IQ:130    algorithm    dynamic-programming    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${FIBONACCI_PROMPT}
@@ -75,7 +76,7 @@ LLM Generates Efficient Fibonacci (IQ:130)
 
 
 LLM Fixes Bug In Code (IQ:140)
-    [Documentation]    LLM debugs and fixes buggy code
+    [Documentation]    Can the LLM debug and fix a Python division-by-zero bug?
     [Tags]    IQ:140    debugging    bug-fixing    tier:4    verify:robot
 
     ${buggy_code}=    Catenate    SEPARATOR=\n
@@ -108,7 +109,7 @@ LLM Fixes Bug In Code (IQ:140)
 
 
 LLM Respects Resource Limits (IQ:130)
-    [Documentation]    Verify container resource limits are enforced
+    [Documentation]    Can the container enforce memory limits when Python tries to allocate 200MB?
     [Tags]    IQ:130    resource-limits    safety    tier:1    verify:robot
 
     ${memory_hog}=    Set Variable    x = [0] * (200 * 1024 * 1024)
@@ -123,7 +124,7 @@ LLM Respects Resource Limits (IQ:130)
 
 
 LLM Generates String Reverse Function (IQ:110)
-    [Documentation]    LLM generates string reversal without built-in methods
+    [Documentation]    Can the LLM generate a Python string reversal function without built-in reverse methods?
     [Tags]    IQ:110    string-manipulation    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${REVERSE_STRING_PROMPT}
@@ -148,7 +149,7 @@ LLM Generates String Reverse Function (IQ:110)
 
 
 Custom Container Configuration (IQ:120)
-    [Documentation]    Test with custom CPU and memory constraints
+    [Documentation]    Can a custom Docker container (0.25 CPU, 256MB) execute Python correctly?
     [Tags]    IQ:120    custom-resources    tier:1    verify:robot
 
     ${custom_config}=    Create Dictionary
@@ -170,27 +171,3 @@ Custom Container Configuration (IQ:120)
 
     Should Be Equal As Integers    ${result.exit_code}    0
     Should Contain    ${result.stdout}    499999500000
-
-
-*** Keywords ***
-Extract Code Block
-    [Documentation]    Extract first fenced markdown code block (optionally matching language). Falls back to any block, then full text.
-    [Arguments]    ${text}    ${language}=python
-
-    ${pattern}=    Set Variable    (?s)```(?:${language})?\s*(.*?)\s*```
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${count}=      Get Length    ${matches}
-    IF    ${count} > 0
-        ${code}=    Set Variable    ${matches}[0]
-        RETURN    ${code}
-    END
-
-    ${pattern}=    Set Variable    (?s)```\s*(.*?)\s*```
-    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
-    ${count}=      Get Length    ${matches}
-    IF    ${count} > 0
-        ${code}=    Set Variable    ${matches}[0]
-        RETURN    ${code}
-    END
-
-    RETURN    ${text}

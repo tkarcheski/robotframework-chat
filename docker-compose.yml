@@ -5,6 +5,7 @@
 #   make docker-up               # start the stack
 #   make bootstrap              # first-time Superset setup
 #   open http://localhost:8088   # Superset analytics
+#   open http://localhost:8089   # RF Metrics dashboard
 #
 # Run tests with archiving to PostgreSQL:
 #   make robot-math
@@ -19,7 +20,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rfc}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rfc}:${POSTGRES_PASSWORD:-changeme}@postgres:${POSTGRES_INTERNAL_PORT:-5432}/${POSTGRES_DB:-rfc}
       OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-llama3}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
@@ -41,7 +42,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5433}:${POSTGRES_INTERNAL_PORT:-5432}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -78,12 +79,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
       SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
+      SUPERSET_TRON_CSS: ${SUPERSET_TRON_CSS:-false}
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py:ro
       - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
+      - ./superset/themes:/app/themes:ro
     networks:
       - rfc-net
     entrypoint: /bin/bash
@@ -120,6 +124,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rfc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-rfc}
+      POSTGRES_INTERNAL_PORT: ${POSTGRES_INTERNAL_PORT:-5432}
     ports:
       - "${SUPERSET_PORT:-8088}:8088"
     volumes:
@@ -131,6 +136,24 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+
+  # ── RF Metrics (HTML dashboard from output.xml) ─────────────────────
+  metrics:
+    build: ./metrics
+    restart: unless-stopped
+    environment:
+      METRICS_REFRESH_INTERVAL: ${METRICS_REFRESH_INTERVAL:-300}
+    volumes:
+      - ./results:/app/results:ro
+    ports:
+      - "${METRICS_PORT:-8089}:80"
+    networks:
+      - rfc-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
 networks:
   rfc-net:

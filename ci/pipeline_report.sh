@@ -28,7 +28,7 @@ echo "=== Pipeline Testing Summary ==="
 JUNIT_ARGS=()
 
 # Run the summary generator
-uv run python scripts/pipeline_summary.py -o metrics "${JUNIT_ARGS[@]}"
+uv run python scripts/pipeline_summary.py -o metrics ${JUNIT_ARGS[@]+"${JUNIT_ARGS[@]}"}
 echo "Summary generated in metrics/pipeline_summary.md"
 
 # Post to MR if requested and in MR context

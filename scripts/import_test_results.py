@@ -7,6 +7,7 @@ Respects DATABASE_URL for PostgreSQL; defaults to SQLite.
 """
 
 import argparse
+import gzip
 import os
 import sys
 from datetime import datetime
@@ -18,6 +19,7 @@ from xml.etree import ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rfc import __version__
+from rfc.db_listener import _nvl, _parse_tags
 from rfc.test_database import TestDatabase, TestResult, TestRun
 
 
@@ -106,31 +108,47 @@ def parse_output_xml(xml_path: str) -> dict:
 
             score = None
             grading_reason = None
+            tag_texts: list[str] = []
             for tag in test.findall("tags/tag"):
-                if tag.text and tag.text.startswith("score:"):
-                    try:
-                        score = int(tag.text.split(":")[1])
-                    except (ValueError, IndexError):
-                        pass
+                if tag.text:
+                    tag_texts.append(tag.text)
+                    if tag.text.startswith("score:"):
+                        try:
+                            score = float(tag.text.split(":")[1])
+                        except (ValueError, IndexError):
+                            pass
+            parsed_tags = _parse_tags(tag_texts)
+            tags_str = parsed_tags["tags_sorted"]
 
             actual_answer = None
             expected_answer = None
             for msg in test.findall(".//msg"):
                 text = msg.text or ""
-                if "Answer:" in text or "Response:" in text:
-                    actual_answer = text
-                if "Expected:" in text:
-                    expected_answer = text
+                if text.startswith("RFC_DATA:actual_answer:"):
+                    actual_answer = text[len("RFC_DATA:actual_answer:") :]
+                elif text.startswith("RFC_DATA:expected_answer:"):
+                    expected_answer = text[len("RFC_DATA:expected_answer:") :]
+                elif text.startswith("RFC_DATA:grading_reason:"):
+                    grading_reason = text[len("RFC_DATA:grading_reason:") :]
+                elif text.startswith("RFC_DATA:score:"):
+                    try:
+                        score = float(text[len("RFC_DATA:score:") :])
+                    except (ValueError, IndexError):
+                        pass
 
             test_results.append(
                 {
                     "name": test_name,
                     "status": test_status,
                     "score": score,
+                    "tags": tags_str,
                     "question": question,
                     "expected_answer": expected_answer,
                     "actual_answer": actual_answer,
                     "grading_reason": grading_reason,
+                    "tag_severity": parsed_tags["tag_severity"],
+                    "tag_tier": parsed_tags["tag_tier"],
+                    "tag_verify": parsed_tags["tag_verify"],
                 }
             )
 
@@ -147,7 +165,12 @@ def parse_output_xml(xml_path: str) -> dict:
 
 
 def import_results(
-    xml_path: str, db: TestDatabase, model_name: Optional[str] = None
+    xml_path: str,
+    db: TestDatabase,
+    model_name: Optional[str] = None,
+    report_base_url: Optional[str] = None,
+    output_xml_gz: Optional[bytes] = None,
+    output_xml_url: Optional[str] = None,
 ) -> int:
     """Import a single output.xml file into database.
 
@@ -155,6 +178,9 @@ def import_results(
         xml_path: Path to output.xml file
         db: TestDatabase instance
         model_name: Optional model name override
+        report_base_url: Base URL for report links
+        output_xml_gz: Pre-compressed output.xml blob (optional)
+        output_xml_url: URL to output.xml (optional)
 
     Returns:
         Run ID of the inserted record
@@ -163,11 +189,6 @@ def import_results(
     metadata = data["metadata"]
 
     if model_name is None:
-        # Try metadata keys in priority order:
-        # "Default_Model" — set by git_metadata_listener (always present)
-        # "Model" — may be set manually or by older output.xml files
-        # "Model_Name" — set by the pre-run modifier (from models.yaml)
-        # "Selected_Model" — set by model-aware filtering
         model_name = (
             metadata.get("Default_Model")
             or metadata.get("Model")
@@ -176,10 +197,6 @@ def import_results(
             or os.getenv("DEFAULT_MODEL", "unknown")
         )
 
-    model_release_date = metadata.get("Model_Release_Date")
-    model_parameters = metadata.get("Model_Parameters")
-
-    # Canonical keys first, then legacy GitLab-specific keys, then env vars
     git_commit = (
         metadata.get("Commit_SHA")
         or metadata.get("GitLab Commit")
@@ -192,22 +209,6 @@ def import_results(
         or os.getenv("CI_COMMIT_REF_NAME")
         or os.getenv("GITHUB_REF_NAME", "")
     )
-    pipeline_url = (
-        metadata.get("Pipeline_URL")
-        or metadata.get("GitLab Pipeline")
-        or os.getenv("CI_PIPELINE_URL", "")
-    )
-    runner_id = (
-        metadata.get("Runner_ID")
-        or metadata.get("Runner ID")
-        or os.getenv("CI_RUNNER_ID")
-        or os.getenv("RUNNER_NAME", "")
-    )
-    runner_tags = (
-        metadata.get("Runner_Tags")
-        or metadata.get("Runner Tags")
-        or os.getenv("CI_RUNNER_TAGS", "")
-    )
 
     timestamp_str = metadata.get("Timestamp")
     if timestamp_str:
@@ -218,23 +219,34 @@ def import_results(
     else:
         timestamp = datetime.now()
 
+    # Build output_xml_url from report_base_url if not provided
+    if output_xml_url is None and report_base_url:
+        output_xml_url = f"{report_base_url.rstrip('/')}/output.xml"
+
+    # Compress output.xml if not already provided
+    if output_xml_gz is None:
+        try:
+            with open(xml_path, "rb") as f:
+                output_xml_gz = gzip.compress(f.read())
+        except OSError:
+            pass
+
     run = TestRun(
         timestamp=timestamp,
         model_name=model_name or "unknown",
-        model_release_date=model_release_date,
-        model_parameters=model_parameters,
         test_suite=data["suite_name"],
-        git_commit=git_commit,
-        git_branch=git_branch,
-        pipeline_url=pipeline_url,
-        runner_id=runner_id,
-        runner_tags=runner_tags,
         total_tests=data["total_tests"],
         passed=data["passed"],
         failed=data["failed"],
         skipped=data["skipped"],
         duration_seconds=data["duration"],
+        git_commit=git_commit,
+        git_branch=git_branch,
+        hostname=os.getenv("HOSTNAME", ""),
         rfc_version=__version__,
+        output_xml_url=output_xml_url or "",
+        output_xml_gz=output_xml_gz or b"",
+        output_xml_source=os.path.abspath(xml_path),
     )
 
     run_id = db.add_test_run(run)
@@ -244,12 +256,16 @@ def import_results(
             run_id=run_id,
             test_name=td["name"],
             test_status=td["status"],
-            score=td["score"],
-            question=td["question"],
-            expected_answer=td["expected_answer"],
-            actual_answer=td["actual_answer"],
-            grading_reason=td["grading_reason"],
+            score=_nvl(td.get("score"), -1.0),
+            tags=_nvl(td.get("tags"), ""),
+            question=_nvl(td.get("question"), ""),
+            expected_answer=_nvl(td.get("expected_answer"), ""),
+            actual_answer=_nvl(td.get("actual_answer"), ""),
+            grading_reason=_nvl(td.get("grading_reason"), ""),
             rfc_version=__version__,
+            tag_severity=_nvl(td.get("tag_severity"), ""),
+            tag_tier=_nvl(td.get("tag_tier"), -1),
+            tag_verify=_nvl(td.get("tag_verify"), ""),
         )
         for td in data["test_results"]
     ]
@@ -259,7 +275,7 @@ def import_results(
     return run_id
 
 
-def main():
+def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Import Robot Framework results into test database"
@@ -272,23 +288,21 @@ def main():
         "--model",
         help="Model name override (default: from metadata or DEFAULT_MODEL env var)",
     )
-    parser.add_argument("--db", help="Database path (default: data/test_history.db)")
     parser.add_argument(
         "--recursive",
         "-r",
         action="store_true",
         help="Recursively search for output.xml files in directory",
     )
+    parser.add_argument(
+        "--report-base-url",
+        help="Base URL for output.xml web access",
+    )
 
     args = parser.parse_args()
 
-    # Initialize database (respects DATABASE_URL env var for PostgreSQL)
-    if args.db:
-        db = TestDatabase(db_path=args.db)
-    else:
-        db = TestDatabase()
+    db = TestDatabase()
 
-    # Find output.xml files
     xml_files: list[str] = []
     if os.path.isfile(args.output_xml):
         xml_files.append(args.output_xml)
@@ -310,13 +324,13 @@ def main():
     imported_count = 0
     for xml_file in xml_files:
         try:
-            run_id = import_results(xml_file, db, args.model)
+            run_id = import_results(xml_file, db, args.model, args.report_base_url)
             print(f"Imported {xml_file} (run_id={run_id})")
             imported_count += 1
         except Exception as e:
             print(f"Failed to import {xml_file}: {e}")
 
-    print(f"\nImported {imported_count} test run(s) into database at {db.db_path}")
+    print(f"\nImported {imported_count} test run(s)")
 
 
 if __name__ == "__main__":

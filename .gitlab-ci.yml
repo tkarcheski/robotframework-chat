@@ -26,7 +26,10 @@ stages:
 
 variables:
   OLLAMA_ENDPOINT: "http://localhost:11434"
-  DEFAULT_MODEL: "llama3"
+  DEFAULT_MODEL: "qwen3.5:27b"
+  DATABASE_HOST: "localhost"
+  POSTGRES_PORT: "5433"
+  DATABASE_URL: "postgresql://rfc:changeme@${DATABASE_HOST}:${POSTGRES_PORT}/rfc"
   ROBOT_OPTIONS: "--metadata CI:true"
 
 # ── Lint ─────────────────────────────────────────────────────────────
@@ -36,9 +39,12 @@ lint:
   stage: lint
   script: [bash ci/lint.sh all]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG =~ /^v/
+      allow_failure: false
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
     - if: $CI_COMMIT_BRANCH
+      allow_failure: true
 
 # ── Test: Per-Node Model Runs ──────────────────────────────────────
 
@@ -49,10 +55,13 @@ lint:
     - job: lint
       artifacts: false
   script: [make run-local-models]
-  allow_failure: true
   rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+      allow_failure: false
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
     - if: $CI_COMMIT_BRANCH
+      allow_failure: true
 
 run-local-models-ai1:
   extends: .run-local-models
@@ -83,7 +92,7 @@ repo-metrics:
   script: [make ci-report POST_MR=1]
   artifacts:
     paths: [metrics/]
-    expire_in: 30 days
+    expire_in: 90 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -98,7 +107,7 @@ pipeline-summary:
   script: [bash ci/pipeline_report.sh --post-mr]
   artifacts:
     paths: [metrics/]
-    expire_in: 30 days
+    expire_in: 90 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -145,7 +154,7 @@ opencode-review:
       - review-result.md
       - review-fix-attempt.md
       - review-patch-*.diff
-    expire_in: 30 days
+    expire_in: 90 days
     when: always
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /opencode-review/

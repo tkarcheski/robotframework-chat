@@ -33,15 +33,13 @@ class ModelAwarePreRunModifier:
         Args:
             ollama_endpoint: Ollama API endpoint (default: env OLLAMA_ENDPOINT or localhost:11434)
             config_path: Path to models.yaml config file
-            default_model: Default model to use (default: env DEFAULT_MODEL or gpt-oss:20b)
+            default_model: Default model to use (default: env DEFAULT_MODEL or phi4:14b)
         """
         self.ollama_endpoint = (
             ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
         self.config_path = config_path or "robot/ci/models.yaml"
-        self.default_model = (
-            default_model or os.getenv("DEFAULT_MODEL") or "gpt-oss:20b"
-        )
+        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or "phi4:14b"
 
         self._client = OllamaClient(
             base_url=self.ollama_endpoint, model=self.default_model
@@ -99,9 +97,9 @@ class ModelAwarePreRunModifier:
             )
         except Exception as e:
             logger.error(f"Error querying Ollama models: {e}")
-            self.available_models = [self.default_model or "gpt-oss:20b"]
+            self.available_models = [self.default_model or "phi4:14b"]
             logger.info(
-                f"Falling back to default model: {self.default_model or 'gpt-oss:20b'}"
+                f"Falling back to default model: {self.default_model or 'phi4:14b'}"
             )
 
     def _filter_tests_by_models(self, suite: TestSuite) -> None:
@@ -175,10 +173,6 @@ class ModelAwarePreRunModifier:
             suite.metadata["Model_Name"] = model_info.get(
                 "full_name", self.default_model
             )
-            suite.metadata["Model_Release_Date"] = model_info.get(
-                "release_date", "Unknown"
-            )
-            suite.metadata["Model_Parameters"] = model_info.get("parameters", "Unknown")
             suite.metadata["Model_Organization"] = model_info.get(
                 "organization", "Unknown"
             )

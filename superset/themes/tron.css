@@ -1,0 +1,38 @@
+/*
+ * Tron Theme for Apache Superset Dashboards
+ *
+ * Dark Side template structure with TRON: Legacy orange/cyan palette.
+ * Based on https://github.com/himarygr/apache-superset-css-templates
+ *
+ * Applied via the Dashboard.css field during bootstrap
+ * when SUPERSET_TRON_CSS=true is set in the environment.
+ */
+
+.ant-tabs-content-holder {
+  background: transparent !important;
+}
+
+.ant-tabs-content-holder * {
+  color: #ff8c42 !important;
+}
+
+.ant-tabs-tab-active * {
+  color: #00dffc !important;
+  font-weight: bold !important;
+}
+
+.dashboard-content {
+  background-image: linear-gradient(-45deg, #0a0a0f, #0d1117);
+  font-family: "Share Tech Mono", "Courier New", monospace;
+}
+
+.dashboard-component {
+  background-image: linear-gradient(-45deg, #151b25, #0d1117);
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0, 223, 252, 0.15) !important;
+}
+
+.dashboard-component-tabs {
+  background: transparent;
+  box-shadow: none !important;
+}

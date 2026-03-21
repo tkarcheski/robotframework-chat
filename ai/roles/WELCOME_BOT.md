@@ -72,7 +72,7 @@ Edit `.env` — the key variables for getting started:
 | Variable | Default | What It Does |
 |----------|---------|-------------|
 | `OLLAMA_ENDPOINT` | `http://localhost:11434` | Where your Ollama instance listens |
-| `DEFAULT_MODEL` | `gpt-oss:20b` | Default model for test execution |
+| `DEFAULT_MODEL` | `phi4:14b` | Default model for test execution |
 | `DATABASE_URL` | _(unset)_ | Leave unset for SQLite (simplest start) |
 
 ### Step 4: Start and Verify Ollama
@@ -91,15 +91,15 @@ uv run python scripts/discover_ollama.py --pretty
 ### Step 5: Pull a Model
 
 ```bash
-# Pull a small, fast model to start with
-ollama pull llama3
+# Pull the default model to start with
+ollama pull qwen3.5:27b
 
 # Verify it's available
 ollama list
 ```
 
 If the user has limited RAM (< 16 GB), suggest smaller models:
-- `llama3` (~4.7 GB) — good default
+- `qwen3.5:27b` (~16 GB) — good default
 - `phi3:mini` (~2.3 GB) — lightweight alternative
 - `tinyllama` (~637 MB) — minimal footprint
 
@@ -141,7 +141,7 @@ After a successful run:
 | Problem | Symptom | Fix |
 |---------|---------|-----|
 | Ollama not running | `ConnectionError` or `ConnectionRefusedError` | Start Ollama: `ollama serve` |
-| Model not pulled | `model 'xxx' not found` or 404 error | Pull it: `ollama pull llama3` |
+| Model not pulled | `model 'xxx' not found` or 404 error | Pull it: `ollama pull qwen3.5:27b` |
 | Wrong endpoint | Timeout after 120 seconds | Check `OLLAMA_ENDPOINT` in `.env` matches your Ollama address |
 | Port already in use | `Address already in use` on 11434 | Another Ollama or service on that port — check `lsof -i :11434` |
 | Model too large for RAM | OOM kill, extremely slow response | Use a smaller model (`phi3:mini`, `tinyllama`) |
