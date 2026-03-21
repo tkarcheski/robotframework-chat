@@ -16,6 +16,7 @@ services:
   # ── Application (test runner + dev tools) ────────────────────────────
   app:
     build: .
+    image: ghcr.io/tkarcheski/robotframework-chat:${APP_VERSION:-latest}
     depends_on:
       postgres:
         condition: service_healthy
