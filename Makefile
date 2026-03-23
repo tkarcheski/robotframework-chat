@@ -19,6 +19,7 @@ export
 
 .PHONY: help install update \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
+        robot-review \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         send-results \
@@ -84,6 +85,9 @@ robot-superset: ## Test PostgreSQL connection and push host info to database
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
+
+robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
+	uv run python scripts/robot_review.py
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh

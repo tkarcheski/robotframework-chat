@@ -127,6 +127,11 @@ def robot_dryrun() -> None:
     )
 
 
+def robot_review() -> None:
+    """Check tag compliance in output.xml (run after robot-dryrun)."""
+    _uv_run("python", "scripts/robot_review.py")
+
+
 def run_local_models() -> None:
     """Run test suites against every model on every local node."""
     _ensure_env()
@@ -223,6 +228,7 @@ TARGETS: dict[str, object] = {
     "robot-accounting": robot_accounting,
     "robot-safety": robot_safety,
     "robot-dryrun": robot_dryrun,
+    "robot-review": robot_review,
     "run-local-models": run_local_models,
     "robot-autopilot": robot_autopilot,
     "import-results": import_results,
