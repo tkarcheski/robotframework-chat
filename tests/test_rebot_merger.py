@@ -88,6 +88,27 @@ class TestFindOutputFiles:
         files = find_output_files([str(d), str(d)])
         assert len(files) == 1
 
+    def test_excludes_output_dir(self, tmp_path: Path) -> None:
+        """find_output_files must skip the output_dir to avoid self-inclusion.
+
+        When `make rebot-merge-all` runs `rfc.rebot_merger results/`, the
+        output goes to `results/combined/output.xml`.  On the next run,
+        that stale aggregate must not be picked up as a source — otherwise
+        it gets merged back in, duplicating every test case.
+        """
+        results = tmp_path / "results"
+        math = results / "math"
+        combined = results / "combined"
+        math.mkdir(parents=True)
+        combined.mkdir(parents=True)
+        (math / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+        (combined / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+
+        files = find_output_files([str(results)], exclude_dir=str(combined))
+        assert len(files) == 1
+        assert "math" in files[0]
+        assert "combined" not in files[0]
+
 
 # ── _run_rebot ───────────────────────────────────────────────────────
 

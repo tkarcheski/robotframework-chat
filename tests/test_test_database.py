@@ -150,6 +150,29 @@ class TestSQLiteBackend:
         assert len(runs) == 1
         assert runs[0]["hostname"] == "dev1"
 
+    def test_update_output_xml(self, tmp_path: object) -> None:
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+
+        # Initially empty
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["output_xml_gz"] == b""
+
+        # Update with compressed blob
+        compressed = gzip.compress(b"<robot>full output</robot>")
+        db.update_output_xml(run_id, compressed)
+
+        runs = db.get_recent_runs(limit=1)
+        assert runs[0]["output_xml_gz"] == compressed
+        assert (
+            gzip.decompress(runs[0]["output_xml_gz"]) == b"<robot>full output</robot>"
+        )
+
+    def test_update_output_xml_nonexistent_run(self, tmp_path: object) -> None:
+        """update_output_xml on a missing run_id should not raise."""
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        db.update_output_xml(9999, gzip.compress(b"<robot/>"))
+
 
 class TestTestDatabase:
     def test_explicit_db_path_uses_sqlite(self, tmp_path: object) -> None:

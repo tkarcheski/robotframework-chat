@@ -147,6 +147,9 @@ class _Backend(abc.ABC):
     def get_table_row_count(self, table_name: str) -> int: ...
 
     @abc.abstractmethod
+    def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None: ...
+
+    @abc.abstractmethod
     def upsert_model(self, model: "Model") -> None: ...
 
 
@@ -415,6 +418,13 @@ class _SQLiteBackend(_Backend):
                     )
                     for r in results
                 ],
+            )
+
+    def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE test_runs SET output_xml_gz = ? WHERE id = ?",
+                (output_xml_gz, run_id),
             )
 
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -785,6 +795,14 @@ class _SQLAlchemyBackend(_Backend):
                 ],
             )
 
+    def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                self._test_runs.update()
+                .where(self._test_runs.c.id == run_id)
+                .values(output_xml_gz=output_xml_gz)
+            )
+
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
         with self.engine.connect() as conn:
             result = conn.execute(
@@ -905,6 +923,9 @@ class TestDatabase:
 
     def add_test_results(self, results: List[TestResult]) -> None:
         self._backend.add_test_results(results)
+
+    def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
+        self._backend.update_output_xml(run_id, output_xml_gz)
 
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
         return self._backend.get_recent_runs(limit)

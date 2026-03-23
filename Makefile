@@ -30,7 +30,7 @@ export
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
-        cache-flush superset-sanitize superset-export superset-import superset-diagnose \
+        cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -163,6 +163,11 @@ cache-flush: ## Flush caches and refresh all dashboards (Superset + RF Metrics)
 	@echo "Triggering RF Metrics dashboard regeneration..."
 	$(COMPOSE) restart metrics
 	@echo "Done — Superset will re-query on next load; RF Metrics are regenerating now."
+
+sync-metrics: ## Trigger immediate RF Metrics dashboard regeneration from output.xml files
+	@echo "Syncing output.xml files to RF Metrics dashboard..."
+	$(COMPOSE) exec -T metrics /bin/bash -c 'source /app/entrypoint.sh && generate_metrics'
+	@echo "Metrics sync complete — view at http://localhost:$${METRICS_PORT:-8089}"
 
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py

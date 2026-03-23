@@ -202,6 +202,25 @@ def robot_autopilot() -> None:
     _run(["bash", str(ROOT / "scripts" / "robot_autopilot.sh")])
 
 
+def sync_metrics() -> None:
+    """Trigger immediate RF Metrics dashboard regeneration from output.xml files."""
+    print("Syncing output.xml files to RF Metrics dashboard...")
+    _run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "metrics",
+            "/bin/bash",
+            "-c",
+            "source /app/entrypoint.sh && generate_metrics",
+        ],
+    )
+    port = os.environ.get("METRICS_PORT", "8089")
+    print(f"Metrics sync complete — view at http://localhost:{port}")
+
+
 def superset_sanitize() -> None:
     """Truncate all RFC data tables (preserves dashboards/charts)."""
     _ensure_env()
@@ -235,6 +254,7 @@ TARGETS: dict[str, object] = {
     "analytics-refresh": analytics_refresh,
     "analytics-regressions": analytics_regressions,
     "rebot-merge": rebot_merge,
+    "sync-metrics": sync_metrics,
     "superset-sanitize": superset_sanitize,
     "docker-build-app": docker_build_app,
     "docker-test-app": docker_test_app,

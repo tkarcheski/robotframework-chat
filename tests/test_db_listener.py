@@ -1166,3 +1166,91 @@ class TestGetRobotInt:
         monkeypatch.delenv("SEED", raising=False)
         result = _get_robot_int("SEED")
         assert result == 0
+
+
+# ── close() deferred output.xml capture ──────────────────────────────
+
+
+class TestCloseDefersOutputXmlCapture:
+    """Verify that output.xml is read in close(), not end_suite().
+
+    Robot Framework calls end_suite() *before* flushing the output file,
+    so reading it there yields an empty or truncated blob.  The close()
+    hook fires after all loggers — including the output writer — have
+    finished, guaranteeing the file is complete.
+    """
+
+    @patch("rfc.db_listener._build_output_xml_source", return_value="/tmp/output.xml")
+    @patch("rfc.db_listener._build_output_xml_url", return_value="")
+    @patch("rfc.db_listener._read_and_compress_output_xml", return_value=b"")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch("rfc.db_listener.BuiltIn")
+    def test_end_suite_does_not_call_read_and_compress(
+        self,
+        _mock_builtin: MagicMock,
+        _mock_ci: MagicMock,
+        mock_read: MagicMock,
+        _mock_url: MagicMock,
+        _mock_source: MagicMock,
+    ) -> None:
+        """end_suite must NOT read output.xml — that's close()'s job."""
+        listener = DbListener(database_url="sqlite:///")
+        listener._db = MagicMock()
+        listener._db.add_test_run.return_value = 1
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
+        mock_read.assert_not_called()
+
+    @patch("rfc.db_listener._build_output_xml_source", return_value="/tmp/output.xml")
+    @patch("rfc.db_listener._build_output_xml_url", return_value="")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch("rfc.db_listener.BuiltIn")
+    def test_close_reads_output_xml_and_updates_db(
+        self,
+        _mock_builtin: MagicMock,
+        _mock_ci: MagicMock,
+        _mock_url: MagicMock,
+        _mock_source: MagicMock,
+        tmp_path: object,
+    ) -> None:
+        """close() should read the now-flushed output.xml and update the DB row."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+
+        listener = DbListener(database_url="sqlite:///")
+        mock_db = MagicMock()
+        mock_db.add_test_run.return_value = 42
+        listener._db = mock_db
+
+        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+        listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
+
+        # Simulate close() after Robot has flushed
+        with patch(
+            "rfc.db_listener._resolve_output_file", return_value=str(output_xml)
+        ):
+            listener.close()
+
+        mock_db.update_output_xml.assert_called_once()
+        call_args = mock_db.update_output_xml.call_args
+        assert call_args[0][0] == 42  # run_id
+        import gzip as _gzip
+
+        assert _gzip.decompress(call_args[0][1]) == b"<robot/>"
+
+    @patch("rfc.db_listener._build_output_xml_source", return_value="/tmp/output.xml")
+    @patch("rfc.db_listener._build_output_xml_url", return_value="")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch("rfc.db_listener.BuiltIn")
+    def test_close_without_end_suite_is_noop(
+        self,
+        _mock_builtin: MagicMock,
+        _mock_ci: MagicMock,
+        _mock_url: MagicMock,
+        _mock_source: MagicMock,
+    ) -> None:
+        """close() should be a no-op if end_suite never stored a run_id."""
+        listener = DbListener(database_url="sqlite:///")
+        listener._db = MagicMock()
+        listener.close()
+        listener._db.update_output_xml.assert_not_called()

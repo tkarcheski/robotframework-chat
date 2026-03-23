@@ -49,7 +49,7 @@ class MergeResult:
     merged_at: datetime = field(default_factory=datetime.now)
 
 
-def find_output_files(dirs: list[str]) -> list[str]:
+def find_output_files(dirs: list[str], *, exclude_dir: str = "") -> list[str]:
     """Recursively discover output.xml files in given directories.
 
     Deduplicates by absolute path to avoid processing the same file
@@ -57,18 +57,24 @@ def find_output_files(dirs: list[str]) -> list[str]:
 
     Args:
         dirs: List of directories to search.
+        exclude_dir: Absolute or relative path to skip (e.g. the merge
+            output directory) so that a previous merge result is not
+            fed back in as a source.
 
     Returns:
         Sorted list of unique output.xml file paths.
     """
     seen: set[str] = set()
     result: list[str] = []
+    exclude_abs = os.path.abspath(exclude_dir) if exclude_dir else ""
 
     for d in dirs:
         if not os.path.isdir(d):
             logger.warning("Directory not found, skipping: %s", d)
             continue
         for root, _subdirs, files in os.walk(d):
+            if exclude_abs and os.path.abspath(root).startswith(exclude_abs):
+                continue
             for fname in files:
                 if fname == "output.xml":
                     full_path = os.path.abspath(os.path.join(root, fname))
@@ -105,7 +111,7 @@ def merge_outputs(config: MergeConfig) -> Optional[MergeResult]:
     Returns:
         MergeResult with paths and provenance, or None if no files found.
     """
-    source_files = find_output_files(config.source_dirs)
+    source_files = find_output_files(config.source_dirs, exclude_dir=config.output_dir)
 
     if not source_files:
         logger.warning("No output.xml files found in: %s", config.source_dirs)
