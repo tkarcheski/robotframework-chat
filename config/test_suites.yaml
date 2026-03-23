@@ -112,6 +112,11 @@ test_suites:
     path: "robot/ceo/tests"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
 
+  c-interview:
+    label: "C Interview Questions"
+    path: "robot/c_interview/tests"
+    description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
+
   benchmark:
     label: "Token Output Benchmark"
     path: "robot/benchmark/tests"
@@ -195,6 +200,11 @@ ci:
     robot-safety-tests:
       path: "robot/safety/"
       output_dir: "results/safety"
+      tags: ["ollama"]
+
+    robot-c-interview-tests:
+      path: "robot/c_interview/tests/"
+      output_dir: "results/c_interview"
       tags: ["ollama"]
 
     robot-ceo-tests:
