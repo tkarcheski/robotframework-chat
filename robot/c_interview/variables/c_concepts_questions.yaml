@@ -41,7 +41,7 @@ C_CONCEPTS_QUESTIONS:
     iq: 120
 
   - question: "Why is strcpy(dst, src) dangerous in C and what safer alternative exists?"
-    expected: "It assumes dst is large enough and can overflow; safer variants are strncpy or better strlcpy/manual bounds checks."
+    expected: "It performs no bounds checking and will overflow dst if src is longer; safer alternatives include snprintf(dst, size, \"%s\", src), strlcpy where available, or explicit length-checked copying with memcpy after validating the length."
     iq: 110
 
   - question: "What does the volatile keyword mean in C?"
