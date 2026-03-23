@@ -1,7 +1,14 @@
 # Rust programming challenges for LLM computer skills testing
 # Each challenge tests the LLM's ability to generate compilable and correct Rust code
+#
+# Fields:
+#   expected_output  - single string checked via Should Contain (legacy fallback)
+#   expected_outputs - list of strings verified as an ordered subsequence of stdout lines.
+#                      Each entry must appear in order; duplicates consume separate lines.
+#   When both are present, expected_outputs takes precedence in the Robot keyword.
 
 RUST_CODE_CHALLENGES:
+  # === Original challenges (0-4) ===
   - name: "Hello World"
     prompt: "Write a Rust program that prints 'Hello, World!' to stdout."
     language: rust
@@ -9,6 +16,8 @@ RUST_CODE_CHALLENGES:
     compile_command: "rustc -o hello hello.rs"
     run_command: "./hello"
     expected_output: "Hello, World!"
+    expected_outputs:
+      - "Hello, World!"
     expected_exit_code: 0
     iq: 100
     timeout: 30
@@ -20,6 +29,9 @@ RUST_CODE_CHALLENGES:
     compile_command: "rustc -o factorial factorial.rs"
     run_command: "./factorial"
     expected_output: "factorial(5) = 120"
+    expected_outputs:
+      - "factorial(5) = 120"
+      - "factorial(0) = 1"
     expected_exit_code: 0
     iq: 120
     timeout: 30
@@ -31,6 +43,9 @@ RUST_CODE_CHALLENGES:
     compile_command: "rustc -o ownership ownership.rs"
     run_command: "./ownership"
     expected_output: "Length: 5"
+    expected_outputs:
+      - "Length: 5"
+      - "Value: Hello"
     expected_exit_code: 0
     iq: 130
     timeout: 30
@@ -42,6 +57,12 @@ RUST_CODE_CHALLENGES:
     compile_command: "rustc -o matching matching.rs"
     run_command: "./matching"
     expected_output: "one"
+    expected_outputs:
+      - "one"
+      - "two"
+      - "three"
+      - "other"
+      - "other"
     expected_exit_code: 0
     iq: 120
     timeout: 30
@@ -53,6 +74,480 @@ RUST_CODE_CHALLENGES:
     compile_command: "rustc -o fizzbuzz fizzbuzz.rs"
     run_command: "./fizzbuzz"
     expected_output: "FizzBuzz"
+    expected_outputs:
+      - "1"
+      - "Fizz"
+      - "Buzz"
+      - "FizzBuzz"
     expected_exit_code: 0
     iq: 110
+    timeout: 30
+
+  # === Rust interview challenges (5-24) ===
+  # Based on 20 Rust interview questions covering fundamentals through advanced topics
+
+  # Q1: Ownership - demonstrate move semantics and drop
+  - name: "Ownership Move and Drop"
+    prompt: |
+      Write a Rust program that demonstrates ownership and move semantics.
+      Create a String 'hello' and assign it to variable s1. Move s1 into s2.
+      Print 'moved: hello' using s2. Then show that dropping works by creating
+      a String in an inner scope and printing 'created' when it is created and
+      'scope ended' after the inner scope ends. The output should be exactly:
+      moved: hello
+      created
+      scope ended
+    language: rust
+    source_file: "ownership_move.rs"
+    compile_command: "rustc -o ownership_move ownership_move.rs"
+    run_command: "./ownership_move"
+    expected_output: "moved: hello"
+    expected_outputs:
+      - "moved: hello"
+      - "created"
+      - "scope ended"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q2: Borrowing rules - many immutable or one mutable
+  - name: "Borrowing Rules"
+    prompt: |
+      Write a Rust program demonstrating borrowing rules. Create a mutable
+      String 'hello'. First, take two immutable references and print their
+      lengths on one line as 'immutable borrows: 5 5'. Then, after those
+      references are no longer used, take a mutable reference and push
+      ' world' to it. Print the final string as 'after mutation: hello world'.
+      The output should be exactly:
+      immutable borrows: 5 5
+      after mutation: hello world
+    language: rust
+    source_file: "borrowing_rules.rs"
+    compile_command: "rustc -o borrowing_rules borrowing_rules.rs"
+    run_command: "./borrowing_rules"
+    expected_output: "immutable borrows: 5 5"
+    expected_outputs:
+      - "immutable borrows: 5 5"
+      - "after mutation: hello world"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q3: Lifetimes - longest string function
+  - name: "Lifetime Annotations"
+    prompt: |
+      Write a Rust program with a function longest<'a>(x: &'a str, y: &'a str) -> &'a str
+      that returns the longer of two string slices. If they are equal length, return the first.
+      In main, call it with "long string" and "short" and print 'longest: long string'.
+      Then call it with "hi" and "hello" and print 'longest: hello'.
+      The output should be exactly:
+      longest: long string
+      longest: hello
+    language: rust
+    source_file: "lifetimes.rs"
+    compile_command: "rustc -o lifetimes lifetimes.rs"
+    run_command: "./lifetimes"
+    expected_output: "longest: long string"
+    expected_outputs:
+      - "longest: long string"
+      - "longest: hello"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # Q4: String vs &str
+  - name: "String vs Str Slice"
+    prompt: |
+      Write a Rust program demonstrating the difference between String and &str.
+      Create an owned String from the literal "hello". Take a &str slice of the
+      first 3 characters. Print 'owned: hello' and 'slice: hel'. Then demonstrate
+      that String can grow by pushing " world" and print 'grown: hello world'.
+      The output should be exactly:
+      owned: hello
+      slice: hel
+      grown: hello world
+    language: rust
+    source_file: "string_vs_str.rs"
+    compile_command: "rustc -o string_vs_str string_vs_str.rs"
+    run_command: "./string_vs_str"
+    expected_output: "owned: hello"
+    expected_outputs:
+      - "owned: hello"
+      - "slice: hel"
+      - "grown: hello world"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q5: Option<T> for null handling
+  - name: "Option Null Safety"
+    prompt: |
+      Write a Rust program that demonstrates Option<T> as Rust's null safety mechanism.
+      Write a function find_even(numbers: &[i32]) -> Option<i32> that returns Some(n)
+      for the first even number or None. Call it with [1, 3, 4, 6] and print
+      'found: 4'. Call it with [1, 3, 5] and print 'none found'. Use match to
+      handle both cases. The output should be exactly:
+      found: 4
+      none found
+    language: rust
+    source_file: "option_null.rs"
+    compile_command: "rustc -o option_null option_null.rs"
+    run_command: "./option_null"
+    expected_output: "found: 4"
+    expected_outputs:
+      - "found: 4"
+      - "none found"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q6: Result<T, E> error handling
+  - name: "Result Error Handling"
+    prompt: |
+      Write a Rust program demonstrating Result<T, E> for error handling.
+      Write a function parse_age(input: &str) -> Result<u32, String> that parses
+      a string into a u32 age. Return Err if parsing fails or if age > 150.
+      Call it with "25" and print 'age: 25'. Call it with "abc" and print
+      'error: invalid input'. Call it with "200" and print 'error: age too large'.
+      The output should be exactly:
+      age: 25
+      error: invalid input
+      error: age too large
+    language: rust
+    source_file: "result_error.rs"
+    compile_command: "rustc -o result_error result_error.rs"
+    run_command: "./result_error"
+    expected_output: "age: 25"
+    expected_outputs:
+      - "age: 25"
+      - "error: invalid input"
+      - "error: age too large"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q7: The ? operator
+  - name: "Question Mark Operator"
+    prompt: |
+      Write a Rust program demonstrating the ? operator for error propagation.
+      Write a function parse_and_double(input: &str) -> Result<i32, String> that
+      parses a string to i32 using str::parse() (mapping the error to a String
+      with .map_err(|e| e.to_string())) and then returns the doubled value.
+      In main, call parse_and_double with "21" and print 'doubled: 42'.
+      Then call parse_and_double with "bad", and print the error as
+      'error: invalid digit found in string'. The output should be exactly:
+      doubled: 42
+      error: invalid digit found in string
+    language: rust
+    source_file: "question_mark.rs"
+    compile_command: "rustc -o question_mark question_mark.rs"
+    run_command: "./question_mark"
+    expected_output: "doubled: 42"
+    expected_outputs:
+      - "doubled: 42"
+      - "error:"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q8: Exhaustive match on enum
+  - name: "Exhaustive Match on Enum"
+    prompt: |
+      Write a Rust program with an enum Direction { North, South, East, West }.
+      Write a function describe(d: Direction) -> &'static str that uses match
+      to return "up" for North, "down" for South, "right" for East, "left" for West.
+      In main, print each direction's description on its own line. The output
+      should be exactly:
+      up
+      down
+      right
+      left
+    language: rust
+    source_file: "enum_match.rs"
+    compile_command: "rustc -o enum_match enum_match.rs"
+    run_command: "./enum_match"
+    expected_output: "up"
+    expected_outputs:
+      - "up"
+      - "down"
+      - "right"
+      - "left"
+    expected_exit_code: 0
+    iq: 110
+    timeout: 30
+
+  # Q9: Box<T> heap allocation
+  - name: "Box Heap Allocation"
+    prompt: |
+      Write a Rust program demonstrating Box<T>. Create a recursive enum
+      List that is either Cons(i32, Box<List>) or Nil. Write a function
+      sum(list: &List) -> i32 that recursively sums all values. Build
+      the list 1 -> 2 -> 3 -> Nil and print 'sum: 6'. Also print
+      'size of List: ' followed by std::mem::size_of::<List>() to show
+      Box makes the size finite. The output must contain:
+      sum: 6
+    language: rust
+    source_file: "box_heap.rs"
+    compile_command: "rustc -o box_heap box_heap.rs"
+    run_command: "./box_heap"
+    expected_output: "sum: 6"
+    expected_outputs:
+      - "sum: 6"
+      - "size of List:"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # Q10: Traits
+  - name: "Trait Implementation"
+    prompt: |
+      Write a Rust program with a trait Shape that has a method area(&self) -> f64.
+      Implement it for struct Circle { radius: f64 } and struct Rectangle { width: f64, height: f64 }.
+      Create a circle with radius 3.0 and a rectangle with width 4.0 and height 5.0.
+      Print 'circle: 28.27' (rounded to 2 decimal places using pi * r^2) and
+      'rectangle: 20.00'. Use std::f64::consts::PI. The output should be exactly:
+      circle: 28.27
+      rectangle: 20.00
+    language: rust
+    source_file: "traits.rs"
+    compile_command: "rustc -o traits traits.rs"
+    run_command: "./traits"
+    expected_output: "circle: 28.27"
+    expected_outputs:
+      - "circle: 28.27"
+      - "rectangle: 20.00"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q11: impl Trait vs generic type parameters
+  - name: "Impl Trait vs Generics"
+    prompt: |
+      Write a Rust program demonstrating both impl Trait and generic type parameters.
+      Write a function print_with_impl(item: &impl std::fmt::Display) that prints
+      using impl Trait syntax. Write a function print_with_generic<T: std::fmt::Display>(item: &T)
+      that does the same with explicit generics. Call print_with_impl with 42 and
+      print_with_generic with "hello". The output should be exactly:
+      impl: 42
+      generic: hello
+    language: rust
+    source_file: "impl_vs_generic.rs"
+    compile_command: "rustc -o impl_vs_generic impl_vs_generic.rs"
+    run_command: "./impl_vs_generic"
+    expected_output: "impl: 42"
+    expected_outputs:
+      - "impl: 42"
+      - "generic: hello"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q12: Clone vs Copy
+  - name: "Clone vs Copy"
+    prompt: |
+      Write a Rust program demonstrating the difference between Clone and Copy.
+      Show that i32 is Copy by assigning x = 42 to y and printing both (both still usable).
+      Show that String is Clone but not Copy by cloning s1 into s2. Print
+      'copy: 42 42' for the integers and 'clone: hello hello' for the strings.
+      Then modify s2 to "world" and print 'after modify: hello world' to show
+      they are independent. The output should be exactly:
+      copy: 42 42
+      clone: hello hello
+      after modify: hello world
+    language: rust
+    source_file: "clone_vs_copy.rs"
+    compile_command: "rustc -o clone_vs_copy clone_vs_copy.rs"
+    run_command: "./clone_vs_copy"
+    expected_output: "copy: 42 42"
+    expected_outputs:
+      - "copy: 42 42"
+      - "clone: hello hello"
+      - "after modify: hello world"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q13: unsafe Rust
+  - name: "Unsafe Rust"
+    prompt: |
+      Write a Rust program demonstrating unsafe Rust. Create an array [1, 2, 3, 4, 5].
+      Use unsafe to get a raw pointer to the array and dereference it to read the
+      third element (index 2). Print 'safe sum: 15' using the safe iterator sum.
+      Then print 'unsafe read: 3' from the raw pointer dereference. The output
+      should be exactly:
+      safe sum: 15
+      unsafe read: 3
+    language: rust
+    source_file: "unsafe_demo.rs"
+    compile_command: "rustc -o unsafe_demo unsafe_demo.rs"
+    run_command: "./unsafe_demo"
+    expected_output: "safe sum: 15"
+    expected_outputs:
+      - "safe sum: 15"
+      - "unsafe read: 3"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # Q14: Concurrency safety with Arc and Mutex
+  - name: "Arc Mutex Concurrency"
+    prompt: |
+      Write a Rust program demonstrating concurrency safety with Arc and Mutex.
+      Use std::sync::{Arc, Mutex} and std::thread. Create a shared counter
+      starting at 0 wrapped in Arc<Mutex<i32>>. Spawn 5 threads, each incrementing
+      the counter by 1. Join all threads. Print 'count: 5'. The output must contain:
+      count: 5
+    language: rust
+    source_file: "arc_mutex.rs"
+    compile_command: "rustc -o arc_mutex arc_mutex.rs"
+    run_command: "./arc_mutex"
+    expected_output: "count: 5"
+    expected_outputs:
+      - "count: 5"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # Q15: Send and Sync demonstration
+  - name: "Send and Sync"
+    prompt: |
+      Write a Rust program that demonstrates the Send trait by moving a String
+      into a new thread. The main thread creates String "hello from main",
+      spawns a thread that takes ownership via move, and the thread prints
+      'thread received: hello from main'. The main thread waits with join().
+      After join, print 'thread done'. The output should be exactly:
+      thread received: hello from main
+      thread done
+    language: rust
+    source_file: "send_sync.rs"
+    compile_command: "rustc -o send_sync send_sync.rs"
+    run_command: "./send_sync"
+    expected_output: "thread received: hello from main"
+    expected_outputs:
+      - "thread received: hello from main"
+      - "thread done"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q16: Arc vs Rc
+  - name: "Rc Reference Counting"
+    prompt: |
+      Write a Rust program demonstrating Rc<T> (single-threaded reference counting).
+      Use std::rc::Rc. Create an Rc<String> with value "shared". Clone it twice
+      to get three Rc handles total. Print the strong reference count after each
+      clone. Then drop one clone and print the count again. The output should be exactly:
+      count after create: 1
+      count after clone1: 2
+      count after clone2: 3
+      count after drop: 2
+    language: rust
+    source_file: "rc_demo.rs"
+    compile_command: "rustc -o rc_demo rc_demo.rs"
+    run_command: "./rc_demo"
+    expected_output: "count after create: 1"
+    expected_outputs:
+      - "count after create: 1"
+      - "count after clone1: 2"
+      - "count after clone2: 3"
+      - "count after drop: 2"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # Q17: RefCell interior mutability
+  - name: "RefCell Interior Mutability"
+    prompt: |
+      Write a Rust program demonstrating RefCell<T> for interior mutability.
+      Use std::cell::RefCell. Create a RefCell<Vec<i32>> with initial value vec![1, 2, 3].
+      Use borrow() to read and print the length: 'length: 3'. Then use borrow_mut()
+      to push 4 and 5. Use borrow() again to print 'length: 5'. Print the final
+      contents as 'values: [1, 2, 3, 4, 5]'. The output should be exactly:
+      length: 3
+      length: 5
+      values: [1, 2, 3, 4, 5]
+    language: rust
+    source_file: "refcell_demo.rs"
+    compile_command: "rustc -o refcell_demo refcell_demo.rs"
+    run_command: "./refcell_demo"
+    expected_output: "length: 3"
+    expected_outputs:
+      - "length: 3"
+      - "length: 5"
+      - "values: [1, 2, 3, 4, 5]"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # Q18: Async concepts (without tokio - use std threads to simulate)
+  - name: "Concurrent Tasks with Threads"
+    prompt: |
+      Write a Rust program that simulates concurrent work using std::thread.
+      Spawn two threads: thread 1 computes the sum of 1..=100 and returns it,
+      thread 2 computes the product of 1..=10 and returns it. Join both threads
+      and print their results. The output should be exactly:
+      sum: 5050
+      product: 3628800
+    language: rust
+    source_file: "concurrent_tasks.rs"
+    compile_command: "rustc -o concurrent_tasks concurrent_tasks.rs"
+    run_command: "./concurrent_tasks"
+    expected_output: "sum: 5050"
+    expected_outputs:
+      - "sum: 5050"
+      - "product: 3628800"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q19: Cargo project layout - demonstrate module system
+  - name: "Module System"
+    prompt: |
+      Write a single-file Rust program that demonstrates the module system.
+      Define a module math with a public function add(a: i32, b: i32) -> i32
+      and a nested submodule advanced with a public function factorial(n: u64) -> u64.
+      In main, call math::add(3, 4) and print 'add: 7'. Call
+      math::advanced::factorial(5) and print 'factorial: 120'. The output
+      should be exactly:
+      add: 7
+      factorial: 120
+    language: rust
+    source_file: "modules.rs"
+    compile_command: "rustc -o modules modules.rs"
+    run_command: "./modules"
+    expected_output: "add: 7"
+    expected_outputs:
+      - "add: 7"
+      - "factorial: 120"
+    expected_exit_code: 0
+    iq: 120
+    timeout: 30
+
+  # Q20: Memory safety - demonstrate compile-time guarantees
+  - name: "Memory Safety Guarantees"
+    prompt: |
+      Write a Rust program that demonstrates memory safety without a garbage collector.
+      Create a vector, take a reference to an element, then show safe usage.
+      Specifically: create a Vec<i32> with [10, 20, 30]. Safely get element at
+      index 1 using .get() which returns Option. Print 'element 1: 20' using
+      the Option. Try to get index 10 safely and print 'element 10: none'.
+      Then demonstrate that Vec cleans up by creating a Vec in a block scope
+      and printing 'vec created' and 'vec dropped' after the scope ends.
+      The output should be exactly:
+      element 1: 20
+      element 10: none
+      vec created
+      vec dropped
+    language: rust
+    source_file: "memory_safety.rs"
+    compile_command: "rustc -o memory_safety memory_safety.rs"
+    run_command: "./memory_safety"
+    expected_output: "element 1: 20"
+    expected_outputs:
+      - "element 1: 20"
+      - "element 10: none"
+      - "vec created"
+      - "vec dropped"
+    expected_exit_code: 0
+    iq: 120
     timeout: 30
