@@ -24,7 +24,7 @@ repos:
           - types-requests
           - types-PyYAML
           - types-docker
-        files: ^src/rfc/
+        exclude: ^(scripts/|tests/)
 
   - repo: local
     hooks:

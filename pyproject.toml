@@ -100,5 +100,9 @@ ignore_missing_imports = true
 module = ["scripts.*"]
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = ["sqlalchemy.*", "superset.*", "psycopg2.*"]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc"]
