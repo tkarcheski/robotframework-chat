@@ -44,9 +44,11 @@ help: ## Show this help
 install: ## Install Python dependencies
 	uv sync --extra dev --extra superset
 
-update: ## Fetch, pull latest changes, and sync dependencies
+update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)
 	git fetch
-	git pull
+	git stash --include-untracked || true
+	git pull || { git stash pop || true; exit 1; }
+	git stash pop || true
 	uv sync --extra dev --extra superset
 
 .env: ## Create .env from .env.example if missing
