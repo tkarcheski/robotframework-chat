@@ -4,18 +4,15 @@ All keyword libraries should use ``emit_rfc_data()`` instead of
 manually formatting ``RFC_DATA:key:value`` strings.  This ensures
 the prefix is consistent and prevents silent data loss from typos.
 
-The canonical prefix is defined in :attr:`BaseListener.RFC_DATA_PREFIX
-<rfc.base_listener.BaseListener.RFC_DATA_PREFIX>`.  This module
-re-exports it for convenience so that keyword libraries do not need
-to depend on the listener infrastructure.
+``RFC_DATA_PREFIX`` is the single source of truth for the structured
+data prefix.  :class:`~rfc.base_listener.BaseListener` imports it
+for parsing; keyword libraries use :func:`emit_rfc_data` for emission.
 """
 
 from robot.api import logger  # type: ignore
 
-from .base_listener import BaseListener
-
-# Re-exported from BaseListener for backward compatibility and convenience.
-RFC_DATA_PREFIX: str = BaseListener.RFC_DATA_PREFIX
+# Single source of truth for the structured data prefix.
+RFC_DATA_PREFIX: str = "RFC_DATA:"
 
 
 def emit_rfc_data(key: str, value: str) -> None:

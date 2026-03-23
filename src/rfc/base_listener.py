@@ -5,9 +5,6 @@ Provides:
 - Automatic RFC_DATA structured log message capture per test
 - Configurable keyword tracking with type classification
 
-This module intentionally avoids project-specific imports so it can be
-extracted into a standalone package in the future.
-
 Usage::
 
     class MyListener(BaseListener):
@@ -25,6 +22,8 @@ from typing import Any, ClassVar, Dict, Optional
 
 from robot.api.interfaces import ListenerV3  # type: ignore
 
+from .rfc_data import RFC_DATA_PREFIX
+
 
 class BaseListener(ListenerV3):
     """Abstract base for Robot Framework v3 listeners.
@@ -37,14 +36,11 @@ class BaseListener(ListenerV3):
         TRACKED_KEYWORDS: Mapping of keyword name → type string.
             Subclasses set this to receive ``on_keyword_start`` /
             ``on_keyword_end`` callbacks for matching keywords.
-        RFC_DATA_PREFIX: Prefix for structured log messages.
-            Defaults to ``"RFC_DATA:"``.
     """
 
     ROBOT_LISTENER_API_VERSION = 3
 
     TRACKED_KEYWORDS: ClassVar[Dict[str, str]] = {}
-    RFC_DATA_PREFIX: ClassVar[str] = "RFC_DATA:"
 
     def __init__(self) -> None:
         self._suite_depth: int = 0
@@ -90,9 +86,8 @@ class BaseListener(ListenerV3):
         text = message.message
         if not isinstance(text, str):
             return
-        prefix = self.RFC_DATA_PREFIX
-        if text.startswith(prefix):
-            payload = text[len(prefix) :]
+        if text.startswith(RFC_DATA_PREFIX):
+            payload = text[len(RFC_DATA_PREFIX) :]
             key, _, value = payload.partition(":")
             if key:
                 self._current_test_data[key] = value
