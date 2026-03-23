@@ -81,9 +81,14 @@ def install() -> None:
 
 
 def update() -> None:
-    """Fetch, pull latest changes, and sync dependencies."""
+    """Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)."""
     _run(["git", "fetch"])
-    _run(["git", "pull"])
+    _run(["git", "stash", "--include-untracked"], check=False)
+    rc = _run(["git", "pull"], check=False)
+    if rc != 0:
+        _run(["git", "stash", "pop"], check=False)
+        sys.exit(rc)
+    _run(["git", "stash", "pop"], check=False)
     _uv("sync", "--extra", "dev", "--extra", "superset")
 
 
