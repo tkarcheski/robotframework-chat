@@ -14,6 +14,18 @@ from .ollama import OllamaClient
 # Backward-compatible alias
 LLMClient = OllamaClient
 
+_DEFAULT_TIMEOUT = 5400
+
+
+def resolve_timeout(timeout: int | None = None) -> int:
+    """Resolve the LLM request timeout.
+
+    Precedence: explicit *timeout* arg > ``OLLAMA_TIMEOUT`` env var > 5400s default.
+    """
+    if timeout is not None:
+        return int(timeout)
+    return int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
+
 
 @runtime_checkable
 class LLMProvider(Protocol):
@@ -71,4 +83,4 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
     )
 
 
-__all__ = ["LLMClient", "LLMProvider", "create_provider"]
+__all__ = ["LLMClient", "LLMProvider", "create_provider", "resolve_timeout"]

@@ -77,7 +77,7 @@ Compare Models On Code Generation (IQ:130)
 
 LLM Algorithm Explanation (IQ:120)
     [Documentation]    Can the LLM explain merge sort's time complexity (O(n log n)) and space complexity?
-    [Tags]    IQ:120    algorithm    explanation    tier:1    verify:robot
+    [Tags]    IQ:120    algorithm    explanation    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${ALGO_PROMPT}
 
@@ -91,7 +91,7 @@ LLM Algorithm Explanation (IQ:120)
 
 LLM Container Resource Usage (IQ:110)
     [Documentation]    Can the LLM container stay under 4GB memory during inference?
-    [Tags]    IQ:110    monitoring    resources    tier:1    verify:robot
+    [Tags]    IQ:110    monitoring    resources    tier:4    verify:robot
 
     # Start a request
     ${response}=    LLM.Ask LLM    Write a short Python script to calculate prime numbers
@@ -107,7 +107,7 @@ LLM Container Resource Usage (IQ:110)
 
 Custom LLM Configuration (IQ:140)
     [Documentation]    Can a custom Ollama container (1 CPU, 2GB) serve inference for 'What is 2+2?'?
-    [Tags]    IQ:140    custom-config    tier:1    verify:robot
+    [Tags]    IQ:140    custom-config    tier:4    verify:robot
 
     # Find available port for custom container
     ${custom_port}=    Docker.Find Available Port    11434    11500

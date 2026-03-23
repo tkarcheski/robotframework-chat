@@ -215,11 +215,11 @@ class TestMultiGrader:
         assert result.reasons[0] == "Invalid score value: 1.2"
 
     def test_bare_json_extract_fallback(self) -> None:
-        """_extract_json falls back to max-length bare JSON match (line 52)."""
-        from rfc.multi_grader import _extract_json
+        """extract_json falls back to max-length bare JSON match."""
+        from rfc.thinking import extract_json
 
         # No markdown block, no "score".*"reason" pattern — just a bare JSON object
         text = 'I think the answer is {"reason": "good", "score": 1}'
-        result = _extract_json(text)
+        result = extract_json(text)
         assert '"reason"' in result
         assert '"score"' in result

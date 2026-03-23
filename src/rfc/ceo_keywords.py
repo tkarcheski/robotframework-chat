@@ -27,13 +27,12 @@ from .ceo_prompts import (
     build_market_research_prompt,
     build_patent_strategy_prompt,
 )
-from .grader import Grader
-from .llm_client import create_provider
+from .thinking import extract_json
+from .llm_client import create_provider, resolve_timeout
 from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
 from .web_cache import SearchResult, WebSearchCache
 
-_DEFAULT_TIMEOUT = 5400
 _DEFAULT_CEO_MAX_TOKENS = 4096
 _DEFAULT_LLM_PROVIDER = "ollama"
 _COMPAT_OPENAI_PROVIDER = "openai"
@@ -49,9 +48,7 @@ class CEOKeywords:
         timeout: Optional[int] = None,
         max_retries: int = 2,
     ) -> None:
-        if timeout is None:
-            timeout = int(os.getenv("OLLAMA_TIMEOUT", str(_DEFAULT_TIMEOUT)))
-        self._timeout = int(timeout)
+        self._timeout = resolve_timeout(timeout)
         self._max_retries = int(max_retries)
         self._client: Optional[Any] = None
         self.web_cache = WebSearchCache()
@@ -131,8 +128,7 @@ class CEOKeywords:
 
     def _extract_json_response(self, raw: str) -> Dict[str, Any]:
         """Extract and parse JSON from LLM response."""
-        extractor = Grader(self.client)
-        json_text = extractor._extract_json(raw)
+        json_text = extract_json(raw)
         return json.loads(json_text)
 
     # ------------------------------------------------------------------

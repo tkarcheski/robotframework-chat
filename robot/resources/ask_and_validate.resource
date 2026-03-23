@@ -10,7 +10,7 @@ ${SEED_END}       10000
 Ask And Validate
     [Arguments]    ${question}    ${expected}
     ${score}    ${reason}    ${answer}=    LLM.Ask And Grade With Retry    ${question}    ${expected}
-    Should Be Equal As Numbers    ${score}    1.0
+    Should Be Equal As Integers    ${score}    1
     Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
 
 Generate Random Integer

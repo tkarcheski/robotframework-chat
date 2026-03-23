@@ -1,6 +1,6 @@
 """Tests for rfc.thinking — thinking token parser."""
 
-from rfc.thinking import estimate_token_count, parse_thinking
+from rfc.thinking import estimate_token_count, extract_json, parse_thinking
 
 
 class TestParseThinking:
@@ -69,6 +69,42 @@ class TestParseThinking:
         clean, thinking = parse_thinking(text)
         assert clean == "Result."
         assert thinking == "What about {json} and [arrays]?"
+
+
+class TestExtractJson:
+    def test_plain_json(self) -> None:
+        text = '{"score": 1, "reason": "correct"}'
+        assert extract_json(text) == text
+
+    def test_json_in_markdown_block(self) -> None:
+        text = '```json\n{"score": 1, "reason": "ok"}\n```'
+        assert extract_json(text) == '{"score": 1, "reason": "ok"}'
+
+    def test_json_in_markdown_block_no_lang(self) -> None:
+        text = '```\n{"score": 0.5, "reason": "partial"}\n```'
+        assert extract_json(text) == '{"score": 0.5, "reason": "partial"}'
+
+    def test_thinking_tags_stripped(self) -> None:
+        text = '<think>hmm let me think</think>\n{"score": 1, "reason": "ok"}'
+        result = extract_json(text)
+        assert '"score"' in result
+        assert "<think>" not in result
+
+    def test_text_before_json(self) -> None:
+        text = 'I think the answer is {"score": 0.8, "reason": "mostly right"}'
+        result = extract_json(text)
+        assert '"score"' in result
+        assert '"reason"' in result
+
+    def test_bare_json_fallback_picks_largest(self) -> None:
+        text = 'prefix {"a": 1} and {"reason": "good", "score": 1, "extra": true} end'
+        result = extract_json(text)
+        assert '"reason"' in result
+        assert '"score"' in result
+
+    def test_no_json_returns_text(self) -> None:
+        text = "no json here at all"
+        assert extract_json(text) == text
 
 
 class TestEstimateTokenCount:
