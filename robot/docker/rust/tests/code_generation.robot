@@ -139,8 +139,9 @@ LLM Generates Rust Memory Safety Guarantees (IQ:120)
 *** Keywords ***
 Run Compiled Challenge
     [Documentation]    Run a YAML-defined compiled code challenge.
-    ...    Checks all strings in expected_outputs (list) if present,
-    ...    otherwise falls back to expected_output (single string).
+    ...    When expected_outputs (list) is present, verifies each entry appears
+    ...    as an ordered subsequence of stdout lines. Duplicates consume separate
+    ...    lines. Falls back to expected_output (single string) containment check.
     [Arguments]    ${challenge}
 
     ${response}=    LLM.Ask LLM    ${challenge}[prompt]
@@ -153,12 +154,37 @@ Run Compiled Challenge
 
     Should Be Equal As Integers    ${result}[exit_code]    ${challenge}[expected_exit_code]
 
-    # Multi-line verification: check every expected output line
+    # Multi-line verification: ordered subsequence of stdout lines
     ${has_outputs}=    Evaluate    "expected_outputs" in $challenge
     IF    ${has_outputs}
-        FOR    ${expected}    IN    @{challenge}[expected_outputs]
-            Should Contain    ${result}[stdout]    ${expected}
-        END
+        Verify Ordered Output    ${result}[stdout]    ${challenge}[expected_outputs]
     ELSE
         Should Contain    ${result}[stdout]    ${challenge}[expected_output]
+    END
+
+Verify Ordered Output
+    [Documentation]    Verify that expected strings appear as an ordered subsequence
+    ...    of stdout lines. Each expected entry is matched against successive stdout
+    ...    lines (starting from where the previous match was found), so order is
+    ...    enforced and duplicate entries consume separate lines.
+    [Arguments]    ${stdout}    ${expected_list}
+    ${stdout_lines}=    Split String    ${stdout}    \n
+    ${search_start}=    Set Variable    ${0}
+    FOR    ${expected}    IN    @{expected_list}
+        ${found}=    Set Variable    ${FALSE}
+        ${stdout_len}=    Get Length    ${stdout_lines}
+        FOR    ${i}    IN RANGE    ${search_start}    ${stdout_len}
+            ${line}=    Set Variable    ${stdout_lines}[${i}]
+            ${stripped}=    Strip String    ${line}
+            ${contains}=    Evaluate    $expected in $stripped
+            IF    ${contains}
+                ${search_start}=    Evaluate    ${i} + 1
+                ${found}=    Set Variable    ${TRUE}
+                BREAK
+            END
+        END
+        IF    not ${found}
+            ${remaining}=    Evaluate    '\\n'.join($stdout_lines[$search_start:])
+            Fail    Expected '${expected}' not found in order in stdout. Remaining stdout after previous match:\n${remaining}
+        END
     END

@@ -2,8 +2,9 @@
 # Each challenge tests the LLM's ability to generate compilable and correct Rust code
 #
 # Fields:
-#   expected_output  - single string checked via Should Contain (legacy, still works)
-#   expected_outputs - list of strings, ALL must appear in stdout (multi-line verification)
+#   expected_output  - single string checked via Should Contain (legacy fallback)
+#   expected_outputs - list of strings verified as an ordered subsequence of stdout lines.
+#                      Each entry must appear in order; duplicates consume separate lines.
 #   When both are present, expected_outputs takes precedence in the Robot keyword.
 
 RUST_CODE_CHALLENGES:
@@ -60,6 +61,7 @@ RUST_CODE_CHALLENGES:
       - "one"
       - "two"
       - "three"
+      - "other"
       - "other"
     expected_exit_code: 0
     iq: 120
@@ -231,11 +233,11 @@ RUST_CODE_CHALLENGES:
       Write a function parse_and_double(input: &str) -> Result<i32, String> that
       parses a string to i32 using str::parse() (mapping the error to a String
       with .map_err(|e| e.to_string())) and then returns the doubled value.
-      Write a function run() -> Result<(), String> that calls parse_and_double
-      with "21" and prints 'doubled: 42', then calls it with "bad" and prints
-      the error as 'error: <message>'. Call run() from main and handle any error.
-      The output must contain:
+      In main, call parse_and_double with "21" and print 'doubled: 42'.
+      Then call parse_and_double with "bad", and print the error as
+      'error: invalid digit found in string'. The output should be exactly:
       doubled: 42
+      error: invalid digit found in string
     language: rust
     source_file: "question_mark.rs"
     compile_command: "rustc -o question_mark question_mark.rs"
@@ -243,6 +245,7 @@ RUST_CODE_CHALLENGES:
     expected_output: "doubled: 42"
     expected_outputs:
       - "doubled: 42"
+      - "error:"
     expected_exit_code: 0
     iq: 130
     timeout: 30
