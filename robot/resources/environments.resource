@@ -24,7 +24,7 @@ Setup Container Environment
     Create Directory    ${volume_path}
 
     ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
-    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${profile_dict}=    Set Variable    ${${profile}}
     ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
     ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
 
@@ -58,7 +58,7 @@ Setup Shell Environment
 
     # Create container with a command that keeps it running
     # Use read_only=False and user=root since shell tests need to create files
-    ${profile_dict}=    Get Variable Value    ${${profile}}
+    ${profile_dict}=    Set Variable    ${${profile}}
     ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    read_only=False    user=root
     ${container_id}=    Docker.Create Configurable Container    ${full_config}    ${SHELL_CONTAINER_NAME}
 
