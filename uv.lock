@@ -1513,7 +1513,7 @@ wheels = [
 
 [[package]]
 name = "robotframework-chat"
-version = "1.4.1"
+version = "1.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
