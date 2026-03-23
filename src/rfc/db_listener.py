@@ -103,8 +103,9 @@ class DbListener(ListenerV3):
     - ``RFC_DATA:expected_answer:<text>``
     - ``RFC_DATA:grading_reason:<text>``
 
-    At end_suite, reads output.xml, gzip-compresses it, and stores the
-    blob alongside run-level and test-level summaries.
+    At end_suite, stores run-level and test-level summaries.  In close()
+    — after Robot has flushed the output file — reads output.xml,
+    gzip-compresses it, and updates the database row.
 
     Usage:
         robot --listener rfc.db_listener.DbListener tests/
@@ -124,6 +125,7 @@ class DbListener(ListenerV3):
         # Per-test structured data captured from RFC_DATA: log messages.
         self._current_test_data: Dict[str, str] = {}
         self._current_test_name: Optional[str] = None
+        self._last_run_id: Optional[int] = None
 
     def _get_db(self) -> TestDatabase:
         if self._db is None:
@@ -295,8 +297,7 @@ class DbListener(ListenerV3):
 
         hostname = self._host_info.get("hostname", "")
 
-        # Read and gzip output.xml
-        output_xml_gz = _read_and_compress_output_xml()
+        # output.xml is read later in close(), after Robot flushes the file.
         output_xml_url = _build_output_xml_url()
         output_xml_source = _build_output_xml_source()
 
@@ -320,7 +321,7 @@ class DbListener(ListenerV3):
             hostname=hostname,
             rfc_version=__version__,
             output_xml_url=output_xml_url,
-            output_xml_gz=output_xml_gz,
+            output_xml_gz=b"",
             output_xml_source=output_xml_source,
             temperature=run_temperature,
             seed=run_seed,
@@ -331,6 +332,7 @@ class DbListener(ListenerV3):
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
+            self._last_run_id = run_id
 
             results = [
                 TestResult(
@@ -374,16 +376,48 @@ class DbListener(ListenerV3):
             db.add_test_results(results)
 
             dest = self._describe_database_destination()
-            blob_size = _format_size(len(output_xml_gz)) if output_xml_gz else "none"
             summary = (
                 f"DbListener: archived {len(results)} test result(s) "
-                f"+ output.xml ({blob_size}) "
-                f"to {dest} (run_id={run_id})"
+                f"to {dest} (run_id={run_id}), "
+                f"output.xml will be captured in close()"
             )
             logger.info(summary)
             logger.console(summary)
         except Exception as e:
             error_msg = f"DbListener: FAILED to archive results: {e}"
+            logger.warn(error_msg)
+            logger.console(error_msg)
+
+    def close(self) -> None:
+        """Read output.xml after Robot has flushed it and update the DB row.
+
+        Robot Framework calls ``close()`` after all loggers — including
+        the output-file writer — have finalised.  This guarantees the
+        file is complete, unlike ``end_suite()`` which fires before the
+        flush.
+        """
+        if self._last_run_id is None:
+            return
+
+        output_xml_gz = _read_and_compress_output_xml()
+        if not output_xml_gz:
+            return
+
+        try:
+            db = self._get_db()
+            db.update_output_xml(self._last_run_id, output_xml_gz)
+            blob_size = _format_size(len(output_xml_gz))
+            msg = (
+                f"DbListener: updated output.xml ({blob_size}) "
+                f"for run_id={self._last_run_id}"
+            )
+            logger.info(msg)
+            logger.console(msg)
+        except Exception as e:
+            error_msg = (
+                f"DbListener: FAILED to update output.xml "
+                f"for run_id={self._last_run_id}: {e}"
+            )
             logger.warn(error_msg)
             logger.console(error_msg)
 
