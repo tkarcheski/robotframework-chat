@@ -9,7 +9,7 @@ C_CORE_QUESTIONS:
     iq: 100
 
   - question: "What is the difference between 'int *p;' and 'int a[10];' in C?"
-    expected: "'int *p;' declares a pointer that can point to an int, while 'int a[10];' declares an array of 10 ints with fixed size; arrays have storage, pointers do not."
+    expected: "'int *p;' declares a pointer (storage for an address) that can point to an int, while 'int a[10];' allocates a contiguous block of 10 ints; the array owns its elements directly, whereas the pointer only holds an address and does not itself provide element storage."
     iq: 100
 
   - question: "What is a void * pointer in C and when would you use it?"
