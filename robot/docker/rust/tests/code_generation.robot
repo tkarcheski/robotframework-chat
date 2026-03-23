@@ -138,7 +138,9 @@ LLM Generates Rust Memory Safety Guarantees (IQ:120)
 
 *** Keywords ***
 Run Compiled Challenge
-    [Documentation]    Run a YAML-defined compiled code challenge
+    [Documentation]    Run a YAML-defined compiled code challenge.
+    ...    Checks all strings in expected_outputs (list) if present,
+    ...    otherwise falls back to expected_output (single string).
     [Arguments]    ${challenge}
 
     ${response}=    LLM.Ask LLM    ${challenge}[prompt]
@@ -150,4 +152,13 @@ Run Compiled Challenge
     ...    ${challenge}[run_command]    timeout=${challenge}[timeout]
 
     Should Be Equal As Integers    ${result}[exit_code]    ${challenge}[expected_exit_code]
-    Should Contain    ${result}[stdout]    ${challenge}[expected_output]
+
+    # Multi-line verification: check every expected output line
+    ${has_outputs}=    Evaluate    "expected_outputs" in $challenge
+    IF    ${has_outputs}
+        FOR    ${expected}    IN    @{challenge}[expected_outputs]
+            Should Contain    ${result}[stdout]    ${expected}
+        END
+    ELSE
+        Should Contain    ${result}[stdout]    ${challenge}[expected_output]
+    END
