@@ -47,6 +47,11 @@ class TestDryRunListenerInit:
         listener = DryRunListener()
         assert listener._start_time is None
         assert listener._test_cases == []
+
+    def test_accepts_database_url_arg(self) -> None:
+        """--listener DryRunListener:sqlite:///tmp.db must not raise."""
+        listener = DryRunListener("sqlite:///tmp.db")
+        assert listener._start_time is None
         assert listener._errors == []
         assert listener._suite_depth == 0
 

@@ -19,7 +19,7 @@ from .base_listener import BaseListener
 class DryRunListener(BaseListener):
     """Listener that logs Robot Framework dry-run results."""
 
-    def __init__(self) -> None:
+    def __init__(self, database_url: str = "") -> None:
         super().__init__()
         self._start_time: Optional[datetime] = None
         self._test_cases: List[Dict[str, Any]] = []
