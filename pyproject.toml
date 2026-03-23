@@ -86,5 +86,23 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 
+[tool.mypy]
+mypy_path = "src"
+packages = ["rfc"]
+explicit_package_bases = true
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["robot.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["scripts.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["sqlalchemy.*", "superset.*", "psycopg2.*"]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc"]
