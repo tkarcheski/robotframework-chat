@@ -69,7 +69,7 @@ C_CORE_QUESTIONS:
     iq: 110
 
   - question: "Explain what 'static' does when used on a local variable inside a function in C."
-    expected: "A static local variable is initialized once and retains its value between function calls, with internal linkage and static storage duration."
+    expected: "A static local variable is initialized once and retains its value between function calls, with no linkage (block scope) and static storage duration."
     iq: 110
 
   - question: "What does 'static' mean at file scope on a function or global variable in C?"

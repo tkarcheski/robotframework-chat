@@ -202,6 +202,11 @@ ci:
       output_dir: "results/safety"
       tags: ["ollama"]
 
+    robot-c-interview-tests:
+      path: "robot/c_interview/tests/"
+      output_dir: "results/c_interview"
+      tags: ["ollama"]
+
     robot-ceo-tests:
       path: "robot/ceo/"
       output_dir: "results/ceo"
