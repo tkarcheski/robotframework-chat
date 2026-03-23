@@ -799,7 +799,7 @@ class TestExtractLlmMetrics:
 class TestDbListenerNearMissWarning:
     """Tests for near-miss RFC_DATA typo detection."""
 
-    @patch("rfc.db_listener.logger")
+    @patch("rfc.metrics.logger")
     def test_warns_on_lowercase_rfc_data(self, mock_logger: MagicMock) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
@@ -807,28 +807,28 @@ class TestDbListenerNearMissWarning:
         mock_logger.warn.assert_called_once()
         assert "RFC_DATA" in str(mock_logger.warn.call_args)
 
-    @patch("rfc.db_listener.logger")
+    @patch("rfc.metrics.logger")
     def test_warns_on_missing_underscore(self, mock_logger: MagicMock) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(_mock_message("RFCDATA:actual_answer:42"))
         mock_logger.warn.assert_called_once()
 
-    @patch("rfc.db_listener.logger")
+    @patch("rfc.metrics.logger")
     def test_warns_on_space_instead_of_underscore(self, mock_logger: MagicMock) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(_mock_message("RFC DATA:actual_answer:42"))
         mock_logger.warn.assert_called_once()
 
-    @patch("rfc.db_listener.logger")
+    @patch("rfc.metrics.logger")
     def test_no_warning_on_normal_message(self, mock_logger: MagicMock) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(_mock_message("Just a normal log message"))
         mock_logger.warn.assert_not_called()
 
-    @patch("rfc.db_listener.logger")
+    @patch("rfc.metrics.logger")
     def test_no_warning_on_valid_rfc_data(self, mock_logger: MagicMock) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
@@ -920,7 +920,7 @@ class TestResolveOutputDir:
         """Falls back to Robot's ${OUTPUT DIR} when env var is absent."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = (
                     "/robot/output"
                 )
@@ -930,7 +930,7 @@ class TestResolveOutputDir:
         """Returns empty string when both env var and Robot var are absent."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = None
                 assert _resolve_output_dir() == ""
 
@@ -938,7 +938,7 @@ class TestResolveOutputDir:
         """Returns empty string when not running inside Robot context."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.side_effect = (
                     RuntimeError("not in robot")
                 )
@@ -947,7 +947,7 @@ class TestResolveOutputDir:
     def test_env_var_takes_precedence_over_robot_variable(self) -> None:
         """Env var wins even when Robot variable is also available."""
         with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": "/from/env"}):
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = (
                     "/from/robot"
                 )
@@ -967,7 +967,7 @@ class TestResolveOutputFile:
         """Falls back to Robot's ${OUTPUT FILE} when env var is absent."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = (
                     "/robot/results/custom_output.xml"
                 )
@@ -977,7 +977,7 @@ class TestResolveOutputFile:
         """Returns empty string when Robot output is NONE (--output NONE)."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = "NONE"
                 assert _resolve_output_file() == ""
 
@@ -985,7 +985,7 @@ class TestResolveOutputFile:
         """Returns empty string when both env var and Robot var are absent."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.return_value = None
                 assert _resolve_output_file() == ""
 
@@ -993,7 +993,7 @@ class TestResolveOutputFile:
         """Returns empty string when not running inside Robot context."""
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
-            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+            with patch("rfc.output_xml.BuiltIn") as mock_builtin_cls:
                 mock_builtin_cls.return_value.get_variable_value.side_effect = (
                     RuntimeError("not in robot")
                 )
@@ -1008,7 +1008,7 @@ class TestBuildOutputXmlSource:
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
         with patch(
-            "rfc.db_listener._resolve_output_file",
+            "rfc.output_xml.resolve_output_file",
             return_value=str(output_xml),
         ):
             result = _build_output_xml_source()
@@ -1017,7 +1017,7 @@ class TestBuildOutputXmlSource:
     def test_returns_candidate_when_file_missing(self) -> None:
         """Returns resolved path even when file does not exist yet."""
         with patch(
-            "rfc.db_listener._resolve_output_file",
+            "rfc.output_xml.resolve_output_file",
             return_value="/nonexistent/dir/output.xml",
         ):
             result = _build_output_xml_source()
@@ -1025,7 +1025,7 @@ class TestBuildOutputXmlSource:
 
     def test_returns_empty_when_no_output_file(self) -> None:
         """Returns empty string when output file cannot be resolved."""
-        with patch("rfc.db_listener._resolve_output_file", return_value=""):
+        with patch("rfc.output_xml.resolve_output_file", return_value=""):
             result = _build_output_xml_source()
         assert result == ""
 
@@ -1038,7 +1038,7 @@ class TestReadAndCompressOutputXml:
         output_xml = tmp_path / "output.xml"  # type: ignore[operator]
         output_xml.write_text("<robot/>")
         with patch(
-            "rfc.db_listener._resolve_output_file",
+            "rfc.output_xml.resolve_output_file",
             return_value=str(output_xml),
         ):
             result = _read_and_compress_output_xml()
@@ -1047,14 +1047,14 @@ class TestReadAndCompressOutputXml:
 
     def test_returns_empty_when_no_output_file(self) -> None:
         """Returns empty bytes when output file cannot be resolved."""
-        with patch("rfc.db_listener._resolve_output_file", return_value=""):
+        with patch("rfc.output_xml.resolve_output_file", return_value=""):
             result = _read_and_compress_output_xml()
         assert result == b""
 
     def test_returns_empty_when_file_missing(self) -> None:
         """Returns empty bytes when resolved file does not exist."""
         with patch(
-            "rfc.db_listener._resolve_output_file",
+            "rfc.output_xml.resolve_output_file",
             return_value="/nonexistent/dir/output.xml",
         ):
             result = _read_and_compress_output_xml()
@@ -1070,7 +1070,7 @@ class TestReadAndCompressOutputXml:
 
         with (
             patch(
-                "rfc.db_listener._resolve_output_file",
+                "rfc.output_xml.resolve_output_file",
                 return_value=str(output_xml),
             ),
             patch("builtins.open", _open_raises),
@@ -1227,7 +1227,7 @@ class TestCloseDefersOutputXmlCapture:
 
         # Simulate close() after Robot has flushed
         with patch(
-            "rfc.db_listener._resolve_output_file", return_value=str(output_xml)
+            "rfc.output_xml.resolve_output_file", return_value=str(output_xml)
         ):
             listener.close()
 

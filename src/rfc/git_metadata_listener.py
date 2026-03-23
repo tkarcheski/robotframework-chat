@@ -7,48 +7,79 @@ or GitLab CI and adds it to Robot Framework test results.
 import json
 import os
 from datetime import datetime, UTC
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from robot.api import logger  # type: ignore
-from robot.api.interfaces import ListenerV3  # type: ignore
-from robot.result.model import TestSuite as ResultSuite  # type: ignore
-from robot.running.model import TestSuite as RunningSuite  # type: ignore
-
+from .base_listener import BaseListener
 from .git_metadata import collect_ci_metadata
 
 
-class GitMetaData(ListenerV3):
+class GitMetaData(BaseListener):
     """Listener that collects Git/CI metadata and adds it to test results.
 
     Auto-detects GitHub Actions or GitLab CI and formats links
     appropriately for the detected platform.
 
+    Unlike other listeners, ``start_suite`` and ``end_suite`` operate
+    at *every* suite level (not just top-level) because metadata must
+    be attached to every suite result.  Top-level-only work (CI
+    metadata collection, JSON save) uses the ``on_suite_start`` /
+    ``on_suite_end`` hooks.
+
     Usage:
         robot --listener rfc.git_metadata_listener.GitMetaData tests/
     """
 
-    ROBOT_LISTENER_API_VERSION = 3
-
     def __init__(self) -> None:
         """Initialize the listener."""
+        super().__init__()
         self.metadata: Dict[str, Any] = {}
         self.start_time: Optional[datetime] = None
         self.ci_info: Dict[str, str] = {}
         self.platform: Optional[str] = None
-        self._suite_depth: int = 0
 
-    def start_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        """Called when a test suite starts.
+    # ------------------------------------------------------------------
+    # Overridden Listener API methods (per-suite work)
+    # ------------------------------------------------------------------
 
-        Collects CI metadata at the top-level suite and adds it to
-        every suite's result metadata.
+    def start_suite(self, data: Any, result: Any) -> None:
+        """Collect CI metadata at top level, add metadata at every level.
+
+        Calls ``super().start_suite()`` for depth tracking and the
+        ``on_suite_start`` hook, then decorates every suite result with
+        CI metadata and formatted links.
         """
-        self._suite_depth += 1
-        if self._suite_depth == 1:
-            self.start_time = datetime.now(UTC)
-            self.ci_info = collect_ci_metadata()
-            self.platform = self.ci_info.get("CI_Platform")
+        super().start_suite(data, result)
+        self._add_metadata_to_suite(data, result)
 
+    def end_suite(self, data: Any, result: Any) -> None:
+        """Add timing/statistics at every level, save JSON at top level.
+
+        Adds execution timing and statistics to every suite result,
+        then calls ``super().end_suite()`` for depth tracking and the
+        ``on_suite_end`` hook (which saves JSON at top level).
+        """
+        self._add_timing_and_stats(data, result)
+        super().end_suite(data, result)
+
+    # ------------------------------------------------------------------
+    # BaseListener hooks (top-level only)
+    # ------------------------------------------------------------------
+
+    def on_suite_start(self, data: Any, result: Any) -> None:
+        self.start_time = datetime.now(UTC)
+        self.ci_info = collect_ci_metadata()
+        self.platform = self.ci_info.get("CI_Platform")
+
+    def on_suite_end(self, data: Any, result: Any) -> None:
+        self._save_metadata_json(result.metadata)
+
+    # ------------------------------------------------------------------
+    # Per-suite helpers
+    # ------------------------------------------------------------------
+
+    def _add_metadata_to_suite(self, data: Any, result: Any) -> None:
+        """Add CI metadata and formatted links to a suite result."""
         # Log CI information
         if self.ci_info.get("CI"):
             logger.info(
@@ -90,14 +121,8 @@ class GitMetaData(ListenerV3):
                 project_url, commit_sha, rel_path
             )
 
-    def end_suite(self, data: RunningSuite, result: ResultSuite) -> None:
-        """Called when a test suite ends.
-
-        Adds final metadata and generates summary.  The JSON metadata
-        file is only written when the top-level suite finishes.
-        """
-        self._suite_depth -= 1
-
+    def _add_timing_and_stats(self, data: Any, result: Any) -> None:
+        """Add execution timing and statistics to a suite result."""
         metadata = result.metadata
 
         end_time = datetime.now(UTC)
@@ -120,10 +145,6 @@ class GitMetaData(ListenerV3):
         metadata["Passed_Tests"] = str(stats.passed)
         metadata["Failed_Tests"] = str(stats.failed)
         metadata["Skipped_Tests"] = str(stats.skipped)
-
-        # Only save JSON at the top-level suite
-        if self._suite_depth == 0:
-            self._save_metadata_json(metadata)
 
         logger.info(
             f"Suite '{data.name}' completed: {stats.passed} passed, "
@@ -178,7 +199,7 @@ class GitMetaData(ListenerV3):
 class GitMetaDataModifier(GitMetaData):
     """Version of the listener that works as a pre-run modifier."""
 
-    def start_suite(self, suite: RunningSuite) -> None:  # type: ignore[override]
+    def start_suite(self, suite: Any) -> None:  # type: ignore[override]
         """Modify suite with CI metadata.
 
         Called by Robot Framework before execution.

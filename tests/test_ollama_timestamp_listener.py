@@ -45,7 +45,7 @@ class TestOllamaTimestampListener:
     def test_initial_state(self) -> None:
         listener = OllamaTimestampListener()
         assert listener._chats == []
-        assert listener._current_keyword is None
+        assert listener._current_kw_record is None
 
     def test_start_keyword_tracks_ask_llm(self) -> None:
         listener = OllamaTimestampListener()
@@ -53,10 +53,10 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Ask LLM", ["What is 2+2?"]),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["keyword"] == "Ask LLM"
-        assert listener._current_keyword["prompt"] == "What is 2+2?"
-        assert "start_time" in listener._current_keyword
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["keyword"] == "Ask LLM"
+        assert listener._current_kw_record["prompt"] == "What is 2+2?"
+        assert "start_time" in listener._current_kw_record
 
     def test_start_keyword_ignores_non_ollama(self) -> None:
         listener = OllamaTimestampListener()
@@ -64,7 +64,7 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Should Be Equal", ["a", "b"]),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is None
+        assert listener._current_kw_record is None
 
     def test_end_keyword_records_chat(self) -> None:
         listener = OllamaTimestampListener()
@@ -110,6 +110,7 @@ class TestOllamaTimestampListener:
 
     def test_end_suite_saves_json(self) -> None:
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
@@ -136,7 +137,7 @@ class TestOllamaTimestampListener:
 
     def test_end_suite_no_chats_no_file(self) -> None:
         listener = OllamaTimestampListener()
-
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
                 listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
@@ -150,8 +151,8 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Set LLM Model", ["mistral"]),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["keyword"] == "Set LLM Model"
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["keyword"] == "Set LLM Model"
 
     def test_tracks_wait_for_llm(self) -> None:
         listener = OllamaTimestampListener()
@@ -159,8 +160,8 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Wait For LLM"),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["keyword"] == "Wait For LLM"
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["keyword"] == "Wait For LLM"
 
     def test_suite_depth_only_saves_at_top_level(self) -> None:
         listener = OllamaTimestampListener()
@@ -192,8 +193,8 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Ask LLM", []),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["prompt"] == ""
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["prompt"] == ""
 
     def test_start_keyword_with_no_args(self) -> None:
         listener = OllamaTimestampListener()
@@ -201,8 +202,8 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Ask LLM"),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["prompt"] == ""
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["prompt"] == ""
 
     def test_end_keyword_mismatched_name_ignored(self) -> None:
         """end_keyword for a different tracked keyword should not consume _current_keyword."""
@@ -217,8 +218,8 @@ class TestOllamaTimestampListener:
             _mock_keyword_result(),
         )
         # _current_keyword should still be set (not consumed)
-        assert listener._current_keyword is not None
-        assert listener._current_keyword["keyword"] == "Ask LLM"
+        assert listener._current_kw_record is not None
+        assert listener._current_kw_record["keyword"] == "Ask LLM"
         assert len(listener._chats) == 0
 
     def test_end_keyword_matching_name_consumed(self) -> None:
@@ -231,7 +232,7 @@ class TestOllamaTimestampListener:
             _mock_keyword_data("Ask LLM"),
             _mock_keyword_result(),
         )
-        assert listener._current_keyword is None
+        assert listener._current_kw_record is None
         assert len(listener._chats) == 1
 
     def test_all_tracked_keywords(self) -> None:
@@ -251,8 +252,8 @@ class TestOllamaTimestampListener:
                 _mock_keyword_data(kw, ["test"]),
                 _mock_keyword_result(),
             )
-            assert listener._current_keyword is not None, f"{kw} not tracked"
-            assert listener._current_keyword["keyword"] == kw
+            assert listener._current_kw_record is not None, f"{kw} not tracked"
+            assert listener._current_kw_record["keyword"] == kw
 
     def test_duration_is_non_negative(self) -> None:
         listener = OllamaTimestampListener()
@@ -289,6 +290,7 @@ class TestOllamaTimestampListener:
 
     def test_json_output_structure(self) -> None:
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
@@ -400,6 +402,7 @@ class TestOllamaAuditLog:
     def test_audit_log_file_created(self) -> None:
         """end_suite writes ollama_audit.log alongside the JSON."""
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
@@ -419,7 +422,7 @@ class TestOllamaAuditLog:
     def test_audit_log_not_created_when_no_chats(self) -> None:
         """No audit log when there are no Ollama interactions."""
         listener = OllamaTimestampListener()
-
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.dict(os.environ, {"ROBOT_OUTPUT_DIR": tmpdir}):
                 listener.end_suite(_mock_suite_data("My Suite"), _mock_suite_result())
@@ -430,6 +433,7 @@ class TestOllamaAuditLog:
     def test_audit_log_header(self) -> None:
         """Audit log starts with a comment header."""
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("My Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
@@ -460,6 +464,7 @@ class TestOllamaAuditLog:
             },
         ):
             listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["What is 2+2?"]),
             _mock_keyword_result(),
@@ -491,6 +496,7 @@ class TestOllamaAuditLog:
     def test_audit_log_multiple_entries(self) -> None:
         """Multiple interactions produce multiple log lines."""
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         for i in range(3):
             listener.start_keyword(
                 _mock_keyword_data("Ask LLM", [f"Q{i}"]),
@@ -516,6 +522,7 @@ class TestOllamaAuditLog:
     def test_audit_log_reflects_model_change(self) -> None:
         """Log entries reflect model changes mid-session."""
         listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Set LLM Model", ["llama3"]),
             _mock_keyword_result(),
@@ -575,6 +582,7 @@ class TestOllamaAuditLog:
         """JSON output also includes model and endpoint per chat entry."""
         with patch.dict(os.environ, {"DEFAULT_MODEL": "phi3"}):
             listener = OllamaTimestampListener()
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         listener.start_keyword(
             _mock_keyword_data("Ask LLM", ["Hello"]),
             _mock_keyword_result(),
