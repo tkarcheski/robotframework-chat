@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from robot.api import ExecutionResult  # type: ignore[import-not-found]
+from robot.errors import DataError  # type: ignore[import-not-found]
 from robot.result.model import TestCase, TestSuite  # type: ignore[import-not-found]
 
 VALID_TIERS: set[int] = {0, 1, 2, 3, 4, 5, 6}
@@ -53,8 +54,10 @@ def check_test(test_name: str, suite_name: str, tags: list[str]) -> Violation | 
     """
     issues: list[str] = []
 
-    tier_tags = [t for t in tags if t.startswith("tier:")]
-    verify_tags = [t for t in tags if t.startswith("verify:")]
+    # Robot Framework tags are case-insensitive; normalize before matching.
+    normalized = [t.lower() for t in tags]
+    tier_tags = [t for t in normalized if t.startswith("tier:")]
+    verify_tags = [t for t in normalized if t.startswith("verify:")]
 
     # Duplicate detection
     if len(tier_tags) > 1:
@@ -199,7 +202,7 @@ def main() -> int:
     for path in args.paths:
         try:
             results.append(review_output_xml(path))
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, DataError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
 

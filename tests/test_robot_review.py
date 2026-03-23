@@ -12,10 +12,12 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from robot.errors import DataError  # noqa: E402
 from robot_review import (  # noqa: E402
     ReviewResult,
     Violation,
     check_test,
+    main,
     print_report,
     review_output_xml,
 )
@@ -45,6 +47,19 @@ class TestCheckTestCompliant:
     @pytest.mark.parametrize("verify", ["robot", "python", "llm", "llms"])
     def test_all_valid_verify(self, verify: str) -> None:
         result = check_test("T", "S", ["tier:0", f"verify:{verify}"])
+        assert result is None
+
+    def test_mixed_case_tags(self) -> None:
+        """Robot Framework tags are case-insensitive; mixed case must pass."""
+        result = check_test("T", "S", ["TIER:2", "VERIFY:LLM"])
+        assert result is None
+
+    def test_title_case_tags(self) -> None:
+        result = check_test("T", "S", ["Tier:0", "Verify:Robot"])
+        assert result is None
+
+    def test_mixed_case_verify_value(self) -> None:
+        result = check_test("T", "S", ["tier:1", "Verify:Python"])
         assert result is None
 
 
@@ -174,6 +189,18 @@ class TestReviewOutputXml:
         with pytest.raises(FileNotFoundError):
             review_output_xml("/nonexistent/output.xml")
 
+    def test_malformed_xml(self, tmp_path: Path) -> None:
+        """Malformed XML should raise DataError, caught as exit code 2."""
+        bad_file = tmp_path / "output.xml"
+        bad_file.write_text("<<<not valid xml>>>")
+        with pytest.raises(DataError):
+            review_output_xml(str(bad_file))
+
+    def test_directory_instead_of_file(self, tmp_path: Path) -> None:
+        """Passing a directory should raise DataError, not a traceback."""
+        with pytest.raises(DataError):
+            review_output_xml(str(tmp_path))
+
     def test_file_path_stored(self, tmp_path: Path) -> None:
         xml_file = tmp_path / "output.xml"
         xml_file.write_text(_COMPLIANT_XML)
@@ -230,3 +257,26 @@ class TestPrintReport:
         captured = capsys.readouterr().out
         assert "Bad Test" in captured
         assert "Worse Test" in captured
+
+
+# ── main() exit code tests ────────────────────────────────────────────
+
+
+class TestMainExitCode:
+    """Verify main() returns correct exit codes for error cases."""
+
+    def test_malformed_xml_returns_2(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Malformed XML should exit 2 (file error), not crash with a traceback."""
+        bad_file = tmp_path / "output.xml"
+        bad_file.write_text("<<<not valid xml>>>")
+        monkeypatch.setattr("sys.argv", ["robot_review", str(bad_file)])
+        assert main() == 2
+
+    def test_directory_returns_2(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Passing a directory should exit 2 (file error), not crash."""
+        monkeypatch.setattr("sys.argv", ["robot_review", str(tmp_path)])
+        assert main() == 2
