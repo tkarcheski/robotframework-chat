@@ -112,6 +112,11 @@ test_suites:
     path: "robot/ceo/tests"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
 
+  c-interview:
+    label: "C Interview Questions"
+    path: "robot/c_interview/tests"
+    description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
+
   benchmark:
     label: "Token Output Benchmark"
     path: "robot/benchmark/tests"

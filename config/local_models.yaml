@@ -94,6 +94,11 @@ test_suites:
     description: "Task management and planning tests"
     timeout_seconds: 300
 
+  - name: "c-interview"
+    path: "robot/c_interview/tests/"
+    description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
+    timeout_seconds: 300
+
   - name: "benchmark"
     path: "robot/benchmark/tests/"
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
