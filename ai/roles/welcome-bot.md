@@ -281,15 +281,15 @@ make bootstrap            # Initialize Superset (first time)
 
 ## Cross-References
 
-- `ai/CLAUDE.md` — grading tiers and test rules
-- `ai/AGENTS.md` — agent instructions, code style, testing patterns
-- `ai/DEV.md` — development workflow, TDD discipline
+- `ai/testing.md` — grading tiers and test rules
+- `ai/agents.md` — agent instructions, code style, testing patterns
+- `ai/dev.md` — development workflow, TDD discipline
 - `.env.example` — full list of environment variables
 - `src/rfc/ollama.py` — Ollama API client (endpoint, model, parameters)
 - `src/rfc/keywords.py` — Robot Framework keywords (`Ask LLM`, `Grade Answer`)
 - `scripts/discover_ollama.py` — Ollama node discovery
 - `docs/GITLAB_CI_SETUP.md` — CI/CD setup documentation
 - `docs/TEST_DATABASE.md` — database schema and queries
-- `ai/roles/DOCKER_DEBUGGER.md` — when Docker issues arise
-- `ai/roles/ROBOTFRAMEWORK_DEBUGGER.md` — when RF issues arise
-- `ai/roles/GITLAB_PIPELINE_DEBUGGER.md` — when CI pipeline issues arise
+- `ai/roles/docker-debugger.md` — when Docker issues arise
+- `ai/roles/robotframework-debugger.md` — when RF issues arise
+- `ai/roles/gitlab-pipeline-debugger.md` — when CI pipeline issues arise

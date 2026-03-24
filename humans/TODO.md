@@ -222,7 +222,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 ## Secrets Management
 
-- [ ] **All secrets in `.env` files.** No vault, no external secrets manager. `.env` is gitignored. CI uses GitLab CI/CD variables. Document all required env vars in `ai/DEV.md` and `.env.example`.
+- [ ] **All secrets in `.env` files.** No vault, no external secrets manager. `.env` is gitignored. CI uses GitLab CI/CD variables. Document all required env vars in `ai/dev.md` and `.env.example`.
 
 ---
 

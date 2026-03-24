@@ -91,7 +91,7 @@ cause test failures, CI issues, or maintenance headaches.
   Suite Teardown    Docker.Stop Container    ${CONTAINER_ID}
   ```
 
-- **Tag tests with `tier:N`.** Grading tiers 0-6. See `ai/CLAUDE.md` § Grading
+- **Tag tests with `tier:N`.** Grading tiers 0-6. See `ai/testing.md` § Grading
   Tiers for the full breakdown.
 
 - **Tag with `IQ:N` for difficulty.** `IQ:70` (trivial), `IQ:90` (basic),
@@ -241,7 +241,7 @@ Fixed Keyword
 - `src/rfc/db_listener.py` — database archival listener
 - `src/rfc/git_metadata_listener.py` — CI metadata listener
 - `src/rfc/ollama_timestamp_listener.py` — Ollama timing listener
-- `ai/AGENTS.md` § Code Style — Python and RF conventions
-- `ai/AGENTS.md` § Testing Patterns — test writing guidelines
-- `ai/AGENTS.md` § Docker Testing — container test patterns
-- `ai/CLAUDE.md` § Grading Tiers — tier 0-6 classification
+- `ai/agents.md` § Code Style — Python and RF conventions
+- `ai/agents.md` § Testing Patterns — test writing guidelines
+- `ai/agents.md` § Docker Testing — container test patterns
+- `ai/testing.md` § Grading Tiers — tier 0-6 classification

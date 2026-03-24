@@ -11,7 +11,7 @@
 #
 # Nodes: ai1, mini1, mini2, dev1, dev2 (matched by GitLab runner tags)
 #
-# See: ai/PIPELINES.md
+# See: ai/pipelines.md
 
 include:
   - local: ci/common.yml

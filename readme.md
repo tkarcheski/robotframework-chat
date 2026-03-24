@@ -229,7 +229,7 @@ LLM Can Do Basic Math
 - **Every test run is archived** — listeners always active, results flow to SQL
 - **CI-native, regression-focused** — if it can't run unattended, it's not done
 
-See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
+See [ai/agents.md](ai/agents.md#core-philosophy) for the full philosophy.
 
 ---
 
@@ -247,7 +247,7 @@ See [ai/AGENTS.md](ai/AGENTS.md#core-philosophy) for the full philosophy.
 
 ## Contributing
 
-1. Read [ai/DEV.md](ai/DEV.md) for the development workflow and TDD discipline
-2. Follow the code style guidelines in [ai/AGENTS.md](ai/AGENTS.md)
-3. Add tests for new features (see [ai/CLAUDE.md](ai/CLAUDE.md) for grading tiers)
+1. Read [ai/dev.md](ai/dev.md) for the development workflow and TDD discipline
+2. Follow the code style guidelines in [ai/agents.md](ai/agents.md)
+3. Add tests for new features (see [ai/testing.md](ai/testing.md) for grading tiers)
 4. Run `pre-commit run --all-files` before committing

@@ -252,7 +252,7 @@ If you're still guessing, you're not done debugging.
 - `robot/resources/container_profiles.resource` — Container resource profiles
 - `docker-compose.yml` — PostgreSQL + Redis + Superset stack
 - `Dockerfile.ci` — CI container image
-- `ai/AGENTS.md` § Agent Personality — tone, question-asking, user validation
-- `ai/AGENTS.md` § Docker Testing — container profiles, keywords, port allocation
-- `ai/DEVOPS.md` — infrastructure context (runners, Docker, CI pipeline)
+- `ai/agents.md` § Agent Personality — tone, question-asking, user validation
+- `ai/agents.md` § Docker Testing — container profiles, keywords, port allocation
+- `ai/devops.md` — infrastructure context (runners, Docker, CI pipeline)
 - `ci/review.sh` — CI pipeline review script that uses this role

@@ -1,6 +1,6 @@
 # CI Agent Inventory
 
-> **Note:** The canonical documentation for CI/CD lives in `ai/PIPELINES.md`
+> **Note:** The canonical documentation for CI/CD lives in `ai/pipelines.md`
 > and `docs/requirements.md`. This file contains CI-specific script details that
 > supplement those documents.
 

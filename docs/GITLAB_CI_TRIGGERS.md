@@ -338,6 +338,6 @@ The tag push triggers the release pipeline: lint -> test -> publish-pypi.
 
 ## See Also
 
-- [ai/PIPELINES.md](../ai/PIPELINES.md) — Pipeline strategy and model selection
+- [ai/pipelines.md](../ai/pipelines.md) — Pipeline strategy and model selection
 - [docs/GITLAB_CI_SETUP.md](GITLAB_CI_SETUP.md) — Runner setup and prerequisites
 - [docs/CI_SYNC.md](CI_SYNC.md) — Pipeline result sync and data flow

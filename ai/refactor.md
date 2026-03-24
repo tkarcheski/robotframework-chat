@@ -34,7 +34,7 @@ Refactor when you observe any of the following:
 | Duplicated logic across files | Extract shared function into appropriate module |
 | Function exceeds ~50 lines | Split into smaller, testable units |
 | Module exceeds ~500 lines | Consider splitting by responsibility |
-| Inconsistent naming | Align with project conventions (see AGENTS.md) |
+| Inconsistent naming | Align with project conventions (see agents.md) |
 | Unused imports or variables | Remove them |
 | Deeply nested conditionals | Flatten with early returns or guard clauses |
 | Hard-coded values used in multiple places | Promote to constants or config |
@@ -176,7 +176,7 @@ If a module starts doing two things, split it.
 ### Adding New Listeners
 
 1. Create listener in `src/rfc/` following the Robot Framework listener API v3
-2. Add to the listener table in `ai/AGENTS.md`
+2. Add to the listener table in `ai/agents.md`
 3. Add `--listener` flag to all Makefile `test-*` targets
 4. Update `scripts/generate_pipeline.py` to include the listener in CI jobs
 
@@ -282,7 +282,7 @@ All scripts in `ci/` must follow these patterns:
 1. Create `ci/<name>.sh` with `#!/usr/bin/env bash` and `set -euo pipefail`
 2. Add a Makefile target: `ci-<name>: ## Description` → `bash ci/<name>.sh`
 3. Add a job in `.gitlab-ci.yml` with `script: [bash ci/<name>.sh]`
-4. Document in `ai/PIPELINES.md`
+4. Document in `ai/pipelines.md`
 
 ---
 
