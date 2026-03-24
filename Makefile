@@ -47,7 +47,8 @@ install: ## Install Python dependencies
 update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)
 	git fetch
 	git stash --include-untracked || true
-	git pull || { git merge --abort 2>/dev/null || true; git stash pop || true; exit 1; }
+	test ! -f .git/MERGE_HEAD || { echo "ERROR: merge already in progress; resolve it before running make update"; git stash pop || true; exit 1; }
+	git pull || { test -f .git/MERGE_HEAD && git merge --abort; git stash pop || true; exit 1; }
 	git stash pop || true
 	uv sync --extra dev --extra superset
 
