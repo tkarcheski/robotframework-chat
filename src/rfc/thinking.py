@@ -13,10 +13,16 @@ from typing import Optional
 _THINK_PATTERN = re.compile(
     r"<(?:think|thinking)>(.*?)</(?:think|thinking)>", re.DOTALL
 )
+_UNCLOSED_THINK_PATTERN = re.compile(
+    r"<(?:think|thinking)>([\s\S]*)$"
+)
 
 
 def parse_thinking(text: str) -> tuple[str, Optional[str]]:
     """Separate thinking content from the answer.
+
+    Handles both properly closed (``<think>...</think>``) and unclosed
+    (``<think>...``) thinking tags.
 
     Args:
         text: Raw LLM response that may contain thinking tags.
@@ -33,6 +39,14 @@ def parse_thinking(text: str) -> tuple[str, Optional[str]]:
 
     clean = _THINK_PATTERN.sub("", text)
 
+    # Handle unclosed thinking tags (model started <think> but never closed it)
+    unclosed = _UNCLOSED_THINK_PATTERN.search(clean)
+    if unclosed:
+        content = unclosed.group(1).strip()
+        if content:
+            blocks.append(content)
+        clean = clean[: unclosed.start()]
+
     thinking: Optional[str] = None
     if blocks:
         thinking = "\n\n".join(blocks)
@@ -40,37 +54,58 @@ def parse_thinking(text: str) -> tuple[str, Optional[str]]:
     return clean, thinking
 
 
-def extract_json(text: str) -> str:
-    """Extract JSON from text that may contain markdown or thinking tags.
+def _find_json_in_text(text: str) -> str | None:
+    """Try to find a JSON object in *text*.
 
-    Handles:
-    - Markdown code blocks (``\\`\\`\\`json...\\`\\`\\```)
-    - Thinking tags (``<think>`` / ``<thinking>``)
-    - Text before/after JSON
-
-    Returns the extracted JSON string, or the original text if no JSON is found.
+    Returns the extracted JSON string, or ``None`` if no JSON is found.
     """
-    text, _ = parse_thinking(text)
-
-    # Try to find JSON in markdown code blocks
+    # Markdown code blocks
     json_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
     matches = re.findall(json_block_pattern, text, re.DOTALL)
     if matches:
         return matches[0]
 
-    # Try to find bare JSON with score/reason fields
+    # Bare JSON with score/reason fields
     json_pattern = r'(\{.*"score".*"reason".*?\})'
     matches = re.findall(json_pattern, text, re.DOTALL)
     if matches:
         return matches[0]
 
-    # Last resort: any JSON object, pick the largest match
+    # Any JSON object, pick the largest match
     json_pattern = r"(\{.*?\})"
     matches = re.findall(json_pattern, text, re.DOTALL)
     if matches:
         return max(matches, key=len)
 
-    return text
+    return None
+
+
+def extract_json(text: str) -> str:
+    """Extract JSON from text that may contain markdown or thinking tags.
+
+    Handles:
+    - Markdown code blocks (``\\`\\`\\`json...\\`\\`\\```)
+    - Thinking tags (``<think>`` / ``<thinking>``) — closed or unclosed
+    - JSON trapped inside thinking blocks (searched as fallback)
+    - Text before/after JSON
+
+    Returns the extracted JSON string, or the cleaned text if no JSON is found.
+    """
+    clean, thinking = parse_thinking(text)
+
+    # First: look for JSON in the clean (non-thinking) text
+    result = _find_json_in_text(clean)
+    if result is not None:
+        return result
+
+    # Fallback: look for JSON inside the thinking content
+    if thinking is not None:
+        result = _find_json_in_text(thinking)
+        if result is not None:
+            return result
+
+    # No JSON found anywhere — return cleaned text (thinking tags stripped)
+    return clean
 
 
 def estimate_token_count(text: Optional[str]) -> int:
