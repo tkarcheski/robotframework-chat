@@ -1222,12 +1222,15 @@ class TestCloseDefersOutputXmlCapture:
         mock_db.add_test_run.return_value = 42
         listener._db = mock_db
 
-        listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
-        listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
+        # Patch resolve_output_file so on_suite_end caches the path
+        with patch(
+            "rfc.db_listener.resolve_output_file", return_value=str(output_xml)
+        ):
+            listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+            listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
 
-        # Simulate close() after Robot has flushed
-        with patch("rfc.output_xml.resolve_output_file", return_value=str(output_xml)):
-            listener.close()
+        # close() uses cached path — no BuiltIn context needed
+        listener.close()
 
         mock_db.update_output_xml.assert_called_once()
         call_args = mock_db.update_output_xml.call_args
@@ -1235,6 +1238,40 @@ class TestCloseDefersOutputXmlCapture:
         import gzip as _gzip
 
         assert _gzip.decompress(call_args[0][1]) == b"<robot/>"
+
+    @patch("rfc.db_listener._build_output_xml_source", return_value="/tmp/output.xml")
+    @patch("rfc.db_listener._build_output_xml_url", return_value="")
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    @patch("rfc.db_listener.BuiltIn")
+    def test_close_uses_cached_path_not_builtin(
+        self,
+        mock_builtin: MagicMock,
+        _mock_ci: MagicMock,
+        _mock_url: MagicMock,
+        _mock_source: MagicMock,
+        tmp_path: object,
+    ) -> None:
+        """close() must use the path cached during on_suite_end, not BuiltIn."""
+        output_xml = tmp_path / "output.xml"  # type: ignore[operator]
+        output_xml.write_text("<robot/>")
+
+        listener = DbListener(database_url="sqlite:///")
+        mock_db = MagicMock()
+        mock_db.add_test_run.return_value = 1
+        listener._db = mock_db
+
+        with patch(
+            "rfc.db_listener.resolve_output_file", return_value=str(output_xml)
+        ):
+            listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
+            listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
+
+        # Reset BuiltIn mock call count after end_suite
+        mock_builtin.reset_mock()
+
+        # close() should NOT call BuiltIn() to resolve the path
+        listener.close()
+        mock_builtin().get_variable_value.assert_not_called()
 
     @patch("rfc.db_listener._build_output_xml_source", return_value="/tmp/output.xml")
     @patch("rfc.db_listener._build_output_xml_url", return_value="")
