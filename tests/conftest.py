@@ -5,6 +5,18 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+# Skip test files that require sqlalchemy (superset extra) when it's not installed.
+collect_ignore_glob: list[str] = []
+try:
+    import sqlalchemy  # noqa: F401
+except ImportError:
+    collect_ignore_glob = [
+        "test_bootstrap_columns.py",
+        "test_bootstrap_dashboards.py",
+        "test_collect_coverage.py",
+        "test_infra_dashboard.py",
+    ]
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _load_dotenv():
