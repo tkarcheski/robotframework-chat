@@ -83,7 +83,7 @@ class TestParseThinking:
         assert thinking == "reasoning with no closing tag"
 
     def test_text_before_unclosed_think(self) -> None:
-        text = "prefix text <think>reasoning with no close"
+        text = "prefix text\n<think>reasoning with no close"
         clean, thinking = parse_thinking(text)
         assert clean.strip() == "prefix text"
         assert thinking == "reasoning with no close"
@@ -95,11 +95,18 @@ class TestParseThinking:
         assert thinking is None  # Empty content treated as None
 
     def test_closed_then_unclosed_think(self) -> None:
-        text = "<think>first</think>middle<think>unclosed part"
+        text = "<think>first</think>middle\n<think>unclosed part"
         clean, thinking = parse_thinking(text)
         assert clean.strip() == "middle"
         assert "first" in thinking
         assert "unclosed part" in thinking
+
+    def test_think_literal_inside_json_not_stripped(self) -> None:
+        """Literal <think> inside a JSON value must not be treated as a tag."""
+        text = '{"score": 1, "reason": "Model used <think> tags"}'
+        clean, thinking = parse_thinking(text)
+        assert clean == text
+        assert thinking is None
 
 
 class TestExtractJson:
@@ -168,6 +175,13 @@ class TestExtractJson:
         result = extract_json(text)
         # No JSON anywhere — should return cleaned text, not text with tags
         assert "<think>" not in result
+
+    def test_think_literal_inside_json_value(self) -> None:
+        """Literal <think> in JSON must not break extraction (reviewer regression)."""
+        text = '{"score": 1, "reason": "Model used <think> tags"}'
+        result = extract_json(text)
+        assert '"score"' in result
+        assert "<think>" in result  # preserved inside the JSON string
 
     def test_clean_json_preferred_over_thinking_json(self) -> None:
         text = (

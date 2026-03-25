@@ -14,7 +14,7 @@ _THINK_PATTERN = re.compile(
     r"<(?:think|thinking)>(.*?)</(?:think|thinking)>", re.DOTALL
 )
 _UNCLOSED_THINK_PATTERN = re.compile(
-    r"<(?:think|thinking)>([\s\S]*)$"
+    r"(?:^|\n)\s*<(?:think|thinking)>([\s\S]*)$"
 )
 
 
