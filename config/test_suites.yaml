@@ -137,6 +137,11 @@ test_suites:
     path: "robot/creativity/tests"
     description: "LLM humor, joke creation, context awareness, and creative judging"
 
+  swebench:
+    label: "SWE-bench Evaluation"
+    path: "robot/swebench"
+    description: "SWE-bench patch generation and validation against real GitHub issues"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -231,6 +236,11 @@ ci:
       path: "robot/creativity/"
       output_dir: "results/creativity"
       tags: ["ollama"]
+
+    robot-swebench-tests:
+      path: "robot/swebench/"
+      output_dir: "results/swebench"
+      tags: ["ollama", "docker", "swebench"]
 
 # ---------------------------------------------------------------------------
 # Monitoring Configuration
