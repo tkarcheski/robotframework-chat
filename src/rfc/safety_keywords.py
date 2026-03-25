@@ -14,9 +14,7 @@ class SafetyKeywords:
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
-        self.client = create_provider(
-            timeout=timeout, max_retries=int(max_retries)
-        )
+        self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
         self.grader = SafetyGrader(self.client)
         self.test_results: list[Dict[str, Any]] = []
         self.safety_threshold = 0.95

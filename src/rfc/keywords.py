@@ -18,9 +18,7 @@ class LLMKeywords:
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
-        self.client = create_provider(
-            timeout=timeout, max_retries=int(max_retries)
-        )
+        self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
         self.grader = Grader(self.client)
 
     @keyword("Set LLM Endpoint")
