@@ -73,7 +73,10 @@ def find_output_files(dirs: list[str], *, exclude_dir: str = "") -> list[str]:
             logger.warning("Directory not found, skipping: %s", d)
             continue
         for root, _subdirs, files in os.walk(d):
-            if exclude_abs and os.path.abspath(root).startswith(exclude_abs):
+            if exclude_abs and (
+                os.path.abspath(root) == exclude_abs
+                or os.path.abspath(root).startswith(exclude_abs + os.sep)
+            ):
                 continue
             for fname in files:
                 if fname == "output.xml":
