@@ -76,28 +76,28 @@ echo ""
 # ── Load project guidelines ──────────────────────────────────────────
 
 AGENTS_MD=""
-if [ -f ai/AGENTS.md ]; then
-    AGENTS_MD=$(cat ai/AGENTS.md)
+if [ -f ai/agents.md ]; then
+    AGENTS_MD=$(cat ai/agents.md)
 fi
 
 REFACTOR_MD=""
-if [ -f ai/REFACTOR.md ]; then
-    REFACTOR_MD=$(cat ai/REFACTOR.md)
+if [ -f ai/refactor.md ]; then
+    REFACTOR_MD=$(cat ai/refactor.md)
 fi
 
 GUIDELINES=""
 if [ -n "$AGENTS_MD" ]; then
     GUIDELINES="${GUIDELINES}
---- BEGIN ai/AGENTS.md ---
+--- BEGIN ai/agents.md ---
 ${AGENTS_MD}
---- END ai/AGENTS.md ---
+--- END ai/agents.md ---
 "
 fi
 if [ -n "$REFACTOR_MD" ]; then
     GUIDELINES="${GUIDELINES}
---- BEGIN ai/REFACTOR.md ---
+--- BEGIN ai/refactor.md ---
 ${REFACTOR_MD}
---- END ai/REFACTOR.md ---
+--- END ai/refactor.md ---
 "
 fi
 
