@@ -80,23 +80,31 @@ def install() -> None:
     _uv("sync", "--extra", "dev", "--extra", "superset")
 
 
+def _stash_depth() -> int:
+    """Return the number of entries in the git stash (run from repo root)."""
+    result = subprocess.run(
+        ["git", "stash", "list"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(ROOT),
+    )
+    return result.stdout.count("\n")
+
+
 def update() -> None:
     """Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)."""
     _run(["git", "fetch"])
-    # Record stash depth so we only pop our own entry, not a pre-existing one.
-    stash_before = subprocess.run(
-        ["git", "stash", "list"], capture_output=True, text=True, check=False
-    ).stdout.count("\n")
+    depth_before = _stash_depth()
     _run(["git", "stash", "--include-untracked"], check=False)
-    stash_after = subprocess.run(
-        ["git", "stash", "list"], capture_output=True, text=True, check=False
-    ).stdout.count("\n")
-    stashed = stash_after > stash_before
+    stashed = _stash_depth() > depth_before
     rc = _run(["git", "pull"], check=False)
+    if rc != 0:
+        if stashed:
+            _run(["git", "stash", "pop"], check=False)
+        sys.exit(rc)
     if stashed:
         _run(["git", "stash", "pop"], check=False)
-    if rc != 0:
-        sys.exit(rc)
     _uv("sync", "--extra", "dev", "--extra", "superset")
 
 
