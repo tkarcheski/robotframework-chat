@@ -80,8 +80,10 @@ class SWEBenchKeywords:
     ) -> PatchResult:
         """Apply a patch in a Docker sandbox and run the repo's tests.
 
-        Creates an isolated container, writes the patch, applies it via
-        ``git apply``, runs the test suite, and returns the result.
+        Creates a container, clones the target repository at the instance's
+        base commit, applies the SWE-bench test patch (to add verification
+        tests), installs project dependencies, applies the LLM-generated
+        patch, and runs the test suite.
 
         Args:
             instance: The SWE-bench task instance.
@@ -96,8 +98,8 @@ class SWEBenchKeywords:
             image=_DEFAULT_DOCKER_IMAGE,
             name=f"rfc-swebench-{instance.instance_id[:30]}",
             command="sleep 3600",
-            resources=ContainerResources(cpu_cores=1.0, memory_mb=1024),
-            network=ContainerNetwork(mode="none"),
+            resources=ContainerResources(cpu_cores=1.0, memory_mb=2048),
+            network=ContainerNetwork(mode="bridge"),
             read_only=False,
             working_dir="/workspace",
             auto_remove=False,
@@ -110,14 +112,64 @@ class SWEBenchKeywords:
                 f"in container {container_id[:12]}"
             )
 
-            # Write the patch into the container
+            # --- Repo initialisation ----------------------------------------
+            # Install git (base image is python:3.11-slim, no git by default)
+            cm.execute_command(
+                container_id,
+                "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
+                timeout=120,
+            )
+
+            # Clone the repository and checkout the base commit
+            clone_result = cm.execute_command(
+                container_id,
+                f"git clone --quiet https://github.com/{instance.repo}.git "
+                f"/workspace && cd /workspace && git checkout -q {instance.base_commit}",
+                timeout=300,
+            )
+            if clone_result["exit_code"] != 0:
+                logger.warn(
+                    f"Repo clone/checkout failed for {instance.instance_id}: "
+                    f"{clone_result['stdout']}"
+                )
+                return PatchResult(
+                    passed=False,
+                    test_output=f"Repo clone failed: {clone_result['stdout']}",
+                    exit_code=clone_result["exit_code"],
+                )
+
+            # Apply the SWE-bench test patch (adds/modifies verification tests)
+            if instance.test_patch.strip():
+                cm.execute_command(
+                    container_id,
+                    "cat > /tmp/test_patch.diff << 'PATCH_EOF'\n"
+                    f"{instance.test_patch}\nPATCH_EOF",
+                )
+                cm.execute_command(
+                    container_id,
+                    "git apply --allow-empty /tmp/test_patch.diff",
+                    workdir="/workspace",
+                )
+
+            # Best-effort dependency installation
+            cm.execute_command(
+                container_id,
+                "pip install -e . 2>/dev/null "
+                "|| pip install -r requirements.txt 2>/dev/null "
+                "|| true",
+                timeout=300,
+                workdir="/workspace",
+            )
+
+            # --- Apply the LLM-generated patch ------------------------------
             cm.execute_command(
                 container_id,
                 f"cat > /tmp/patch.diff << 'PATCH_EOF'\n{patch}\nPATCH_EOF",
             )
 
-            # Apply the patch
-            apply_result = cm.execute_command(container_id, _PATCH_APPLY_CMD)
+            apply_result = cm.execute_command(
+                container_id, _PATCH_APPLY_CMD, workdir="/workspace",
+            )
             if apply_result["exit_code"] != 0:
                 logger.warn(
                     f"Patch apply failed for {instance.instance_id}: "
@@ -129,9 +181,10 @@ class SWEBenchKeywords:
                     exit_code=apply_result["exit_code"],
                 )
 
-            # Run tests
+            # --- Run the test suite -----------------------------------------
             test_result = cm.execute_command(
-                container_id, _TEST_RUN_CMD, timeout=300
+                container_id, _TEST_RUN_CMD, timeout=300,
+                workdir="/workspace",
             )
             passed = test_result["exit_code"] == 0
 

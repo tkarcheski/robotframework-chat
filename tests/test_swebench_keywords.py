@@ -83,7 +83,60 @@ class TestLoadInstances:
 # ---------------------------------------------------------------------------
 
 
+def _ok_result(stdout: str = "OK") -> Dict[str, Any]:
+    return {"stdout": stdout, "stderr": "", "exit_code": 0, "duration_ms": 100}
+
+
+def _fail_result(stdout: str = "FAILED") -> Dict[str, Any]:
+    return {"stdout": stdout, "stderr": "", "exit_code": 1, "duration_ms": 100}
+
+
 class TestApplyAndTestPatch:
+    @patch("rfc.swebench_keywords.ContainerManager")
+    def test_apply_patch_clones_repo_at_base_commit(
+        self, mock_cm_cls: MagicMock
+    ) -> None:
+        """Container must clone instance.repo and checkout base_commit."""
+        mock_cm = MagicMock()
+        mock_cm_cls.return_value = mock_cm
+        mock_cm.create_container.return_value = "container-123"
+        mock_cm.execute_command.return_value = _ok_result()
+
+        kw = SWEBenchKeywords()
+        instance = _make_instance()
+        kw.apply_and_test_patch(instance, "diff --git a/f.py\n+fix\n")
+
+        # Extract all shell commands executed in the container
+        exec_calls = mock_cm.execute_command.call_args_list
+        commands = [c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "") for c in exec_calls]
+        cmd_text = "\n".join(commands)
+
+        # Must install git, clone repo, and checkout base_commit
+        assert "git" in cmd_text
+        assert "django/django" in cmd_text
+        assert "abc123def" in cmd_text
+
+    @patch("rfc.swebench_keywords.ContainerManager")
+    def test_apply_patch_applies_test_patch(
+        self, mock_cm_cls: MagicMock
+    ) -> None:
+        """Container must apply instance.test_patch before the LLM patch."""
+        mock_cm = MagicMock()
+        mock_cm_cls.return_value = mock_cm
+        mock_cm.create_container.return_value = "container-123"
+        mock_cm.execute_command.return_value = _ok_result()
+
+        kw = SWEBenchKeywords()
+        instance = _make_instance()
+        kw.apply_and_test_patch(instance, "llm-patch-content")
+
+        exec_calls = mock_cm.execute_command.call_args_list
+        commands = [c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "") for c in exec_calls]
+        cmd_text = "\n".join(commands)
+
+        # test_patch content must appear (written to container)
+        assert "test_patch" in cmd_text or instance.test_patch in cmd_text
+
     @patch("rfc.swebench_keywords.ContainerManager")
     def test_apply_patch_returns_patch_result(
         self, mock_cm_cls: MagicMock
@@ -91,12 +144,7 @@ class TestApplyAndTestPatch:
         mock_cm = MagicMock()
         mock_cm_cls.return_value = mock_cm
         mock_cm.create_container.return_value = "container-123"
-        mock_cm.execute_command.return_value = {
-            "stdout": "OK (5 tests passed)",
-            "stderr": "",
-            "exit_code": 0,
-            "duration_ms": 1234,
-        }
+        mock_cm.execute_command.return_value = _ok_result("OK (5 tests passed)")
 
         kw = SWEBenchKeywords()
         instance = _make_instance()
@@ -109,15 +157,18 @@ class TestApplyAndTestPatch:
 
     @patch("rfc.swebench_keywords.ContainerManager")
     def test_apply_patch_failure(self, mock_cm_cls: MagicMock) -> None:
+        """When the final test run fails, result.passed must be False."""
         mock_cm = MagicMock()
         mock_cm_cls.return_value = mock_cm
         mock_cm.create_container.return_value = "container-456"
-        mock_cm.execute_command.return_value = {
-            "stdout": "FAILED (2 errors)",
-            "stderr": "",
-            "exit_code": 1,
-            "duration_ms": 2000,
-        }
+
+        # All setup commands succeed, but the final test run fails
+        def side_effect(cid: str, cmd: str, **kwargs: Any) -> Dict[str, Any]:
+            if "pytest" in cmd:
+                return _fail_result("FAILED (2 errors)")
+            return _ok_result()
+
+        mock_cm.execute_command.side_effect = side_effect
 
         kw = SWEBenchKeywords()
         instance = _make_instance()
@@ -133,18 +184,34 @@ class TestApplyAndTestPatch:
         mock_cm = MagicMock()
         mock_cm_cls.return_value = mock_cm
         mock_cm.create_container.return_value = "container-789"
-        mock_cm.execute_command.return_value = {
-            "stdout": "OK",
-            "stderr": "",
-            "exit_code": 0,
-            "duration_ms": 100,
-        }
+        mock_cm.execute_command.return_value = _ok_result()
 
         kw = SWEBenchKeywords()
         instance = _make_instance()
         kw.apply_and_test_patch(instance, "patch")
 
         mock_cm.stop_container.assert_called_once_with("container-789")
+
+    @patch("rfc.swebench_keywords.ContainerManager")
+    def test_clone_failure_returns_early(self, mock_cm_cls: MagicMock) -> None:
+        """If repo clone fails, return a failed PatchResult immediately."""
+        mock_cm = MagicMock()
+        mock_cm_cls.return_value = mock_cm
+        mock_cm.create_container.return_value = "container-err"
+
+        def side_effect(cid: str, cmd: str, **kwargs: Any) -> Dict[str, Any]:
+            if "git clone" in cmd:
+                return _fail_result("fatal: repository not found")
+            return _ok_result()
+
+        mock_cm.execute_command.side_effect = side_effect
+
+        kw = SWEBenchKeywords()
+        instance = _make_instance()
+        result = kw.apply_and_test_patch(instance, "patch")
+
+        assert result.passed is False
+        assert "clone" in result.test_output.lower() or "repository" in result.test_output.lower()
 
 
 # ---------------------------------------------------------------------------

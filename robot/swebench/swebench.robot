@@ -9,6 +9,7 @@ Library           Collections
 *** Variables ***
 ${SWEBENCH_SPLIT}       test
 ${MAX_INSTANCES}        10
+${DEFAULT_MODEL}        %{DEFAULT_MODEL=phi4:14b}
 
 *** Test Cases ***
 SWE-bench Patch Generation And Validation
@@ -22,6 +23,7 @@ SWE-bench Patch Generation And Validation
 *** Keywords ***
 Run SWEBench Instance
     [Arguments]    ${instance}
+    LLM.Set LLM Model    ${DEFAULT_MODEL}
     ${patch}=    LLM.Ask LLM    Generate a minimal git diff patch that resolves this issue:\n\nRepository: ${instance.repo}\nBase commit: ${instance.base_commit}\n\nIssue:\n${instance.problem_statement}\n\nRespond with ONLY the unified diff patch, no explanation.
     ${result}=    Apply And Test Patch    ${instance}    ${patch}
     ${score}    ${reason}=    LLM.Grade Answer

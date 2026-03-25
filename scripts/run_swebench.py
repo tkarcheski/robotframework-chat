@@ -27,7 +27,7 @@ def run_swebench(
         "run",
         "robot",
         "--variable",
-        f"MODEL:{model}",
+        f"DEFAULT_MODEL:{model}",
         "--variable",
         f"MAX_INSTANCES:{max_instances}",
         "--variable",
