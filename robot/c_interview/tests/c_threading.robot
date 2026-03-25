@@ -186,5 +186,5 @@ C Interview - Debugging Race Conditions (IQ:120)
 *** Keywords ***
 Ask C Interview Question
     [Documentation]    Ask a C interview question and grade the LLM response
-    [Arguments]    ${q}
-    Ask And Validate    ${q}[question]    ${q}[expected]
+    [Arguments]    ${q}    ${max_retries}=3
+    Ask And Validate    ${q}[question]    ${q}[expected]    max_retries=${max_retries}

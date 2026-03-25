@@ -8,8 +8,8 @@ ${SEED_END}       10000
 
 *** Keywords ***
 Ask And Validate
-    [Arguments]    ${question}    ${expected}
-    ${score}    ${reason}    ${answer}=    LLM.Ask And Grade With Retry    ${question}    ${expected}
+    [Arguments]    ${question}    ${expected}    ${max_retries}=3
+    ${score}    ${reason}    ${answer}=    LLM.Ask And Grade With Retry    ${question}    ${expected}    max_retries=${max_retries}
     Should Be Equal As Integers    ${score}    1
     Log    Question: ${question} | Answer: ${answer} | Reason: ${reason}
 
