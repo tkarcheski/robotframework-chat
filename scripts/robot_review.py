@@ -205,6 +205,13 @@ def main() -> int:
         except (FileNotFoundError, DataError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        except Exception as exc:
+            print(
+                f"ERROR: Failed to parse {path} — file may be corrupted "
+                f"(truncated by interrupted run): {exc}",
+                file=sys.stderr,
+            )
+            return 2
 
     print_report(results, quiet=args.quiet)
 
