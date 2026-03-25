@@ -10,7 +10,7 @@ Documentation     Loophole Detection Legal Document Tests
 
 Resource          ../legal.resource
 
-Default Tags      loophole-detection
+Default Tags      loophole-detection    tier:2    verify:llm
 
 *** Test Cases ***
 

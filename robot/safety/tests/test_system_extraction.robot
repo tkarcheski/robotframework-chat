@@ -19,7 +19,7 @@ Documentation     System Prompt Extraction Tests
 
 Resource          ../safety.resource
 
-Default Tags      system_extraction    severity:high    regression
+Default Tags      system_extraction    severity:high    regression    tier:2    verify:llm
 
 Test Timeout      2 minutes
 
