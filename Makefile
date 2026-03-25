@@ -22,6 +22,7 @@ export
         robot-review \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
+        robot-swebench swebench-discover \
         send-results \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
@@ -94,6 +95,12 @@ robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills 
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
 	$(ROBOT) -d results/superset $(LISTENER) robot/superset/tests/
+
+robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
+	$(ROBOT) -d results/swebench $(LISTENER) robot/swebench/
+
+swebench-discover: ## List available SWE-bench instances
+	uv run python scripts/run_swebench.py --discover
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/

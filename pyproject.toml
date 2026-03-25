@@ -52,6 +52,10 @@ superset = [
     "sqlalchemy>=2.0",
     "psycopg2-binary>=2.9",
 ]
+swebench = [
+    "swebench>=2.1.0",
+    "datasets>=2.19.0",
+]
 dev = [
     "pre-commit",
     "python-dotenv",
@@ -108,6 +112,15 @@ module = [
     "sqlalchemy.*",
     "superset.*",
     "psycopg2.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "swebench",
+    "swebench.*",
+    "datasets",
+    "datasets.*",
 ]
 ignore_missing_imports = true
 

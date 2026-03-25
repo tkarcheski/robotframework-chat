@@ -1,0 +1,15 @@
+# SWE-bench Evaluation Configuration
+#
+# Suite-specific settings for SWE-bench patch generation and validation.
+# Used by scripts/run_swebench.py and the make robot-swebench target.
+
+swebench:
+  suite: robot/swebench/swebench.robot
+  split: test
+  max_instances: 50
+  models:
+    - phi4:14b
+    - llama3.2:latest
+    - mistral:latest
+  grader_model: phi4:14b
+  timeout: 7200
