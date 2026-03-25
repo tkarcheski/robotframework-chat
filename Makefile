@@ -43,7 +43,7 @@ help: ## Show this help
 # ── Setup ────────────────────────────────────────────────────────────
 
 install: ## Install Python dependencies
-	uv sync --extra dev --extra superset
+	uv sync --extra dev --extra superset --extra swebench
 
 update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)
 	git fetch
@@ -60,7 +60,7 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 		$$STASHED && git stash pop || true; exit 1; \
 	fi; \
 	$$STASHED && git stash pop || true
-	uv sync --extra dev --extra superset
+	uv sync --extra dev --extra superset --extra swebench
 
 .env: ## Create .env from .env.example if missing
 	cp .env.example .env
