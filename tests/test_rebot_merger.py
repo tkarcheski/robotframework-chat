@@ -109,6 +109,20 @@ class TestFindOutputFiles:
         assert "math" in files[0]
         assert "combined" not in files[0]
 
+    def test_exclude_does_not_match_sibling_prefix(self, tmp_path: Path) -> None:
+        """Excluding /results/combined must NOT skip /results/combined-old."""
+        results = tmp_path / "results"
+        combined = results / "combined"
+        combined_old = results / "combined-old"
+        combined.mkdir(parents=True)
+        combined_old.mkdir(parents=True)
+        (combined / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+        (combined_old / "output.xml").write_text(MINIMAL_OUTPUT_XML)
+
+        files = find_output_files([str(results)], exclude_dir=str(combined))
+        assert len(files) == 1
+        assert "combined-old" in files[0]
+
 
 # ── _run_rebot ───────────────────────────────────────────────────────
 

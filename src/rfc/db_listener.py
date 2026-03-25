@@ -101,6 +101,7 @@ class DbListener(BaseListener):
         self._test_cases: List[Dict[str, Any]] = []
         self._current_test_name: Optional[str] = None
         self._last_run_id: Optional[int] = None
+        self._resolved_output_path: str = ""
 
     # ------------------------------------------------------------------
     # Database helpers
@@ -262,8 +263,10 @@ class DbListener(BaseListener):
         hostname = self._host_info.get("hostname", "")
 
         # output.xml is read later in close(), after Robot flushes the file.
+        # Resolve the path now while Robot context is still available.
         output_xml_url = build_output_xml_url()
         output_xml_source = build_output_xml_source()
+        self._resolved_output_path = resolve_output_file()
 
         # Collect inference params from Robot variables or environment
         run_temperature = get_robot_float("TEMPERATURE")
@@ -363,7 +366,19 @@ class DbListener(BaseListener):
         if self._last_run_id is None:
             return
 
-        output_xml_gz = read_and_compress_output_xml()
+        # Use the path resolved in on_suite_end() while Robot context was
+        # still active.  BuiltIn() is no longer available in close().
+        output_path = self._resolved_output_path
+        if output_path and os.path.isfile(output_path):
+            try:
+                import gzip
+
+                with open(output_path, "rb") as f:
+                    output_xml_gz = gzip.compress(f.read())
+            except OSError:
+                output_xml_gz = b""
+        else:
+            output_xml_gz = b""
         if not output_xml_gz:
             return
 

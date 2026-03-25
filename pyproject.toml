@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "1.5.2"
+version = "1.5.3"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 license = "Apache-2.0"
 readme = "readme.md"
@@ -88,6 +88,10 @@ exclude_lines = [
 ]
 
 [tool.mypy]
+mypy_path = "src"
+packages = ["rfc"]
+explicit_package_bases = true
+ignore_missing_imports = false
 exclude = ["^scripts/", "^tests/"]
 
 [[tool.mypy.overrides]]
@@ -96,13 +100,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["scripts.*"]
-follow_imports = "skip"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
     "sqlalchemy",
     "sqlalchemy.*",
     "superset.*",
+    "psycopg2.*",
 ]
 ignore_missing_imports = true
 

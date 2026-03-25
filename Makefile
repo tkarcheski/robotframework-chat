@@ -46,10 +46,19 @@ install: ## Install Python dependencies
 
 update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked files to avoid conflicts)
 	git fetch
-	git stash --include-untracked || true
-	test ! -f .git/MERGE_HEAD || { echo "ERROR: merge already in progress; resolve it before running make update"; git stash pop || true; exit 1; }
-	git pull || { test -f .git/MERGE_HEAD && git merge --abort; git stash pop || true; exit 1; }
-	git stash pop || true
+	@BEFORE=$$(git stash list | wc -l); \
+	git stash --include-untracked || true; \
+	AFTER=$$(git stash list | wc -l); \
+	STASHED=false; [ "$$AFTER" -gt "$$BEFORE" ] && STASHED=true; \
+	if test -f .git/MERGE_HEAD; then \
+		echo "ERROR: merge already in progress; resolve it before running make update"; \
+		$$STASHED && git stash pop || true; exit 1; \
+	fi; \
+	if ! git pull; then \
+		test -f .git/MERGE_HEAD && git merge --abort; \
+		$$STASHED && git stash pop || true; exit 1; \
+	fi; \
+	$$STASHED && git stash pop || true
 	uv sync --extra dev --extra superset
 
 .env: ## Create .env from .env.example if missing
