@@ -205,6 +205,39 @@ class TestCreativityKeywords:
             or "detail" in second_joke_prompt.lower()
         )
 
+    @patch("rfc.creativity_keywords.emit_rfc_data")
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_ask_for_joke_emits_actual_answer(
+        self, mock_create: MagicMock, mock_emit: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "A funny joke!"
+        mock_client.temperature = 0.0
+        mock_client.max_tokens = 256
+        mock_client.last_metrics = None
+        mock_client.num_ctx = None
+        mock_create.return_value = mock_client
+        kw = CreativityKeywords()
+        kw.ask_for_joke("Tell me a joke")
+        mock_emit.assert_any_call("actual_answer", "A funny joke!")
+
+    @patch("rfc.creativity_keywords.emit_rfc_data")
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_ask_with_conversation_emits_actual_answer(
+        self, mock_create: MagicMock, mock_emit: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Your name is Alice!"
+        mock_client.temperature = 0.0
+        mock_client.max_tokens = 256
+        mock_client.last_metrics = None
+        mock_client.num_ctx = None
+        mock_create.return_value = mock_client
+        kw = CreativityKeywords()
+        messages = [{"role": "user", "content": "Hello"}]
+        kw.ask_with_conversation(messages)
+        mock_emit.assert_any_call("actual_answer", "Your name is Alice!")
+
     @patch("rfc.creativity_keywords.create_provider")
     def test_ask_and_grade_joke_empty_response_no_retry(
         self, mock_create: MagicMock

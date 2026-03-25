@@ -68,6 +68,7 @@ class CreativityKeywords:
             clean_answer, thinking_text = parse_thinking(raw_response)
             logger.info(f"Joke response: {clean_answer}")
             emit_rfc_data("joke_response", clean_answer)
+            emit_rfc_data("actual_answer", clean_answer)
             if thinking_text is not None:
                 emit_rfc_data("thinking_text", thinking_text)
             return clean_answer
@@ -96,6 +97,7 @@ class CreativityKeywords:
         clean_answer, thinking_text = parse_thinking(raw_response)
         logger.info(f"Conversation response: {clean_answer}")
         emit_rfc_data("conversation_response", clean_answer)
+        emit_rfc_data("actual_answer", clean_answer)
         if thinking_text is not None:
             emit_rfc_data("thinking_text", thinking_text)
         return clean_answer
