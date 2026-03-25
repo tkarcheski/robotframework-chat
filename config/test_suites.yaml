@@ -132,6 +132,11 @@ test_suites:
     path: "robot/task_management/tests"
     description: "Task planning and management skill measurements"
 
+  creativity:
+    label: "Creativity Tests"
+    path: "robot/creativity/tests"
+    description: "LLM humor, joke creation, context awareness, and creative judging"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -221,6 +226,11 @@ ci:
       path: "robot/ceo/"
       output_dir: "results/ceo"
       tags: ["openai", "agentic"]
+
+    robot-creativity-tests:
+      path: "robot/creativity/"
+      output_dir: "results/creativity"
+      tags: ["ollama"]
 
 # ---------------------------------------------------------------------------
 # Monitoring Configuration
