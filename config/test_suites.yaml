@@ -122,6 +122,16 @@ test_suites:
     path: "robot/benchmark/tests"
     description: "Token output throughput and completion ratio benchmark (512–65536 tokens)"
 
+  legal:
+    label: "Legal Document Analysis"
+    path: "robot/legal/tests"
+    description: "Loophole detection and needle-in-haystack clause retrieval in legal documents"
+
+  task-management:
+    label: "Task Management"
+    path: "robot/task_management/tests"
+    description: "Task planning and management skill measurements"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
