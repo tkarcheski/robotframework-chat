@@ -15,7 +15,7 @@ ${REVERSE_STRING_PROMPT}   Write a Python function 'reverse_string(s)' that reve
 *** Test Cases ***
 LLM Generates Factorial Function (IQ:120)
     [Documentation]    Can the LLM generate a working Python factorial function with error handling?
-    [Tags]    IQ:120    algorithm    function-generation    tier:4    verify:llm
+    [Tags]    IQ:120    algorithm    function-generation    tier:4    verify:robot
 
     ${response}=    LLM.Ask LLM    ${FACTORIAL_PROMPT}
     ${code}=        Extract Code Block    ${response}    python

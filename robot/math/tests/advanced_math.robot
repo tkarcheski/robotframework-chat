@@ -5,7 +5,7 @@ Resource          ../../resources/ask_and_validate.resource
 *** Test Cases ***
 IQ 105 Percentage Calculation
     [Documentation]    Can the LLM calculate {pct}% of {whole}?
-    [Tags]    IQ:105
+    [Tags]    IQ:105    tier:2    verify:llm
     ${whole}=    Generate Positive Integer
     ${pct}=      Generate Random Percent
     ${question}=    Set Variable    What is ${pct}% of ${whole}? Give only the numeric answer.
@@ -14,7 +14,7 @@ IQ 105 Percentage Calculation
 
 IQ 115 Exponentiation
     [Documentation]    Can the LLM compute {base} raised to the power of {exp}?
-    [Tags]    IQ:115
+    [Tags]    IQ:115    tier:2    verify:llm
     ${base}=    Generate Small Positive Integer    min=2    max=20
     ${exp}=     Generate Small Positive Integer    min=2    max=5
     ${question}=    Set Variable    What is ${base} raised to the power of ${exp}? Give only the numeric answer.
@@ -23,7 +23,7 @@ IQ 115 Exponentiation
 
 IQ 115 Square Root Of Perfect Square
     [Documentation]    Can the LLM find the square root of {squared} (a perfect square)?
-    [Tags]    IQ:115
+    [Tags]    IQ:115    tier:2    verify:llm
     ${n}=       Generate Small Positive Integer    min=2    max=100
     ${squared}=    Evaluate    ${n} ** 2
     ${question}=   Set Variable    What is the square root of ${squared}? Give only the numeric answer.
@@ -32,7 +32,7 @@ IQ 115 Square Root Of Perfect Square
 
 IQ 135 Order Of Operations PEMDAS
     [Documentation]    Can the LLM evaluate {a} + {b} * {c} - {d} following standard order of operations?
-    [Tags]    IQ:135
+    [Tags]    IQ:135    tier:2    verify:llm
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
     ${c}=    Generate Random Integer
@@ -43,7 +43,7 @@ IQ 135 Order Of Operations PEMDAS
 
 IQ 110 Absolute Value
     [Documentation]    Can the LLM compute the absolute value of {a} minus {b}?
-    [Tags]    IQ:110
+    [Tags]    IQ:110    tier:2    verify:llm
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
     ${question}=    Set Variable    What is the absolute value of ${a} minus ${b}? Give only the numeric answer.
@@ -52,7 +52,7 @@ IQ 110 Absolute Value
 
 IQ 125 Greatest Common Divisor
     [Documentation]    Can the LLM find the greatest common divisor of {a} and {b}?
-    [Tags]    IQ:125
+    [Tags]    IQ:125    tier:2    verify:llm
     ${a}=    Generate Positive Integer
     ${b}=    Generate Positive Integer
     ${question}=    Set Variable    What is the greatest common divisor of ${a} and ${b}? Give only the numeric answer.
@@ -61,7 +61,7 @@ IQ 125 Greatest Common Divisor
 
 IQ 125 Arithmetic Mean
     [Documentation]    Can the LLM calculate the arithmetic mean of five random integers?
-    [Tags]    IQ:125
+    [Tags]    IQ:125    tier:2    verify:llm
     ${a}=    Generate Random Integer
     ${b}=    Generate Random Integer
     ${c}=    Generate Random Integer
@@ -73,7 +73,7 @@ IQ 125 Arithmetic Mean
 
 IQ 105 Rectangle Area
     [Documentation]    Can the LLM compute the area of a rectangle with length {l} and width {w}?
-    [Tags]    IQ:105
+    [Tags]    IQ:105    tier:2    verify:llm
     ${l}=    Generate Positive Integer    min=1    max=500
     ${w}=    Generate Positive Integer    min=1    max=500
     ${question}=    Set Variable    What is the area of a rectangle with length ${l} and width ${w}? Give only the numeric answer.
@@ -82,7 +82,7 @@ IQ 105 Rectangle Area
 
 IQ 120 Rectangular Prism Volume
     [Documentation]    Can the LLM compute the volume of a rectangular prism ({l} x {w} x {h})?
-    [Tags]    IQ:120
+    [Tags]    IQ:120    tier:2    verify:llm
     ${l}=    Generate Positive Integer    min=1    max=100
     ${w}=    Generate Positive Integer    min=1    max=100
     ${h}=    Generate Positive Integer    min=1    max=100
@@ -92,7 +92,7 @@ IQ 120 Rectangular Prism Volume
 
 IQ 145 Sum Of Arithmetic Sequence
     [Documentation]    Can the LLM sum the first {n} terms of an arithmetic sequence (start={a}, diff={d})?
-    [Tags]    IQ:145
+    [Tags]    IQ:145    tier:2    verify:llm
     ${a}=    Generate Small Positive Integer    min=1    max=100
     ${d}=    Generate Small Positive Integer    min=1    max=20
     ${n}=    Generate Small Positive Integer    min=5    max=20

@@ -6,7 +6,7 @@ Resource          ../../resources/ask_and_validate.resource
 *** Test Cases ***
 IQ 100 Simple Task Prioritization
     [Documentation]    Can the LLM correctly rank 5 tasks by priority, identifying a production outage as highest?
-    [Tags]    IQ:100
+    [Tags]    IQ:100    tier:2    verify:llm
     ${question}=    Set Variable
     ...    Rank these 5 tasks from highest to lowest priority and explain your reasoning:
     ...    1. Update the team wiki with meeting notes from last week
@@ -24,7 +24,7 @@ IQ 100 Simple Task Prioritization
 
 IQ 110 Break Down Complex Task
     [Documentation]    Can the LLM decompose 'Set up a PostgreSQL database' into logically ordered subtasks?
-    [Tags]    IQ:110
+    [Tags]    IQ:110    tier:2    verify:llm
     ${question}=    Set Variable
     ...    Break down the following task into ordered subtasks:
     ...    "Set up a PostgreSQL database for a new web application."
@@ -40,7 +40,7 @@ IQ 110 Break Down Complex Task
 
 IQ 120 Identify Task Dependencies
     [Documentation]    Can the LLM produce a valid execution order for 5 tasks with dependency constraints?
-    [Tags]    IQ:120
+    [Tags]    IQ:120    tier:2    verify:llm
     ${question}=    Set Variable
     ...    Given these software project tasks and their dependencies, provide a valid execution order:
     ...    Task A: Write unit tests (depends on Task B)
@@ -58,7 +58,7 @@ IQ 120 Identify Task Dependencies
 
 IQ 120 Triage Support Tickets
     [Documentation]    Can the LLM correctly categorize 5 support tickets by severity (Critical/High/Medium/Low)?
-    [Tags]    IQ:120
+    [Tags]    IQ:120    tier:2    verify:llm
     ${question}=    Set Variable
     ...    Categorize each support ticket as Critical, High, Medium, or Low severity:
     ...    Ticket 1: "Users report that all data entered in the last hour has been lost."
@@ -77,7 +77,7 @@ IQ 120 Triage Support Tickets
 
 IQ 130 Schedule Tasks With Time Constraints
     [Documentation]    Can the LLM schedule 5 tasks within an 8-hour workday respecting time constraints and dependencies?
-    [Tags]    IQ:130
+    [Tags]    IQ:130    tier:2    verify:llm
     ${question}=    Set Variable
     ...    You have an 8-hour workday (9am to 5pm) and these tasks to complete:
     ...    - Code review: 1 hour, must be done before noon
@@ -99,7 +99,7 @@ IQ 130 Schedule Tasks With Time Constraints
 
 IQ 130 Create Action Plan From Vague Request
     [Documentation]    Can the LLM create a structured diagnostic plan from 'Our website is slow, fix it'?
-    [Tags]    IQ:130
+    [Tags]    IQ:130    tier:2    verify:llm
     ${question}=    Set Variable
     ...    A manager says: "Our website is slow, fix it."
     ...    Create a structured action plan with concrete, ordered steps
@@ -117,7 +117,7 @@ IQ 130 Create Action Plan From Vague Request
 
 IQ 140 Identify Blockers And Risks
     [Documentation]    Can the LLM identify blockers and risks in a 5-week project plan missing QA testing?
-    [Tags]    IQ:140
+    [Tags]    IQ:140    tier:2    verify:llm
     ${question}=    Set Variable
     ...    Review this project plan and identify all blockers, risks, and issues:
     ...    Week 1: Alice designs the database schema.
@@ -140,7 +140,7 @@ IQ 140 Identify Blockers And Risks
 
 IQ 150 Multi-Constraint Task Ordering
     [Documentation]    Can the LLM schedule a multi-course banquet with single-oven and appetizer-before-mains constraints?
-    [Tags]    IQ:150
+    [Tags]    IQ:150    tier:2    verify:llm
     ${question}=    Set Variable
     ...    A restaurant kitchen must prepare these dishes for a banquet at 7pm:
     ...    - Roast chicken: 30 min prep, 90 min oven, serves as main course

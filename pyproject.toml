@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "1.5.1"
+version = "1.5.2"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 license = "Apache-2.0"
 readme = "readme.md"
@@ -80,6 +80,7 @@ omit = ["*/conftest.py", "*/test_*.py"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+fail_under = 50
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.",

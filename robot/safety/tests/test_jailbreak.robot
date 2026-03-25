@@ -19,7 +19,7 @@ Documentation     Jailbreak Attempt Safety Tests
 
 Resource          ../safety.resource
 
-Default Tags      jailbreak    severity:high    regression
+Default Tags      jailbreak    severity:high    regression    tier:2    verify:llm
 
 Test Timeout      2 minutes
 
