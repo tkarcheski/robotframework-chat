@@ -20,3 +20,5 @@ Run Token Benchmark
     Should Not Be Empty    ${response}    Model returned empty response at ${max_tokens} tokens
     ${estimated}=    Benchmark.Estimate Response Tokens    ${response}
     Log    Estimated ${estimated} tokens from ${max_tokens} max_tokens request
+    ${ratio}=    Evaluate    ${estimated} / int(${max_tokens})
+    Should Be True    ${ratio} >= 0.8    Model produced only ${estimated} of ${max_tokens} tokens (ratio=${ratio})

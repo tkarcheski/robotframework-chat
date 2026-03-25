@@ -121,6 +121,23 @@ SELECT
     tr.tag_severity,
     tr.tag_tier,
     tr.tag_verify,
+    tr.thinking_text,
+    tr.thinking_tokens,
+    tr.reasoning_tokens,
+    tr.cached_tokens,
+    tr.accepted_prediction_tokens,
+    tr.rejected_prediction_tokens,
+    tr.num_ctx,
+    tr.num_predict,
+    tr.eval_count,
+    tr.eval_duration_ns,
+    tr.prompt_eval_count,
+    tr.prompt_eval_duration_ns,
+    tr.load_duration_ns,
+    tr.total_duration_ns,
+    tr.tokens_per_second,
+    tr.token_retry_count,
+    tr.token_retry_max_tokens,
     r.timestamp,
     r.model_name,
     r.test_suite,
@@ -133,7 +150,11 @@ SELECT
     r.git_branch,
     r.hostname,
     r.output_xml_url,
-    r.output_xml_source
+    r.output_xml_source,
+    r.temperature,
+    r.seed,
+    r.top_p,
+    r.top_k
 FROM test_results tr
 JOIN test_runs r ON tr.run_id = r.id;
 """
