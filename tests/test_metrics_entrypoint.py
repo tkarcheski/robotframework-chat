@@ -32,7 +32,7 @@ def test_generate_index_lists_root_and_nested_dashboards(tmp_path: Path) -> None
 
     assert proc.returncode == 0, proc.stderr
     html = proc.stdout
-    assert 'href="./"' in html
+    assert 'href="root-dashboard.html"' in html
     assert ">root<" in html
-    assert 'href="accounting/"' in html
+    assert 'href="accounting/dashboard.html"' in html
     assert ">accounting<" in html
