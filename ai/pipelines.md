@@ -137,7 +137,7 @@ file drives both the dashboard UI and CI pipeline generation. Changes
 propagate automatically — no manual YAML editing in `.gitlab-ci.yml` for
 test jobs.
 
-See [AGENTS.md](AGENTS.md) for the full project architecture.
+See [agents.md](agents.md) for the full project architecture.
 
 ---
 

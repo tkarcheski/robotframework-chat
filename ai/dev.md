@@ -317,7 +317,7 @@ These must be stored in the database per test run.
 
 ## Cross-References
 
-- `ai/CLAUDE.md` — Grading tiers and test rules
-- `ai/AGENTS.md` — Agent contract, code style, commands
+- `ai/testing.md` — Grading tiers and test rules
+- `ai/agents.md` — Agent contract, code style, commands
 - `docs/requirements.md` — Project requirements and status tracker
 - `humans/TODO.md` — Owner action items

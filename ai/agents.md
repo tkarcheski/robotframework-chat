@@ -39,7 +39,7 @@ Test results are archived to SQL and visualized in Apache Superset dashboards.
 
 ## Agent Personality
 
-Read `ai/CLAUDE.md` for grading tiers and test rules.
+Read `ai/testing.md` for grading tiers and test rules.
 
 1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
    vague, ask. If an architecture decision has trade-offs, surface them. The
@@ -68,7 +68,7 @@ Read `ai/CLAUDE.md` for grading tiers and test rules.
    and keyword names are common. If a referenced file or symbol doesn't exist,
    search for the closest match before asking.
 3. **Check for contradictions.** If a request conflicts with a confirmed decision
-   in `ai/CLAUDE.md` or `humans/TODO.md`, flag it. Quote the conflicting
+   in `ai/testing.md` or `humans/TODO.md`, flag it. Quote the conflicting
    decision and ask the user to confirm they want to override it.
 4. **Verify commands before running.** If the user gives you a shell command,
    read it carefully. Check for missing flags, wrong target names, dangerous
@@ -333,13 +333,14 @@ Robot Framework Test
 robotframework-chat/
 ├── readme.md                   # Project overview
 ├── ai/                         # AI agent documentation
-│   ├── CLAUDE.md               # Grading tiers & test rules
-│   ├── AGENTS.md               # Agent instructions (this file)
-│   ├── SKILLS.md               # Agent capabilities
-│   ├── DEV.md                  # Development guidelines
-│   ├── PIPELINES.md            # Pipeline strategy & model selection
-│   ├── REFACTOR.md             # Refactoring & maintenance guide
-│   └── DEVOPS.md               # DevOps practices tracker
+│   ├── testing.md              # Grading tiers & test rules
+│   ├── agents.md               # Agent instructions (this file)
+│   ├── dev.md                  # Development guidelines
+│   ├── pipelines.md            # Pipeline strategy & model selection
+│   ├── refactor.md             # Refactoring & maintenance guide
+│   ├── devops.md               # DevOps practices tracker
+│   ├── roles/                  # Agent role definitions
+│   └── skills/                 # Task-specific skill tutorials
 ├── ci/                         # CI scripts (all pipeline logic lives here)
 │   ├── common.yml              # Shared YAML templates
 │   ├── lint.sh                 # Code quality checks
@@ -488,7 +489,7 @@ During the **report stage**, `rebot` merges all `output.xml` files into a single
 
 During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
 
-During the **review stage** (MR label `opencode-review` or manual trigger), OpenCode (Kimi K2.5 via OpenRouter) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/AGENTS.md` and `ai/REFACTOR.md`.
+During the **review stage** (MR label `opencode-review` or manual trigger), OpenCode (Kimi K2.5 via OpenRouter) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/agents.md` and `ai/refactor.md`.
 
 ---
 

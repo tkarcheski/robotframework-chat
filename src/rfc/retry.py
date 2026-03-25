@@ -45,7 +45,5 @@ def retry_on_transient(fn: Callable[[], T], *, max_retries: int) -> T:
                 )
                 time.sleep(delay)
             else:
-                logger.error(
-                    f"generate() failed after {attempt + 1} attempts: {exc}"
-                )
+                logger.error(f"generate() failed after {attempt + 1} attempts: {exc}")
     raise last_exception  # type: ignore[misc]

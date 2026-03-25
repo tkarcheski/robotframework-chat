@@ -5,7 +5,7 @@ with current adoption status.
 
 Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
-> **Cross-references:** See `ai/CLAUDE.md` for grading tiers and test rules,
+> **Cross-references:** See `ai/testing.md` for grading tiers and test rules,
 > `humans/TODO.md` for actionable items.
 
 **Legend:** Adopted / Partial / Not Started
@@ -147,12 +147,12 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| AI agent docs (`ai/AGENTS.md`) | Adopted | Core philosophy and agent guidelines |
+| AI agent docs (`ai/agents.md`) | Adopted | Core philosophy and agent guidelines |
 | Requirements tracker (`docs/requirements.md`) | Adopted | Priority-ordered requirements and status |
-| Pipeline docs (`ai/PIPELINES.md`) | Adopted | CI pipeline documentation |
-| Dev guide (`ai/DEV.md`) | Adopted | Developer onboarding |
-| Refactoring notes (`ai/REFACTOR.md`) | Adopted | Refactoring plans |
-| DevOps tracker (`ai/DEVOPS.md`) | Adopted | This document |
+| Pipeline docs (`ai/pipelines.md`) | Adopted | CI pipeline documentation |
+| Dev guide (`ai/dev.md`) | Adopted | Developer onboarding |
+| Refactoring notes (`ai/refactor.md`) | Adopted | Refactoring plans |
+| DevOps tracker (`ai/devops.md`) | Adopted | This document |
 | API documentation | Not Started | No OpenAPI/Swagger or generated docs |
 | Architecture decision records (ADRs) | Not Started | No formal decision log |
 | Runbook / incident response | Not Started | No operational runbooks |
@@ -231,4 +231,4 @@ These decisions from the spec review session impact DevOps practices:
 | `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
 | Makefile parity with pipeline | Fix 24 broken targets | `docs/requirements.md` § CI/CD |
 | Secrets stay in `.env` | No vault needed | `.env.example` |
-| Branching: main / staging / claude/* | Document and enforce | `ai/PIPELINES.md` § Branching Model |
+| Branching: main / staging / claude/* | Document and enforce | `ai/pipelines.md` § Branching Model |
