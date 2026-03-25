@@ -104,6 +104,11 @@ test_suites:
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
     timeout_seconds: 1800
 
+  - name: "creativity"
+    path: "robot/creativity/tests/"
+    description: "LLM humor, joke creation, context awareness, and creative judging"
+    timeout_seconds: 600
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
