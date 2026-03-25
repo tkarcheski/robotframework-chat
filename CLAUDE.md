@@ -64,6 +64,8 @@ After a working solution is committed and all checks pass:
 - New Robot test suites must be registered in `config/test_suites.yaml` and
   `config/local_models.yaml`.
 - Always rebase onto `claude-code-staging`, not `main`.
+- **Never commit `uv.lock`.** It is gitignored. Run `uv sync` to regenerate
+  locally. `pyproject.toml` pins exact versions and is the source of truth.
 
 ---
 

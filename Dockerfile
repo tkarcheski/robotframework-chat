@@ -39,7 +39,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 
 # Copy lockfile + manifest first (cache-friendly layer)
-COPY pyproject.toml uv.lock readme.md ./
+COPY pyproject.toml readme.md ./
 
 # Copy source and project files
 COPY src/ src/
@@ -51,7 +51,7 @@ COPY ci/ ci/
 COPY Makefile tasks.py .env.example ./
 
 # Install all dependencies (dev + superset extras for full make target support)
-RUN uv sync --frozen --extra dev --extra superset
+RUN uv sync --extra dev --extra superset
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash rfc && \

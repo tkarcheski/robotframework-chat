@@ -113,6 +113,7 @@ Read `ai/testing.md` for grading tiers and test rules.
 - Mix formatting + logic
 - Bypass pre-commit or Makefile quality checks
 - Execute user commands without validating them first
+- Commit `uv.lock` or any other generated lockfile (`uv.lock` is gitignored)
 
 **Commit Types:**
 - `test:` - Add/update tests

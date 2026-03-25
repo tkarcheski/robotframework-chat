@@ -97,7 +97,7 @@ Use this checklist during code reviews and periodic maintenance:
 - [ ] No secrets, tokens, or credentials in tracked files
 - [ ] `.env.example` reflects all required environment variables
 - [ ] `pyproject.toml` extras match actual usage groups
-- [ ] `uv.lock` is up to date with `pyproject.toml`
+- [ ] `uv.lock` is not tracked in git (gitignored; regenerate with `uv sync`)
 - [ ] Pre-commit hooks pass on all files
 - [ ] `ruff check` and `mypy` report zero errors
 - [ ] All Makefile targets documented in `make help`
@@ -122,7 +122,7 @@ make robot
 
 ### Dependency Hygiene Rules
 
-1. Pin exact versions only in `uv.lock` -- use ranges in `pyproject.toml`
+1. Pin exact versions in `pyproject.toml` -- `uv.lock` is gitignored and regenerated locally via `uv sync`
 2. Audit new dependencies before adding them:
    - Is it actively maintained?
    - Does it have a permissive license?
