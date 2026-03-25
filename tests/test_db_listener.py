@@ -1226,9 +1226,7 @@ class TestCloseDefersOutputXmlCapture:
         listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
 
         # Simulate close() after Robot has flushed
-        with patch(
-            "rfc.output_xml.resolve_output_file", return_value=str(output_xml)
-        ):
+        with patch("rfc.output_xml.resolve_output_file", return_value=str(output_xml)):
             listener.close()
 
         mock_db.update_output_xml.assert_called_once()
