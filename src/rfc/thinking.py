@@ -13,16 +13,22 @@ from typing import Optional
 _THINK_PATTERN = re.compile(
     r"<(?:think|thinking)>(.*?)</(?:think|thinking)>", re.DOTALL
 )
+
+# Matches an unclosed <think>/<thinking> tag that was never closed.
+# Only used as a last-resort fallback inside extract_json(), never in
+# parse_thinking(), to avoid silently truncating normal model output
+# that happens to contain a literal "<think>" token.
 _UNCLOSED_THINK_PATTERN = re.compile(
-    r"(?:^|\n)\s*<(?:think|thinking)>([\s\S]*)$"
+    r"^\s*<(?:think|thinking)>([\s\S]*)$"
 )
 
 
 def parse_thinking(text: str) -> tuple[str, Optional[str]]:
     """Separate thinking content from the answer.
 
-    Handles both properly closed (``<think>...</think>``) and unclosed
-    (``<think>...``) thinking tags.
+    Only handles properly closed ``<think>...</think>`` and
+    ``<thinking>...</thinking>`` tags.  Unclosed tags are **not** stripped
+    here to avoid false positives when content merely mentions these tokens.
 
     Args:
         text: Raw LLM response that may contain thinking tags.
@@ -38,14 +44,6 @@ def parse_thinking(text: str) -> tuple[str, Optional[str]]:
             blocks.append(content)
 
     clean = _THINK_PATTERN.sub("", text)
-
-    # Handle unclosed thinking tags (model started <think> but never closed it)
-    unclosed = _UNCLOSED_THINK_PATTERN.search(clean)
-    if unclosed:
-        content = unclosed.group(1).strip()
-        if content:
-            blocks.append(content)
-        clean = clean[: unclosed.start()]
 
     thinking: Optional[str] = None
     if blocks:
@@ -85,8 +83,9 @@ def extract_json(text: str) -> str:
 
     Handles:
     - Markdown code blocks (``\\`\\`\\`json...\\`\\`\\```)
-    - Thinking tags (``<think>`` / ``<thinking>``) — closed or unclosed
+    - Properly closed thinking tags (``<think>...</think>``)
     - JSON trapped inside thinking blocks (searched as fallback)
+    - Unclosed ``<think>`` as a last resort (only when all else fails)
     - Text before/after JSON
 
     Returns the extracted JSON string, or the cleaned text if no JSON is found.
@@ -104,7 +103,19 @@ def extract_json(text: str) -> str:
         if result is not None:
             return result
 
-    # No JSON found anywhere — return cleaned text (thinking tags stripped)
+    # Last resort: handle unclosed <think> tags.  Only attempted here (not in
+    # parse_thinking) to avoid truncating normal content that mentions <think>.
+    unclosed = _UNCLOSED_THINK_PATTERN.match(clean)
+    if unclosed:
+        inner = unclosed.group(1)
+        result = _find_json_in_text(inner)
+        if result is not None:
+            return result
+        # No JSON inside the unclosed block either — return empty clean text
+        # so callers never see raw <think> tags in error messages.
+        return inner.strip()
+
+    # No JSON found anywhere — return cleaned text (closed tags stripped)
     return clean
 
 
