@@ -67,5 +67,8 @@ generated-dynamic-pipeline.yml
 .coverage
 htmlcov/
 
+# Lock files (generated — regenerate with `uv sync`)
+uv.lock
+
 # Project specific
 *.local
