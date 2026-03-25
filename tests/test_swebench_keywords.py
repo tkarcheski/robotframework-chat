@@ -213,6 +213,42 @@ class TestApplyAndTestPatch:
         assert result.passed is False
         assert "clone" in result.test_output.lower() or "repository" in result.test_output.lower()
 
+    @patch("rfc.swebench_keywords.ContainerManager")
+    def test_test_patch_failure_returns_early(self, mock_cm_cls: MagicMock) -> None:
+        """If SWE-bench test patch fails to apply, return failed PatchResult."""
+        mock_cm = MagicMock()
+        mock_cm_cls.return_value = mock_cm
+        mock_cm.create_container.return_value = "container-tp"
+
+        def side_effect(cid: str, cmd: str, **kwargs: Any) -> Dict[str, Any]:
+            if "git apply" in cmd and "test_patch" in cmd:
+                return _fail_result("error: patch does not apply")
+            return _ok_result()
+
+        mock_cm.execute_command.side_effect = side_effect
+
+        kw = SWEBenchKeywords()
+        instance = _make_instance()
+        result = kw.apply_and_test_patch(instance, "patch")
+
+        assert result.passed is False
+        assert "test patch" in result.test_output.lower() or "patch" in result.test_output.lower()
+
+    @patch("rfc.swebench_keywords.ContainerManager")
+    def test_container_uses_root_user(self, mock_cm_cls: MagicMock) -> None:
+        """Container must run as root for apt-get and git operations."""
+        mock_cm = MagicMock()
+        mock_cm_cls.return_value = mock_cm
+        mock_cm.create_container.return_value = "container-root"
+        mock_cm.execute_command.return_value = _ok_result()
+
+        kw = SWEBenchKeywords()
+        instance = _make_instance()
+        kw.apply_and_test_patch(instance, "patch")
+
+        config = mock_cm.create_container.call_args[0][0]
+        assert config.user == "root"
+
 
 # ---------------------------------------------------------------------------
 # Log SWEBench Result

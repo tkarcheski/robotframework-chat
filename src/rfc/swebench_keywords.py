@@ -101,6 +101,7 @@ class SWEBenchKeywords:
             resources=ContainerResources(cpu_cores=1.0, memory_mb=2048),
             network=ContainerNetwork(mode="bridge"),
             read_only=False,
+            user="root",
             working_dir="/workspace",
             auto_remove=False,
         )
@@ -145,11 +146,24 @@ class SWEBenchKeywords:
                     "cat > /tmp/test_patch.diff << 'PATCH_EOF'\n"
                     f"{instance.test_patch}\nPATCH_EOF",
                 )
-                cm.execute_command(
+                test_patch_result = cm.execute_command(
                     container_id,
                     "git apply --allow-empty /tmp/test_patch.diff",
                     workdir="/workspace",
                 )
+                if test_patch_result["exit_code"] != 0:
+                    logger.warn(
+                        f"Test patch apply failed for {instance.instance_id}: "
+                        f"{test_patch_result['stdout']}"
+                    )
+                    return PatchResult(
+                        passed=False,
+                        test_output=(
+                            f"Test patch apply failed: "
+                            f"{test_patch_result['stdout']}"
+                        ),
+                        exit_code=test_patch_result["exit_code"],
+                    )
 
             # Best-effort dependency installation
             cm.execute_command(

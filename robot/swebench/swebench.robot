@@ -4,6 +4,7 @@ Documentation     SWE-bench patch generation and validation.
 ...               applies them in Docker sandboxes, and grades the results.
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           rfc.swebench_keywords.SWEBenchKeywords
+Library           BuiltIn
 Library           Collections
 
 *** Variables ***
@@ -14,10 +15,20 @@ ${DEFAULT_MODEL}        %{DEFAULT_MODEL=phi4:14b}
 *** Test Cases ***
 SWE-bench Patch Generation And Validation
     [Documentation]    Iterate over SWE-bench instances, generate patches, and validate.
+    ...               Per-instance failures are recorded but do not abort the loop.
     [Tags]    tier:4    verify:llm    swebench
     ${instances}=    Load SWEBench Instances    split=${SWEBENCH_SPLIT}    max_instances=${MAX_INSTANCES}
+    ${failures}=    Create List
     FOR    ${instance}    IN    @{instances}
-        Run SWEBench Instance    ${instance}
+        ${status}=    Run Keyword And Return Status    Run SWEBench Instance    ${instance}
+        IF    not ${status}
+            Append To List    ${failures}    ${instance.instance_id}
+        END
+    END
+    ${fail_count}=    Get Length    ${failures}
+    IF    ${fail_count} > 0
+        ${fail_ids}=    Evaluate    ", ".join($failures)
+        Fail    ${fail_count} instance(s) failed: ${fail_ids}
     END
 
 *** Keywords ***
