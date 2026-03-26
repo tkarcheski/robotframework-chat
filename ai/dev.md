@@ -82,6 +82,12 @@ The `.env` file is loaded automatically by:
 | `GITLAB_PROJECT_ID` | Numeric project ID | (empty) | suite_config.py, pipeline_summary.py |
 | `GITLAB_TOKEN` | API token (`read_api` scope) | (empty) | ci/review.sh, ci/report.sh, pipeline_summary.py |
 
+### Hugging Face
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `HF_TOKEN` | API token (read-only access is sufficient) | (empty) | scripts/import_hf_dataset.py, huggingface_keywords, `datasets` lib |
+
 ### AI Code Review
 
 | Variable | Purpose | Default | Used By |
