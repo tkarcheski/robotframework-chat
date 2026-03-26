@@ -908,15 +908,16 @@ class TestDatabase:
                 elif HAS_SQLALCHEMY:
                     self._backend = _SQLAlchemyBackend(env_url)
                 else:
-                    raise RuntimeError(
-                        "SQLAlchemy is required for PostgreSQL. "
-                        "Install with: uv sync --extra superset"
+                    from .exceptions import MissingDependencyError
+
+                    raise MissingDependencyError(
+                        package="sqlalchemy",
+                        install_hint="uv sync --extra superset",
                     )
             else:
-                raise RuntimeError(
-                    "DATABASE_URL is not set and no db_path provided. "
-                    "Set DATABASE_URL or pass db_path explicitly."
-                )
+                from .exceptions import MissingEnvironmentError
+
+                raise MissingEnvironmentError(variable="DATABASE_URL")
 
     def add_test_run(self, run: TestRun) -> int:
         return self._backend.add_test_run(run)

@@ -8,20 +8,8 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .exceptions import OllamaModelNotFoundError, OllamaTimeoutError
 from .retry import retry_on_transient
-
-
-class OllamaModelNotFoundError(Exception):
-    """Raised when Ollama returns 404 for a model that is not pulled."""
-
-    def __init__(self, model: str, endpoint: str, detail: str = "") -> None:
-        self.model = model
-        self.endpoint = endpoint
-        hint = detail or f"model '{model}' not found"
-        super().__init__(
-            f"{hint}. Run `ollama pull {model}` to download it. "
-            f"(endpoint: {endpoint})"
-        )
 
 
 def _check_model_not_found(
@@ -369,9 +357,9 @@ class OllamaClient:
             time.sleep(poll_interval)
 
         elapsed = int(time.time() - start)
-        raise TimeoutError(
-            f"Ollama still busy after {elapsed}s. "
-            f"Running models: {[m.get('name', '?') for m in models]}"
+        raise OllamaTimeoutError(
+            elapsed=elapsed,
+            models=[m.get("name", "?") for m in models],
         )
 
 

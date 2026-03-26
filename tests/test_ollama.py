@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 import requests as req_lib
 
+from rfc.exceptions import OllamaTimeoutError
 from rfc.ollama import OllamaClient, LLMClient, OllamaModelNotFoundError
 
 
@@ -712,6 +713,10 @@ class TestModelNotFoundError:
         )
         assert "try pulling it first" in str(exc)
 
+    def test_robot_skip_attribute(self):
+        """OllamaModelNotFoundError has ROBOT_SKIP for RF integration."""
+        assert OllamaModelNotFoundError.ROBOT_SKIP is True
+
 
 class TestLLMClientAlias:
     def test_alias(self):
@@ -836,5 +841,5 @@ class TestWaitUntilReadyUnavailable:
         ]
 
         client = OllamaClient()
-        with pytest.raises(TimeoutError, match="still busy"):
+        with pytest.raises(OllamaTimeoutError, match="still busy"):
             client.wait_until_ready(timeout=5, poll_interval=1)
