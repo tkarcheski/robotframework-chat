@@ -187,6 +187,48 @@ class TestLLMKeywordsAskThinking:
         assert len(thinking_calls) == 0
 
 
+class TestLLMKeywordsHideThinking:
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_hide_thinking_default_true(self, MockGrader, mock_create):
+        """hide_thinking defaults to True."""
+        kw = LLMKeywords()
+        assert kw._hide_thinking is True
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_hide_thinking_strips_unclosed_tags(self, MockGrader, mock_create):
+        """With hide_thinking=True (default), unclosed <think> tags are stripped."""
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "<think>reasoning here"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        result = kw.ask_llm("test")
+        assert "<think>" not in result
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_hide_thinking_false_preserves_unclosed_tags(self, MockGrader, mock_create):
+        """With hide_thinking=False, unclosed <think> tags pass through."""
+        kw = LLMKeywords(hide_thinking=False)
+        kw.client.generate.return_value = "<think>reasoning here"
+        kw.client.last_metrics = None
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        result = kw.ask_llm("test")
+        assert "<think>" in result
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_hide_thinking_string_coercion(self, MockGrader, mock_create):
+        """Robot Framework passes all args as strings — 'True'/'False' must work."""
+        kw = LLMKeywords(hide_thinking="False")
+        assert kw._hide_thinking is False
+        kw2 = LLMKeywords(hide_thinking="True")
+        assert kw2._hide_thinking is True
+
+
 class TestLLMKeywordsSetParametersExtended:
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
