@@ -1223,9 +1223,7 @@ class TestCloseDefersOutputXmlCapture:
         listener._db = mock_db
 
         # Patch resolve_output_file so on_suite_end caches the path
-        with patch(
-            "rfc.db_listener.resolve_output_file", return_value=str(output_xml)
-        ):
+        with patch("rfc.db_listener.resolve_output_file", return_value=str(output_xml)):
             listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
             listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
 
@@ -1260,9 +1258,7 @@ class TestCloseDefersOutputXmlCapture:
         mock_db.add_test_run.return_value = 1
         listener._db = mock_db
 
-        with patch(
-            "rfc.db_listener.resolve_output_file", return_value=str(output_xml)
-        ):
+        with patch("rfc.db_listener.resolve_output_file", return_value=str(output_xml)):
             listener.start_suite(_mock_suite_data("Top"), _mock_suite_result())
             listener.end_suite(_mock_suite_data("Top"), _mock_suite_result(total=0))
 

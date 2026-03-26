@@ -62,9 +62,7 @@ class PatchResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.passed, bool):
-            raise TypeError(
-                f"passed must be a bool, got {type(self.passed).__name__}"
-            )
+            raise TypeError(f"passed must be a bool, got {type(self.passed).__name__}")
         if not isinstance(self.exit_code, int):
             raise TypeError(
                 f"exit_code must be an int, got {type(self.exit_code).__name__}"
