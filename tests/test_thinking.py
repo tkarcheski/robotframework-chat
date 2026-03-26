@@ -175,7 +175,7 @@ class TestExtractJson:
 
     def test_line_leading_think_in_normal_text_preserved(self) -> None:
         """Literal <think> at line start inside normal content is not stripped."""
-        text = 'Here is how to use it:\n<think> is a special tag\nEnd.'
+        text = "Here is how to use it:\n<think> is a special tag\nEnd."
         result = extract_json(text)
         # No JSON, no real thinking tag — original text returned unchanged
         assert "<think>" in result

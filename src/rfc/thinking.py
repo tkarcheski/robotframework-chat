@@ -18,9 +18,7 @@ _THINK_PATTERN = re.compile(
 # Only used as a last-resort fallback inside extract_json(), never in
 # parse_thinking(), to avoid silently truncating normal model output
 # that happens to contain a literal "<think>" token.
-_UNCLOSED_THINK_PATTERN = re.compile(
-    r"^\s*<(?:think|thinking)>([\s\S]*)$"
-)
+_UNCLOSED_THINK_PATTERN = re.compile(r"^\s*<(?:think|thinking)>([\s\S]*)$")
 
 
 def parse_thinking(text: str) -> tuple[str, Optional[str]]:

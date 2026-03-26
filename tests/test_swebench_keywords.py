@@ -51,9 +51,7 @@ class TestSWEBenchKeywordsInit:
 
 class TestLoadInstances:
     @patch("rfc.swebench_keywords._load_dataset")
-    def test_load_returns_swebench_instances(
-        self, mock_load: MagicMock
-    ) -> None:
+    def test_load_returns_swebench_instances(self, mock_load: MagicMock) -> None:
         mock_load.return_value = [_SAMPLE_DATASET_ROW, _SAMPLE_DATASET_ROW]
         kw = SWEBenchKeywords()
         instances = kw.load_swebench_instances(split="test", max_instances=2)
@@ -69,9 +67,7 @@ class TestLoadInstances:
         assert len(instances) == 5
 
     @patch("rfc.swebench_keywords._load_dataset")
-    def test_load_with_zero_max_returns_empty(
-        self, mock_load: MagicMock
-    ) -> None:
+    def test_load_with_zero_max_returns_empty(self, mock_load: MagicMock) -> None:
         mock_load.return_value = [_SAMPLE_DATASET_ROW] * 10
         kw = SWEBenchKeywords()
         instances = kw.load_swebench_instances(split="test", max_instances=0)
@@ -108,7 +104,10 @@ class TestApplyAndTestPatch:
 
         # Extract all shell commands executed in the container
         exec_calls = mock_cm.execute_command.call_args_list
-        commands = [c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "") for c in exec_calls]
+        commands = [
+            c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "")
+            for c in exec_calls
+        ]
         cmd_text = "\n".join(commands)
 
         # Must install git, clone repo, and checkout base_commit
@@ -117,9 +116,7 @@ class TestApplyAndTestPatch:
         assert "abc123def" in cmd_text
 
     @patch("rfc.swebench_keywords.ContainerManager")
-    def test_apply_patch_applies_test_patch(
-        self, mock_cm_cls: MagicMock
-    ) -> None:
+    def test_apply_patch_applies_test_patch(self, mock_cm_cls: MagicMock) -> None:
         """Container must apply instance.test_patch before the LLM patch."""
         mock_cm = MagicMock()
         mock_cm_cls.return_value = mock_cm
@@ -131,16 +128,17 @@ class TestApplyAndTestPatch:
         kw.apply_and_test_patch(instance, "llm-patch-content")
 
         exec_calls = mock_cm.execute_command.call_args_list
-        commands = [c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "") for c in exec_calls]
+        commands = [
+            c.args[1] if len(c.args) > 1 else c.kwargs.get("command", "")
+            for c in exec_calls
+        ]
         cmd_text = "\n".join(commands)
 
         # test_patch content must appear (written to container)
         assert "test_patch" in cmd_text or instance.test_patch in cmd_text
 
     @patch("rfc.swebench_keywords.ContainerManager")
-    def test_apply_patch_returns_patch_result(
-        self, mock_cm_cls: MagicMock
-    ) -> None:
+    def test_apply_patch_returns_patch_result(self, mock_cm_cls: MagicMock) -> None:
         mock_cm = MagicMock()
         mock_cm_cls.return_value = mock_cm
         mock_cm.create_container.return_value = "container-123"
@@ -211,7 +209,10 @@ class TestApplyAndTestPatch:
         result = kw.apply_and_test_patch(instance, "patch")
 
         assert result.passed is False
-        assert "clone" in result.test_output.lower() or "repository" in result.test_output.lower()
+        assert (
+            "clone" in result.test_output.lower()
+            or "repository" in result.test_output.lower()
+        )
 
     @patch("rfc.swebench_keywords.ContainerManager")
     def test_test_patch_failure_returns_early(self, mock_cm_cls: MagicMock) -> None:
@@ -232,7 +233,10 @@ class TestApplyAndTestPatch:
         result = kw.apply_and_test_patch(instance, "patch")
 
         assert result.passed is False
-        assert "test patch" in result.test_output.lower() or "patch" in result.test_output.lower()
+        assert (
+            "test patch" in result.test_output.lower()
+            or "patch" in result.test_output.lower()
+        )
 
     @patch("rfc.swebench_keywords.ContainerManager")
     def test_container_uses_root_user(self, mock_cm_cls: MagicMock) -> None:

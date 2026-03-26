@@ -66,9 +66,7 @@ class SWEBenchKeywords:
             List of SWEBenchInstance objects.
         """
         max_instances = int(max_instances)
-        logger.info(
-            f"Loading SWE-bench instances: split={split}, max={max_instances}"
-        )
+        logger.info(f"Loading SWE-bench instances: split={split}, max={max_instances}")
         rows = _load_dataset(_SWEBENCH_DATASET, split=split)
         instances = [SWEBenchInstance.from_dict(row) for row in rows[:max_instances]]
         logger.info(f"Loaded {len(instances)} SWE-bench instances")
@@ -161,8 +159,7 @@ class SWEBenchKeywords:
                     return PatchResult(
                         passed=False,
                         test_output=(
-                            f"Test patch apply failed: "
-                            f"{test_patch_result['stdout']}"
+                            f"Test patch apply failed: {test_patch_result['stdout']}"
                         ),
                         exit_code=test_patch_result["exit_code"],
                     )
@@ -184,7 +181,9 @@ class SWEBenchKeywords:
             )
 
             apply_result = cm.execute_command(
-                container_id, _PATCH_APPLY_CMD, workdir="/workspace",
+                container_id,
+                _PATCH_APPLY_CMD,
+                workdir="/workspace",
             )
             if apply_result["exit_code"] != 0:
                 logger.warn(
@@ -199,7 +198,9 @@ class SWEBenchKeywords:
 
             # --- Run the test suite -----------------------------------------
             test_result = cm.execute_command(
-                container_id, _TEST_RUN_CMD, timeout=300,
+                container_id,
+                _TEST_RUN_CMD,
+                timeout=300,
                 workdir="/workspace",
             )
             passed = test_result["exit_code"] == 0
@@ -232,6 +233,4 @@ class SWEBenchKeywords:
         emit_rfc_data("score", str(float(score)))
         emit_rfc_data("swebench_patch", patch)
         emit_rfc_data("grading_reason", reason)
-        logger.info(
-            f"[{instance_id}] score={score} | reason={reason}"
-        )
+        logger.info(f"[{instance_id}] score={score} | reason={reason}")
