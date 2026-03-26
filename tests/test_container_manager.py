@@ -29,7 +29,9 @@ class TestContainerManagerInit:
 
         from rfc.container_manager import ContainerManager
 
-        with pytest.raises(RuntimeError, match="Docker is not available"):
+        from rfc.exceptions import DockerNotAvailableError
+
+        with pytest.raises(DockerNotAvailableError, match="Docker is not available"):
             ContainerManager()
 
 

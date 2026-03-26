@@ -8,7 +8,22 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .exceptions import OllamaModelNotFoundError, OllamaTimeoutError
 from .retry import retry_on_transient
+
+
+def _check_model_not_found(
+    response: requests.Response, model: str, endpoint: str
+) -> None:
+    """Raise OllamaModelNotFoundError on 404, else call raise_for_status()."""
+    if response.status_code == 404:
+        detail = ""
+        try:
+            detail = response.json().get("error", "")
+        except Exception:
+            pass
+        raise OllamaModelNotFoundError(model, endpoint, detail)
+    response.raise_for_status()
 
 
 def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[float]:
@@ -150,7 +165,7 @@ class OllamaClient:
                 json=payload,
                 timeout=self.timeout,
             )
-            response.raise_for_status()
+            _check_model_not_found(response, self.model, self.base_url)
             data = response.json()
             text = data["response"].strip()
             self.last_metrics = _extract_metrics(data, self.model)
@@ -181,9 +196,11 @@ class OllamaClient:
                 json=payload,
                 timeout=30,
             )
-            response.raise_for_status()
+            _check_model_not_found(response, target, self.base_url)
             logger.info(f"Unloaded model: {target}")
             return True
+        except OllamaModelNotFoundError:
+            raise
         except Exception as exc:
             logger.warn(f"Failed to unload model {target}: {exc}")
             return False
@@ -340,9 +357,9 @@ class OllamaClient:
             time.sleep(poll_interval)
 
         elapsed = int(time.time() - start)
-        raise TimeoutError(
-            f"Ollama still busy after {elapsed}s. "
-            f"Running models: {[m.get('name', '?') for m in models]}"
+        raise OllamaTimeoutError(
+            elapsed=elapsed,
+            models=[m.get("name", "?") for m in models],
         )
 
 

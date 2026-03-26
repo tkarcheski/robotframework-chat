@@ -68,7 +68,9 @@ class TestCreateProvider:
         with patch.dict(os.environ, env, clear=True):
             # Ensure LLM_PROVIDER is still set
             os.environ["LLM_PROVIDER"] = "openai"
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            from rfc.exceptions import MissingProviderConfigError
+
+            with pytest.raises(MissingProviderConfigError, match="OPENAI_API_KEY"):
                 create_provider()
 
     def test_unknown_provider_raises(self):

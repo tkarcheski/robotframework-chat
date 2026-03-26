@@ -72,9 +72,10 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
 
         api_key = kwargs.pop("api_key", "") or os.getenv("OPENAI_API_KEY", "")
         if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable must be set "
-                "when using the OpenAI provider."
+            from .exceptions import MissingProviderConfigError
+
+            raise MissingProviderConfigError(
+                provider="openai", variable="OPENAI_API_KEY"
             )
         return OpenAIClient(api_key=api_key, **kwargs)
 

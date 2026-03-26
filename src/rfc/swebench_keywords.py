@@ -27,9 +27,11 @@ def _load_dataset(dataset: str, split: str) -> List[Dict[str, Any]]:
     try:
         from datasets import load_dataset  # type: ignore[import-untyped]
     except ImportError as e:
-        raise ImportError(
-            "The 'datasets' package is required for SWE-bench support. "
-            "Install with: uv pip install 'robotframework-chat[swebench]'"
+        from .exceptions import MissingDependencyError
+
+        raise MissingDependencyError(
+            package="datasets",
+            install_hint="uv pip install 'robotframework-chat[swebench]'",
         ) from e
     ds = load_dataset(dataset, split=split)
     return list(ds)

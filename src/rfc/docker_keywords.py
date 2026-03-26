@@ -128,7 +128,9 @@ class ConfigurableDockerKeywords:
                 except OSError:
                     continue
 
-        raise RuntimeError(f"No available port found in range {start_port}-{end_port}")
+        from rfc.exceptions import PortAllocationError
+
+        raise PortAllocationError(start_port=start_port, end_port=end_port)
 
     @keyword("Create Configurable Container")
     def create_configurable_container(

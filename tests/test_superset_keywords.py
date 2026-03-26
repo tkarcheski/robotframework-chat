@@ -40,7 +40,9 @@ class TestConnectToDatabase:
     def test_raises_when_no_database_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DATABASE_URL", raising=False)
         kw = SupersetKeywords()
-        with pytest.raises(RuntimeError, match="DATABASE_URL is not set"):
+        from rfc.exceptions import MissingEnvironmentError
+
+        with pytest.raises(MissingEnvironmentError, match="DATABASE_URL is not set"):
             kw.connect_to_database()
 
     @patch("rfc.superset_keywords.TestDatabase")

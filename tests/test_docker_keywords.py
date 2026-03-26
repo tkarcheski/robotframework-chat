@@ -111,7 +111,9 @@ class TestFindAvailablePort:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("localhost", 0))
             port = s.getsockname()[1]
-            with pytest.raises(RuntimeError, match="No available port"):
+            from rfc.exceptions import PortAllocationError
+
+            with pytest.raises(PortAllocationError, match="No available port"):
                 kw.find_available_port(start_port=port, end_port=port)
 
 

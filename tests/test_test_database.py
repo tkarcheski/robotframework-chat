@@ -189,7 +189,9 @@ class TestTestDatabase:
     ) -> None:
         """TestDatabase() with no args and no DATABASE_URL must raise."""
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        with pytest.raises(RuntimeError, match="DATABASE_URL is not set"):
+        from rfc.exceptions import MissingEnvironmentError
+
+        with pytest.raises(MissingEnvironmentError, match="DATABASE_URL is not set"):
             TestDatabase()
 
     def test_sqlite_url_creates_sqlite_backend(self, tmp_path: Path) -> None:

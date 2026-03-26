@@ -32,10 +32,9 @@ class SupersetKeywords:
         if self._db is None:
             database_url = os.environ.get("DATABASE_URL")
             if not database_url:
-                raise RuntimeError(
-                    "DATABASE_URL is not set. "
-                    "Set it in .env or export it in your shell."
-                )
+                from .exceptions import MissingEnvironmentError
+
+                raise MissingEnvironmentError(variable="DATABASE_URL")
             self._db = TestDatabase(database_url=database_url)
         return self._db
 

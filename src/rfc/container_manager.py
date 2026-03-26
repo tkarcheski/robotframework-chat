@@ -10,6 +10,7 @@ import docker
 from docker.errors import APIError, DockerException, NotFound
 
 from .docker_config import ContainerConfig, ContainerResources
+from .exceptions import DockerNotAvailableError
 
 
 class ContainerManager:
@@ -20,9 +21,7 @@ class ContainerManager:
             self.client = docker.from_env()
             self.client.ping()
         except DockerException as e:
-            raise RuntimeError(
-                "Docker is not available. Please ensure Docker is installed and running."
-            ) from e
+            raise DockerNotAvailableError() from e
 
         self._active_containers: Dict[str, Any] = {}
         self._temp_dirs: Dict[str, Path] = {}
