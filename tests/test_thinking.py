@@ -111,6 +111,21 @@ class TestParseThinking:
         assert clean == text
         assert thinking is None
 
+    def test_mixed_closed_and_unclosed_stripped(self) -> None:
+        """Truncated output: closed block followed by unclosed tag."""
+        text = "<think>reasoning 1</think><think>reasoning 2"
+        clean, thinking = parse_thinking(text, strip_unclosed=True)
+        assert "<think>" not in clean
+        assert "reasoning 1" in thinking
+        assert "reasoning 2" in thinking
+
+    def test_mixed_closed_and_unclosed_not_stripped_by_default(self) -> None:
+        """Without strip_unclosed, the unclosed tag leaks through."""
+        text = "<think>reasoning 1</think><think>reasoning 2"
+        clean, thinking = parse_thinking(text)
+        assert "<think>reasoning 2" in clean
+        assert thinking == "reasoning 1"
+
     def test_think_literal_inside_json_not_stripped(self) -> None:
         """Literal <think> inside a JSON value must not be treated as a tag."""
         text = '{"score": 1, "reason": "Model used <think> tags"}'
