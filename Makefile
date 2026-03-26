@@ -8,7 +8,8 @@
 #   Layer 3:    CI pipelines
 #   Layer 4:    Release & versioning
 
-COMPOSE  = $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })
+# Lazy-once: probe runs on first $(COMPOSE) expansion, then caches the result.
+COMPOSE = $(if $(_COMPOSE_CACHED),,$(eval _COMPOSE_CACHED := 1)$(eval _COMPOSE_VAL := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })))$(_COMPOSE_VAL)
 ROBOT    := uv run robot
 LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
