@@ -18,6 +18,19 @@ local models against established benchmarks like GSM8K, MMLU, TruthfulQA, and ot
 | HellaSwag | `Rowan/hellaswag` | New suite | 2+ (commonsense) |
 | HumanEval | `openai/openai_humaneval` | `robot/docker/python/` | 4 (code exec) |
 
+## Authentication
+
+The `datasets` library automatically picks up the `HF_TOKEN` environment variable.
+Set it in your `.env` file (see `.env.example`).
+
+| Scenario | Token required? | Permission needed |
+|----------|----------------|-------------------|
+| Public datasets (GSM8K, MMLU, TruthfulQA, etc.) | Optional (avoids rate limits) | Read |
+| Gated models/datasets (Llama 3, etc.) | Yes | Read + accept model license on HF |
+| Uploading or publishing | N/A (not used in this project) | Write |
+
+Create a token at: https://huggingface.co/settings/tokens — select **Read** access.
+
 ## Approach A: Static Import (Recommended for Deterministic Tests)
 
 Best for tier:0/tier:1 tests where answers are known and fixed (e.g., GSM8K math).
