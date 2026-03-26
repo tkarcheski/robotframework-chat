@@ -50,7 +50,9 @@ def parse_thinking(
     clean = _THINK_PATTERN.sub("", text)
 
     # Optionally strip unclosed <think>/<thinking> at the start of the text.
-    if strip_unclosed and not blocks:
+    # Runs even when closed blocks were found — truncated mixed output like
+    # <think>reasoning 1</think><think>reasoning 2  must also be cleaned.
+    if strip_unclosed:
         unclosed = _UNCLOSED_THINK_PATTERN.match(clean)
         if unclosed:
             inner = unclosed.group(1).strip()
