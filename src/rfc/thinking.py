@@ -21,15 +21,21 @@ _THINK_PATTERN = re.compile(
 _UNCLOSED_THINK_PATTERN = re.compile(r"^\s*<(?:think|thinking)>([\s\S]*)$")
 
 
-def parse_thinking(text: str) -> tuple[str, Optional[str]]:
+def parse_thinking(
+    text: str, *, strip_unclosed: bool = False
+) -> tuple[str, Optional[str]]:
     """Separate thinking content from the answer.
 
-    Only handles properly closed ``<think>...</think>`` and
-    ``<thinking>...</thinking>`` tags.  Unclosed tags are **not** stripped
-    here to avoid false positives when content merely mentions these tokens.
+    Handles properly closed ``<think>...</think>`` and
+    ``<thinking>...</thinking>`` tags.  When *strip_unclosed* is ``True``,
+    also strips unclosed ``<think>``/``<thinking>`` tags that appear at the
+    start of the response (common with reasoning models like qwen3/deepseek).
 
     Args:
         text: Raw LLM response that may contain thinking tags.
+        strip_unclosed: When ``True``, also strip unclosed thinking tags
+            that start the response.  Default ``False`` for backward
+            compatibility.
 
     Returns:
         A tuple of ``(clean_answer, thinking_text)``.
@@ -42,6 +48,15 @@ def parse_thinking(text: str) -> tuple[str, Optional[str]]:
             blocks.append(content)
 
     clean = _THINK_PATTERN.sub("", text)
+
+    # Optionally strip unclosed <think>/<thinking> at the start of the text.
+    if strip_unclosed and not blocks:
+        unclosed = _UNCLOSED_THINK_PATTERN.match(clean)
+        if unclosed:
+            inner = unclosed.group(1).strip()
+            if inner:
+                blocks.append(inner)
+            clean = ""
 
     thinking: Optional[str] = None
     if blocks:
