@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 import requests as req_lib
 
-from rfc.ollama import OllamaClient, LLMClient
+from rfc.ollama import OllamaClient, LLMClient, OllamaModelNotFoundError
 
 
 class TestOllamaClientInit:
@@ -640,6 +640,77 @@ class TestUnloadModel:
         client = OllamaClient()
         result = client.unload_model()
         assert result is False
+
+
+class TestModelNotFoundError:
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_generate_404_raises_model_not_found(self, mock_post, mock_logger):
+        """404 with JSON error body raises OllamaModelNotFoundError."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_resp.json.return_value = {
+            "error": "model 'phi4:14b' not found, try pulling it first"
+        }
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="phi4:14b")
+        with pytest.raises(OllamaModelNotFoundError, match="ollama pull phi4:14b"):
+            client.generate("test")
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_generate_404_no_json_body(self, mock_post, mock_logger):
+        """404 with unparseable body still raises OllamaModelNotFoundError."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_resp.json.side_effect = ValueError("No JSON")
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="phi4:14b")
+        with pytest.raises(OllamaModelNotFoundError, match="phi4:14b"):
+            client.generate("test")
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_unload_404_raises_model_not_found(self, mock_post, mock_logger):
+        """unload_model() 404 raises OllamaModelNotFoundError."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_resp.json.return_value = {"error": "model 'llama3' not found"}
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="llama3")
+        with pytest.raises(OllamaModelNotFoundError, match="ollama pull llama3"):
+            client.unload_model()
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_generate_500_raises_plain_http_error(self, mock_post, mock_logger):
+        """Non-404 HTTP errors still raise plain HTTPError."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.raise_for_status.side_effect = req_lib.HTTPError("500 Server Error")
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient()
+        with pytest.raises(req_lib.HTTPError):
+            client.generate("test")
+
+    def test_exception_attributes(self):
+        """OllamaModelNotFoundError stores model and endpoint."""
+        exc = OllamaModelNotFoundError("phi4:14b", "http://localhost:11434")
+        assert exc.model == "phi4:14b"
+        assert exc.endpoint == "http://localhost:11434"
+        assert "ollama pull phi4:14b" in str(exc)
+
+    def test_exception_with_detail(self):
+        """OllamaModelNotFoundError uses Ollama's detail when available."""
+        exc = OllamaModelNotFoundError(
+            "phi4:14b", "http://localhost:11434",
+            detail="model 'phi4:14b' not found, try pulling it first",
+        )
+        assert "try pulling it first" in str(exc)
 
 
 class TestLLMClientAlias:
