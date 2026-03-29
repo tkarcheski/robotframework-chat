@@ -16,10 +16,20 @@ class LLMKeywords:
     Robot Framework keywords for testing LLMs.
     """
 
-    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
+    def __init__(
+        self,
+        timeout: Optional[int] = None,
+        max_retries: int = 2,
+        hide_thinking: bool = True,
+    ):
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
         self.grader = Grader(self.client)
+        self._hide_thinking: bool = (
+            hide_thinking.lower() not in ("false", "0", "no")
+            if isinstance(hide_thinking, str)
+            else bool(hide_thinking)
+        )
 
     @keyword("Set LLM Endpoint")
     def set_llm_endpoint(self, endpoint: str):
@@ -69,7 +79,9 @@ class LLMKeywords:
     def ask_llm(self, prompt: str) -> str:
         logger.info(prompt)
         raw_response = self.client.generate(prompt)
-        clean_answer, thinking_text = parse_thinking(raw_response)
+        clean_answer, thinking_text = parse_thinking(
+            raw_response, strip_unclosed=self._hide_thinking
+        )
         logger.info(clean_answer)
         emit_rfc_data("actual_answer", clean_answer)
         if thinking_text is not None:

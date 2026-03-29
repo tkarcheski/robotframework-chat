@@ -70,18 +70,61 @@ class TestParseThinking:
         assert clean == "Result."
         assert thinking == "What about {json} and [arrays]?"
 
-    def test_unclosed_think_tag_not_stripped(self) -> None:
-        """parse_thinking only handles closed tags; unclosed tags pass through."""
+    def test_unclosed_think_tag_not_stripped_by_default(self) -> None:
+        """parse_thinking only handles closed tags by default; unclosed pass through."""
         text = "<think>reasoning with no closing tag"
         clean, thinking = parse_thinking(text)
         assert clean == text  # unchanged — unclosed tag not touched
         assert thinking is None
 
-    def test_unclosed_thinking_tag_not_stripped(self) -> None:
+    def test_unclosed_thinking_tag_not_stripped_by_default(self) -> None:
         text = "<thinking>reasoning with no closing tag"
         clean, thinking = parse_thinking(text)
         assert clean == text
         assert thinking is None
+
+    def test_unclosed_think_tag_stripped_when_strip_unclosed(self) -> None:
+        """strip_unclosed=True removes unclosed <think> at start of response."""
+        text = "<think>reasoning with no closing tag"
+        clean, thinking = parse_thinking(text, strip_unclosed=True)
+        assert clean == ""
+        assert thinking == "reasoning with no closing tag"
+
+    def test_unclosed_thinking_tag_stripped_when_strip_unclosed(self) -> None:
+        text = "<thinking>reasoning with no closing tag"
+        clean, thinking = parse_thinking(text, strip_unclosed=True)
+        assert clean == ""
+        assert thinking == "reasoning with no closing tag"
+
+    def test_unclosed_think_with_answer_after(self) -> None:
+        """Unclosed <think> followed by actual answer content."""
+        text = "<think>let me reason\nstep 1\nstep 2\n</think>The answer is 42."
+        # This is actually a closed tag, should work with or without strip_unclosed
+        clean, thinking = parse_thinking(text, strip_unclosed=True)
+        assert clean.strip() == "The answer is 42."
+        assert "step 1" in thinking
+
+    def test_strip_unclosed_false_preserves_default_behavior(self) -> None:
+        """Explicit strip_unclosed=False behaves like the default."""
+        text = "<think>unclosed reasoning"
+        clean, thinking = parse_thinking(text, strip_unclosed=False)
+        assert clean == text
+        assert thinking is None
+
+    def test_mixed_closed_and_unclosed_stripped(self) -> None:
+        """Truncated output: closed block followed by unclosed tag."""
+        text = "<think>reasoning 1</think><think>reasoning 2"
+        clean, thinking = parse_thinking(text, strip_unclosed=True)
+        assert "<think>" not in clean
+        assert "reasoning 1" in thinking
+        assert "reasoning 2" in thinking
+
+    def test_mixed_closed_and_unclosed_not_stripped_by_default(self) -> None:
+        """Without strip_unclosed, the unclosed tag leaks through."""
+        text = "<think>reasoning 1</think><think>reasoning 2"
+        clean, thinking = parse_thinking(text)
+        assert "<think>reasoning 2" in clean
+        assert thinking == "reasoning 1"
 
     def test_think_literal_inside_json_not_stripped(self) -> None:
         """Literal <think> inside a JSON value must not be treated as a tag."""

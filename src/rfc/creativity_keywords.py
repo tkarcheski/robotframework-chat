@@ -35,12 +35,22 @@ _RETRY_HINTS = [
 class CreativityKeywords:
     """Robot Framework keywords for testing LLM creativity and humor."""
 
-    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2) -> None:
+    def __init__(
+        self,
+        timeout: Optional[int] = None,
+        max_retries: int = 2,
+        hide_thinking: bool = True,
+    ) -> None:
         timeout = resolve_timeout(timeout)
         self.client: Any = create_provider(
             timeout=timeout, max_retries=int(max_retries)
         )
         self.creativity_grader = CreativityGrader(self.client)
+        self._hide_thinking: bool = (
+            hide_thinking.lower() not in ("false", "0", "no")
+            if isinstance(hide_thinking, str)
+            else bool(hide_thinking)
+        )
 
     @keyword("Ask For Joke")
     def ask_for_joke(self, prompt: str, max_tokens: int = 512) -> str:
@@ -65,7 +75,9 @@ class CreativityKeywords:
 
         try:
             raw_response = self.client.generate(prompt)
-            clean_answer, thinking_text = parse_thinking(raw_response)
+            clean_answer, thinking_text = parse_thinking(
+                raw_response, strip_unclosed=self._hide_thinking
+            )
             logger.info(f"Joke response: {clean_answer}")
             emit_rfc_data("joke_response", clean_answer)
             emit_rfc_data("actual_answer", clean_answer)
@@ -94,7 +106,9 @@ class CreativityKeywords:
         logger.info(f"Conversation prompt:\n{prompt}")
 
         raw_response = self.client.generate(prompt)
-        clean_answer, thinking_text = parse_thinking(raw_response)
+        clean_answer, thinking_text = parse_thinking(
+            raw_response, strip_unclosed=self._hide_thinking
+        )
         logger.info(f"Conversation response: {clean_answer}")
         emit_rfc_data("conversation_response", clean_answer)
         emit_rfc_data("actual_answer", clean_answer)
