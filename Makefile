@@ -11,6 +11,7 @@
 # Lazy-once: probe runs on first $(COMPOSE) expansion, then caches the result.
 COMPOSE = $(if $(_COMPOSE_CACHED),,$(eval _COMPOSE_CACHED := 1)$(eval _COMPOSE_VAL := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })))$(_COMPOSE_VAL)
 ROBOT    := uv run robot
+VERSION  := $(shell uv run python -c "from rfc import __version__; print(__version__)")
 LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
@@ -72,39 +73,39 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
-	$(ROBOT) -d results/math $(LISTENER) robot/math/tests/
+	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) robot/math/tests/
 
 robot-accounting: ## Run accounting tests (Robot Framework)
-	$(ROBOT) -d results/accounting $(LISTENER) robot/accounting/tests/
+	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) robot/accounting/tests/
 
 robot-docker: ## Run Docker tests (Robot Framework)
-	$(ROBOT) -d results/docker $(LISTENER) robot/docker/
+	$(ROBOT) -d results/$(VERSION)/docker $(LISTENER) robot/docker/
 
 robot-safety: ## Run safety tests (Robot Framework)
-	$(ROBOT) -d results/safety $(LISTENER) robot/safety/
+	$(ROBOT) -d results/$(VERSION)/safety $(LISTENER) robot/safety/
 
 robot-bash: ## Run bash scripting tests (Robot Framework)
-	$(ROBOT) -d results/bash $(LISTENER) robot/docker/bash/
+	$(ROBOT) -d results/$(VERSION)/bash $(LISTENER) robot/docker/bash/
 
 robot-c: ## Run C programming tests (Robot Framework)
-	$(ROBOT) -d results/c $(LISTENER) robot/docker/c/
+	$(ROBOT) -d results/$(VERSION)/c $(LISTENER) robot/docker/c/
 
 robot-rust: ## Run Rust programming tests (Robot Framework)
-	$(ROBOT) -d results/rust $(LISTENER) robot/docker/rust/
+	$(ROBOT) -d results/$(VERSION)/rust $(LISTENER) robot/docker/rust/
 
 robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
-	$(ROBOT) -d results/superset $(LISTENER) robot/superset/tests/
+	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) robot/superset/tests/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
-	$(ROBOT) -d results/swebench $(LISTENER) robot/swebench/
+	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) robot/swebench/
 
 swebench-discover: ## List available SWE-bench instances
 	uv run python scripts/run_swebench.py --discover
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
-	$(ROBOT) --dryrun --exclude browser -d results/dryrun $(DRYRUN_LISTENER) robot/
+	$(ROBOT) --dryrun --exclude browser -d results/$(VERSION)/dryrun $(DRYRUN_LISTENER) robot/
 
 robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 	uv run python scripts/robot_review.py
@@ -112,11 +113,11 @@ robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
 
-rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/math results/docker"
+rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/1.5.4/math results/1.5.4/docker"
 	uv run python -m rfc.rebot_merger $(DIRS)
 
-rebot-merge-all: ## Merge all output.xml in results/
-	uv run python -m rfc.rebot_merger results/
+rebot-merge-all: ## Merge all output.xml in results/$(VERSION)/
+	uv run python -m rfc.rebot_merger results/$(VERSION)/
 
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
