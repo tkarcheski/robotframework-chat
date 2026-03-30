@@ -10,6 +10,7 @@ from robot.api import logger
 from robot.api.deco import keyword
 
 from .creativity_grader import CreativityGrader
+from .exceptions import EmptyLLMResponseError
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 from .thinking import parse_thinking
@@ -221,6 +222,17 @@ class CreativityKeywords:
 
         emit_rfc_data("token_retry_count", str(retries_used))
         emit_rfc_data("token_retry_max_tokens", str(current_max_tokens))
+
+        if not joke.strip():
+            logger.info(
+                f"LLM returned empty joke — skipping "
+                f"(max_tokens={current_max_tokens})"
+            )
+            raise EmptyLLMResponseError(
+                model=getattr(self.client, "model", "unknown"),
+                prompt_snippet=prompt[:80],
+            )
+
         logger.info(
             f"Joke grading failed after {retries_used} retries "
             f"(final max_tokens={current_max_tokens})"
