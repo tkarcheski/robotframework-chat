@@ -26,6 +26,7 @@ export
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
         robot-swebench swebench-discover \
         send-results \
+        retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
         robot-autopilot \
@@ -112,6 +113,29 @@ robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 
 send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
 	bash ci/send_results.sh
+
+retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfailed
+	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
+		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
+		echo "==> Retrying failed tests from $$xml"; \
+		$(ROBOT) -d results/$(VERSION)/$$suite_dir \
+			--rerunfailed $$xml \
+			$(LISTENER) \
+			robot/$$suite_dir/tests/ || true; \
+	done
+
+retry-skipped: ## Re-run skipped tests from results/$(VERSION)/
+	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
+		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
+		test_args=$$(uv run python -m rfc.rerun_skipped "$$xml"); \
+		if [ -n "$$test_args" ]; then \
+			echo "==> Retrying skipped tests from $$xml"; \
+			$(ROBOT) -d results/$(VERSION)/$$suite_dir \
+				$$test_args \
+				$(LISTENER) \
+				robot/$$suite_dir/tests/ || true; \
+		fi; \
+	done
 
 rebot-merge: ## Merge output.xml files: make rebot-merge DIRS="results/1.5.4/math results/1.5.4/docker"
 	uv run python -m rfc.rebot_merger $(DIRS)
