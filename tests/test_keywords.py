@@ -4,6 +4,9 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from rfc.exceptions import EmptyLLMResponseError
 from rfc.keywords import LLMKeywords
 from rfc.ollama import OllamaClient
 
@@ -385,12 +388,13 @@ class TestAskAndGradeWithRetry:
 
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
-    def test_no_retry_on_empty_response(self, MockGrader, mock_create):
-        """Empty responses should NOT trigger retry (it's not a token issue)."""
+    def test_skips_on_empty_response(self, MockGrader, mock_create):
+        """Empty responses should SKIP (not fail) — consistent with timeouts."""
         kw = LLMKeywords()
         kw.client.max_tokens = 256
         kw.client.num_ctx = None
         kw.client.last_metrics = None
+        kw.client.model = "test-model"
 
         kw.client.generate.return_value = ""
         fail = MagicMock()
@@ -398,8 +402,9 @@ class TestAskAndGradeWithRetry:
         fail.reason = "empty"
         kw.grader.grade.return_value = fail
 
-        score, reason, answer = kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
-        assert score == 0.0
+        with pytest.raises(EmptyLLMResponseError) as exc_info:
+            kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
+        assert exc_info.value.ROBOT_SKIP is True
         assert kw.client.generate.call_count == 1
         assert kw.client.max_tokens == 256
 

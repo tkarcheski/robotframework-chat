@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from robot.api import logger
 from robot.api.deco import keyword
 
+from .exceptions import EmptyLLMResponseError
 from .grader import Grader
 from .llm_client import create_provider, resolve_timeout
 from .ollama import OllamaClient
@@ -184,11 +185,22 @@ class LLMKeywords:
                 )
                 continue
 
-            # Empty response or exhausted retries — return failure
+            # Empty response or exhausted retries
             break
 
         emit_rfc_data("token_retry_count", str(retries_used))
         emit_rfc_data("token_retry_max_tokens", str(self.client.max_tokens))
+
+        if not answer.strip():
+            logger.info(
+                f"LLM returned empty response — skipping "
+                f"(max_tokens={self.client.max_tokens})"
+            )
+            raise EmptyLLMResponseError(
+                model=getattr(self.client, "model", "unknown"),
+                prompt_snippet=prompt[:80],
+            )
+
         logger.info(
             f"Grading failed after {retries_used} retries "
             f"(final max_tokens={self.client.max_tokens}, "

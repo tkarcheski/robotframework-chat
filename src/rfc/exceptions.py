@@ -36,6 +36,19 @@ class OllamaModelNotFoundError(RFCSkipError):
         )
 
 
+class EmptyLLMResponseError(RFCSkipError):
+    """Raised when the LLM returns an empty / no-token response."""
+
+    def __init__(self, model: str, prompt_snippet: str = "") -> None:
+        self.model = model
+        self.prompt_snippet = prompt_snippet
+        snippet = f" for prompt: {prompt_snippet!r}" if prompt_snippet else ""
+        super().__init__(
+            f"LLM returned an empty response (model={model}){snippet}. "
+            f"Marking test as skipped."
+        )
+
+
 class OllamaTimeoutError(RFCSkipError):
     """Raised when Ollama stays busy or unavailable past the timeout."""
 

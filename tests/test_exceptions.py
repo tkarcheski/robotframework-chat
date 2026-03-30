@@ -2,6 +2,7 @@
 
 from rfc.exceptions import (
     DockerNotAvailableError,
+    EmptyLLMResponseError,
     MissingDependencyError,
     MissingEnvironmentError,
     MissingProviderConfigError,
@@ -49,6 +50,25 @@ class TestOllamaTimeoutError:
         assert exc.elapsed == 120
         assert exc.models == ["llama3"]
         assert "120" in str(exc)
+        assert "llama3" in str(exc)
+
+
+class TestEmptyLLMResponseError:
+    def test_inherits_skip(self) -> None:
+        assert issubclass(EmptyLLMResponseError, RFCSkipError)
+        assert EmptyLLMResponseError.ROBOT_SKIP is True
+
+    def test_attributes(self) -> None:
+        exc = EmptyLLMResponseError(model="phi4:14b", prompt_snippet="Tell me a joke")
+        assert exc.model == "phi4:14b"
+        assert exc.prompt_snippet == "Tell me a joke"
+        assert "phi4:14b" in str(exc)
+        assert "empty response" in str(exc).lower()
+
+    def test_without_snippet(self) -> None:
+        exc = EmptyLLMResponseError(model="llama3")
+        assert exc.model == "llama3"
+        assert exc.prompt_snippet == ""
         assert "llama3" in str(exc)
 
 

@@ -2,7 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from rfc.creativity_keywords import CreativityKeywords
+from rfc.exceptions import EmptyLLMResponseError
 
 
 class TestCreativityKeywords:
@@ -239,9 +242,10 @@ class TestCreativityKeywords:
         mock_emit.assert_any_call("actual_answer", "Your name is Alice!")
 
     @patch("rfc.creativity_keywords.create_provider")
-    def test_ask_and_grade_joke_empty_response_no_retry(
+    def test_ask_and_grade_joke_skips_on_empty_response(
         self, mock_create: MagicMock
     ) -> None:
+        """Empty joke response should SKIP — consistent with timeouts."""
         mock_client = MagicMock()
         mock_client.generate.side_effect = [
             "",
@@ -251,11 +255,11 @@ class TestCreativityKeywords:
         mock_client.max_tokens = 256
         mock_client.last_metrics = None
         mock_client.num_ctx = None
+        mock_client.model = "test-model"
         mock_create.return_value = mock_client
         kw = CreativityKeywords()
-        score, reason, joke = kw.ask_and_grade_joke_with_retry(
-            "Tell me a joke", "humor"
-        )
-        assert score == 0.0
+        with pytest.raises(EmptyLLMResponseError) as exc_info:
+            kw.ask_and_grade_joke_with_retry("Tell me a joke", "humor")
+        assert exc_info.value.ROBOT_SKIP is True
         # Only 2 generate calls (joke + grade), no retry
         assert mock_client.generate.call_count == 2
