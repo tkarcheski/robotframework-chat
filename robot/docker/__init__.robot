@@ -14,10 +14,10 @@ Verify Docker Setup
     ...    Fails the suite with a diagnostic message if any check fails.
     ${result}=    Docker.Check Docker Setup
     IF    not ${result}[docker_cli]
-        Fail    Docker CLI is not installed or not on PATH. Install Docker: https://docs.docker.com/get-docker/
+        Skip    Docker CLI is not installed or not on PATH. Install Docker: https://docs.docker.com/get-docker/
     END
     IF    not ${result}[daemon_running]
-        Fail    Docker daemon is not running. Please start Docker and try again.
+        Skip    Docker daemon is not running. Please start Docker and try again.
     END
     Log    Docker setup OK: v${result}[docker_version] (API v${result}[api_version]) at ${result}[docker_cli_path]
 
