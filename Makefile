@@ -117,23 +117,27 @@ send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* e
 retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfailed
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
 		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
-		echo "==> Retrying failed tests from $$xml"; \
+		src_dir="robot/$$suite_dir/tests"; \
+		[ -d "$$src_dir" ] || src_dir="robot/$$suite_dir"; \
+		echo "==> Retrying failed tests from $$xml (source: $$src_dir)"; \
 		$(ROBOT) -d results/$(VERSION)/$$suite_dir \
 			--rerunfailed $$xml \
 			$(LISTENER) \
-			robot/$$suite_dir/tests/ || true; \
+			$$src_dir || true; \
 	done
 
 retry-skipped: ## Re-run skipped tests from results/$(VERSION)/
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
 		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
-		test_args=$$(uv run python -m rfc.rerun_skipped "$$xml"); \
+		src_dir="robot/$$suite_dir/tests"; \
+		[ -d "$$src_dir" ] || src_dir="robot/$$suite_dir"; \
+		test_args=$$(uv run python -m rfc.rerun_skipped -0 "$$xml"); \
 		if [ -n "$$test_args" ]; then \
-			echo "==> Retrying skipped tests from $$xml"; \
-			$(ROBOT) -d results/$(VERSION)/$$suite_dir \
-				$$test_args \
+			echo "==> Retrying skipped tests from $$xml (source: $$src_dir)"; \
+			printf '%s' "$$test_args" | xargs -0 \
+				$(ROBOT) -d results/$(VERSION)/$$suite_dir \
 				$(LISTENER) \
-				robot/$$suite_dir/tests/ || true; \
+				$$src_dir || true; \
 		fi; \
 	done
 

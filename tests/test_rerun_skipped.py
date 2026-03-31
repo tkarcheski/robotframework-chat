@@ -162,3 +162,33 @@ class TestMain:
         captured = capsys.readouterr()
         lines = captured.out.strip().split("\n")
         assert lines == ["--test", "Suite.Skip A", "--test", "Suite.Skip B"]
+
+    def test_print0_null_delimited(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        xml = tmp_path / "output.xml"
+        xml.write_text(MIXED_OUTPUT_XML)
+        monkeypatch.setattr("sys.argv", ["rerun_skipped", "-0", str(xml)])
+        main()
+        captured = capsys.readouterr()
+        assert captured.out == "--test\0Example.Skipped Test\0"
+
+    def test_print0_multiple(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        xml = tmp_path / "output.xml"
+        xml.write_text(MULTI_SKIPPED_XML)
+        monkeypatch.setattr("sys.argv", ["rerun_skipped", "--print0", str(xml)])
+        main()
+        captured = capsys.readouterr()
+        assert captured.out == "--test\0Suite.Skip A\0--test\0Suite.Skip B\0"
+
+    def test_print0_no_skipped(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        xml = tmp_path / "output.xml"
+        xml.write_text(ALL_PASS_OUTPUT_XML)
+        monkeypatch.setattr("sys.argv", ["rerun_skipped", "-0", str(xml)])
+        main()
+        captured = capsys.readouterr()
+        assert captured.out == ""
