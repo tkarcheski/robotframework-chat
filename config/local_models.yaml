@@ -139,6 +139,11 @@ test_suites:
     description: "Format compliance: structured output, length, and negative constraints"
     timeout_seconds: 300
 
+  - name: "gaia"
+    path: "robot/gaia/tests/"
+    description: "GAIA-style tool-use tests for LLM tool selection and invocation"
+    timeout_seconds: 300
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"
