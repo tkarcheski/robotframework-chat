@@ -225,8 +225,7 @@ class CreativityKeywords:
 
         if not joke.strip():
             logger.info(
-                f"LLM returned empty joke — skipping "
-                f"(max_tokens={current_max_tokens})"
+                f"LLM returned empty joke — skipping (max_tokens={current_max_tokens})"
             )
             raise EmptyLLMResponseError(
                 model=getattr(self.client, "model", "unknown"),

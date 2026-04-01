@@ -34,7 +34,8 @@ class TestOllamaModelNotFoundError:
 
     def test_with_detail(self) -> None:
         exc = OllamaModelNotFoundError(
-            "phi4:14b", "http://localhost:11434",
+            "phi4:14b",
+            "http://localhost:11434",
             detail="model 'phi4:14b' not found, try pulling it first",
         )
         assert "try pulling it first" in str(exc)
