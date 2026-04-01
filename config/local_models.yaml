@@ -134,6 +134,11 @@ test_suites:
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
     timeout_seconds: 600
 
+  - name: "format"
+    path: "robot/format/tests/"
+    description: "Format compliance: structured output, length, and negative constraints"
+    timeout_seconds: 300
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"

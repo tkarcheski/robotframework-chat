@@ -162,6 +162,11 @@ test_suites:
     path: "robot/bias/tests"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
 
+  format:
+    label: "Format Compliance"
+    path: "robot/format/tests"
+    description: "Structured output validation, length compliance, and negative constraint following"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
