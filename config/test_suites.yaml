@@ -137,6 +137,11 @@ test_suites:
     path: "robot/creativity/tests"
     description: "LLM humor, joke creation, context awareness, and creative judging"
 
+  multi-turn:
+    label: "Multi-Turn Conversation"
+    path: "robot/multi_turn/tests"
+    description: "Context retention, instruction-following drift, and topic handoff isolation"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
@@ -235,6 +240,11 @@ ci:
     robot-creativity-tests:
       path: "robot/creativity/"
       output_dir: "results/creativity"
+      tags: ["ollama"]
+
+    robot-multi-turn-tests:
+      path: "robot/multi_turn/"
+      output_dir: "results/multi_turn"
       tags: ["ollama"]
 
     robot-swebench-tests:

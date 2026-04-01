@@ -1,0 +1,60 @@
+# Instruction-following drift scenarios.
+#
+# Each scenario sets a constraint via a system prompt, then sends 10 user
+# turns on varied topics.  The test scores how many LLM responses comply
+# with the constraint — drift should remain below a threshold.
+
+INSTRUCTION_DRIFT_SCENARIOS:
+  - id: 1
+    name: "Bullet Points Only"
+    constraint: "Respond only in bullet points. Every line of your response must start with a bullet point marker (-, *, or a bullet character)."
+    turns:
+      - role: system
+        content: "You must respond only in bullet points. Every line of your response must start with a bullet point marker (-, *, or a bullet character). Do not use paragraphs or full sentences outside of bullet points."
+      - role: user
+        content: "What are three benefits of regular exercise?"
+      - role: user
+        content: "Tell me about the history of the internet."
+      - role: user
+        content: "What should I cook for dinner tonight?"
+      - role: user
+        content: "Explain how photosynthesis works."
+      - role: user
+        content: "What are some tips for better sleep?"
+      - role: user
+        content: "Describe the water cycle."
+      - role: user
+        content: "What programming language should a beginner learn?"
+      - role: user
+        content: "Tell me about the solar system."
+      - role: user
+        content: "What are the main causes of climate change?"
+      - role: user
+        content: "How do I improve my public speaking skills?"
+
+  - id: 2
+    name: "Numbered Lists Only"
+    constraint: "Respond only with numbered lists. Each item must start with a number followed by a period (e.g. 1. 2. 3.)."
+    turns:
+      - role: system
+        content: "You must respond only with numbered lists. Each item must start with a number followed by a period. Do not use prose, paragraphs, or bullet points."
+      - role: user
+        content: "What are five things to do in New York City?"
+      - role: user
+        content: "Explain the steps to change a car tire."
+      - role: user
+        content: "What are the planets in our solar system?"
+      - role: user
+        content: "List some healthy breakfast options."
+      - role: user
+        content: "What are the key events of World War II?"
+      - role: user
+        content: "How do I start a small business?"
+      - role: user
+        content: "What are common types of renewable energy?"
+      - role: user
+        content: "Describe the process of making coffee."
+      - role: user
+        content: "What are popular dog breeds?"
+      - role: user
+        content: "How does a computer processor work?"

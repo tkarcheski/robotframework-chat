@@ -109,6 +109,11 @@ test_suites:
     description: "LLM humor, joke creation, context awareness, and creative judging"
     timeout_seconds: 600
 
+  - name: "multi-turn"
+    path: "robot/multi_turn/tests/"
+    description: "Context retention, instruction-following drift, and topic handoff isolation"
+    timeout_seconds: 600
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"
