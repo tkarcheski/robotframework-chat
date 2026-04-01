@@ -94,13 +94,15 @@ class MultiTurnKeywords:
             # User turn — add to history
             history.append({"role": "user", "content": content})
 
-            # Check if next turn is a scripted assistant turn
-            next_is_scripted = (
-                i + 1 < len(turns)
-                and turns[i + 1].get("role", "user") == "assistant"
+            # Skip generation when the next turn is scripted (assistant)
+            # or a system instruction — only generate when the next turn
+            # is another user turn or this is the last turn.
+            next_role = (
+                turns[i + 1].get("role", "user") if i + 1 < len(turns) else None
             )
+            should_generate = next_role not in ("assistant", "system")
 
-            if not next_is_scripted:
+            if should_generate:
                 # Generate LLM response
                 response = self._generate_response(history)
                 logger.info(f"Turn {i + 1} response: {response}")
@@ -227,7 +229,11 @@ class MultiTurnKeywords:
         window_start = int(window_start)
         post_switch = responses[window_start:]
         if not post_switch:
-            return 1.0, "No post-switch responses to evaluate"
+            raise ValueError(
+                f"window_start={window_start} is beyond the "
+                f"{len(responses)} available responses — no post-switch "
+                f"turns to evaluate. Check scenario configuration."
+            )
 
         scores: List[float] = []
         per_turn: List[str] = []

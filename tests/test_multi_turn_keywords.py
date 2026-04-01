@@ -89,6 +89,28 @@ class TestRunMultiTurnConversation:
         assert "First reply" in second_prompt
 
     @patch("rfc.multi_turn_keywords.create_provider")
+    def test_skips_generation_when_next_is_system(
+        self, mock_create: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_client.generate.side_effect = ["Final response"]
+        mock_create.return_value = mock_client
+        kw = MultiTurnKeywords()
+
+        turns = [
+            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "Now respond formally."},
+            {"role": "user", "content": "How are you?"},
+        ]
+        responses = kw.run_multi_turn_conversation(turns)
+        # Only one generation (for the second user turn), not two
+        assert len(responses) == 1
+        assert mock_client.generate.call_count == 1
+        # The system instruction should be in the prompt
+        prompt = mock_client.generate.call_args[0][0]
+        assert "Now respond formally" in prompt
+
+    @patch("rfc.multi_turn_keywords.create_provider")
     def test_system_turns_added_to_history(self, mock_create: MagicMock) -> None:
         mock_client = MagicMock()
         mock_client.generate.side_effect = ["Response"]
@@ -184,12 +206,11 @@ class TestGradeTopicIsolationSlidingWindow:
         assert "0.85" in summary
 
     @patch("rfc.multi_turn_keywords.create_provider")
-    def test_empty_window_returns_perfect(self, mock_create: MagicMock) -> None:
+    def test_empty_window_raises_value_error(self, mock_create: MagicMock) -> None:
         mock_client = MagicMock()
         mock_create.return_value = mock_client
         kw = MultiTurnKeywords()
-        score, summary = kw.grade_topic_isolation_sliding_window(
-            "cooking", "astronomy", ["pasta"], 5
-        )
-        assert score == 1.0
-        assert "No post-switch" in summary
+        with pytest.raises(ValueError, match="window_start=5 is beyond"):
+            kw.grade_topic_isolation_sliding_window(
+                "cooking", "astronomy", ["pasta"], 5
+            )
