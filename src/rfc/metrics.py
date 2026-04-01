@@ -117,6 +117,20 @@ def warn_near_miss(text: str) -> None:
         )
 
 
+def compute_token_efficiency(
+    score: float, eval_count: int, pass_threshold: float = 0.5
+) -> float:
+    """Return tokens-per-correct-answer for a single test result.
+
+    For correct answers (score >= pass_threshold) with token data,
+    returns eval_count as the "cost" of that correct answer.
+    Returns 0.0 when the answer is incorrect, ungraded, or has no token data.
+    """
+    if score < pass_threshold or eval_count <= 0:
+        return 0.0
+    return float(eval_count)
+
+
 def get_robot_float(var_name: str) -> float:
     """Get a float Robot variable, falling back to env var."""
     try:

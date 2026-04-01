@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rfc.metrics import (
+    compute_token_efficiency,
     extract_llm_metrics,
     get_robot_float,
     get_robot_int,
@@ -14,6 +15,31 @@ from rfc.metrics import (
     safe_int,
     warn_near_miss,
 )
+
+
+# ---------------------------------------------------------------------------
+# compute_token_efficiency
+# ---------------------------------------------------------------------------
+
+
+class TestComputeTokenEfficiency:
+    def test_correct_answer(self) -> None:
+        assert compute_token_efficiency(1.0, 150) == 150.0
+
+    def test_partial_correct(self) -> None:
+        assert compute_token_efficiency(0.5, 200) == 200.0
+
+    def test_incorrect_answer(self) -> None:
+        assert compute_token_efficiency(0.3, 300) == 0.0
+
+    def test_zero_eval_count(self) -> None:
+        assert compute_token_efficiency(1.0, 0) == 0.0
+
+    def test_custom_threshold(self) -> None:
+        assert compute_token_efficiency(0.6, 100, pass_threshold=0.8) == 0.0
+
+    def test_ungraded(self) -> None:
+        assert compute_token_efficiency(-1.0, 500) == 0.0
 
 
 # ---------------------------------------------------------------------------
