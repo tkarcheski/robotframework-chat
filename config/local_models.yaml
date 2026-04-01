@@ -129,6 +129,11 @@ test_suites:
     description: "Quantization degradation comparison (Q4 vs Q8)"
     timeout_seconds: 600
 
+  - name: "bias"
+    path: "robot/bias/tests/"
+    description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
+    timeout_seconds: 600
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"

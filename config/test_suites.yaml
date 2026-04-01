@@ -157,6 +157,11 @@ test_suites:
     path: "robot/quantization/tests"
     description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
 
+  bias:
+    label: "Bias Tests"
+    path: "robot/bias/tests"
+    description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
