@@ -114,6 +114,21 @@ test_suites:
     description: "Context retention, instruction-following drift, and topic handoff isolation"
     timeout_seconds: 600
 
+  - name: "adversarial"
+    path: "robot/adversarial/tests/"
+    description: "Covert adversarial prompt injection tests with hidden instructions"
+    timeout_seconds: 300
+
+  - name: "persona"
+    path: "robot/persona/tests/"
+    description: "Multi-turn persona consistency testing under adversarial pressure"
+    timeout_seconds: 600
+
+  - name: "quantization"
+    path: "robot/quantization/tests/"
+    description: "Quantization degradation comparison (Q4 vs Q8)"
+    timeout_seconds: 600
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"

@@ -142,6 +142,21 @@ test_suites:
     path: "robot/multi_turn/tests"
     description: "Context retention, instruction-following drift, and topic handoff isolation"
 
+  adversarial:
+    label: "Adversarial Prompt Injection"
+    path: "robot/adversarial/tests"
+    description: "Covert adversarial prompt injection tests with hidden instructions via whitespace, comments, base64, and homoglyphs"
+
+  persona:
+    label: "Persona Consistency"
+    path: "robot/persona/tests"
+    description: "Multi-turn persona consistency testing under adversarial pressure"
+
+  quantization:
+    label: "Quantization Degradation"
+    path: "robot/quantization/tests"
+    description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
@@ -245,6 +260,21 @@ ci:
     robot-multi-turn-tests:
       path: "robot/multi_turn/"
       output_dir: "results/multi_turn"
+      tags: ["ollama"]
+
+    robot-adversarial-tests:
+      path: "robot/adversarial/"
+      output_dir: "results/adversarial"
+      tags: ["ollama"]
+
+    robot-persona-tests:
+      path: "robot/persona/"
+      output_dir: "results/persona"
+      tags: ["ollama"]
+
+    robot-quantization-tests:
+      path: "robot/quantization/"
+      output_dir: "results/quantization"
       tags: ["ollama"]
 
     robot-swebench-tests:
