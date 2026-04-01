@@ -31,8 +31,7 @@ class OllamaModelNotFoundError(RFCSkipError):
         self.endpoint = endpoint
         hint = detail or f"model '{model}' not found"
         super().__init__(
-            f"{hint}. Run `ollama pull {model}` to download it. "
-            f"(endpoint: {endpoint})"
+            f"{hint}. Run `ollama pull {model}` to download it. (endpoint: {endpoint})"
         )
 
 
@@ -56,8 +55,7 @@ class OllamaTimeoutError(RFCSkipError):
         self.elapsed = elapsed
         self.models = models
         super().__init__(
-            f"Ollama still busy after {elapsed}s. "
-            f"Running models: {models}"
+            f"Ollama still busy after {elapsed}s. Running models: {models}"
         )
 
 
@@ -69,8 +67,7 @@ class DockerNotAvailableError(RFCSkipError):
 
     def __init__(self) -> None:
         super().__init__(
-            "Docker is not available. "
-            "Please ensure Docker is installed and running."
+            "Docker is not available. Please ensure Docker is installed and running."
         )
 
 
@@ -80,9 +77,7 @@ class PortAllocationError(RFCSkipError):
     def __init__(self, start_port: int, end_port: int) -> None:
         self.start_port = start_port
         self.end_port = end_port
-        super().__init__(
-            f"No available port found in range {start_port}-{end_port}"
-        )
+        super().__init__(f"No available port found in range {start_port}-{end_port}")
 
 
 # ── Environment / configuration ──────────────────────────────────────
@@ -105,8 +100,7 @@ class MissingEnvironmentError(RFCSkipError):
     def __init__(self, variable: str) -> None:
         self.variable = variable
         super().__init__(
-            f"{variable} is not set. "
-            f"Set it in .env or export it in your shell."
+            f"{variable} is not set. Set it in .env or export it in your shell."
         )
 
 
