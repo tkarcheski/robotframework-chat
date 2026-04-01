@@ -119,6 +119,21 @@ test_suites:
     description: "SWE-bench patch generation and validation"
     timeout_seconds: 7200
 
+  - name: "react"
+    path: "robot/react/tests/"
+    description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
+    timeout_seconds: 300
+
+  - name: "meta-learning"
+    path: "robot/meta_learning/tests/"
+    description: "In-context skill retention tests — teach, distract, then verify skill application"
+    timeout_seconds: 300
+
+  - name: "tool-hallucination"
+    path: "robot/tool_hallucination/tests/"
+    description: "Tool hallucination detection — real vs fake tool selection precision"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------

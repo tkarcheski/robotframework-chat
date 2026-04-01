@@ -147,6 +147,21 @@ test_suites:
     path: "robot/swebench"
     description: "SWE-bench patch generation and validation against real GitHub issues"
 
+  react:
+    label: "ReAct Loop"
+    path: "robot/react/tests"
+    description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
+
+  meta-learning:
+    label: "Meta-Learning Probe"
+    path: "robot/meta_learning/tests"
+    description: "In-context skill retention tests — teach, distract, then verify skill application"
+
+  tool-hallucination:
+    label: "Tool Hallucination"
+    path: "robot/tool_hallucination/tests"
+    description: "Tool hallucination detection — real vs fake tool selection precision"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
