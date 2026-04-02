@@ -5,8 +5,9 @@ Library           OperatingSystem
 Variables         ${CURDIR}/variables/quant_tests.yaml
 
 *** Variables ***
-# Derived from DEFAULT_MODEL env var; strips the tag portion (e.g. "phi4:14b" → "phi4").
 # Override on the CLI with --variable BASE_MODEL:xxx.
+# When empty, the full DEFAULT_MODEL env var is used (e.g. "mistral:7b-instruct-q4_K_M").
+# discover_quantization_variants strips the quant tag internally to match by stem.
 ${BASE_MODEL}     ${EMPTY}
 
 *** Keywords ***
@@ -20,14 +21,13 @@ Discover And Validate Variants
     RETURN    ${variants}
 
 Resolve Base Model
-    [Documentation]    Determine the base model name from BASE_MODEL variable or DEFAULT_MODEL env var.
+    [Documentation]    Return BASE_MODEL if set, otherwise the full DEFAULT_MODEL env var.
+    ...                The Python discovery keyword handles stem extraction internally.
     IF    "${BASE_MODEL}" != ""
         RETURN    ${BASE_MODEL}
     END
     ${default_model}=    Get Environment Variable    DEFAULT_MODEL    default=phi4:14b
-    # Strip tag (everything after the first colon) to get the family name.
-    ${parts}=    Evaluate    "${default_model}".split(":")[0]
-    RETURN    ${parts}
+    RETURN    ${default_model}
 
 Run Degradation Comparison
     [Documentation]    Run a quantization comparison for a prompt set and assert acceptable degradation.

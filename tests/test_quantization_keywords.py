@@ -98,6 +98,27 @@ class TestDiscoverQuantizationVariants:
         # Different stems (7b-instruct vs 13b), so no valid pair
         assert result["both_available"] is False
 
+    @patch("rfc.quantization_keywords.create_provider")
+    @patch("rfc.quantization_keywords.Grader")
+    def test_full_model_name_targets_exact_stem(self, MockGrader, mock_create):
+        """Passing a full model name (with colon) should only match that stem."""
+        kw = QuantizationKeywords()
+        kw.client.list_models_detailed = MagicMock(
+            return_value=[
+                {"name": "mistral:7b-instruct-q4_K_M", "size": 4_000_000_000},
+                {"name": "mistral:7b-instruct-q8_0", "size": 8_000_000_000},
+                {"name": "mistral:13b-q4_K_M", "size": 7_000_000_000},
+                {"name": "mistral:13b-q8_0", "size": 14_000_000_000},
+            ]
+        )
+        # Passing the full 7b name should only match 7b variants
+        result = kw.discover_quantization_variants("mistral:7b-instruct-q4_K_M")
+        assert result["both_available"] is True
+        assert "7b" in result["q4_model"]
+        assert "7b" in result["q8_model"]
+        assert "13b" not in result["q4_model"]
+        assert "13b" not in result["q8_model"]
+
 
 class TestRunQuantizationComparison:
     @patch("rfc.quantization_keywords.emit_rfc_data")

@@ -51,12 +51,18 @@ class QuantizationKeywords:
     def discover_quantization_variants(self, base_model: str) -> Dict[str, Any]:
         """Query Ollama for available Q4 and Q8 variants of a base model.
 
-        Scans all models on the endpoint whose name starts with *base_model*,
-        then groups candidates by their non-quantization stem so that only
-        variants of the **same** underlying model are paired.
+        Accepts either a bare family name (``"mistral"``), a sized tag
+        (``"mistral:7b-instruct"``), or even a full quantized name
+        (``"mistral:7b-instruct-q4_K_M"``).  The quantization tag is
+        stripped to produce a *target stem*, and only models sharing that
+        exact stem are considered — so ``mistral:7b-instruct`` will never
+        accidentally pair with ``mistral:13b``.
+
+        When *base_model* is a bare family name (no colon), all models
+        whose name starts with that prefix are scanned.
 
         Args:
-            base_model: The base model family name (e.g. "mistral", "llama3").
+            base_model: Model name or family prefix.
 
         Returns:
             Dict with base_model, q4_model, q8_model, both_available.
@@ -65,6 +71,10 @@ class QuantizationKeywords:
         models = self.client.list_models_detailed()  # type: ignore[attr-defined]
 
         base_lower = base_model.lower()
+        target_stem = self._model_stem(base_model)
+        # If the caller passed a bare family (no colon), allow prefix matching;
+        # otherwise require an exact stem match for precise fleet targeting.
+        exact_stem = ":" in base_model
 
         # Collect all Q4/Q8 candidates keyed by stem.
         q4_by_stem: Dict[str, str] = {}
@@ -73,10 +83,17 @@ class QuantizationKeywords:
         for model in models:
             name = model.get("name", "")
             name_lower = name.lower()
-            if not name_lower.startswith(base_lower):
+
+            # Prefix gate: must at least share the family prefix.
+            if not name_lower.startswith(base_lower.split(":")[0]):
                 continue
 
             stem = self._model_stem(name)
+
+            # When an exact stem was supplied, only accept that stem.
+            if exact_stem and stem != target_stem:
+                continue
+
             if _Q4_PATTERN.search(name_lower) and stem not in q4_by_stem:
                 q4_by_stem[stem] = name
                 logger.info(f"Found Q4 variant: {name} (stem={stem})")
@@ -84,12 +101,13 @@ class QuantizationKeywords:
                 q8_by_stem[stem] = name
                 logger.info(f"Found Q8 variant: {name} (stem={stem})")
 
-        # Find the first stem that has both Q4 and Q8.
+        # Find the best stem that has both Q4 and Q8.
+        # Prefer the target_stem if it appears in both sets.
         q4_model: Optional[str] = None
         q8_model: Optional[str] = None
         common_stems = set(q4_by_stem) & set(q8_by_stem)
         if common_stems:
-            stem = sorted(common_stems)[0]
+            stem = target_stem if target_stem in common_stems else sorted(common_stems)[0]
             q4_model = q4_by_stem[stem]
             q8_model = q8_by_stem[stem]
             logger.info(f"Paired variants on stem '{stem}': Q4={q4_model}, Q8={q8_model}")
