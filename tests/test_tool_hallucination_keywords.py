@@ -36,6 +36,13 @@ class TestParseToolMentions:
         mentioned = parse_tool_mentions(response, all_tools)
         assert mentioned == {"calculator", "search_web", "fake_db"}
 
+    def test_substring_overlap_does_not_false_match(self) -> None:
+        """web_search_pro should NOT also match web_search."""
+        response = "I would use web_search_pro for this task."
+        all_tools = ["web_search", "web_search_pro"]
+        mentioned = parse_tool_mentions(response, all_tools)
+        assert mentioned == {"web_search_pro"}
+
 
 class TestToolHallucinationKeywordsInit:
     @patch("rfc.tool_hallucination_keywords.create_provider")

@@ -5,6 +5,7 @@ list of real and fake tools, measuring tool-use precision.
 """
 
 import json
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from robot.api import logger
@@ -15,7 +16,11 @@ from .rfc_data import emit_rfc_data
 
 
 def parse_tool_mentions(response: str, all_tools: List[str]) -> Set[str]:
-    """Scan a response for tool name mentions (case-insensitive).
+    """Scan a response for tool name mentions using word-boundary matching.
+
+    Uses ``\\b`` word boundaries so that a fake tool like
+    ``web_search_pro`` does not falsely match the real tool
+    ``web_search``.
 
     Args:
         response: The LLM response text.
@@ -24,8 +29,12 @@ def parse_tool_mentions(response: str, all_tools: List[str]) -> Set[str]:
     Returns:
         Set of tool names (original casing) found in the response.
     """
-    response_lower = response.lower()
-    return {tool for tool in all_tools if tool.lower() in response_lower}
+    found: Set[str] = set()
+    for tool in all_tools:
+        pattern = r"\b" + re.escape(tool) + r"\b"
+        if re.search(pattern, response, re.IGNORECASE):
+            found.add(tool)
+    return found
 
 
 class ToolHallucinationKeywords:
