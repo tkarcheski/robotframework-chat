@@ -176,7 +176,7 @@ class TestRunReActLoop:
         kw.client.generate.return_value = "FINAL_ANSWER: done"
         kw.client.last_metrics = None
         kw.client.num_ctx = None
-        kw.client.max_tokens = 256
+        kw.client.max_tokens = 4096
         mock_result = MagicMock()
         mock_result.score = 1.0
         mock_result.reason = "ok"
