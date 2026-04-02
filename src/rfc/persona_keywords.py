@@ -149,19 +149,37 @@ class PersonaKeywords:
     def assert_persona_maintained(
         self, result: Dict[str, Any], min_score: float = 0.7
     ) -> None:
-        """Assert that average persona consistency score meets threshold.
+        """Assert persona consistency meets threshold on every turn and on average.
+
+        Fails if the average score is below threshold OR if any individual
+        turn scored below threshold — a single break in character is a failure
+        for a consistency test.
 
         Args:
             result: The result dict from Run Persona Consistency Test.
-            min_score: Minimum acceptable average score (default 0.7).
+            min_score: Minimum acceptable score per turn and on average (default 0.7).
 
         Raises:
-            AssertionError: If average score is below threshold.
+            AssertionError: If average or any turn score is below threshold.
         """
         min_score = float(min_score)
         avg = result.get("avg_score", 0.0)
+        scores = result.get("turn_scores", [])
+
+        # Check per-turn scores first — any single break is a failure
+        failed_turns = [
+            (i + 1, s) for i, s in enumerate(scores) if s < min_score
+        ]
+        if failed_turns:
+            details = ", ".join(
+                f"turn {t}={s:.2f}" for t, s in failed_turns
+            )
+            raise AssertionError(
+                f"Persona broken on {len(failed_turns)} turn(s): {details}\n"
+                f"Threshold: {min_score:.2f}, All scores: {scores}"
+            )
+
         if avg < min_score:
-            scores = result.get("turn_scores", [])
             raise AssertionError(
                 f"Persona consistency below threshold: "
                 f"avg={avg:.2f} < {min_score:.2f}\n"

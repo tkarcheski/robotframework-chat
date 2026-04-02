@@ -3,8 +3,9 @@
 # Prompts used to compare accuracy between Q4 and Q8 quantization levels.
 # Each category tests a different capability dimension.
 
-# Base model to discover variants for (override with --variable BASE_MODEL:xxx)
-BASE_MODEL: "mistral"
+# Base model to discover variants for.
+# Derived from DEFAULT_MODEL env var at runtime (see quantization.resource).
+# Override with --variable BASE_MODEL:xxx on the command line.
 
 # Maximum acceptable degradation percentage
 MAX_DEGRADATION_PCT: 20.0

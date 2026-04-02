@@ -12,19 +12,21 @@ class TestQuantizationKeywordsInit:
     @patch("rfc.quantization_keywords.Grader")
     def test_default_init(self, MockGrader, mock_create):
         QuantizationKeywords()
-        mock_create.assert_called_once_with(timeout=5400, max_retries=2)
+        # Called twice: once for the test client, once for the grader client
+        assert mock_create.call_count == 2
 
     @patch("rfc.quantization_keywords.create_provider")
     @patch("rfc.quantization_keywords.Grader")
     def test_custom_timeout(self, MockGrader, mock_create):
         QuantizationKeywords(timeout=120, max_retries=1)
-        mock_create.assert_called_once_with(timeout=120, max_retries=1)
+        assert mock_create.call_count == 2
+        mock_create.assert_any_call(timeout=120, max_retries=1)
 
 
 class TestDiscoverQuantizationVariants:
     @patch("rfc.quantization_keywords.create_provider")
     @patch("rfc.quantization_keywords.Grader")
-    def test_finds_q4_and_q8(self, MockGrader, mock_create):
+    def test_finds_q4_and_q8_same_stem(self, MockGrader, mock_create):
         kw = QuantizationKeywords()
         kw.client.list_models_detailed = MagicMock(
             return_value=[
@@ -49,7 +51,7 @@ class TestDiscoverQuantizationVariants:
             ]
         )
         result = kw.discover_quantization_variants("mistral")
-        assert result["q4_model"] == "mistral:7b-instruct-q4_K_M"
+        assert result["q4_model"] is None  # No matching Q8 stem → no pair
         assert result["q8_model"] is None
         assert result["both_available"] is False
 
@@ -81,6 +83,21 @@ class TestDiscoverQuantizationVariants:
         assert result["q4_model"] is not None
         assert result["q8_model"] is not None
 
+    @patch("rfc.quantization_keywords.create_provider")
+    @patch("rfc.quantization_keywords.Grader")
+    def test_rejects_different_stems(self, MockGrader, mock_create):
+        """Q4 from one family and Q8 from another should NOT be paired."""
+        kw = QuantizationKeywords()
+        kw.client.list_models_detailed = MagicMock(
+            return_value=[
+                {"name": "mistral:7b-instruct-q4_K_M", "size": 4_000_000_000},
+                {"name": "mistral:13b-q8_0", "size": 8_000_000_000},
+            ]
+        )
+        result = kw.discover_quantization_variants("mistral")
+        # Different stems (7b-instruct vs 13b), so no valid pair
+        assert result["both_available"] is False
+
 
 class TestRunQuantizationComparison:
     @patch("rfc.quantization_keywords.emit_rfc_data")
@@ -111,9 +128,8 @@ class TestRunQuantizationComparison:
     @patch("rfc.quantization_keywords.emit_rfc_data")
     @patch("rfc.quantization_keywords.create_provider")
     @patch("rfc.quantization_keywords.Grader")
-    def test_model_switching(self, MockGrader, mock_create, mock_emit):
+    def test_model_restored_after_comparison(self, MockGrader, mock_create, mock_emit):
         kw = QuantizationKeywords()
-        # Use a real string for model so attribute assignment works
         kw.client.model = "original"
         kw.client.generate.return_value = "answer"
         mock_grade = MagicMock()
@@ -124,7 +140,21 @@ class TestRunQuantizationComparison:
         prompts = [{"question": "Q1", "expected": "A1"}]
         kw.run_quantization_comparison("model:q4", "model:q8", prompts)
 
-        # Model should be restored to original after comparison
+        assert kw.client.model == "original"
+
+    @patch("rfc.quantization_keywords.emit_rfc_data")
+    @patch("rfc.quantization_keywords.create_provider")
+    @patch("rfc.quantization_keywords.Grader")
+    def test_model_restored_on_exception(self, MockGrader, mock_create, mock_emit):
+        """Model must be restored even when generate() raises."""
+        kw = QuantizationKeywords()
+        kw.client.model = "original"
+        kw.client.generate.side_effect = RuntimeError("connection lost")
+
+        prompts = [{"question": "Q1", "expected": "A1"}]
+        with pytest.raises(RuntimeError, match="connection lost"):
+            kw.run_quantization_comparison("model:q4", "model:q8", prompts)
+
         assert kw.client.model == "original"
 
     @patch("rfc.quantization_keywords.emit_rfc_data")
@@ -214,3 +244,18 @@ class TestLogQuantizationDelta:
         assert "quant_q8_avg" in emitted_keys
         assert "quant_delta" in emitted_keys
         assert "quant_degradation_pct" in emitted_keys
+
+
+class TestModelStem:
+    def test_extracts_stem(self):
+        assert QuantizationKeywords._model_stem("mistral:7b-instruct-q4_K_M") == (
+            "mistral:7b-instruct"
+        )
+
+    def test_extracts_stem_q8(self):
+        assert QuantizationKeywords._model_stem("mistral:7b-instruct-q8_0") == (
+            "mistral:7b-instruct"
+        )
+
+    def test_no_quant_tag(self):
+        assert QuantizationKeywords._model_stem("llama3:latest") == "llama3:latest"

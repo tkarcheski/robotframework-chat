@@ -19,6 +19,10 @@ from .thinking import parse_thinking
 _Q4_PATTERN = re.compile(r"q4", re.IGNORECASE)
 _Q8_PATTERN = re.compile(r"q8", re.IGNORECASE)
 
+# Pattern to extract the model stem (everything before the quant tag).
+# e.g. "mistral:7b-instruct-q4_K_M" → "mistral:7b-instruct-"
+_QUANT_TAG = re.compile(r"q[48][_\w]*", re.IGNORECASE)
+
 
 class QuantizationKeywords:
     """Robot Framework keywords for comparing accuracy across quantization levels."""
@@ -28,15 +32,28 @@ class QuantizationKeywords:
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2) -> None:
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
-        self.grader = Grader(self.client)
+        # Separate provider for grading so the judge model stays constant
+        # while self.client.model is switched between Q4/Q8 variants.
+        self._grader_client = create_provider(
+            timeout=timeout, max_retries=int(max_retries)
+        )
+        self.grader = Grader(self._grader_client)
+
+    @staticmethod
+    def _model_stem(name: str) -> str:
+        """Extract the non-quantization stem from a model name.
+
+        E.g. ``"mistral:7b-instruct-q4_K_M"`` → ``"mistral:7b-instruct-"``.
+        """
+        return _QUANT_TAG.sub("", name.lower()).rstrip("-_")
 
     @keyword("Discover Quantization Variants")
     def discover_quantization_variants(self, base_model: str) -> Dict[str, Any]:
         """Query Ollama for available Q4 and Q8 variants of a base model.
 
-        Scans all models available on the Ollama endpoint and matches those
-        whose name starts with the base_model prefix and contains q4 or q8
-        in the name.
+        Scans all models on the endpoint whose name starts with *base_model*,
+        then groups candidates by their non-quantization stem so that only
+        variants of the **same** underlying model are paired.
 
         Args:
             base_model: The base model family name (e.g. "mistral", "llama3").
@@ -47,9 +64,11 @@ class QuantizationKeywords:
         logger.info(f"Discovering quantization variants for: {base_model}")
         models = self.client.list_models_detailed()  # type: ignore[attr-defined]
 
-        q4_model: Optional[str] = None
-        q8_model: Optional[str] = None
         base_lower = base_model.lower()
+
+        # Collect all Q4/Q8 candidates keyed by stem.
+        q4_by_stem: Dict[str, str] = {}
+        q8_by_stem: Dict[str, str] = {}
 
         for model in models:
             name = model.get("name", "")
@@ -57,12 +76,23 @@ class QuantizationKeywords:
             if not name_lower.startswith(base_lower):
                 continue
 
-            if _Q4_PATTERN.search(name_lower) and q4_model is None:
-                q4_model = name
-                logger.info(f"Found Q4 variant: {name}")
-            elif _Q8_PATTERN.search(name_lower) and q8_model is None:
-                q8_model = name
-                logger.info(f"Found Q8 variant: {name}")
+            stem = self._model_stem(name)
+            if _Q4_PATTERN.search(name_lower) and stem not in q4_by_stem:
+                q4_by_stem[stem] = name
+                logger.info(f"Found Q4 variant: {name} (stem={stem})")
+            elif _Q8_PATTERN.search(name_lower) and stem not in q8_by_stem:
+                q8_by_stem[stem] = name
+                logger.info(f"Found Q8 variant: {name} (stem={stem})")
+
+        # Find the first stem that has both Q4 and Q8.
+        q4_model: Optional[str] = None
+        q8_model: Optional[str] = None
+        common_stems = set(q4_by_stem) & set(q8_by_stem)
+        if common_stems:
+            stem = sorted(common_stems)[0]
+            q4_model = q4_by_stem[stem]
+            q8_model = q8_by_stem[stem]
+            logger.info(f"Paired variants on stem '{stem}': Q4={q4_model}, Q8={q8_model}")
 
         both_available = q4_model is not None and q8_model is not None
         result: Dict[str, Any] = {
@@ -80,7 +110,7 @@ class QuantizationKeywords:
                 missing.append("Q8")
             logger.warn(
                 f"Missing {', '.join(missing)} variant(s) for {base_model}. "
-                f"Available: q4={q4_model}, q8={q8_model}"
+                f"Q4 stems: {list(q4_by_stem)}, Q8 stems: {list(q8_by_stem)}"
             )
 
         return result
@@ -116,44 +146,45 @@ class QuantizationKeywords:
         q8_scores: List[float] = []
         prompt_details: List[Dict[str, Any]] = []
 
-        for i, prompt_data in enumerate(prompts):
-            question = prompt_data["question"]
-            expected = prompt_data["expected"]
+        try:
+            for i, prompt_data in enumerate(prompts):
+                question = prompt_data["question"]
+                expected = prompt_data["expected"]
 
-            # Run Q4
-            self.client.model = q4_model
-            raw_q4 = self.client.generate(question)
-            resp_q4, _ = parse_thinking(raw_q4, strip_unclosed=True)
-            grade_q4 = self.grader.grade(question, expected, resp_q4)
-            q4_scores.append(grade_q4.score)
+                # Run Q4
+                self.client.model = q4_model
+                raw_q4 = self.client.generate(question)
+                resp_q4, _ = parse_thinking(raw_q4, strip_unclosed=True)
+                grade_q4 = self.grader.grade(question, expected, resp_q4)
+                q4_scores.append(grade_q4.score)
 
-            # Run Q8
-            self.client.model = q8_model
-            raw_q8 = self.client.generate(question)
-            resp_q8, _ = parse_thinking(raw_q8, strip_unclosed=True)
-            grade_q8 = self.grader.grade(question, expected, resp_q8)
-            q8_scores.append(grade_q8.score)
+                # Run Q8
+                self.client.model = q8_model
+                raw_q8 = self.client.generate(question)
+                resp_q8, _ = parse_thinking(raw_q8, strip_unclosed=True)
+                grade_q8 = self.grader.grade(question, expected, resp_q8)
+                q8_scores.append(grade_q8.score)
 
-            prompt_details.append(
-                {
-                    "question": question,
-                    "expected": expected,
-                    "q4_response": resp_q4,
-                    "q8_response": resp_q8,
-                    "q4_score": grade_q4.score,
-                    "q8_score": grade_q8.score,
-                    "delta": grade_q4.score - grade_q8.score,
-                }
-            )
+                prompt_details.append(
+                    {
+                        "question": question,
+                        "expected": expected,
+                        "q4_response": resp_q4,
+                        "q8_response": resp_q8,
+                        "q4_score": grade_q4.score,
+                        "q8_score": grade_q8.score,
+                        "delta": grade_q4.score - grade_q8.score,
+                    }
+                )
 
-            logger.info(
-                f"Prompt {i + 1}/{len(prompts)}: "
-                f"Q4={grade_q4.score:.2f} Q8={grade_q8.score:.2f} "
-                f"delta={grade_q4.score - grade_q8.score:+.2f}"
-            )
-
-        # Restore original model
-        self.client.model = original_model
+                logger.info(
+                    f"Prompt {i + 1}/{len(prompts)}: "
+                    f"Q4={grade_q4.score:.2f} Q8={grade_q8.score:.2f} "
+                    f"delta={grade_q4.score - grade_q8.score:+.2f}"
+                )
+        finally:
+            # Always restore original model, even if generate/grading raises
+            self.client.model = original_model
 
         q4_avg = sum(q4_scores) / len(q4_scores) if q4_scores else 0.0
         q8_avg = sum(q8_scores) / len(q8_scores) if q8_scores else 0.0

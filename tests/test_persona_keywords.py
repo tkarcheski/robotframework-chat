@@ -174,7 +174,7 @@ class TestRunPersonaConsistencyTest:
 class TestAssertPersonaMaintained:
     @patch("rfc.persona_keywords.create_provider")
     @patch("rfc.persona_keywords.Grader")
-    def test_passes_when_avg_above_threshold(self, MockGrader, mock_create):
+    def test_passes_when_all_turns_above_threshold(self, MockGrader, mock_create):
         kw = PersonaKeywords()
         result = {"avg_score": 0.85, "all_passed": True, "turn_scores": [0.8, 0.9]}
         kw.assert_persona_maintained(result, min_score=0.7)  # should not raise
@@ -184,7 +184,17 @@ class TestAssertPersonaMaintained:
     def test_raises_when_avg_below_threshold(self, MockGrader, mock_create):
         kw = PersonaKeywords()
         result = {"avg_score": 0.4, "all_passed": False, "turn_scores": [0.3, 0.5]}
-        with pytest.raises(AssertionError, match="Persona consistency"):
+        with pytest.raises(AssertionError, match="Persona broken"):
+            kw.assert_persona_maintained(result, min_score=0.7)
+
+    @patch("rfc.persona_keywords.create_provider")
+    @patch("rfc.persona_keywords.Grader")
+    def test_raises_when_single_turn_below_threshold(self, MockGrader, mock_create):
+        """Even if average is above threshold, a single bad turn should fail."""
+        kw = PersonaKeywords()
+        # avg = 0.8, but turn 2 is 0.5 which is below 0.7
+        result = {"avg_score": 0.8, "all_passed": False, "turn_scores": [0.9, 0.5, 1.0]}
+        with pytest.raises(AssertionError, match="Persona broken on 1 turn"):
             kw.assert_persona_maintained(result, min_score=0.7)
 
     @patch("rfc.persona_keywords.create_provider")
