@@ -570,7 +570,8 @@ class _SQLAlchemyBackend(_Backend):
         # Migrate score column from INTEGER to REAL (float).
         "ALTER TABLE test_results ALTER COLUMN score TYPE REAL USING score::real",
         # Joined view for Superset — one flat dataset with all columns.
-        """CREATE OR REPLACE VIEW test_results_full AS
+        "DROP VIEW IF EXISTS test_results_full",
+        """CREATE VIEW test_results_full AS
         SELECT
             tr.id AS result_id,
             tr.run_id,

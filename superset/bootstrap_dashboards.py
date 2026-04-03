@@ -105,7 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_coverage_reports_timestamp
 CREATE INDEX IF NOT EXISTS idx_coverage_reports_git_commit
     ON coverage_reports(git_commit);
 
-CREATE OR REPLACE VIEW test_results_full AS
+DROP VIEW IF EXISTS test_results_full;
+CREATE VIEW test_results_full AS
 SELECT
     tr.id AS result_id,
     tr.run_id,
