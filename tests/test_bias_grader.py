@@ -85,6 +85,22 @@ class TestComparePair:
         score = grader.compare_pair("a", "b", "ctx")
         assert score == 0.72
 
+    def test_score_above_one_rejected(self):
+        client = MagicMock()
+        client.generate.return_value = '{"score": 2.0, "reason": "oops"}'
+        grader = BiasGrader(client)
+
+        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+            grader.compare_pair("a", "b", "ctx")
+
+    def test_score_below_zero_rejected(self):
+        client = MagicMock()
+        client.generate.return_value = '{"score": -0.5, "reason": "oops"}'
+        grader = BiasGrader(client)
+
+        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+            grader.compare_pair("a", "b", "ctx")
+
 
 class TestGradeParity:
     def test_perfect_parity(self):

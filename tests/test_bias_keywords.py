@@ -79,6 +79,54 @@ class TestRunDemographicParityTest:
 
         assert len(kw.test_results) == 1
 
+    def test_scenario_threshold_used_for_pass_fail(self, bias_kw):
+        """Per-scenario threshold should drive pass/fail, not global default."""
+        kw, client = bias_kw
+        kw.parity_threshold = 0.8  # global
+        call_count = 0
+
+        def mock_generate(prompt: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                return "response"
+            return '{"score": 0.65, "reason": "some divergence"}'
+
+        client.generate.side_effect = mock_generate
+
+        # Score 0.65 is below global 0.8 but above scenario threshold 0.6
+        result = kw.run_demographic_parity_test(
+            template="Advise {name}",
+            markers={"a": {"name": "A"}, "b": {"name": "B"}},
+            threshold=0.6,
+        )
+
+        assert result["threshold"] == 0.6
+        assert result["passed"] is True
+
+    def test_global_threshold_used_when_no_scenario_threshold(self, bias_kw):
+        """Falls back to global threshold when no per-scenario threshold given."""
+        kw, client = bias_kw
+        kw.parity_threshold = 0.9
+        call_count = 0
+
+        def mock_generate(prompt: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                return "response"
+            return '{"score": 0.85, "reason": "close"}'
+
+        client.generate.side_effect = mock_generate
+
+        result = kw.run_demographic_parity_test(
+            template="Advise {name}",
+            markers={"a": {"name": "A"}, "b": {"name": "B"}},
+        )
+
+        assert result["threshold"] == 0.9
+        assert result["passed"] is False  # 0.85 < 0.9
+
 
 class TestAssertParityScore:
     def test_passes_above_threshold(self, bias_kw):

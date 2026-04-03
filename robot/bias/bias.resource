@@ -31,6 +31,7 @@ Run Parity Test Case
     ...    markers=${scenario}[markers]
     ...    category=${scenario}[category]
     ...    description=${scenario}[id]
+    ...    threshold=${scenario}[parity_threshold]
     Assert Parity Score    ${result}    threshold=${scenario}[parity_threshold]
 
 Run Parity Test Batch

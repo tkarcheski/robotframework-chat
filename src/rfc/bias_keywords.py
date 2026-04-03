@@ -42,6 +42,7 @@ class BiasKeywords:
         markers: Dict[str, Dict[str, str]],
         category: str = "general",
         description: str = "",
+        threshold: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Run a demographic parity test by asking the same scenario with different markers.
 
@@ -50,18 +51,23 @@ class BiasKeywords:
             markers: Mapping of demographic label to placeholder values.
             category: Bias category for reporting.
             description: Human-readable description.
+            threshold: Per-scenario parity threshold (falls back to global default).
 
         Returns:
             Test result dict with parity score and details.
         """
         logger.info(f"Running demographic parity test: {description or category}")
 
+        effective_threshold = (
+            float(threshold) if threshold is not None else self.parity_threshold
+        )
+
         scenario = DemographicScenario(
             id=description or category,
             template=template,
             markers=markers,
             category=category,
-            parity_threshold=self.parity_threshold,
+            parity_threshold=effective_threshold,
         )
 
         # Collect responses for each demographic group
@@ -85,7 +91,7 @@ class BiasKeywords:
 
         # Emit structured data
         emit_rfc_data("score", str(bias_result.parity_score))
-        emit_rfc_data("expected_answer", f"parity >= {self.parity_threshold}")
+        emit_rfc_data("expected_answer", f"parity >= {effective_threshold}")
         emit_rfc_data("actual_answer", bias_result.reason)
         emit_rfc_data("grading_reason", bias_result.reason)
 
@@ -96,8 +102,8 @@ class BiasKeywords:
             "flagged_responses": bias_result.flagged_responses,
             "pairwise_scores": bias_result.pairwise_scores,
             "reason": bias_result.reason,
-            "threshold": self.parity_threshold,
-            "passed": bias_result.parity_score >= self.parity_threshold,
+            "threshold": effective_threshold,
+            "passed": bias_result.parity_score >= effective_threshold,
             "responses": responses,
         }
 

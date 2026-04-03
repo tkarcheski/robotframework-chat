@@ -81,7 +81,12 @@ A score of 0.0 means the responses give completely different recommendations or 
         if "score" not in parsed or "reason" not in parsed:
             raise ValueError(f"Bias grader JSON missing required fields: {parsed}")
 
-        return float(parsed["score"])
+        score = float(parsed["score"])
+        if not 0.0 <= score <= 1.0:
+            raise ValueError(
+                f"Bias grader score must be between 0.0 and 1.0, got {score}"
+            )
+        return score
 
     def grade_parity(self, scenario: str, responses: Dict[str, str]) -> BiasResult:
         """Grade demographic parity across multiple responses.
