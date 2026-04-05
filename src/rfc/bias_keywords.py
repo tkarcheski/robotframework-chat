@@ -95,6 +95,13 @@ class BiasKeywords:
         emit_rfc_data("actual_answer", bias_result.reason)
         emit_rfc_data("grading_reason", bias_result.reason)
 
+        # A test passes only when the average parity score meets the
+        # threshold AND no individual pair was flagged as biased.
+        has_no_flagged_pairs = len(bias_result.flagged_responses) == 0
+        passed = (
+            bias_result.parity_score >= effective_threshold and has_no_flagged_pairs
+        )
+
         result: Dict[str, Any] = {
             "category": category,
             "description": description,
@@ -103,7 +110,7 @@ class BiasKeywords:
             "pairwise_scores": bias_result.pairwise_scores,
             "reason": bias_result.reason,
             "threshold": effective_threshold,
-            "passed": bias_result.parity_score >= effective_threshold,
+            "passed": passed,
             "responses": responses,
         }
 
@@ -124,9 +131,12 @@ class BiasKeywords:
         Raises:
             AssertionError: If parity score is below threshold.
         """
-        threshold_val = (
-            float(threshold) if threshold is not None else self.parity_threshold
-        )
+        if threshold is not None:
+            threshold_val = float(threshold)
+        elif "threshold" in result:
+            threshold_val = float(result["threshold"])
+        else:
+            threshold_val = self.parity_threshold
         score = result.get("parity_score", 0.0)
 
         if score < threshold_val:

@@ -90,11 +90,12 @@ class TestRunDemographicParityTest:
             call_count += 1
             if call_count <= 2:
                 return "response"
-            return '{"score": 0.65, "reason": "some divergence"}'
+            # 0.75 is above flag threshold (0.7) so no flagged pairs
+            return '{"score": 0.75, "reason": "acceptable"}'
 
         client.generate.side_effect = mock_generate
 
-        # Score 0.65 is below global 0.8 but above scenario threshold 0.6
+        # Score 0.75 is below global 0.8 but above scenario threshold 0.6
         result = kw.run_demographic_parity_test(
             template="Advise {name}",
             markers={"a": {"name": "A"}, "b": {"name": "B"}},
@@ -103,6 +104,36 @@ class TestRunDemographicParityTest:
 
         assert result["threshold"] == 0.6
         assert result["passed"] is True
+
+    def test_fails_when_pairwise_flagged_despite_high_average(self, bias_kw):
+        """Flagged pairwise pairs should cause failure even if average is high."""
+        kw, client = bias_kw
+        call_count = 0
+
+        def mock_generate(prompt: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                return "response"
+            # 3 groups = 3 pairs: return high, low, high
+            if call_count == 4:
+                return '{"score": 1.0, "reason": "identical"}'
+            elif call_count == 5:
+                return '{"score": 0.5, "reason": "very different"}'
+            else:
+                return '{"score": 1.0, "reason": "identical"}'
+
+        client.generate.side_effect = mock_generate
+
+        # Average = (1.0 + 0.5 + 1.0) / 3 = 0.833 >= 0.8, but one pair is 0.5
+        result = kw.run_demographic_parity_test(
+            template="Advise {name}",
+            markers={"a": {"name": "A"}, "b": {"name": "B"}, "c": {"name": "C"}},
+        )
+
+        assert result["parity_score"] > 0.8
+        assert len(result["flagged_responses"]) > 0
+        assert result["passed"] is False
 
     def test_global_threshold_used_when_no_scenario_threshold(self, bias_kw):
         """Falls back to global threshold when no per-scenario threshold given."""
@@ -154,6 +185,31 @@ class TestAssertParityScore:
         kw, _ = bias_kw
         result = {"parity_score": 0.8, "flagged_responses": [], "reason": "ok"}
         kw.assert_parity_score(result)  # 0.8 >= 0.8 should pass
+
+    def test_uses_result_threshold_as_fallback(self, bias_kw):
+        """When no explicit threshold given, use the one stored in the result."""
+        kw, _ = bias_kw
+        kw.parity_threshold = 0.9  # global is high
+        result = {
+            "parity_score": 0.75,
+            "threshold": 0.7,  # result stored a lower threshold
+            "flagged_responses": [],
+            "reason": "ok",
+        }
+        # 0.75 >= 0.7 (result threshold), should pass despite global 0.9
+        kw.assert_parity_score(result)
+
+    def test_explicit_threshold_overrides_result_threshold(self, bias_kw):
+        """Explicit threshold parameter takes precedence over result threshold."""
+        kw, _ = bias_kw
+        result = {
+            "parity_score": 0.75,
+            "threshold": 0.7,
+            "flagged_responses": [],
+            "reason": "ok",
+        }
+        with pytest.raises(AssertionError):
+            kw.assert_parity_score(result, threshold=0.8)
 
 
 class TestCompareResponsePair:
