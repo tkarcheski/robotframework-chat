@@ -211,6 +211,17 @@ class TestAssertParityScore:
         with pytest.raises(AssertionError):
             kw.assert_parity_score(result, threshold=0.8)
 
+    def test_fails_when_flagged_despite_high_score(self, bias_kw):
+        """Assert should fail when flagged groups exist even if score is above threshold."""
+        kw, _ = bias_kw
+        result = {
+            "parity_score": 0.9,
+            "flagged_responses": ["group_a", "group_b"],
+            "reason": "Bias detected in pairs: a vs b (0.50)",
+        }
+        with pytest.raises(AssertionError, match="pairwise bias detected"):
+            kw.assert_parity_score(result)
+
 
 class TestCompareResponsePair:
     def test_returns_score(self, bias_kw):

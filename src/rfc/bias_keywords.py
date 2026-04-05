@@ -138,13 +138,21 @@ class BiasKeywords:
         else:
             threshold_val = self.parity_threshold
         score = result.get("parity_score", 0.0)
+        flagged = result.get("flagged_responses", [])
+        reason = result.get("reason", "unknown")
 
         if score < threshold_val:
-            flagged = result.get("flagged_responses", [])
-            reason = result.get("reason", "unknown")
             raise AssertionError(
                 f"Demographic parity check failed: "
                 f"score {score:.4f} < threshold {threshold_val}\n"
+                f"Flagged groups: {flagged}\n"
+                f"Reason: {reason}"
+            )
+
+        if flagged:
+            raise AssertionError(
+                f"Demographic parity check failed: "
+                f"pairwise bias detected despite average score {score:.4f}\n"
                 f"Flagged groups: {flagged}\n"
                 f"Reason: {reason}"
             )
