@@ -118,14 +118,17 @@ def warn_near_miss(text: str) -> None:
 
 
 def compute_token_efficiency(
-    score: float, eval_count: int, pass_threshold: float = 0.5
+    score: Optional[float], eval_count: Optional[int], pass_threshold: float = 0.5
 ) -> float:
     """Return tokens-per-correct-answer for a single test result.
 
     For correct answers (score >= pass_threshold) with token data,
     returns eval_count as the "cost" of that correct answer.
-    Returns 0.0 when the answer is incorrect, ungraded, or has no token data.
+    Returns 0.0 when the answer is incorrect, ungraded, has no token data,
+    or when either input is None (missing data).
     """
+    if score is None or eval_count is None:
+        return 0.0
     if score < pass_threshold or eval_count <= 0:
         return 0.0
     return float(eval_count)

@@ -41,6 +41,15 @@ class TestComputeTokenEfficiency:
     def test_ungraded(self) -> None:
         assert compute_token_efficiency(-1.0, 500) == 0.0
 
+    def test_none_score(self) -> None:
+        assert compute_token_efficiency(None, 100) == 0.0
+
+    def test_none_eval_count(self) -> None:
+        assert compute_token_efficiency(1.0, None) == 0.0
+
+    def test_both_none(self) -> None:
+        assert compute_token_efficiency(None, None) == 0.0
+
 
 # ---------------------------------------------------------------------------
 # nvl
