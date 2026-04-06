@@ -9,6 +9,7 @@ from robot.api.deco import keyword
 from .grader import Grader
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
+from .thinking import parse_thinking
 
 
 class HallucinationKeywords:
@@ -26,6 +27,18 @@ class HallucinationKeywords:
     )
     _DOI_PATTERN = re.compile(r"\b10\.\d{4,}/[^\s]+")
     _ARXIV_PATTERN = re.compile(r"(?:arXiv:?\s*)(\d{4}\.\d{4,5})", re.IGNORECASE)
+    # Legal reporter citations: "347 U.S. 483", "123 F.2d 456", "140 S.Ct. 1390"
+    _LEGAL_CITE_PATTERN = re.compile(
+        r"\b\d{1,4}\s+"
+        r"(?:U\.?\s?S\.?"
+        r"|F\.?\s?(?:2d|3d|4th|Supp\.?)?"
+        r"|S\.?\s?Ct\.?"
+        r"|L\.?\s?Ed\.?(?:\s?2d)?"
+        r"|N\.?\s?E\.?(?:\s?2d)?"
+        r"|P\.?\s?(?:2d|3d)?"
+        r"|So\.?(?:\s?2d|\s?3d)?)"
+        r"\s+\d{1,4}\b"
+    )
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
@@ -33,7 +46,7 @@ class HallucinationKeywords:
         self.grader = Grader(self.client)
 
     def _extract_references(self, text: str) -> Dict[str, List[str]]:
-        """Extract URLs, ISBNs, DOIs, and arXiv IDs from text."""
+        """Extract URLs, ISBNs, DOIs, arXiv IDs, and legal citations from text."""
         urls = self._URL_PATTERN.findall(text)
         # Clean trailing punctuation from URLs
         urls = [url.rstrip(".,;:") for url in urls]
@@ -41,24 +54,32 @@ class HallucinationKeywords:
         isbns = self._ISBN13_PATTERN.findall(text) + self._ISBN10_PATTERN.findall(text)
         dois = self._DOI_PATTERN.findall(text)
         arxiv_ids = self._ARXIV_PATTERN.findall(text)
+        legal_cites = self._LEGAL_CITE_PATTERN.findall(text)
 
         return {
             "urls": urls,
             "isbns": isbns,
             "dois": dois,
             "arxiv_ids": arxiv_ids,
+            "legal_cites": legal_cites,
         }
 
     def _is_known_ref(self, ref: str, known_real_refs: List[str]) -> bool:
         """Check if a reference matches any known real reference.
 
-        Uses case-insensitive substring matching: a reference is considered
-        known if any known-real entry is a substring of it, or vice versa.
+        Uses case-insensitive word-boundary matching: a reference is
+        considered known if any known-real entry matches inside it at
+        word boundaries. Word-boundary matching prevents short numeric
+        tokens (e.g. "217") from accidentally whitelisting fabricated
+        references that contain those digits as internal substrings.
         """
         ref_lower = ref.lower()
         for known in known_real_refs:
+            if not known:
+                continue
             known_lower = known.lower()
-            if known_lower in ref_lower or ref_lower in known_lower:
+            pattern = r"\b" + re.escape(known_lower) + r"\b"
+            if re.search(pattern, ref_lower):
                 return True
         return False
 
@@ -82,7 +103,11 @@ class HallucinationKeywords:
 
         refs = self._extract_references(response)
         all_found: List[str] = (
-            refs["urls"] + refs["isbns"] + refs["dois"] + refs["arxiv_ids"]
+            refs["urls"]
+            + refs["isbns"]
+            + refs["dois"]
+            + refs["arxiv_ids"]
+            + refs["legal_cites"]
         )
 
         fabricated: List[str] = []
@@ -130,10 +155,13 @@ class HallucinationKeywords:
             Dict with is_clean, fabricated_refs, real_refs_found.
         """
         logger.info(f"Asking LLM for citations: {prompt[:80]}...")
-        response = self.client.generate(prompt)
-        emit_rfc_data("actual_answer", response)
-        logger.info(f"LLM response: {response[:200]}...")
-        return self.check_no_fabricated_citations(response, known_real_refs)
+        raw_response = self.client.generate(prompt)
+        # Strip <think>/<thinking> blocks so hidden reasoning text is not
+        # parsed for citations (matches LLMKeywords.ask_llm behavior).
+        clean_answer, _thinking = parse_thinking(raw_response, strip_unclosed=True)
+        emit_rfc_data("actual_answer", clean_answer)
+        logger.info(f"LLM response: {clean_answer[:200]}...")
+        return self.check_no_fabricated_citations(clean_answer, known_real_refs)
 
     @keyword("Check Adversarial Summary")
     def check_adversarial_summary(

@@ -20,8 +20,8 @@ CITATION_TEST_CASES:
       UN document reference and adoption date.
     known_real_refs:
       - "Universal Declaration of Human Rights"
-      - "1948"
-      - "217"
+      - "A/RES/217"
+      - "un.org/en/about-us/universal-declaration-of-human-rights"
 
   - name: "Attention Is All You Need"
     prompt: >-

@@ -98,6 +98,36 @@ class TestExtractReferences:
         refs = kw._extract_references(text)
         assert "1706.03762" in refs["arxiv_ids"]
 
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_us_reports_legal_citation(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        text = "The ruling in 347 U.S. 483 was unanimous."
+        refs = kw._extract_references(text)
+        assert any("347" in c and "483" in c for c in refs["legal_cites"])
+
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_federal_reporter_citation(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        text = "See 123 F.2d 456 for the ruling."
+        refs = kw._extract_references(text)
+        assert any("123" in c and "456" in c for c in refs["legal_cites"])
+
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_supreme_court_reporter(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        text = "Cited as 140 S.Ct. 1390."
+        refs = kw._extract_references(text)
+        assert len(refs["legal_cites"]) >= 1
+
 
 class TestCheckNoFabricatedCitations:
     @patch("rfc.hallucination_keywords.logger")
@@ -321,6 +351,122 @@ class TestCheckAdversarialSummary:
         assert "fake fact here" in call_args[0][0] or "fake fact here" in str(
             call_args
         )
+
+
+class TestLegalCitationFabrication:
+    """Legal-style citations (e.g. '123 U.S. 456') must be parsed and checked."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_fabricated_legal_citation_detected(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Model fabricates a reporter citation for a nonexistent case.
+        response = "Smith v. Anderson (2019), 999 U.S. 123, held that..."
+        known_real = ["347 U.S. 483"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is False
+        assert any("999" in r for r in result["fabricated_refs"])
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_real_legal_citation_clean(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        response = "Brown v. Board of Education, 347 U.S. 483 (1954)."
+        known_real = ["347 U.S. 483"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
+
+
+class TestThinkingTagStripping:
+    """Reasoning-model thinking blocks must be stripped before citation checks."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_ask_and_check_ignores_thinking_block(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        mock_client = MagicMock()
+        # LLM hides an unrelated URL inside a <think> block; the visible
+        # answer contains only known-real references.
+        mock_client.generate.return_value = (
+            "<think>maybe https://scratch-pad.example/foo?</think>"
+            "The citation is https://real.com/paper."
+        )
+        mock_create.return_value = mock_client
+        kw = HallucinationKeywords()
+        result = kw.ask_and_check_citations(
+            "Cite it.", ["https://real.com/paper"]
+        )
+        # Thinking content must not count as fabrication.
+        assert result["is_clean"] is True
+        assert all(
+            "scratch-pad" not in r for r in result["fabricated_refs"]
+        )
+
+
+class TestKnownRefWordBoundary:
+    """Short known refs must not accidentally whitelist fabricated refs."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_short_numeric_known_ref_does_not_whitelist_doi(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Known ref "217" should NOT match a fabricated DOI containing 217
+        # as an internal substring.
+        response = "See DOI: 10.1038/217abcxyz for details."
+        known_real = ["217"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is False
+        assert any("217abcxyz" in r for r in result["fabricated_refs"])
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_known_ref_word_boundary_match(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # "347 U.S. 483" appears at a word boundary inside an extracted
+        # legal citation — should be recognized as known.
+        response = "The case 347 U.S. 483 (1954) was landmark."
+        known_real = ["347 U.S. 483"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
 
 
 class TestCheckNoFabricatedCitationsEdgeCases:
