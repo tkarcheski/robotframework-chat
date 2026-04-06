@@ -208,8 +208,9 @@ class IFEvalKeywords:
         numbers: list[int] = []
         for ln in lines:
             m = _NUMBERED_PATTERN.match(ln)
-            if m:
-                numbers.append(int(m.group(1)))
+            if not m:
+                return False, f"Non-numbered line found: {ln!r}"
+            numbers.append(int(m.group(1)))
         if len(numbers) != expected:
             return False, (
                 f"Expected {expected} numbered items, found {len(numbers)}"

@@ -140,6 +140,15 @@ class TestCheckNumberedList:
         passed, _ = IFEvalKeywords.check_numbered_list(text, 7)
         assert passed is False
 
+    def test_extra_prose_fails(self) -> None:
+        text = (
+            "Here are the days:\n1. Mon\n2. Tue\n3. Wed\n"
+            "4. Thu\n5. Fri\n6. Sat\n7. Sun"
+        )
+        passed, reason = IFEvalKeywords.check_numbered_list(text, 7)
+        assert passed is False
+        assert "Non-numbered" in reason
+
 
 class TestCheckParagraphCount:
     def test_two_paragraphs(self) -> None:
