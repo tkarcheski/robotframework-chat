@@ -148,6 +148,18 @@ class TestExtractReferences:
         refs = kw._extract_references(text)
         assert "S/RES/1973" in refs["un_resolutions"]
 
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_un_resolution_lowercase(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Mixed-case / lowercase model output must still be extracted.
+        text = "The model wrote a/res/999 instead of the canonical form."
+        refs = kw._extract_references(text)
+        assert len(refs["un_resolutions"]) == 1
+        assert "999" in refs["un_resolutions"][0]
+
 
 class TestUNResolutionFabrication:
     """UN resolution IDs (non-URL citation identifiers) must be validated."""
@@ -187,6 +199,25 @@ class TestUNResolutionFabrication:
         known_real = ["A/RES/217"]
         result = kw.check_no_fabricated_citations(response, known_real)
         assert result["is_clean"] is True
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_lowercase_un_resolution_fabrication_detected(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Lowercase fabricated UN resolution must still be detected.
+        response = "The declaration is in resolution a/res/999 from the assembly."
+        known_real = ["A/RES/217"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is False
+        assert any("999" in r for r in result["fabricated_refs"])
 
 
 class TestCitationNormalization:
@@ -236,6 +267,48 @@ class TestCitationNormalization:
         assert kw._normalize_citation("347 U.S. 483") == "347 us 483"
         assert kw._normalize_citation("347 US 483") == "347 us 483"
         assert kw._normalize_citation("  347  U.S.  483  ") == "347 us 483"
+
+
+class TestURLHostMatching:
+    """Dot-containing URL host fragments must still match canonical URLs."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_known_host_path_matches_full_url_with_subdomain(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Known ref is a host+path fragment; model returns full URL with
+        # www subdomain. Dots in the host must be preserved.
+        response = (
+            "See https://www.un.org/en/about-us/universal-declaration-of-human-rights"
+        )
+        known_real = ["un.org/en/about-us/universal-declaration-of-human-rights"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_known_url_matches_exact_url(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        response = "Reference: https://real.com/paper"
+        known_real = ["https://real.com/paper"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
 
 
 class TestCheckNoFabricatedCitations:

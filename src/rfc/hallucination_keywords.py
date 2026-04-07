@@ -29,7 +29,8 @@ class HallucinationKeywords:
     _ARXIV_PATTERN = re.compile(r"(?:arXiv:?\s*)(\d{4}\.\d{4,5})", re.IGNORECASE)
     # UN resolution / document IDs: A/RES/217, S/RES/1973, A/RES/70/1
     _UN_RESOLUTION_PATTERN = re.compile(
-        r"\b[A-Z]/(?:RES|PV|L|PRST|CN|CONF)/\d+(?:/\d+)?\b"
+        r"\b[A-Z]/(?:RES|PV|L|PRST|CN|CONF)/\d+(?:/\d+)?\b",
+        re.IGNORECASE,
     )
     # Legal reporter citations: "347 U.S. 483", "123 F.2d 456", "140 S.Ct. 1390"
     _LEGAL_CITE_PATTERN = re.compile(
@@ -85,23 +86,32 @@ class HallucinationKeywords:
     def _is_known_ref(self, ref: str, known_real_refs: List[str]) -> bool:
         """Check if a reference matches any known real reference.
 
-        Both sides are normalized (lowercase, punctuation stripped,
-        whitespace collapsed) then matched with case-insensitive
-        word-boundary regex. Word boundaries prevent short numeric
-        tokens (e.g. ``217``) from whitelisting fabricated references
-        that contain those digits as internal substrings. Normalization
-        makes ``347 U.S. 483`` and ``347 US 483`` match as the same
-        citation.
+        Uses a two-pass strategy:
+
+        1. **Direct match** — case-insensitive word-boundary regex on the
+           raw strings. This preserves dots in URLs and DOIs so that
+           ``un.org`` correctly matches ``https://www.un.org/...``.
+        2. **Normalized match** — if the direct match fails, both strings
+           are normalized (lowercase, strip ``.,;:`` punctuation, collapse
+           whitespace) and retried. This lets ``347 U.S. 483`` match
+           ``347 US 483`` without breaking URL matching.
+
+        Word boundaries prevent short numeric tokens (e.g. ``217``) from
+        whitelisting fabricated references that contain those digits as
+        internal substrings.
         """
+        ref_lower = ref.lower()
         ref_norm = self._normalize_citation(ref)
         for known in known_real_refs:
             if not known:
                 continue
+            known_lower = known.lower()
+            if re.search(r"\b" + re.escape(known_lower) + r"\b", ref_lower):
+                return True
             known_norm = self._normalize_citation(known)
             if not known_norm:
                 continue
-            pattern = r"\b" + re.escape(known_norm) + r"\b"
-            if re.search(pattern, ref_norm):
+            if re.search(r"\b" + re.escape(known_norm) + r"\b", ref_norm):
                 return True
         return False
 
