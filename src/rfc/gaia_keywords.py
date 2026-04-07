@@ -8,8 +8,9 @@ by the GAIA benchmark which evaluates LLMs augmented with tools.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from robot.api import logger
 from robot.api.deco import keyword
@@ -170,12 +171,12 @@ class GaiaKeywords:
 
         parsed = _try_parse_json(text)
         if parsed is None:
-            # Fallback 1: brace-counting scan finds the first balanced JSON
-            # object inside the text (handles "Sure, here is the JSON: {...}"
-            # and trailing commentary after the object).
-            scanned = _scan_balanced_json_object(text)
-            if scanned is not None:
-                parsed = _try_parse_json(scanned)
+            # Fallback 1: brace-counting scan iterates EVERY balanced JSON
+            # object in the text and prefers the first one containing
+            # ``tool_calls``.  Handles "Sure, here is the JSON: {...}",
+            # trailing commentary, AND auxiliary objects like
+            # `{"note": "..."}` that appear before the real envelope.
+            parsed = _find_tool_calls_envelope(text)
         if parsed is None:
             # Fallback 2: markdown code block extraction (legacy).
             json_text = extract_json(text)
@@ -384,9 +385,7 @@ class GaiaKeywords:
 
         parsed = _try_parse_json(text)
         if parsed is None:
-            scanned = _scan_balanced_json_object(text)
-            if scanned is not None:
-                parsed = _try_parse_json(scanned)
+            parsed = _find_tool_calls_envelope(text)
 
         if isinstance(parsed, dict) and "tool_calls" in parsed:
             reasoning = parsed.get("reasoning", "")
@@ -547,18 +546,19 @@ def _try_parse_json(text: str) -> Any:
         return None
 
 
-def _scan_balanced_json_object(text: str) -> Optional[str]:
-    """Find the first balanced JSON object substring in *text*.
+def _iter_balanced_json_objects(text: str) -> Iterator[str]:
+    """Yield every balanced JSON object substring in *text*, in order.
 
     Walks the string character by character, tracking string-literal state
-    (with backslash escapes) and brace depth.  Returns the substring of the
-    first complete ``{...}`` block, or ``None`` if no balanced object is found.
+    (with backslash escapes) and brace depth, yielding each complete
+    top-level ``{...}`` block as a substring.
 
     Handles common LLM response formats like:
         "Sure, here is the JSON: {\"tool_calls\": [...]}"
+        "{\"note\":\"...\"} {\"tool_calls\": [...]}"
         "{\"tool_calls\": [...]}\n\nLet me know if you need more!"
-    where ``json.loads`` on the whole string fails but a valid object is
-    embedded inside it.
+    where ``json.loads`` on the whole string fails but one or more valid
+    objects are embedded inside it.
     """
     start = -1
     depth = 0
@@ -585,31 +585,82 @@ def _scan_balanced_json_object(text: str) -> Optional[str]:
             if depth > 0:
                 depth -= 1
                 if depth == 0 and start != -1:
-                    return text[start : i + 1]
-    return None
+                    yield text[start : i + 1]
+                    start = -1
 
 
+def _find_tool_calls_envelope(text: str) -> Any:
+    """Scan *text* for a JSON object containing a ``tool_calls`` key.
+
+    Returns the first balanced object that parses as a dict with a
+    ``tool_calls`` key (preferred over auxiliary objects like
+    ``{"note": ...}``).  Falls back to the first parseable dict if no
+    envelope is found, or ``None`` if nothing parses.
+    """
+    first_dict: Any = None
+    for candidate in _iter_balanced_json_objects(text):
+        parsed = _try_parse_json(candidate)
+        if not isinstance(parsed, dict):
+            continue
+        if "tool_calls" in parsed:
+            return parsed
+        if first_dict is None:
+            first_dict = parsed
+    return first_dict
+
+
+# Phrases that explicitly signal "no tool fits this task".  Generic inability
+# wording (e.g. "unable to", "I cannot") is intentionally excluded — those
+# can appear in responses that still recommend a tool, which would inflate
+# refusal metrics.  Each phrase here must name the lack of a *tool*.
 _REFUSAL_PHRASES = (
     "no tool",
     "no suitable tool",
-    "none of",
-    "cannot complete",
-    "cannot perform",
-    "cannot fulfill",
-    "unable to",
-    "i cannot",
-    "i'm unable",
-    "i am unable",
-    "not able to",
     "no available tool",
     "no available keyword",
+    "none of the available tools",
+    "none of the tools",
+    "no tool can",
+    "no tool is",
+    "no tool that",
+    "cannot be done with the available tools",
+    "cannot be done with any of the available tools",
+    "cannot be accomplished with the available tools",
+    "no keyword",
+)
+
+
+# Word-boundary patterns that indicate the model is recommending a tool —
+# used to reject mixed-message responses that contain a refusal phrase but
+# still suggest invoking a keyword.
+_TOOL_RECOMMENDATION_PATTERNS = (
+    re.compile(r"\buse\s+\w", re.IGNORECASE),
+    re.compile(r"\bcall\s+\w", re.IGNORECASE),
+    re.compile(r"\binvoke\s+\w", re.IGNORECASE),
+    re.compile(r"\btry\s+using\b", re.IGNORECASE),
+    re.compile(r"\byou\s+should\s+use\b", re.IGNORECASE),
 )
 
 
 def _looks_like_refusal(text: str) -> bool:
-    """True if *text* contains an explicit refusal phrase."""
+    """True if *text* contains an explicit no-tool refusal phrase.
+
+    Requires both:
+    1. A phrase from :data:`_REFUSAL_PHRASES` that names a missing tool, AND
+    2. The response must NOT also recommend invoking any tool by name —
+       this rejects mixed messages like "I am unable to verify this,
+       but use Ask LLM..." which inflate refusal metrics despite
+       recommending a tool.
+    """
     lowered = text.lower()
-    return any(phrase in lowered for phrase in _REFUSAL_PHRASES)
+    if not any(phrase in lowered for phrase in _REFUSAL_PHRASES):
+        return False
+    # Reject mixed messages that still recommend invoking a tool — match
+    # on word boundaries so substrings like "becaUSE " do not trigger.
+    for pattern in _TOOL_RECOMMENDATION_PATTERNS:
+        if pattern.search(text):
+            return False
+    return True
 
 
 def _values_match(expected: Any, actual: Any) -> bool:

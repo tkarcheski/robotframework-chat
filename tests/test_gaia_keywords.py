@@ -287,6 +287,33 @@ class TestParseToolCalls:
         assert calls[0].tool == "Set LLM Parameters"
         assert calls[0].arguments == {"temperature": 0.7, "max_tokens": 1024}
 
+    def test_parse_skips_auxiliary_object_to_find_tool_calls(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """If a response has an aux JSON object before the real envelope,
+        scanning must continue until it finds one with tool_calls."""
+        response = (
+            '{"note": "preamble metadata", "version": 1}\n'
+            'Here is the tool call:\n'
+            '{"tool_calls": [{"tool": "Ask LLM", "arguments": {"prompt": "hi"}}]}'
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].tool == "Ask LLM"
+
+    def test_parse_skips_multiple_auxiliary_objects(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Multiple aux objects before the envelope must be skipped."""
+        response = (
+            '{"a": 1} {"b": 2} '
+            '{"tool_calls": [{"tool": "Grade Answer",'
+            ' "arguments": {"question": "q", "expected": "e", "actual": "a"}}]}'
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].tool == "Grade Answer"
+
 
 # ---------------------------------------------------------------------------
 # grade_tool_selection
@@ -547,6 +574,31 @@ class TestGradeToolRefusal:
         """Empty tool_calls with NO reasoning is not an explicit refusal."""
         response = json.dumps({"tool_calls": [], "reasoning": ""})
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
+    def test_refusal_generic_inability_with_recommendation_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """A response that says 'unable to' but still recommends a tool
+        is NOT a refusal — it inflates refusal metrics."""
+        response = (
+            "I am unable to verify this directly, but you should use Ask LLM "
+            "to query a model."
+        )
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
+    def test_refusal_generic_cannot_alone_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Bare 'cannot' without an explicit no-tool signal is not a refusal."""
+        response = "I cannot answer that right now."
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
+    def test_refusal_explicit_no_tool_phrase_passes(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Explicit 'no suitable tool available' is the canonical refusal."""
+        response = "There is no suitable tool available for this task."
+        assert gaia.grade_tool_refusal(response)["score"] == 1.0
 
 
 # ---------------------------------------------------------------------------
