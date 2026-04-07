@@ -167,6 +167,11 @@ test_suites:
     path: "robot/format"
     description: "Structured output validation, length compliance, and negative constraint following"
 
+  gaia:
+    label: "GAIA Tool-Use"
+    path: "robot/gaia/tests"
+    description: "GAIA-style tests for LLM tool selection, argument formatting, chaining, and refusal"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
