@@ -30,6 +30,7 @@ from bootstrap_dashboards import (  # noqa: E402
     STATUS_COLORS,
     _CHART_DEFS,
     _FILTER_CONFIGS,
+    _LAYOUT_SECTIONS,
     _VIRTUAL_DATASETS,
     _build_position_json,
     _probe_columns,
@@ -82,7 +83,10 @@ def pg_like_db(tmp_path: Path) -> str:
                 expected_answer TEXT,
                 actual_answer TEXT,
                 grading_reason TEXT,
-                rfc_version TEXT
+                rfc_version TEXT,
+                eval_count INTEGER,
+                thinking_tokens INTEGER,
+                reasoning_tokens INTEGER
             )
         """)
         )
@@ -114,6 +118,10 @@ class TestVirtualDatasets:
         "flaky_test_summary",
         "flaky_trend_timeseries",
         "kpi_flaky_test_count",
+        # Token efficiency
+        "kpi_avg_tokens_per_correct",
+        "model_token_efficiency",
+        "token_efficiency_timeseries",
         # Coverage (Test Infrastructure dashboard)
         "kpi_current_coverage",
         "coverage_timeseries",
@@ -172,6 +180,103 @@ class TestVirtualDatasets:
         assert "rfc_version" in cols
         assert "pass_rate_pct" in cols
         assert "run_count" in cols
+
+
+# ---------------------------------------------------------------------------
+# Token efficiency dataset tests
+# ---------------------------------------------------------------------------
+
+
+class TestTokenEfficiencyDatasets:
+    """Tests for the token efficiency virtual datasets."""
+
+    TOKEN_EFFICIENCY_KEYS = {
+        "kpi_avg_tokens_per_correct",
+        "model_token_efficiency",
+        "token_efficiency_timeseries",
+    }
+
+    def test_all_token_efficiency_keys_present(self) -> None:
+        """All 3 token efficiency datasets exist in _VIRTUAL_DATASETS."""
+        assert self.TOKEN_EFFICIENCY_KEYS <= set(_VIRTUAL_DATASETS.keys())
+
+    def test_kpi_avg_tokens_columns(self, pg_like_db: str) -> None:
+        """KPI avg tokens per correct SQL produces expected columns."""
+        sql = _VIRTUAL_DATASETS["kpi_avg_tokens_per_correct"]
+        sqlite_sql = _pg_to_sqlite(sql)
+        cols = _probe_columns(pg_like_db, sqlite_sql)
+        assert "avg_tokens_per_correct" in cols
+        assert "correct_count" in cols
+
+    def test_model_token_efficiency_columns(self, pg_like_db: str) -> None:
+        """Model token efficiency SQL produces expected columns."""
+        sql = _VIRTUAL_DATASETS["model_token_efficiency"]
+        sqlite_sql = _pg_to_sqlite(sql)
+        cols = _probe_columns(pg_like_db, sqlite_sql)
+        assert "model_name" in cols
+        assert "avg_tokens_per_correct" in cols
+        assert "correct_count" in cols
+
+    def test_token_efficiency_timeseries_columns(self, pg_like_db: str) -> None:
+        """Token efficiency timeseries SQL produces expected columns."""
+        sql = _VIRTUAL_DATASETS["token_efficiency_timeseries"]
+        sqlite_sql = _pg_to_sqlite(sql)
+        cols = _probe_columns(pg_like_db, sqlite_sql)
+        assert "model_name" in cols
+        assert "avg_tokens_per_correct" in cols
+
+    def test_all_token_efficiency_sql_filters_correct_answers(self) -> None:
+        """All token efficiency SQLs filter on score >= 0.5 and eval_count > 0."""
+        for key in self.TOKEN_EFFICIENCY_KEYS:
+            sql = _VIRTUAL_DATASETS[key]
+            normalized = sql.upper().replace(" ", "")
+            assert "SCORE>=0.5" in normalized, (
+                f"{key} missing score >= 0.5 filter"
+            )
+            assert "EVAL_COUNT>0" in normalized, (
+                f"{key} missing eval_count > 0 filter"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Token efficiency chart tests
+# ---------------------------------------------------------------------------
+
+
+class TestTokenEfficiencyCharts:
+    """Tests for the token efficiency chart definitions."""
+
+    TOKEN_EFFICIENCY_CHART_NAMES = {
+        "Avg Tokens/Correct (24h)",
+        "Model Token Efficiency",
+        "Token Efficiency Trend",
+    }
+
+    def test_all_token_efficiency_charts_present(self) -> None:
+        """All 3 token efficiency charts exist in _CHART_DEFS."""
+        chart_names = {c["slice_name"] for c in _CHART_DEFS}
+        assert self.TOKEN_EFFICIENCY_CHART_NAMES <= chart_names
+
+    def test_kpi_chart_uses_big_number(self) -> None:
+        """Avg Tokens/Correct KPI uses big_number_total viz type."""
+        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Avg Tokens/Correct (24h)")
+        assert chart["viz_type"] == "big_number_total"
+
+    def test_model_chart_uses_bar(self) -> None:
+        """Model Token Efficiency uses echarts_bar viz type."""
+        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Model Token Efficiency")
+        assert chart["viz_type"] == "echarts_bar"
+
+    def test_trend_chart_uses_timeseries(self) -> None:
+        """Token Efficiency Trend uses echarts_timeseries_line viz type."""
+        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Token Efficiency Trend")
+        assert chart["viz_type"] == "echarts_timeseries_line"
+
+    def test_layout_has_token_efficiency_section(self) -> None:
+        """Layout sections include Token Efficiency."""
+        labels = {s["label"] for s in _LAYOUT_SECTIONS}
+        assert "Token Efficiency" in labels
+        assert "Token Efficiency Trends" in labels
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +350,10 @@ class TestChartDefs:
         "Pass Rate by RFC Version",
         # Status
         "Test Status Breakdown",
+        # Token efficiency
+        "Avg Tokens/Correct (24h)",
+        "Model Token Efficiency",
+        "Token Efficiency Trend",
         # Drill-down
         "Recent Test Runs",
         "Test Results Detail",
@@ -526,7 +635,7 @@ def _pg_to_sqlite(sql: str) -> str:
     )
     # Replace PERCENTILE_CONT(...) WITHIN GROUP (ORDER BY col) with AVG(col)
     sql = re.sub(
-        r"PERCENTILE_CONT\s*\([^)]*\)\s*WITHIN\s+GROUP\s*\(\s*ORDER\s+BY\s+(\w+)\s*\)",
+        r"PERCENTILE_CONT\s*\([^)]*\)\s*WITHIN\s+GROUP\s*\(\s*ORDER\s+BY\s+([\w.]+)\s*\)",
         r"AVG(\1)",
         sql,
         flags=flags,

@@ -5,6 +5,7 @@ importable by other Robot Framework projects.
 """
 
 import json
+import math
 import os
 from typing import Any, Dict, Optional
 
@@ -115,6 +116,30 @@ def warn_near_miss(text: str) -> None:
             f"Possible RFC_DATA typo (message ignored): "
             f"{text[:80]!r} — expected prefix 'RFC_DATA:'"
         )
+
+
+def compute_token_efficiency(
+    score: Optional[float], eval_count: Optional[int], pass_threshold: float = 0.5
+) -> float:
+    """Return tokens-per-correct-answer for a single test result.
+
+    For correct answers (score >= pass_threshold) with token data,
+    returns eval_count as the "cost" of that correct answer.
+    Returns 0.0 when the answer is incorrect, ungraded, has no token data,
+    or when either input is missing (None or NaN).
+    """
+    if score is None or eval_count is None:
+        return 0.0
+    try:
+        score_f = float(score)
+        eval_f = float(eval_count)
+    except (TypeError, ValueError):
+        return 0.0
+    if math.isnan(score_f) or math.isnan(eval_f):
+        return 0.0
+    if score_f < pass_threshold or eval_f <= 0:
+        return 0.0
+    return eval_f
 
 
 def get_robot_float(var_name: str) -> float:

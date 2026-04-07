@@ -432,6 +432,49 @@ _VIRTUAL_DATASETS: dict[str, str] = {
         GROUP BY module_name
         ORDER BY module_coverage_pct ASC
     """,
+    # --- Token efficiency datasets ---
+    "kpi_avg_tokens_per_correct": """
+        SELECT
+            ROUND(AVG(tr.eval_count)::numeric, 1) AS avg_tokens_per_correct,
+            COUNT(*) AS correct_count,
+            SUM(tr.eval_count) AS total_tokens
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE tr.score >= 0.5
+          AND tr.eval_count > 0
+          AND r.timestamp >= NOW() - INTERVAL '24 hours'
+    """,
+    "model_token_efficiency": """
+        SELECT
+            r.model_name,
+            COUNT(*) AS correct_count,
+            ROUND(AVG(tr.eval_count)::numeric, 1) AS avg_tokens_per_correct,
+            ROUND(PERCENTILE_CONT(0.5)
+                WITHIN GROUP (ORDER BY tr.eval_count)::numeric, 1)
+                AS median_tokens_per_correct,
+            MIN(tr.eval_count) AS min_tokens,
+            MAX(tr.eval_count) AS max_tokens
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE tr.score >= 0.5
+          AND tr.eval_count > 0
+          AND r.timestamp >= NOW() - INTERVAL '24 hours'
+        GROUP BY r.model_name
+        ORDER BY avg_tokens_per_correct ASC
+    """,
+    "token_efficiency_timeseries": """
+        SELECT
+            DATE_TRUNC('hour', r.timestamp) AS time_bucket,
+            r.model_name,
+            ROUND(AVG(tr.eval_count)::numeric, 1) AS avg_tokens_per_correct,
+            COUNT(*) AS correct_count
+        FROM test_results tr
+        JOIN test_runs r ON tr.run_id = r.id
+        WHERE tr.score >= 0.5
+          AND tr.eval_count > 0
+        GROUP BY DATE_TRUNC('hour', r.timestamp), r.model_name
+        ORDER BY time_bucket
+    """,
     "coverage_by_commit": """
         SELECT
             git_commit,
@@ -695,6 +738,63 @@ _CHART_DEFS: list[dict[str, Any]] = [
             "y_axis_bounds": [0, 100],
         },
     },
+    # --- Token Efficiency Section ---
+    {
+        "slice_name": "Avg Tokens/Correct (24h)",
+        "viz_type": "big_number_total",
+        "datasource_id_key": "kpi_avg_tokens_per_correct",
+        "params": {
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "avg_tokens_per_correct"},
+                "aggregate": "MAX",
+                "label": "Avg Tokens",
+            },
+            "subheader": "Mean response tokens for correct answers (24h)",
+            "y_axis_format": ".0f",
+        },
+    },
+    {
+        "slice_name": "Model Token Efficiency",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "model_token_efficiency",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_tokens_per_correct"},
+                    "aggregate": "MAX",
+                    "label": "Avg Tokens/Correct",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "median_tokens_per_correct"},
+                    "aggregate": "MAX",
+                    "label": "Median Tokens/Correct",
+                },
+            ],
+            "groupby": ["model_name"],
+            "order_desc": False,
+        },
+    },
+    {
+        "slice_name": "Token Efficiency Trend",
+        "viz_type": "echarts_timeseries_line",
+        "datasource_id_key": "token_efficiency_timeseries",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_tokens_per_correct"},
+                    "aggregate": "AVG",
+                    "label": "Avg Tokens/Correct",
+                },
+            ],
+            "groupby": ["model_name"],
+            "x_axis": "time_bucket",
+            "granularity_sqla": "time_bucket",
+        },
+    },
     # --- Git / Version Context ---
     {
         "slice_name": "RFC Version Distribution",
@@ -884,6 +984,19 @@ _LAYOUT_SECTIONS: list[dict[str, Any]] = [
         "label": "Model Comparison",
         "charts": [
             {"name": "Model Comparison \u2014 Pass Rate", "width": 12, "height": 40},
+        ],
+    },
+    {
+        "label": "Token Efficiency",
+        "charts": [
+            {"name": "Avg Tokens/Correct (24h)", "width": 3, "height": 10},
+            {"name": "Model Token Efficiency", "width": 9, "height": 50},
+        ],
+    },
+    {
+        "label": "Token Efficiency Trends",
+        "charts": [
+            {"name": "Token Efficiency Trend", "width": 12, "height": 50},
         ],
     },
     {
