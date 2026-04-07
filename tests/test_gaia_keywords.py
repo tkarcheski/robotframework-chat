@@ -600,6 +600,38 @@ class TestGradeToolRefusal:
         response = "There is no suitable tool available for this task."
         assert gaia.grade_tool_refusal(response)["score"] == 1.0
 
+    def test_refusal_json_with_nonempty_tool_calls_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """A JSON envelope with a non-empty tool_calls list (even if every
+        item is malformed and dropped by parse_tool_calls) must NOT be
+        graded as a refusal — the contract requires tool_calls = []."""
+        response = json.dumps(
+            {
+                "tool_calls": [{"arguments": {}}],  # missing 'tool' key
+                "reasoning": "No suitable tool",
+            }
+        )
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
+    def test_refusal_json_with_non_list_tool_calls_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """tool_calls must be a list, not a string or dict."""
+        response = json.dumps(
+            {"tool_calls": "none", "reasoning": "No suitable tool"}
+        )
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
+    def test_refusal_json_with_null_tool_calls_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """tool_calls = null is not the same as an empty list."""
+        response = json.dumps(
+            {"tool_calls": None, "reasoning": "No suitable tool"}
+        )
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # run_gaia_tool_use_test (end-to-end with mocked LLM)

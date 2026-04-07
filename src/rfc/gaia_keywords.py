@@ -388,6 +388,27 @@ class GaiaKeywords:
             parsed = _find_tool_calls_envelope(text)
 
         if isinstance(parsed, dict) and "tool_calls" in parsed:
+            raw_calls = parsed.get("tool_calls")
+            # Enforce the documented contract: tool_calls must be a *list*
+            # AND must be empty.  A non-list value (string, dict, null) or
+            # any non-empty list — even one full of malformed call items —
+            # is not a refusal, regardless of the reasoning text.
+            if not isinstance(raw_calls, list):
+                return {
+                    "score": 0.0,
+                    "reason": (
+                        f"tool_calls must be a list, got "
+                        f"{type(raw_calls).__name__}"
+                    ),
+                }
+            if raw_calls:
+                return {
+                    "score": 0.0,
+                    "reason": (
+                        f"tool_calls is non-empty ({len(raw_calls)} item(s)) "
+                        "— not a refusal"
+                    ),
+                }
             reasoning = parsed.get("reasoning", "")
             if isinstance(reasoning, str) and reasoning.strip():
                 return {
