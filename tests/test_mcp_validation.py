@@ -153,9 +153,12 @@ class TestBranchAndCommitHistory:
         assert output, "No git branches found"
 
     def test_recent_commit_history_exists(self) -> None:
+        # Only assert at least one commit is present. Shallow checkouts
+        # (e.g. CI jobs using --depth 1) can legitimately have fewer
+        # commits than a full clone.
         output = _git("log", "--oneline", "-20")
         lines = [line for line in output.splitlines() if line.strip()]
-        assert len(lines) >= 10, f"Expected >=10 commits, got {len(lines)}"
+        assert len(lines) >= 1, "Expected at least one commit in history"
 
     def test_repo_is_git_repo(self) -> None:
         # Validate this is a git working tree. Remotes are optional — local
