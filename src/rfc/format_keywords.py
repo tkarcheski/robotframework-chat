@@ -29,8 +29,9 @@ _SUFFIX_ABBREVIATIONS = {"inc", "ltd", "corp", "etc", "vs", "approx",
 
 _ABBREVIATIONS = _TITLE_ABBREVIATIONS | _SUFFIX_ABBREVIATIONS
 
-# Splits on sentence-ending punctuation followed by whitespace or end of string.
-_SENTENCE_SPLIT = re.compile(r"[.!?](?:\s|$)")
+# Splits on sentence-ending punctuation, optionally followed by closing
+# quotes/brackets, then whitespace or end of string.
+_SENTENCE_SPLIT = re.compile(r"[.!?][\"')\]}]*(?:\s|$)")
 
 # Markdown code-fence pattern for extracting content.
 _CODE_FENCE = re.compile(r"```\w*\s*\n?(.*?)```", re.DOTALL)
@@ -98,26 +99,40 @@ class FormatKeywords:
 
         emit_rfc_data("parse_valid", "true")
 
-        # For arrays, validate against first element
-        target: dict[str, Any]
+        # For arrays, validate every element and average the per-element score.
+        # Any non-dict element scores as a structural failure (0.5 parse credit
+        # only). All missing keys across elements are reported.
         if isinstance(parsed, list):
-            if not parsed or not isinstance(parsed[0], dict):
-                score = 0.5  # Valid JSON array but no dict elements
+            if not parsed:
+                score = 0.5  # Valid JSON array but empty
                 emit_rfc_data("score", f"{score:.4f}")
                 emit_rfc_data("missing_keys", ",".join(keys))
                 return score
-            target = parsed[0]
-        elif isinstance(parsed, dict):
-            target = parsed
-        else:
-            score = 0.5  # Valid JSON but not a dict/list
+            element_scores: list[float] = []
+            all_missing: set[str] = set()
+            for element in parsed:
+                if not isinstance(element, dict):
+                    element_scores.append(0.5)
+                    all_missing.update(keys)
+                    continue
+                el_score, el_missing = _compute_key_score(element, keys)
+                element_scores.append(el_score)
+                all_missing.update(el_missing)
+            score = sum(element_scores) / len(element_scores)
             emit_rfc_data("score", f"{score:.4f}")
-            emit_rfc_data("missing_keys", ",".join(keys))
+            emit_rfc_data("missing_keys", ",".join(sorted(all_missing)))
             return score
 
-        score, missing = _compute_key_score(target, keys)
+        if isinstance(parsed, dict):
+            score, missing = _compute_key_score(parsed, keys)
+            emit_rfc_data("score", f"{score:.4f}")
+            emit_rfc_data("missing_keys", ",".join(missing))
+            return score
+
+        # Valid JSON but not a dict/list
+        score = 0.5
         emit_rfc_data("score", f"{score:.4f}")
-        emit_rfc_data("missing_keys", ",".join(missing))
+        emit_rfc_data("missing_keys", ",".join(keys))
         return score
 
     @keyword("Validate YAML Response")

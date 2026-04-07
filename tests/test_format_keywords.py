@@ -58,6 +58,14 @@ class TestValidateJsonResponse:
         assert score == 1.0
 
     @patch("rfc.format_keywords.emit_rfc_data")
+    def test_json_array_inconsistent_elements(self, mock_emit: patch) -> None:
+        """JSON array where later elements miss required keys must not score 1.0.
+        Validation must check every element, not just the first."""
+        response = '[{"id": 1, "name": "x", "price": 1}, {"id": 2}]'
+        score = self.fk.validate_json_response(response, "id,name,price")
+        assert score < 1.0
+
+    @patch("rfc.format_keywords.emit_rfc_data")
     def test_string_coercion_from_robot(self, mock_emit: patch) -> None:
         """Robot Framework passes strings — ensure expected_keys works."""
         response = '{"x": 1}'
@@ -208,6 +216,20 @@ class TestCountSentences:
         """An abbreviation that genuinely ends a sentence must still count.
         'Acme Inc. It ships globally.' has 2 sentences."""
         text = "Acme Inc. It ships globally."
+        count = self.fk.count_sentences(text)
+        assert count == 2
+
+    @patch("rfc.format_keywords.emit_rfc_data")
+    def test_sentence_boundary_before_closing_quote(self, mock_emit: patch) -> None:
+        """A period inside closing quotes still ends a sentence."""
+        text = '"Hi." Then she left.'
+        count = self.fk.count_sentences(text)
+        assert count == 2
+
+    @patch("rfc.format_keywords.emit_rfc_data")
+    def test_sentence_boundary_before_closing_paren(self, mock_emit: patch) -> None:
+        """A period before a closing paren still ends a sentence."""
+        text = "Done.) Next we wait."
         count = self.fk.count_sentences(text)
         assert count == 2
 

@@ -164,7 +164,7 @@ test_suites:
 
   format:
     label: "Format Compliance"
-    path: "robot/format/tests"
+    path: "robot/format"
     description: "Structured output validation, length compliance, and negative constraint following"
 
   swebench:

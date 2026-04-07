@@ -135,7 +135,7 @@ test_suites:
     timeout_seconds: 600
 
   - name: "format"
-    path: "robot/format/tests/"
+    path: "robot/format/"
     description: "Format compliance: structured output, length, and negative constraints"
     timeout_seconds: 300
 
