@@ -153,6 +153,14 @@ class TestValidateCsvResponse:
         score = self.fk.validate_csv_response(response, 2, 2)
         assert score == 1.0
 
+    @patch("rfc.format_keywords.emit_rfc_data")
+    def test_csv_ragged_data_row(self, mock_emit: patch) -> None:
+        """CSV with header width matching but a data row with fewer columns
+        must not score 1.0 — every data row must match the column count."""
+        response = "name,department,salary\nAlice,Engineering,100000\nBob,Marketing"
+        score = self.fk.validate_csv_response(response, 3, 2)
+        assert score < 1.0
+
 
 class TestCountSentences:
     def setup_method(self) -> None:
@@ -192,6 +200,22 @@ class TestCountSentences:
     def test_abbreviations_not_split(self, mock_emit: patch) -> None:
         """Common abbreviations like Mr. Dr. etc. should not split sentences."""
         text = "Dr. Smith went to Washington. He had a meeting."
+        count = self.fk.count_sentences(text)
+        assert count == 2
+
+    @patch("rfc.format_keywords.emit_rfc_data")
+    def test_abbreviation_at_sentence_end(self, mock_emit: patch) -> None:
+        """An abbreviation that genuinely ends a sentence must still count.
+        'Acme Inc. It ships globally.' has 2 sentences."""
+        text = "Acme Inc. It ships globally."
+        count = self.fk.count_sentences(text)
+        assert count == 2
+
+    @patch("rfc.format_keywords.emit_rfc_data")
+    def test_abbreviation_mid_and_end(self, mock_emit: patch) -> None:
+        """Abbreviation mid-sentence not split, but if next word is capitalized
+        and starts a new sentence, split. 'I work at Foo Inc. Bar Corp. is next.'"""
+        text = "I work at Foo Inc. Bar Corp. is next."
         count = self.fk.count_sentences(text)
         assert count == 2
 

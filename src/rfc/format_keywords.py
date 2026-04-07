@@ -18,9 +18,16 @@ from robot.api.deco import keyword
 
 from .rfc_data import emit_rfc_data
 
-# Common abbreviations that should not be treated as sentence endings.
-_ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs",
-                  "etc", "inc", "ltd", "corp", "approx", "e.g", "i.e"}
+# Title abbreviations precede a name (e.g. "Dr. Smith") and never end a
+# sentence — even when followed by a capitalized word.
+_TITLE_ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st"}
+
+# Suffix abbreviations may end a sentence (e.g. "Acme Inc. It ships."). They
+# only suppress a sentence break when followed by a lowercase continuation.
+_SUFFIX_ABBREVIATIONS = {"inc", "ltd", "corp", "etc", "vs", "approx",
+                         "e.g", "i.e"}
+
+_ABBREVIATIONS = _TITLE_ABBREVIATIONS | _SUFFIX_ABBREVIATIONS
 
 # Splits on sentence-ending punctuation followed by whitespace or end of string.
 _SENTENCE_SPLIT = re.compile(r"[.!?](?:\s|$)")
@@ -198,20 +205,26 @@ class FormatKeywords:
 
         # Header is first row; data rows are the rest
         actual_columns = len(rows[0])
-        data_rows = len(rows) - 1  # exclude header
+        data_row_widths = [len(r) for r in rows[1:]]
+        data_rows = len(data_row_widths)
+
+        # All data rows must match the expected column count for full credit
+        all_rows_match = (
+            actual_columns == expected_columns
+            and all(w == expected_columns for w in data_row_widths)
+        )
 
         emit_rfc_data("actual_columns", str(actual_columns))
         emit_rfc_data("actual_rows", str(data_rows))
 
-        # Score: 0.5 for parseable, +0.25 for column match, +0.25 for row match
+        # Score: 0.5 for parseable, +0.25 for full column match (header + all
+        # data rows), +0.25 for meeting min_rows. Full 1.0 requires both.
         score = 0.5
-        if actual_columns == expected_columns:
+        if all_rows_match:
             score += 0.25
         if data_rows >= min_rows:
             score += 0.25
-
-        # Full score only when both match
-        if actual_columns == expected_columns and data_rows >= min_rows:
+        if all_rows_match and data_rows >= min_rows:
             score = 1.0
 
         emit_rfc_data("score", f"{score:.4f}")
@@ -239,11 +252,21 @@ class FormatKeywords:
         count = 0
         for match in _SENTENCE_SPLIT.finditer(text):
             pos = match.start()
-            # Check if the period is preceded by an abbreviation
-            prefix = text[:pos].rstrip()
-            last_word = prefix.split()[-1].lower().rstrip(".") if prefix.split() else ""
-            if text[pos] == "." and last_word in _ABBREVIATIONS:
-                continue
+            if text[pos] == ".":
+                # Check if the period is preceded by an abbreviation
+                prefix = text[:pos].rstrip()
+                words = prefix.split()
+                last_word = words[-1].lower().rstrip(".") if words else ""
+                if last_word in _TITLE_ABBREVIATIONS:
+                    # Titles always continue into a name — never break.
+                    continue
+                if last_word in _SUFFIX_ABBREVIATIONS:
+                    # Suffix abbreviations may end a sentence. Only skip the
+                    # boundary if the next word looks like a mid-sentence
+                    # continuation (starts with a lowercase letter).
+                    rest = text[match.end():].lstrip()
+                    if rest and rest[0].islower():
+                        continue
             count += 1
 
         # If text has content but no sentence-ending punctuation, count as 1
