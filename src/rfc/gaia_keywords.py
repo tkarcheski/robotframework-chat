@@ -170,7 +170,14 @@ class GaiaKeywords:
 
         parsed = _try_parse_json(text)
         if parsed is None:
-            # Fallback: try markdown code block extraction
+            # Fallback 1: brace-counting scan finds the first balanced JSON
+            # object inside the text (handles "Sure, here is the JSON: {...}"
+            # and trailing commentary after the object).
+            scanned = _scan_balanced_json_object(text)
+            if scanned is not None:
+                parsed = _try_parse_json(scanned)
+        if parsed is None:
+            # Fallback 2: markdown code block extraction (legacy).
             json_text = extract_json(text)
             parsed = _try_parse_json(json_text)
 
@@ -251,8 +258,10 @@ class GaiaKeywords:
         # Order check only meaningful when every expected occurrence is present.
         order_correct = actual_names == list(expected_tools)
         if all_matched and not order_correct:
-            # All occurrences present but wrong order — partial penalty
-            selection_score *= 0.75
+            # All occurrences present but wrong order — heavy penalty so that
+            # even with perfect arguments (combined 0.5*sel + 0.5*args) the
+            # final score sits below the strict multi-step pass threshold.
+            selection_score *= 0.5
 
         reason_parts: list[str] = []
         if all_matched and order_correct:
@@ -386,7 +395,7 @@ class GaiaKeywords:
         prompt = self.build_tool_prompt(tools, question)
         logger.info(f"GAIA prompt:\n{prompt}")
 
-        best_score = 0.0
+        best_score = -1.0  # sentinel: any real score updates on first attempt
         best_reason = ""
         best_response = ""
 
@@ -492,6 +501,48 @@ def _try_parse_json(text: str) -> Any:
         return json.loads(text)
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def _scan_balanced_json_object(text: str) -> Optional[str]:
+    """Find the first balanced JSON object substring in *text*.
+
+    Walks the string character by character, tracking string-literal state
+    (with backslash escapes) and brace depth.  Returns the substring of the
+    first complete ``{...}`` block, or ``None`` if no balanced object is found.
+
+    Handles common LLM response formats like:
+        "Sure, here is the JSON: {\"tool_calls\": [...]}"
+        "{\"tool_calls\": [...]}\n\nLet me know if you need more!"
+    where ``json.loads`` on the whole string fails but a valid object is
+    embedded inside it.
+    """
+    start = -1
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    return text[start : i + 1]
+    return None
 
 
 def _values_match(expected: Any, actual: Any) -> bool:

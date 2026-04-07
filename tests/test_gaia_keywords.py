@@ -247,6 +247,46 @@ class TestParseToolCalls:
         result = gaia.grade_tool_arguments({"prompt": "hi"}, call)
         assert result["score"] == 0.0
 
+    def test_parse_json_wrapped_in_plain_text_prefix(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Models often prepend 'Sure, here is the JSON:' before the object."""
+        response = (
+            "Sure, here is the JSON for your tool call:\n"
+            '{"tool_calls": [{"tool": "Ask LLM", "arguments": {"prompt": "hi there"}}],'
+            ' "reasoning": "need to query"}'
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].tool == "Ask LLM"
+        assert calls[0].arguments == {"prompt": "hi there"}
+
+    def test_parse_json_with_trailing_text(self, gaia: GaiaKeywords) -> None:
+        """Trailing commentary after the JSON object must not break parsing."""
+        response = (
+            '{"tool_calls": [{"tool": "Ask LLM", "arguments": {"prompt": "x"}}]}'
+            "\n\nLet me know if you need anything else!"
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].tool == "Ask LLM"
+
+    def test_parse_json_with_nested_objects_after_prefix(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Nested JSON objects after a text prefix must be parsed correctly."""
+        response = (
+            "Here you go:\n"
+            '{"tool_calls": ['
+            '{"tool": "Set LLM Parameters",'
+            ' "arguments": {"temperature": 0.7, "max_tokens": 1024}}'
+            "]}"
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].tool == "Set LLM Parameters"
+        assert calls[0].arguments == {"temperature": 0.7, "max_tokens": 1024}
+
 
 # ---------------------------------------------------------------------------
 # grade_tool_selection
@@ -296,9 +336,41 @@ class TestGradeToolSelection:
             ToolCall(tool="Set LLM Model", arguments={}),
         ]
         result = gaia.grade_tool_selection(["Set LLM Model", "Ask LLM"], calls)
-        # Tools are correct but order is wrong — partial credit
-        assert result["score"] < 1.0
+        # Tools are correct but order is wrong — score must be low enough
+        # that even with perfect arguments (combined 0.5*sel + 0.5*1.0) the
+        # multi-step pass threshold (>= 0.9) cannot be reached.
+        assert result["score"] <= 0.5
         assert not result["order_correct"]
+
+    def test_wrong_ordering_combined_score_under_threshold(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """End-to-end: reversed chain with perfect args must NOT pass >=0.9."""
+        llm_response = json.dumps(
+            {
+                "tool_calls": [
+                    {"tool": "Ask LLM", "arguments": {"prompt": "hi"}},
+                    {"tool": "Set LLM Model", "arguments": {"model": "mistral"}},
+                ],
+                "reasoning": "wrong order",
+            }
+        )
+        gaia.client = MagicMock()
+        gaia.client.generate.return_value = llm_response
+        gaia.client.last_metrics = None
+        gaia.client.num_ctx = None
+        gaia.client.max_tokens = 256
+
+        expected_calls = [
+            {"tool": "Set LLM Model", "arguments": {"model": "mistral"}},
+            {"tool": "Ask LLM", "arguments": {"prompt": "hi"}},
+        ]
+        score, reason, response = gaia.run_gaia_tool_use_test(
+            SAMPLE_TOOLS, "configure then ask", expected_calls, max_retries=0
+        )
+        # Wrong-order chain must score below the strict 0.9 threshold even
+        # though every argument value is correct.
+        assert score < 0.9
 
     def test_repeated_tool_calls_both_present(self, gaia: GaiaKeywords) -> None:
         """Repeated tool calls must be preserved — multiplicity matters."""
@@ -555,6 +627,36 @@ class TestRunGaiaToolUseTest:
         # Combined: 0.5 * 1.0 + 0.5 * 0.5 = 0.75
         assert score < 1.0
         assert score >= 0.5
+
+    def test_zero_score_retries_retain_diagnostics(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """When every retry scores 0.0, the response and reason must be
+        non-empty so post-run debugging has the actual model output."""
+        llm_response = json.dumps(
+            {
+                "tool_calls": [
+                    {"tool": "Brainstorm Ideas", "arguments": {"domain": "x"}}
+                ],
+                "reasoning": "wrong tool",
+            }
+        )
+        gaia.client = MagicMock()
+        gaia.client.generate.return_value = llm_response
+        gaia.client.last_metrics = None
+        gaia.client.num_ctx = None
+        gaia.client.max_tokens = 256
+
+        expected_calls = [
+            {"tool": "Execute Python In Container", "arguments": {"code": "print(1)"}}
+        ]
+        score, reason, response = gaia.run_gaia_tool_use_test(
+            SAMPLE_TOOLS, "compute something", expected_calls, max_retries=2
+        )
+        assert score == 0.0
+        assert reason != ""
+        assert response != ""
+        assert response == llm_response
 
     def test_multi_step_chain_correct(self, gaia: GaiaKeywords) -> None:
         llm_response = json.dumps(

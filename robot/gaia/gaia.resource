@@ -24,10 +24,13 @@ Run Single Tool Selection Test
 
 Run Multi Step Tool Test
     [Documentation]    Test that the LLM chains multiple tools in correct order with correct arguments.
+    ...                Uses a strict threshold (>= 0.9) so reversed chains — which score
+    ...                at most 0.5*0.5 + 0.5*1.0 = 0.75 under the heavy ordering penalty —
+    ...                cannot pass even with perfect arguments.
     [Arguments]    ${tools}    ${question}    ${expected_calls}
     ${score}    ${reason}    ${response}=    Run GAIA Tool Use Test
     ...    ${tools}    ${question}    ${expected_calls}
-    Should Be True    ${score} >= 0.75
+    Should Be True    ${score} >= 0.9
     ...    Multi-step tool chain failed (score=${score}): ${reason}
     Log    Score: ${score} | Reason: ${reason}
     RETURN    ${score}    ${reason}    ${response}
