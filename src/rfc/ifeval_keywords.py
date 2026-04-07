@@ -135,6 +135,21 @@ class IFEvalKeywords:
                 f"Supported: {sorted(dispatch)}"
             )
 
+        constraints_requiring_value = {
+            "sentence_count",
+            "bullet_points",
+            "word_count",
+            "numbered_list",
+            "paragraph_count",
+            "forbidden_letter",
+            "sentence_start",
+            "ends_with_word",
+        }
+        if constraint in constraints_requiring_value and not expected_value:
+            raise ValueError(
+                f"Constraint {constraint!r} requires a non-empty expected_value"
+            )
+
         passed, reason = dispatch[constraint]()
         return {
             "passed": passed,

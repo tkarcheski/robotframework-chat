@@ -288,6 +288,22 @@ class TestCheckIFEvalConstraint:
         with pytest.raises(ValueError, match="Unknown constraint"):
             kw.check_ifeval_constraint("hello", "nonexistent")
 
+    @patch("rfc.ifeval_keywords.create_provider")
+    def test_missing_expected_value_raises(self, mock_create: MagicMock) -> None:
+        kw = IFEvalKeywords()
+        for constraint in (
+            "sentence_count",
+            "bullet_points",
+            "word_count",
+            "numbered_list",
+            "paragraph_count",
+            "forbidden_letter",
+            "sentence_start",
+            "ends_with_word",
+        ):
+            with pytest.raises(ValueError, match="requires a non-empty"):
+                kw.check_ifeval_constraint("hello", constraint)
+
 
 class TestAskAndCheckConstraint:
     @patch("rfc.ifeval_keywords.emit_rfc_data")
