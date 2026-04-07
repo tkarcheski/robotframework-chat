@@ -50,6 +50,12 @@ class TestComputeTokenEfficiency:
     def test_both_none(self) -> None:
         assert compute_token_efficiency(None, None) == 0.0
 
+    def test_nan_score(self) -> None:
+        assert compute_token_efficiency(float("nan"), 150) == 0.0
+
+    def test_nan_eval_count(self) -> None:
+        assert compute_token_efficiency(1.0, float("nan")) == 0.0  # type: ignore[arg-type]
+
 
 # ---------------------------------------------------------------------------
 # nvl
