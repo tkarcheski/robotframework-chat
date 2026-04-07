@@ -206,6 +206,47 @@ class TestParseToolCalls:
         assert len(calls) == 1
         assert calls[0].tool == "Ask LLM"
 
+    def test_parse_arguments_null_coerced_to_empty_dict(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """null arguments must not crash downstream grading."""
+        response = json.dumps(
+            {"tool_calls": [{"tool": "Ask LLM", "arguments": None}]}
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].arguments == {}
+
+    def test_parse_arguments_list_coerced_to_empty_dict(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """List arguments are not a mapping — coerce to empty dict."""
+        response = json.dumps(
+            {"tool_calls": [{"tool": "Ask LLM", "arguments": ["a", "b"]}]}
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].arguments == {}
+
+    def test_parse_arguments_string_coerced_to_empty_dict(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """String arguments are not a mapping — coerce to empty dict."""
+        response = json.dumps(
+            {"tool_calls": [{"tool": "Ask LLM", "arguments": "hello"}]}
+        )
+        calls = gaia.parse_tool_calls(response)
+        assert len(calls) == 1
+        assert calls[0].arguments == {}
+
+    def test_grade_arguments_handles_null_arguments_without_crash(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """grade_tool_arguments must not raise when actual.arguments is empty."""
+        call = ToolCall(tool="Ask LLM", arguments={})
+        result = gaia.grade_tool_arguments({"prompt": "hi"}, call)
+        assert result["score"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # grade_tool_selection
@@ -453,6 +494,67 @@ class TestRunGaiaToolUseTest:
             SAMPLE_TOOLS, "Ask the model hello", expected_calls
         )
         assert score < 1.0
+
+    def test_duplicate_tool_calls_matched_to_distinct_actuals(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """When the same tool is expected twice with different args, each
+        expected occurrence must match a *distinct* actual call — not all
+        compared against the first one."""
+        llm_response = json.dumps(
+            {
+                "tool_calls": [
+                    {"tool": "Ask LLM", "arguments": {"prompt": "step 1"}},
+                    {"tool": "Ask LLM", "arguments": {"prompt": "step 2"}},
+                ],
+                "reasoning": "two queries",
+            }
+        )
+        gaia.client = MagicMock()
+        gaia.client.generate.return_value = llm_response
+        gaia.client.last_metrics = None
+        gaia.client.num_ctx = None
+        gaia.client.max_tokens = 256
+
+        expected_calls = [
+            {"tool": "Ask LLM", "arguments": {"prompt": "step 1"}},
+            {"tool": "Ask LLM", "arguments": {"prompt": "step 2"}},
+        ]
+        score, reason, response = gaia.run_gaia_tool_use_test(
+            SAMPLE_TOOLS, "Ask two questions", expected_calls
+        )
+        assert score == 1.0
+
+    def test_duplicate_tool_calls_wrong_args_in_second(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """First Ask LLM correct, second wrong — half of arg score."""
+        llm_response = json.dumps(
+            {
+                "tool_calls": [
+                    {"tool": "Ask LLM", "arguments": {"prompt": "step 1"}},
+                    {"tool": "Ask LLM", "arguments": {"prompt": "WRONG"}},
+                ],
+                "reasoning": "two queries",
+            }
+        )
+        gaia.client = MagicMock()
+        gaia.client.generate.return_value = llm_response
+        gaia.client.last_metrics = None
+        gaia.client.num_ctx = None
+        gaia.client.max_tokens = 256
+
+        expected_calls = [
+            {"tool": "Ask LLM", "arguments": {"prompt": "step 1"}},
+            {"tool": "Ask LLM", "arguments": {"prompt": "step 2"}},
+        ]
+        score, reason, response = gaia.run_gaia_tool_use_test(
+            SAMPLE_TOOLS, "Ask two questions", expected_calls, max_retries=0
+        )
+        # Selection perfect (1.0), arguments half (one matches, one doesn't)
+        # Combined: 0.5 * 1.0 + 0.5 * 0.5 = 0.75
+        assert score < 1.0
+        assert score >= 0.5
 
     def test_multi_step_chain_correct(self, gaia: GaiaKeywords) -> None:
         llm_response = json.dumps(

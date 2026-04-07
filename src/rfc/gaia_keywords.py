@@ -184,10 +184,15 @@ class GaiaKeywords:
         calls: list[ToolCall] = []
         for item in raw_calls:
             if isinstance(item, dict) and "tool" in item:
+                # Coerce non-mapping arguments (null, list, string, etc.) to
+                # an empty dict so downstream grading never sees a malformed
+                # payload and can score the call cleanly.
+                raw_args = item.get("arguments")
+                args = raw_args if isinstance(raw_args, dict) else {}
                 calls.append(
                     ToolCall(
                         tool=str(item["tool"]),
-                        arguments=item.get("arguments", {}),
+                        arguments=args,
                     )
                 )
         return calls
@@ -413,15 +418,25 @@ class GaiaKeywords:
                 )
                 sel_score = sel_result["score"]
 
-                # Grade arguments for each matched call
+                # Grade arguments for each expected call.  Pair each expected
+                # occurrence with a *distinct* actual call by consuming matches
+                # left-to-right — preserves multiplicity for workflows that
+                # legitimately reuse the same tool with different arguments.
                 arg_scores: list[float] = []
+                remaining = list(actual_calls)
                 for exp in expected_calls:
-                    matching = [
-                        c for c in actual_calls if c.tool == exp["tool"]
-                    ]
-                    if matching:
+                    match_idx = next(
+                        (
+                            i
+                            for i, c in enumerate(remaining)
+                            if c.tool == exp["tool"]
+                        ),
+                        None,
+                    )
+                    if match_idx is not None:
+                        actual = remaining.pop(match_idx)
                         arg_result = self.grade_tool_arguments(
-                            exp.get("arguments", {}), matching[0]
+                            exp.get("arguments", {}), actual
                         )
                         arg_scores.append(arg_result["score"])
                     else:
