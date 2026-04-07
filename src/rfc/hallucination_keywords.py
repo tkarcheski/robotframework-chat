@@ -33,6 +33,7 @@ class HallucinationKeywords:
         re.IGNORECASE,
     )
     # Legal reporter citations: "347 U.S. 483", "123 F.2d 456", "140 S.Ct. 1390"
+    # Case-insensitive so lowercase model output ("999 u.s. 123") is also caught.
     _LEGAL_CITE_PATTERN = re.compile(
         r"\b\d{1,4}\s+"
         r"(?:U\.?\s?S\.?"
@@ -42,7 +43,8 @@ class HallucinationKeywords:
         r"|N\.?\s?E\.?(?:\s?2d)?"
         r"|P\.?\s?(?:2d|3d)?"
         r"|So\.?(?:\s?2d|\s?3d)?)"
-        r"\s+\d{1,4}\b"
+        r"\s+\d{1,4}\b",
+        re.IGNORECASE,
     )
     _PUNCT_STRIP_PATTERN = re.compile(r"[.,;:]")
     _WS_COLLAPSE_PATTERN = re.compile(r"\s+")
@@ -83,18 +85,32 @@ class HallucinationKeywords:
         s = self._PUNCT_STRIP_PATTERN.sub("", s.lower())
         return self._WS_COLLAPSE_PATTERN.sub(" ", s).strip()
 
+    # Minimum length for the reverse word-boundary check (extracted ref
+    # inside a known ref). Prevents short tokens from accidentally
+    # whitelisting via the reverse direction.
+    _REVERSE_MATCH_MIN_LEN = 8
+
     def _is_known_ref(self, ref: str, known_real_refs: List[str]) -> bool:
         """Check if a reference matches any known real reference.
 
-        Uses a two-pass strategy:
+        Uses a three-pass strategy:
 
         1. **Direct match** — case-insensitive word-boundary regex on the
-           raw strings. This preserves dots in URLs and DOIs so that
-           ``un.org`` correctly matches ``https://www.un.org/...``.
+           raw strings (known inside ref). This preserves dots in URLs and
+           DOIs so that ``un.org`` correctly matches
+           ``https://www.un.org/...``.
         2. **Normalized match** — if the direct match fails, both strings
            are normalized (lowercase, strip ``.,;:`` punctuation, collapse
            whitespace) and retried. This lets ``347 U.S. 483`` match
            ``347 US 483`` without breaking URL matching.
+        3. **Reverse match** — if both fail, check whether the extracted
+           ref appears inside any known ref at word boundaries. This
+           reconciles cases where the response contains a DOI URL like
+           ``https://doi.org/10.1038/nature12373`` AND the same DOI is
+           extracted separately as ``10.1038/nature12373``: if the known
+           list contains the URL form, the bare DOI is also matched.
+           Restricted to refs of length >= ``_REVERSE_MATCH_MIN_LEN`` so
+           short numeric tokens cannot whitelist fabricated references.
 
         Word boundaries prevent short numeric tokens (e.g. ``217``) from
         whitelisting fabricated references that contain those digits as
@@ -112,6 +128,13 @@ class HallucinationKeywords:
             if not known_norm:
                 continue
             if re.search(r"\b" + re.escape(known_norm) + r"\b", ref_norm):
+                return True
+            # Reverse: extracted ref appears inside known (e.g. bare DOI
+            # inside a DOI URL). Length-gated to avoid short-token false
+            # positives.
+            if len(ref_lower) >= self._REVERSE_MATCH_MIN_LEN and re.search(
+                r"\b" + re.escape(ref_lower) + r"\b", known_lower
+            ):
                 return True
         return False
 

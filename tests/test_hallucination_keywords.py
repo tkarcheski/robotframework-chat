@@ -160,6 +160,18 @@ class TestExtractReferences:
         assert len(refs["un_resolutions"]) == 1
         assert "999" in refs["un_resolutions"][0]
 
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_lowercase_legal_citation(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Lowercase reporter output must still be extracted.
+        text = "Cited as 999 u.s. 123 in the brief."
+        refs = kw._extract_references(text)
+        assert len(refs["legal_cites"]) >= 1
+        assert any("999" in c and "123" in c for c in refs["legal_cites"])
+
 
 class TestUNResolutionFabrication:
     """UN resolution IDs (non-URL citation identifiers) must be validated."""
@@ -267,6 +279,51 @@ class TestCitationNormalization:
         assert kw._normalize_citation("347 U.S. 483") == "347 us 483"
         assert kw._normalize_citation("347 US 483") == "347 us 483"
         assert kw._normalize_citation("  347  U.S.  483  ") == "347 us 483"
+
+
+class TestLowercaseLegalCitationFabrication:
+    """Lowercase legal citations must trigger fabrication detection."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_lowercase_fabricated_legal_citation_detected(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        response = "Smith v. Anderson, 999 u.s. 123, was decided in 2019."
+        result = kw.check_no_fabricated_citations(response, [])
+        assert result["is_clean"] is False
+        assert any("999" in r for r in result["fabricated_refs"])
+
+
+class TestDOIURLReconciliation:
+    """A bare DOI extracted from a DOI URL must match the URL in known refs."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_doi_url_reconciles_with_bare_doi(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Response uses a DOI URL; extractor pulls both the URL and the
+        # bare DOI as separate tokens. Known list only has the URL form —
+        # both must be marked clean via the reverse-match pass.
+        response = "See https://doi.org/10.1038/nature12373 for the paper."
+        known_real = ["https://doi.org/10.1038/nature12373"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
 
 
 class TestURLHostMatching:
