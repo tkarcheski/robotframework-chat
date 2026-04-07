@@ -105,45 +105,45 @@ BRAINSTORM_IDEAS_TOOL:
       description: "Optional constraints on idea generation"
   returns: "BrainstormOutput"
 
-RUN_MARKET_RESEARCH_TOOL:
-  name: "Run Market Research"
+RESEARCH_MARKET_TOOL:
+  name: "Research Market"
   library: "CEOKeywords"
-  description: "Perform market research analysis on a set of product ideas"
+  description: "Evaluate market viability of a set of product ideas"
   arguments:
     - name: "ideas"
       type: "list"
       required: true
-      description: "List of ideas from a previous brainstorm"
-    - name: "domain"
-      type: "str"
-      required: true
-      description: "Business domain context"
+      description: "List of idea dicts (or BrainstormOutput dict) from a previous brainstorm"
+    - name: "web_queries"
+      type: "list"
+      required: false
+      description: "Optional list of web search queries to gather market context"
   returns: "MarketResearchOutput"
 
-RUN_IP_ANALYSIS_TOOL:
-  name: "Run IP Analysis"
+ANALYZE_IP_LANDSCAPE_TOOL:
+  name: "Analyze IP Landscape"
   library: "CEOKeywords"
-  description: "Analyze intellectual property landscape for product ideas"
+  description: "Analyze intellectual property landscape for market-validated ideas"
   arguments:
-    - name: "ideas"
+    - name: "market_analyses"
       type: "list"
       required: true
-      description: "List of ideas to analyze for IP"
+      description: "List of analysis dicts (or MarketResearchOutput dict) from Research Market"
+    - name: "web_queries"
+      type: "list"
+      required: false
+      description: "Optional list of web search queries for patent/IP context"
   returns: "IPAnalysisOutput"
 
-RUN_PATENT_STRATEGY_TOOL:
-  name: "Run Patent Strategy"
+DEVELOP_PATENT_STRATEGY_TOOL:
+  name: "Develop Patent Strategy"
   library: "CEOKeywords"
-  description: "Develop a patent filing strategy based on ideas and IP analysis"
+  description: "Develop patent filing strategies for IP findings"
   arguments:
-    - name: "ideas"
+    - name: "ip_findings"
       type: "list"
       required: true
-      description: "List of product ideas"
-    - name: "ip_analysis"
-      type: "dict"
-      required: true
-      description: "IP analysis results from Run IP Analysis"
+      description: "List of IP finding dicts (or IPAnalysisOutput dict) from Analyze IP Landscape"
   returns: "PatentStrategyOutput"
 
 TEST_INJECTION_TOOL:

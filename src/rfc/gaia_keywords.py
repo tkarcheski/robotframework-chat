@@ -343,10 +343,19 @@ class GaiaKeywords:
 
     @keyword("Grade Tool Refusal")
     def grade_tool_refusal(self, response: str) -> Dict[str, Any]:
-        """Grade whether the LLM correctly refused to call a tool.
+        """Grade whether the LLM *explicitly* refused to call a tool.
 
-        A correct refusal means the response contains no tool calls and
-        (optionally) explains why no tool is suitable.
+        A correct refusal requires either:
+
+        1. A valid JSON response with an empty ``tool_calls`` list AND a
+           non-empty ``reasoning`` field explaining why no tool fits, OR
+        2. A free-text response containing an explicit refusal phrase
+           (e.g. "no tool", "cannot", "unable to", "none of") that names
+           the lack of a suitable tool.
+
+        Garbage / unparsable text and empty responses are NOT counted as
+        refusals — they're scored 0.0 because we can't distinguish a
+        deliberate refusal from a model crash or empty completion.
 
         Args:
             response: Raw LLM response text.
@@ -354,17 +363,52 @@ class GaiaKeywords:
         Returns:
             Dict with score (0.0 or 1.0) and reason.
         """
-        calls = self.parse_tool_calls(response)
+        if not response or not response.strip():
+            return {
+                "score": 0.0,
+                "reason": "Empty response — not an explicit refusal",
+            }
 
-        if not calls:
+        calls = self.parse_tool_calls(response)
+        if calls:
+            return {
+                "score": 0.0,
+                "reason": f"Incorrectly called {len(calls)} tool(s): "
+                f"{[c.tool for c in calls]}",
+            }
+
+        # No tool calls extracted.  Check whether the response is a valid
+        # JSON refusal envelope or contains an explicit refusal phrase.
+        clean, _ = parse_thinking(response)
+        text = clean if clean.strip() else response
+
+        parsed = _try_parse_json(text)
+        if parsed is None:
+            scanned = _scan_balanced_json_object(text)
+            if scanned is not None:
+                parsed = _try_parse_json(scanned)
+
+        if isinstance(parsed, dict) and "tool_calls" in parsed:
+            reasoning = parsed.get("reasoning", "")
+            if isinstance(reasoning, str) and reasoning.strip():
+                return {
+                    "score": 1.0,
+                    "reason": "Explicit JSON refusal with reasoning",
+                }
+            return {
+                "score": 0.0,
+                "reason": "Empty tool_calls but no reasoning provided",
+            }
+
+        # Plain-text fallback: look for refusal phrases.
+        if _looks_like_refusal(text):
             return {
                 "score": 1.0,
-                "reason": "Correctly refused — no tool calls made",
+                "reason": "Plain-text refusal phrase detected",
             }
         return {
             "score": 0.0,
-            "reason": f"Incorrectly called {len(calls)} tool(s): "
-            f"{[c.tool for c in calls]}",
+            "reason": "No tool calls and no explicit refusal — unparseable",
         }
 
     # ------------------------------------------------------------------
@@ -545,8 +589,38 @@ def _scan_balanced_json_object(text: str) -> Optional[str]:
     return None
 
 
+_REFUSAL_PHRASES = (
+    "no tool",
+    "no suitable tool",
+    "none of",
+    "cannot complete",
+    "cannot perform",
+    "cannot fulfill",
+    "unable to",
+    "i cannot",
+    "i'm unable",
+    "i am unable",
+    "not able to",
+    "no available tool",
+    "no available keyword",
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    """True if *text* contains an explicit refusal phrase."""
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in _REFUSAL_PHRASES)
+
+
 def _values_match(expected: Any, actual: Any) -> bool:
-    """Compare expected and actual values with type coercion."""
+    """Compare expected and actual values.
+
+    Strings are matched case-sensitively after whitespace trimming so that
+    code, model IDs, and other tokens with semantic case differences are
+    not silently considered equivalent.  Numeric values are coerced from
+    strings (e.g. ``"0.7" == 0.7``) since LLMs often serialise numbers
+    inside JSON strings.
+    """
     if expected == actual:
         return True
 
@@ -559,8 +633,8 @@ def _values_match(expected: Any, actual: Any) -> bool:
     except (ValueError, TypeError):
         pass
 
-    # String comparison (case-insensitive for tool names)
+    # Case-sensitive string comparison (only whitespace is trimmed).
     if isinstance(expected, str) and isinstance(actual, str):
-        return expected.strip().lower() == actual.strip().lower()
+        return expected.strip() == actual.strip()
 
     return False

@@ -101,7 +101,7 @@ Arguments — Brainstorm Ideas With Domain And Constraints
     [Tags]    tier:1    verify:python    gaia    arguments
     ${tools}=    Create List
     ...    ${BRAINSTORM_IDEAS_TOOL}
-    ...    ${RUN_MARKET_RESEARCH_TOOL}
+    ...    ${RESEARCH_MARKET_TOOL}
     ...    ${ASK_LLM_TOOL}
     ${expected_args}=    Create Dictionary
     ...    domain=healthcare
@@ -175,26 +175,26 @@ Multi Step — Configure Model Then Ask
     ...    ${expected_calls}
 
 Multi Step — CEO Pipeline Ordering
-    [Documentation]    Can the LLM order Brainstorm, Market Research, IP Analysis correctly?
+    [Documentation]    Can the LLM order Brainstorm Ideas, Research Market, Analyze IP Landscape correctly?
     [Tags]    tier:2    verify:llm    gaia    multi_step
     ${tools}=    Create List
     ...    ${BRAINSTORM_IDEAS_TOOL}
-    ...    ${RUN_MARKET_RESEARCH_TOOL}
-    ...    ${RUN_IP_ANALYSIS_TOOL}
-    ...    ${RUN_PATENT_STRATEGY_TOOL}
+    ...    ${RESEARCH_MARKET_TOOL}
+    ...    ${ANALYZE_IP_LANDSCAPE_TOOL}
+    ...    ${DEVELOP_PATENT_STRATEGY_TOOL}
     ${call1}=    Create Dictionary
     ...    tool=Brainstorm Ideas
     ...    arguments=${{{"domain": "robotics", "count": 5}}}
     ${call2}=    Create Dictionary
-    ...    tool=Run Market Research
-    ...    arguments=${{{"ideas": "<output from Brainstorm>", "domain": "robotics"}}}
+    ...    tool=Research Market
+    ...    arguments=${{{"ideas": "<output from Brainstorm Ideas>"}}}
     ${call3}=    Create Dictionary
-    ...    tool=Run IP Analysis
-    ...    arguments=${{{"ideas": "<output from Brainstorm>"}}}
+    ...    tool=Analyze IP Landscape
+    ...    arguments=${{{"market_analyses": "<output from Research Market>"}}}
     ${expected_calls}=    Create List    ${call1}    ${call2}    ${call3}
     Run Multi Step Tool Test
     ...    ${tools}
-    ...    Run a full product analysis pipeline for the 'robotics' domain: generate 5 ideas, research the market, then analyze IP.
+    ...    Run a full product analysis pipeline for the 'robotics' domain: generate 5 ideas, research the market, then analyze the IP landscape.
     ...    ${expected_calls}
 
 # =========================================================================

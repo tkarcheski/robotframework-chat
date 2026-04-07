@@ -453,6 +453,29 @@ class TestGradeToolArguments:
         result = gaia.grade_tool_arguments(expected, call)
         assert 0.0 < result["score"] < 1.0
 
+    def test_strings_compared_case_sensitively(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Code, model IDs, and other tokens must be matched case-sensitively
+        so 'Mistral' is not graded as equal to 'mistral'."""
+        call = ToolCall(
+            tool="Set LLM Model", arguments={"model": "Mistral"}
+        )
+        result = gaia.grade_tool_arguments({"model": "mistral"}, call)
+        assert result["score"] == 0.0
+
+    def test_python_code_matched_case_sensitively(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Python code differing only in case must NOT match."""
+        call = ToolCall(
+            tool="Execute Python In Container",
+            arguments={"code": "PRINT(MATH.FACTORIAL(20))"},
+        )
+        expected = {"code": "print(math.factorial(20))"}
+        result = gaia.grade_tool_arguments(expected, call)
+        assert result["score"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # grade_tool_refusal
@@ -496,6 +519,34 @@ class TestGradeToolRefusal:
         response = "I cannot complete this task because none of the available tools support sending emails."
         result = gaia.grade_tool_refusal(response)
         assert result["score"] == 1.0
+
+    def test_refusal_garbage_text_not_a_pass(self, gaia: GaiaKeywords) -> None:
+        """Unparsable garbage must NOT be scored as a correct refusal."""
+        result = gaia.grade_tool_refusal("blah blah blah qwertyuiop")
+        assert result["score"] == 0.0
+
+    def test_refusal_empty_response_not_a_pass(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Empty/whitespace response is not an explicit refusal."""
+        assert gaia.grade_tool_refusal("")["score"] == 0.0
+        assert gaia.grade_tool_refusal("   \n  ")["score"] == 0.0
+
+    def test_refusal_valid_json_with_explicit_reasoning(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Valid JSON with empty tool_calls and non-empty reasoning passes."""
+        response = json.dumps(
+            {"tool_calls": [], "reasoning": "No tool can fetch live weather"}
+        )
+        assert gaia.grade_tool_refusal(response)["score"] == 1.0
+
+    def test_refusal_valid_json_empty_reasoning_fails(
+        self, gaia: GaiaKeywords
+    ) -> None:
+        """Empty tool_calls with NO reasoning is not an explicit refusal."""
+        response = json.dumps({"tool_calls": [], "reasoning": ""})
+        assert gaia.grade_tool_refusal(response)["score"] == 0.0
 
 
 # ---------------------------------------------------------------------------
