@@ -128,6 +128,115 @@ class TestExtractReferences:
         refs = kw._extract_references(text)
         assert len(refs["legal_cites"]) >= 1
 
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_un_resolution(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        text = "See UN doc A/RES/217 adopted in 1948."
+        refs = kw._extract_references(text)
+        assert "A/RES/217" in refs["un_resolutions"]
+
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_extracts_security_council_resolution(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        text = "Security Council resolution S/RES/1973 authorized action."
+        refs = kw._extract_references(text)
+        assert "S/RES/1973" in refs["un_resolutions"]
+
+
+class TestUNResolutionFabrication:
+    """UN resolution IDs (non-URL citation identifiers) must be validated."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_fabricated_un_resolution_detected(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Model fabricates an unrelated UN resolution identifier.
+        response = "The UDHR was adopted in resolution A/RES/999."
+        known_real = ["A/RES/217"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is False
+        assert any("999" in r for r in result["fabricated_refs"])
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_real_un_resolution_clean(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        response = "The UDHR is UN resolution A/RES/217."
+        known_real = ["A/RES/217"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
+
+
+class TestCitationNormalization:
+    """Punctuation/spacing variants of the same citation must match."""
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_legal_cite_without_periods_matches_canonical(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        # Model writes "347 US 483" but known canonical form is "347 U.S. 483".
+        response = "Brown v. Board of Education, 347 US 483, was decided in 1954."
+        known_real = ["347 U.S. 483"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
+
+    @patch("rfc.hallucination_keywords.logger")
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_canonical_form_matches_no_periods_known(
+        self,
+        MockGrader: MagicMock,
+        mock_create: MagicMock,
+        mock_rfc_logger: MagicMock,
+        mock_logger: MagicMock,
+    ) -> None:
+        kw = HallucinationKeywords()
+        response = "Cited as 347 U.S. 483 by the court."
+        known_real = ["347 US 483"]
+        result = kw.check_no_fabricated_citations(response, known_real)
+        assert result["is_clean"] is True
+
+    @patch("rfc.hallucination_keywords.create_provider")
+    @patch("rfc.hallucination_keywords.Grader")
+    def test_normalize_strips_punctuation(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = HallucinationKeywords()
+        assert kw._normalize_citation("347 U.S. 483") == "347 us 483"
+        assert kw._normalize_citation("347 US 483") == "347 us 483"
+        assert kw._normalize_citation("  347  U.S.  483  ") == "347 us 483"
+
 
 class TestCheckNoFabricatedCitations:
     @patch("rfc.hallucination_keywords.logger")

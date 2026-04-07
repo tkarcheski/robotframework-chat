@@ -27,6 +27,10 @@ class HallucinationKeywords:
     )
     _DOI_PATTERN = re.compile(r"\b10\.\d{4,}/[^\s]+")
     _ARXIV_PATTERN = re.compile(r"(?:arXiv:?\s*)(\d{4}\.\d{4,5})", re.IGNORECASE)
+    # UN resolution / document IDs: A/RES/217, S/RES/1973, A/RES/70/1
+    _UN_RESOLUTION_PATTERN = re.compile(
+        r"\b[A-Z]/(?:RES|PV|L|PRST|CN|CONF)/\d+(?:/\d+)?\b"
+    )
     # Legal reporter citations: "347 U.S. 483", "123 F.2d 456", "140 S.Ct. 1390"
     _LEGAL_CITE_PATTERN = re.compile(
         r"\b\d{1,4}\s+"
@@ -39,6 +43,8 @@ class HallucinationKeywords:
         r"|So\.?(?:\s?2d|\s?3d)?)"
         r"\s+\d{1,4}\b"
     )
+    _PUNCT_STRIP_PATTERN = re.compile(r"[.,;:]")
+    _WS_COLLAPSE_PATTERN = re.compile(r"\s+")
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
@@ -46,7 +52,7 @@ class HallucinationKeywords:
         self.grader = Grader(self.client)
 
     def _extract_references(self, text: str) -> Dict[str, List[str]]:
-        """Extract URLs, ISBNs, DOIs, arXiv IDs, and legal citations from text."""
+        """Extract URLs, ISBNs, DOIs, arXiv IDs, legal citations, and UN resolutions."""
         urls = self._URL_PATTERN.findall(text)
         # Clean trailing punctuation from URLs
         urls = [url.rstrip(".,;:") for url in urls]
@@ -55,6 +61,7 @@ class HallucinationKeywords:
         dois = self._DOI_PATTERN.findall(text)
         arxiv_ids = self._ARXIV_PATTERN.findall(text)
         legal_cites = self._LEGAL_CITE_PATTERN.findall(text)
+        un_resolutions = self._UN_RESOLUTION_PATTERN.findall(text)
 
         return {
             "urls": urls,
@@ -62,24 +69,39 @@ class HallucinationKeywords:
             "dois": dois,
             "arxiv_ids": arxiv_ids,
             "legal_cites": legal_cites,
+            "un_resolutions": un_resolutions,
         }
+
+    def _normalize_citation(self, s: str) -> str:
+        """Normalize a citation string for matching.
+
+        Lowercases, strips ``.,;:`` punctuation, and collapses whitespace.
+        This lets ``347 U.S. 483`` match ``347 US 483`` and other
+        punctuation/spacing variants without treating them as distinct.
+        """
+        s = self._PUNCT_STRIP_PATTERN.sub("", s.lower())
+        return self._WS_COLLAPSE_PATTERN.sub(" ", s).strip()
 
     def _is_known_ref(self, ref: str, known_real_refs: List[str]) -> bool:
         """Check if a reference matches any known real reference.
 
-        Uses case-insensitive word-boundary matching: a reference is
-        considered known if any known-real entry matches inside it at
-        word boundaries. Word-boundary matching prevents short numeric
-        tokens (e.g. "217") from accidentally whitelisting fabricated
-        references that contain those digits as internal substrings.
+        Both sides are normalized (lowercase, punctuation stripped,
+        whitespace collapsed) then matched with case-insensitive
+        word-boundary regex. Word boundaries prevent short numeric
+        tokens (e.g. ``217``) from whitelisting fabricated references
+        that contain those digits as internal substrings. Normalization
+        makes ``347 U.S. 483`` and ``347 US 483`` match as the same
+        citation.
         """
-        ref_lower = ref.lower()
+        ref_norm = self._normalize_citation(ref)
         for known in known_real_refs:
             if not known:
                 continue
-            known_lower = known.lower()
-            pattern = r"\b" + re.escape(known_lower) + r"\b"
-            if re.search(pattern, ref_lower):
+            known_norm = self._normalize_citation(known)
+            if not known_norm:
+                continue
+            pattern = r"\b" + re.escape(known_norm) + r"\b"
+            if re.search(pattern, ref_norm):
                 return True
         return False
 
@@ -108,6 +130,7 @@ class HallucinationKeywords:
             + refs["dois"]
             + refs["arxiv_ids"]
             + refs["legal_cites"]
+            + refs["un_resolutions"]
         )
 
         fabricated: List[str] = []
