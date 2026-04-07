@@ -144,6 +144,11 @@ test_suites:
     description: "GAIA-style tool-use tests for LLM tool selection and invocation"
     timeout_seconds: 300
 
+  - name: "ifeval"
+    path: "robot/ifeval/tests/"
+    description: "Instruction following evaluation with deterministic constraint checking"
+    timeout_seconds: 300
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"

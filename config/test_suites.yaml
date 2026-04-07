@@ -172,6 +172,11 @@ test_suites:
     path: "robot/gaia/tests"
     description: "GAIA-style tests for LLM tool selection, argument formatting, chaining, and refusal"
 
+  ifeval:
+    label: "IFEval Instruction Following"
+    path: "robot/ifeval/tests"
+    description: "Instruction following evaluation with deterministic constraint checking"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
@@ -305,6 +310,11 @@ ci:
     robot-quantization-tests:
       path: "robot/quantization/"
       output_dir: "results/quantization"
+      tags: ["ollama"]
+
+    robot-ifeval-tests:
+      path: "robot/ifeval/"
+      output_dir: "results/ifeval"
       tags: ["ollama"]
 
     robot-swebench-tests:
