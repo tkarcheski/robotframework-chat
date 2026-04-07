@@ -149,6 +149,11 @@ test_suites:
     description: "Instruction following evaluation with deterministic constraint checking"
     timeout_seconds: 300
 
+  - name: "hallucination"
+    path: "robot/hallucination/tests/"
+    description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
+    timeout_seconds: 600
+
   - name: "swebench"
     path: "robot/swebench/"
     description: "SWE-bench patch generation and validation"

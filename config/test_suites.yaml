@@ -177,6 +177,11 @@ test_suites:
     path: "robot/ifeval/tests"
     description: "Instruction following evaluation with deterministic constraint checking"
 
+  hallucination:
+    label: "Hallucination Tests"
+    path: "robot/hallucination/tests"
+    description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
+
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
@@ -315,6 +320,11 @@ ci:
     robot-ifeval-tests:
       path: "robot/ifeval/"
       output_dir: "results/ifeval"
+      tags: ["ollama"]
+
+    robot-hallucination-tests:
+      path: "robot/hallucination/"
+      output_dir: "results/hallucination"
       tags: ["ollama"]
 
     robot-swebench-tests:

@@ -1,0 +1,46 @@
+# Numerical facts for hallucination detection via factual accuracy testing.
+#
+# Each entry contains a question about a well-known numerical fact and the
+# expected answer. The LLM grader evaluates whether the model's response
+# matches the expected value.
+
+NUMERICAL_FACTS:
+  - question: "What is the speed of light in a vacuum in meters per second? Answer with just the number."
+    expected: "299792458"
+    tags: "physics exact"
+
+  - question: "In what year did the Berlin Wall fall? Answer with just the year."
+    expected: "1989"
+    tags: "history exact"
+
+  - question: "What is the boiling point of water in degrees Celsius at standard atmospheric pressure? Answer with just the number."
+    expected: "100"
+    tags: "chemistry exact"
+
+  - question: "How many chromosomes are in a typical human somatic cell? Answer with just the number."
+    expected: "46"
+    tags: "biology exact"
+
+  - question: "What is the value of pi to five decimal places? Answer with just the number."
+    expected: "3.14159"
+    tags: "math exact"
+
+  - question: "In what year was the United Nations founded? Answer with just the year."
+    expected: "1945"
+    tags: "history exact"
+
+  - question: "What is the atomic number of gold? Answer with just the number."
+    expected: "79"
+    tags: "chemistry exact"
+
+  - question: "How many bones are in the adult human body? Answer with just the number."
+    expected: "206"
+    tags: "biology exact"
+
+  - question: "In what year did World War I begin? Answer with just the year."
+    expected: "1914"
+    tags: "history exact"
+
+  - question: "What is the freezing point of water in degrees Fahrenheit? Answer with just the number."
+    expected: "32"
+    tags: "physics exact"
