@@ -176,6 +176,10 @@ Multi Step — Configure Model Then Ask
 
 Multi Step — CEO Pipeline Ordering
     [Documentation]    Can the LLM order Brainstorm Ideas, Research Market, Analyze IP Landscape correctly?
+    ...                Argument grading is intentionally relaxed for the chained calls
+    ...                (Research Market, Analyze IP Landscape) because their list-shaped
+    ...                inputs depend on the runtime output of prior calls — only the
+    ...                tool selection and ordering are scored.
     [Tags]    tier:2    verify:llm    gaia    multi_step
     ${tools}=    Create List
     ...    ${BRAINSTORM_IDEAS_TOOL}
@@ -187,10 +191,10 @@ Multi Step — CEO Pipeline Ordering
     ...    arguments=${{{"domain": "robotics", "count": 5}}}
     ${call2}=    Create Dictionary
     ...    tool=Research Market
-    ...    arguments=${{{"ideas": "<output from Brainstorm Ideas>"}}}
+    ...    arguments=${{{}}}
     ${call3}=    Create Dictionary
     ...    tool=Analyze IP Landscape
-    ...    arguments=${{{"market_analyses": "<output from Research Market>"}}}
+    ...    arguments=${{{}}}
     ${expected_calls}=    Create List    ${call1}    ${call2}    ${call3}
     Run Multi Step Tool Test
     ...    ${tools}
