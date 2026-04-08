@@ -1,8 +1,8 @@
 """Result importer with deduplication and output.xml blob storage.
 
-Imports output.xml files into the 2-table database schema (test_runs +
-test_results), storing a gzip-compressed copy of the output.xml as a
-BLOB for later retrieval.
+Imports output.xml files into the lean test_runs/test_results schema and
+archives the gzip-compressed output.xml into ``test_run_artifacts`` for
+later retrieval.
 
 Usage::
 
@@ -50,7 +50,6 @@ def import_results(
     model_name: Optional[str] = None,
     source: str = "local",
     check_dedup: bool = False,
-    report_base_url: Optional[str] = None,
     _existing_hash: Optional[str] = None,
 ) -> ImportResult:
     """Import output.xml with gzip blob storage.
@@ -61,7 +60,6 @@ def import_results(
         model_name: Optional model name override.
         source: Import source identifier (local, ci).
         check_dedup: If True, skip files already imported (by hash).
-        report_base_url: Base URL for output.xml web access.
         _existing_hash: For testing — pretend this hash already exists.
 
     Returns:
@@ -82,11 +80,6 @@ def import_results(
             source=source,
         )
 
-    # Build output_xml_url
-    output_xml_url = None
-    if report_base_url:
-        output_xml_url = f"{report_base_url.rstrip('/')}/output.xml"
-
     # Read and gzip the output.xml
     output_xml_gz = None
     try:
@@ -100,9 +93,7 @@ def import_results(
         xml_path,
         db,
         model_name,
-        report_base_url,
         output_xml_gz=output_xml_gz,
-        output_xml_url=output_xml_url,
     )
 
     return ImportResult(
@@ -144,10 +135,6 @@ def main() -> None:
         action="store_true",
         help="Skip files already imported (by SHA-256 hash)",
     )
-    parser.add_argument(
-        "--report-base-url",
-        help="Base URL for output.xml web access",
-    )
 
     args = parser.parse_args()
     db = TestDatabase()
@@ -180,7 +167,6 @@ def main() -> None:
                 model_name=args.model,
                 source=args.source,
                 check_dedup=args.dedup,
-                report_base_url=args.report_base_url,
             )
             if result.skipped:
                 print(f"Skipped (duplicate): {xml_file}")

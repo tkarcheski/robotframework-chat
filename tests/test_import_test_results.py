@@ -684,61 +684,21 @@ class TestImportResults:
         finally:
             os.unlink(path)
 
-    def test_import_report_base_url_sets_output_xml_url(self):
-        """report_base_url parameter builds output_xml_url."""
+    def test_import_compresses_output_xml_into_artifact(self):
+        """output.xml is gzip-compressed and written to the archive table."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
             db = MagicMock()
             db.add_test_run.return_value = 1
-
-            import_results(path, db, report_base_url="https://results.example.com/math")
-
-            run = db.add_test_run.call_args[0][0]
-            assert run.output_xml_url == "https://results.example.com/math/output.xml"
-        finally:
-            os.unlink(path)
-
-    def test_import_report_base_url_trailing_slash(self):
-        """Trailing slash on report_base_url doesn't cause double slash."""
-        path = _write_xml(MINIMAL_OUTPUT_XML)
-        try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
-
-            import_results(
-                path, db, report_base_url="https://results.example.com/math/"
-            )
-
-            run = db.add_test_run.call_args[0][0]
-            assert "//" not in run.output_xml_url.replace("https://", "")
-        finally:
-            os.unlink(path)
-
-    def test_import_compresses_output_xml(self):
-        """output.xml is gzip-compressed when output_xml_gz not provided."""
-        path = _write_xml(MINIMAL_OUTPUT_XML)
-        try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db.get_result_ids_for_run.return_value = {}
 
             import_results(path, db)
 
-            run = db.add_test_run.call_args[0][0]
-            assert run.output_xml_gz != b""
-            assert isinstance(run.output_xml_gz, bytes)
-        finally:
-            os.unlink(path)
-
-    def test_import_no_base_url_output_xml_url_empty(self):
-        """output_xml_url is empty when no report_base_url given."""
-        path = _write_xml(MINIMAL_OUTPUT_XML)
-        try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
-
-            import_results(path, db)
-
-            run = db.add_test_run.call_args[0][0]
-            assert run.output_xml_url == ""
+            db.add_test_run_artifact.assert_called_once()
+            artifact = db.add_test_run_artifact.call_args[0][0]
+            assert artifact.run_id == 1
+            assert isinstance(artifact.output_xml_gz, bytes)
+            assert artifact.output_xml_gz != b""
+            assert artifact.output_xml_source.endswith(os.path.basename(path))
         finally:
             os.unlink(path)

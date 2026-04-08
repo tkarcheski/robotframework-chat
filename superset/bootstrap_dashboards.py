@@ -1,13 +1,18 @@
 """Bootstrap Superset with Robot Framework test result dashboards.
 
 Run inside the Superset container after ``superset init`` to create:
-  - The 2 PostgreSQL tables (test_runs, test_results)
+  - The 4 PostgreSQL tables
+    (``test_runs``, ``test_results``, ``test_run_artifacts``,
+    ``test_result_artifacts``) plus ``coverage_reports``
   - A database connection to the RFC PostgreSQL tables
   - Virtual datasets for KPIs, host health, model performance
   - Charts covering KPIs, host health, model performance, git/version context
   - One consolidated dashboard: RFC Test Health
 
-Redesigned schema: 2 tables only. output.xml is the source of truth.
+Lean schema: the two primary tables store only metrics; heavy data
+(output.xml gzip, question/answer/grading/thinking text) lives in the
+``*_artifacts`` tables and is exposed to Superset via the
+``test_results_full`` view (LEFT JOIN).
 """
 
 import json
@@ -20,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# SQL DDL — 2 tables only.
+# SQL DDL — lean test_runs/test_results + archive tables.
 # ---------------------------------------------------------------------------
 _TABLE_DDL = """
 -- Drop old tables from pre-redesign schema
@@ -36,6 +41,9 @@ DROP TABLE IF EXISTS analytics_model_comparison CASCADE;
 DROP TABLE IF EXISTS analytics_regression_alerts CASCADE;
 DROP TABLE IF EXISTS analytics_performance_fingerprints CASCADE;
 
+-- The view joins columns we are about to drop; take it down first.
+DROP VIEW IF EXISTS test_results_full;
+
 CREATE TABLE IF NOT EXISTS test_runs (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMP NOT NULL,
@@ -49,28 +57,54 @@ CREATE TABLE IF NOT EXISTS test_runs (
     git_commit VARCHAR(255),
     git_branch VARCHAR(255),
     hostname VARCHAR(255),
-    rfc_version VARCHAR(50),
-    output_xml_url TEXT,
-    output_xml_gz BYTEA,
-    output_xml_source TEXT
+    rfc_version VARCHAR(50)
 );
+
+-- Drop columns that moved to the archive table on upgrading databases.
+ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_gz;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_url;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_source;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS temperature;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS seed;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS top_p;
+ALTER TABLE test_runs DROP COLUMN IF EXISTS top_k;
 
 CREATE TABLE IF NOT EXISTS test_results (
     id SERIAL PRIMARY KEY,
     run_id INTEGER NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
     test_name VARCHAR(500) NOT NULL,
     test_status VARCHAR(20) NOT NULL,
-    score INTEGER,
+    score DOUBLE PRECISION,
     tags TEXT,
-    question TEXT,
-    expected_answer TEXT,
-    actual_answer TEXT,
-    grading_reason TEXT,
-    rfc_version VARCHAR(50),
     tag_severity VARCHAR(20),
     tag_tier INTEGER,
-    tag_verify VARCHAR(50)
+    tag_verify VARCHAR(50),
+    eval_count INTEGER,
+    thinking_tokens INTEGER
 );
+
+-- Drop heavy text / unused numeric columns that moved to test_result_artifacts
+-- or were never analyzed.
+ALTER TABLE test_results DROP COLUMN IF EXISTS question;
+ALTER TABLE test_results DROP COLUMN IF EXISTS expected_answer;
+ALTER TABLE test_results DROP COLUMN IF EXISTS actual_answer;
+ALTER TABLE test_results DROP COLUMN IF EXISTS grading_reason;
+ALTER TABLE test_results DROP COLUMN IF EXISTS thinking_text;
+ALTER TABLE test_results DROP COLUMN IF EXISTS rfc_version;
+ALTER TABLE test_results DROP COLUMN IF EXISTS reasoning_tokens;
+ALTER TABLE test_results DROP COLUMN IF EXISTS cached_tokens;
+ALTER TABLE test_results DROP COLUMN IF EXISTS accepted_prediction_tokens;
+ALTER TABLE test_results DROP COLUMN IF EXISTS rejected_prediction_tokens;
+ALTER TABLE test_results DROP COLUMN IF EXISTS num_ctx;
+ALTER TABLE test_results DROP COLUMN IF EXISTS num_predict;
+ALTER TABLE test_results DROP COLUMN IF EXISTS eval_duration_ns;
+ALTER TABLE test_results DROP COLUMN IF EXISTS prompt_eval_count;
+ALTER TABLE test_results DROP COLUMN IF EXISTS prompt_eval_duration_ns;
+ALTER TABLE test_results DROP COLUMN IF EXISTS load_duration_ns;
+ALTER TABLE test_results DROP COLUMN IF EXISTS total_duration_ns;
+ALTER TABLE test_results DROP COLUMN IF EXISTS tokens_per_second;
+ALTER TABLE test_results DROP COLUMN IF EXISTS token_retry_count;
+ALTER TABLE test_results DROP COLUMN IF EXISTS token_retry_max_tokens;
 
 CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
 CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
@@ -81,6 +115,24 @@ ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT;
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20);
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER;
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50);
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_count INTEGER;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER;
+
+-- Archive tables — heavy per-run / per-result data lives here.
+CREATE TABLE IF NOT EXISTS test_run_artifacts (
+    run_id INTEGER PRIMARY KEY REFERENCES test_runs(id) ON DELETE CASCADE,
+    output_xml_gz BYTEA,
+    output_xml_source TEXT
+);
+
+CREATE TABLE IF NOT EXISTS test_result_artifacts (
+    result_id INTEGER PRIMARY KEY REFERENCES test_results(id) ON DELETE CASCADE,
+    question TEXT,
+    expected_answer TEXT,
+    actual_answer TEXT,
+    grading_reason TEXT,
+    thinking_text TEXT
+);
 
 CREATE TABLE IF NOT EXISTS coverage_reports (
     id SERIAL PRIMARY KEY,
@@ -105,8 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_coverage_reports_timestamp
 CREATE INDEX IF NOT EXISTS idx_coverage_reports_git_commit
     ON coverage_reports(git_commit);
 
-DROP VIEW IF EXISTS test_results_full;
-CREATE VIEW test_results_full AS
+CREATE OR REPLACE VIEW test_results_full AS
 SELECT
     tr.id AS result_id,
     tr.run_id,
@@ -114,31 +165,11 @@ SELECT
     tr.test_status,
     tr.score,
     tr.tags,
-    tr.question,
-    tr.expected_answer,
-    tr.actual_answer,
-    tr.grading_reason,
-    tr.rfc_version,
     tr.tag_severity,
     tr.tag_tier,
     tr.tag_verify,
-    tr.thinking_text,
-    tr.thinking_tokens,
-    tr.reasoning_tokens,
-    tr.cached_tokens,
-    tr.accepted_prediction_tokens,
-    tr.rejected_prediction_tokens,
-    tr.num_ctx,
-    tr.num_predict,
     tr.eval_count,
-    tr.eval_duration_ns,
-    tr.prompt_eval_count,
-    tr.prompt_eval_duration_ns,
-    tr.load_duration_ns,
-    tr.total_duration_ns,
-    tr.tokens_per_second,
-    tr.token_retry_count,
-    tr.token_retry_max_tokens,
+    tr.thinking_tokens,
     r.timestamp,
     r.model_name,
     r.test_suite,
@@ -150,14 +181,17 @@ SELECT
     r.git_commit,
     r.git_branch,
     r.hostname,
-    r.output_xml_url,
-    r.output_xml_source,
-    r.temperature,
-    r.seed,
-    r.top_p,
-    r.top_k
+    r.rfc_version,
+    ra.output_xml_source,
+    rsa.question,
+    rsa.expected_answer,
+    rsa.actual_answer,
+    rsa.grading_reason,
+    rsa.thinking_text
 FROM test_results tr
-JOIN test_runs r ON tr.run_id = r.id;
+JOIN test_runs r ON tr.run_id = r.id
+LEFT JOIN test_run_artifacts ra ON ra.run_id = r.id
+LEFT JOIN test_result_artifacts rsa ON rsa.result_id = tr.id;
 """
 
 # ---------------------------------------------------------------------------

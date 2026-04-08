@@ -20,7 +20,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rfc import __version__
 from rfc.db_listener import _nvl, _parse_tags
-from rfc.test_database import TestDatabase, TestResult, TestRun
+from rfc.test_database import (
+    TestDatabase,
+    TestResult,
+    TestRun,
+    TestRunArtifact,
+    build_result_artifacts,
+)
 
 
 def _parse_rf_timestamp(ts: str) -> Optional[datetime]:
@@ -168,9 +174,7 @@ def import_results(
     xml_path: str,
     db: TestDatabase,
     model_name: Optional[str] = None,
-    report_base_url: Optional[str] = None,
     output_xml_gz: Optional[bytes] = None,
-    output_xml_url: Optional[str] = None,
 ) -> int:
     """Import a single output.xml file into database.
 
@@ -178,9 +182,7 @@ def import_results(
         xml_path: Path to output.xml file
         db: TestDatabase instance
         model_name: Optional model name override
-        report_base_url: Base URL for report links
         output_xml_gz: Pre-compressed output.xml blob (optional)
-        output_xml_url: URL to output.xml (optional)
 
     Returns:
         Run ID of the inserted record
@@ -219,10 +221,6 @@ def import_results(
     else:
         timestamp = datetime.now()
 
-    # Build output_xml_url from report_base_url if not provided
-    if output_xml_url is None and report_base_url:
-        output_xml_url = f"{report_base_url.rstrip('/')}/output.xml"
-
     # Compress output.xml if not already provided
     if output_xml_gz is None:
         try:
@@ -244,12 +242,17 @@ def import_results(
         git_branch=git_branch,
         hostname=os.getenv("HOSTNAME", ""),
         rfc_version=__version__,
-        output_xml_url=output_xml_url or "",
-        output_xml_gz=output_xml_gz or b"",
-        output_xml_source=os.path.abspath(xml_path),
     )
 
     run_id = db.add_test_run(run)
+
+    db.add_test_run_artifact(
+        TestRunArtifact(
+            run_id=run_id,
+            output_xml_gz=output_xml_gz or b"",
+            output_xml_source=os.path.abspath(xml_path),
+        )
+    )
 
     test_results = [
         TestResult(
@@ -258,11 +261,6 @@ def import_results(
             test_status=td["status"],
             score=_nvl(td.get("score"), -1.0),
             tags=_nvl(td.get("tags"), ""),
-            question=_nvl(td.get("question"), ""),
-            expected_answer=_nvl(td.get("expected_answer"), ""),
-            actual_answer=_nvl(td.get("actual_answer"), ""),
-            grading_reason=_nvl(td.get("grading_reason"), ""),
-            rfc_version=__version__,
             tag_severity=_nvl(td.get("tag_severity"), ""),
             tag_tier=_nvl(td.get("tag_tier"), -1),
             tag_verify=_nvl(td.get("tag_verify"), ""),
@@ -271,6 +269,12 @@ def import_results(
     ]
 
     db.add_test_results(test_results)
+
+    artifacts = build_result_artifacts(
+        data["test_results"], db.get_result_ids_for_run(run_id)
+    )
+    if artifacts:
+        db.add_test_result_artifacts(artifacts)
 
     return run_id
 
@@ -293,10 +297,6 @@ def main() -> None:
         "-r",
         action="store_true",
         help="Recursively search for output.xml files in directory",
-    )
-    parser.add_argument(
-        "--report-base-url",
-        help="Base URL for output.xml web access",
     )
 
     args = parser.parse_args()
@@ -324,7 +324,7 @@ def main() -> None:
     imported_count = 0
     for xml_file in xml_files:
         try:
-            run_id = import_results(xml_file, db, args.model, args.report_base_url)
+            run_id = import_results(xml_file, db, args.model)
             print(f"Imported {xml_file} (run_id={run_id})")
             imported_count += 1
         except Exception as e:

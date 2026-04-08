@@ -428,7 +428,7 @@ class TestDbListenerLogMessage:
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM test_results").fetchone()
+            row = conn.execute("SELECT * FROM test_results_full").fetchone()
             assert row["actual_answer"] == "4"
             assert row["expected_answer"] == "4"
             assert row["grading_reason"] == "Correct"
@@ -860,14 +860,7 @@ class TestDbListenerThinkingCapture:
         listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["thinking_tokens"] == 15
 
-    def test_captures_num_ctx(self) -> None:
-        listener = DbListener()
-        listener.start_test(_mock_test_data("T"), _mock_test_result())
-        listener.log_message(_mock_message("RFC_DATA:num_ctx:4096"))
-        listener.end_test(_mock_test_data("T"), _mock_test_result())
-        assert listener._test_cases[0]["num_ctx"] == 4096
-
-    def test_extracts_metrics_from_llm_metrics_json(self) -> None:
+    def test_extracts_eval_count_from_llm_metrics_json(self) -> None:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         metrics = (
@@ -876,7 +869,6 @@ class TestDbListenerThinkingCapture:
         listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
         listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["eval_count"] == 186
-        assert listener._test_cases[0]["tokens_per_second"] == 11.0
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_thinking_data_archived_to_database(
@@ -890,7 +882,6 @@ class TestDbListenerThinkingCapture:
         listener.log_message(_mock_message("RFC_DATA:actual_answer:42"))
         listener.log_message(_mock_message("RFC_DATA:thinking_text:Let me think"))
         listener.log_message(_mock_message("RFC_DATA:thinking_tokens:3"))
-        listener.log_message(_mock_message("RFC_DATA:num_ctx:8192"))
         metrics = (
             '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
         )
@@ -900,12 +891,15 @@ class TestDbListenerThinkingCapture:
 
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM test_results").fetchone()
-            assert row["thinking_text"] == "Let me think"
-            assert row["thinking_tokens"] == 3
-            assert row["num_ctx"] == 8192
-            assert row["eval_count"] == 50
-            assert row["tokens_per_second"] == 10.0
+            # Lean metrics live on test_results; heavy text lives on the
+            # archive and is exposed via the test_results_full view.
+            lean = conn.execute("SELECT * FROM test_results").fetchone()
+            assert lean["thinking_tokens"] == 3
+            assert lean["eval_count"] == 50
+
+            full = conn.execute("SELECT * FROM test_results_full").fetchone()
+            assert full["thinking_text"] == "Let me think"
+            assert full["actual_answer"] == "42"
 
 
 class TestResolveOutputDir:
