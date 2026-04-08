@@ -31,6 +31,7 @@ from bootstrap_dashboards import (  # noqa: E402
     _CHART_DEFS,
     _FILTER_CONFIGS,
     _LAYOUT_SECTIONS,
+    _TABLE_DDL,
     _VIRTUAL_DATASETS,
     _build_position_json,
     _probe_columns,
@@ -230,12 +231,8 @@ class TestTokenEfficiencyDatasets:
         for key in self.TOKEN_EFFICIENCY_KEYS:
             sql = _VIRTUAL_DATASETS[key]
             normalized = sql.upper().replace(" ", "")
-            assert "SCORE>=0.5" in normalized, (
-                f"{key} missing score >= 0.5 filter"
-            )
-            assert "EVAL_COUNT>0" in normalized, (
-                f"{key} missing eval_count > 0 filter"
-            )
+            assert "SCORE>=0.5" in normalized, f"{key} missing score >= 0.5 filter"
+            assert "EVAL_COUNT>0" in normalized, f"{key} missing eval_count > 0 filter"
 
 
 # ---------------------------------------------------------------------------
@@ -259,17 +256,23 @@ class TestTokenEfficiencyCharts:
 
     def test_kpi_chart_uses_big_number(self) -> None:
         """Avg Tokens/Correct KPI uses big_number_total viz type."""
-        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Avg Tokens/Correct (24h)")
+        chart = next(
+            c for c in _CHART_DEFS if c["slice_name"] == "Avg Tokens/Correct (24h)"
+        )
         assert chart["viz_type"] == "big_number_total"
 
     def test_model_chart_uses_bar(self) -> None:
         """Model Token Efficiency uses echarts_bar viz type."""
-        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Model Token Efficiency")
+        chart = next(
+            c for c in _CHART_DEFS if c["slice_name"] == "Model Token Efficiency"
+        )
         assert chart["viz_type"] == "echarts_bar"
 
     def test_trend_chart_uses_timeseries(self) -> None:
         """Token Efficiency Trend uses echarts_timeseries_line viz type."""
-        chart = next(c for c in _CHART_DEFS if c["slice_name"] == "Token Efficiency Trend")
+        chart = next(
+            c for c in _CHART_DEFS if c["slice_name"] == "Token Efficiency Trend"
+        )
         assert chart["viz_type"] == "echarts_timeseries_line"
 
     def test_layout_has_token_efficiency_section(self) -> None:
@@ -650,3 +653,24 @@ def _pg_to_sqlite(sql: str) -> str:
     sql = re.sub(r"NOW\(\)", "CURRENT_TIMESTAMP", sql, flags=flags)
     # Replace IN ('FAIL', 'ERROR') — SQLite supports this, so leave it
     return sql
+
+
+class TestResultsFullViewConsistency:
+    """Guard against drift between the rfc.test_database view SQL and
+    the copy embedded in superset/bootstrap_dashboards.py::_TABLE_DDL."""
+
+    @staticmethod
+    def _normalize(sql: str) -> str:
+        import re
+
+        return re.sub(r"\s+", " ", sql).strip().lower()
+
+    def test_bootstrap_view_matches_canonical_body(self) -> None:
+        from rfc.test_database import TEST_RESULTS_FULL_VIEW_BODY
+
+        assert self._normalize(TEST_RESULTS_FULL_VIEW_BODY) in self._normalize(
+            _TABLE_DDL
+        ), (
+            "superset/bootstrap_dashboards.py::_TABLE_DDL has drifted from "
+            "rfc.test_database.TEST_RESULTS_FULL_VIEW_BODY — update both."
+        )
