@@ -41,7 +41,7 @@ DROP TABLE IF EXISTS analytics_model_comparison CASCADE;
 DROP TABLE IF EXISTS analytics_regression_alerts CASCADE;
 DROP TABLE IF EXISTS analytics_performance_fingerprints CASCADE;
 
--- The view joins columns we are about to drop; take it down first.
+-- The view joins columns we are about to drop, take it down first.
 DROP VIEW IF EXISTS test_results_full;
 
 CREATE TABLE IF NOT EXISTS test_runs (
@@ -1595,9 +1595,14 @@ def _create_tables() -> None:
     engine = create_engine(uri)
     with engine.begin() as conn:
         for statement in _TABLE_DDL.split(";"):
-            statement = statement.strip()
-            if statement:
-                conn.execute(text(statement))
+            # Strip SQL comment lines so comment-only fragments are skipped.
+            executable = "\n".join(
+                ln
+                for ln in statement.splitlines()
+                if ln.strip() and not ln.strip().startswith("--")
+            ).strip()
+            if executable:
+                conn.execute(text(statement.strip()))
     engine.dispose()
     log.info("Created 2-table schema (test_runs, test_results).")
 
