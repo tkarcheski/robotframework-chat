@@ -268,11 +268,9 @@ def import_results(
         for td in data["test_results"]
     ]
 
-    db.add_test_results(test_results)
+    result_ids = db.add_test_results(test_results)
 
-    artifacts = build_result_artifacts(
-        data["test_results"], db.get_result_ids_for_run(run_id)
-    )
+    artifacts = build_result_artifacts(data["test_results"], result_ids)
     if artifacts:
         db.add_test_result_artifacts(artifacts)
 

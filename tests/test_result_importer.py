@@ -71,6 +71,9 @@ class TestImportResults:
         db = MagicMock()
         db.db_path = ":memory:"
         db.add_test_run.return_value = 42
+        db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
         return db
 
     def test_imports_and_returns_result(self, tmp_path: Path) -> None:
@@ -140,6 +143,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr("sys.argv", ["result_importer", str(xml_file)])
         monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
@@ -164,6 +170,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr(
             "sys.argv", ["result_importer", str(tmp_path), "--recursive"]
@@ -185,6 +194,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr("sys.argv", ["result_importer", str(tmp_path)])
         monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)

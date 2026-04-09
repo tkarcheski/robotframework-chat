@@ -19,6 +19,14 @@ from scripts.import_test_results import (
 )
 
 
+def _mock_db(run_id: int = 1) -> MagicMock:
+    """Build a MagicMock TestDatabase with positional id returns."""
+    db = MagicMock()
+    db.add_test_run.return_value = run_id
+    db.add_test_results.side_effect = lambda results: list(range(1, len(results) + 1))
+    return db
+
+
 # ── Minimal output.xml fixtures ──────────────────────────────────────
 
 MINIMAL_OUTPUT_XML = """\
@@ -481,8 +489,7 @@ class TestImportResults:
         """Creates a TestRun in the database from output.xml."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 42
+            db = _mock_db(run_id=42)
 
             run_id = import_results(path, db)
             assert run_id == 42
@@ -503,8 +510,7 @@ class TestImportResults:
         """Creates TestResult rows for each test case."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 42
+            db = _mock_db(run_id=42)
 
             import_results(path, db)
 
@@ -524,8 +530,7 @@ class TestImportResults:
         """Model name can be overridden via parameter."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db, model_name="custom-model")
 
@@ -539,8 +544,7 @@ class TestImportResults:
         """Falls back to DEFAULT_MODEL env var when metadata lacks Model."""
         path = _write_xml(NO_METADATA_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -553,8 +557,7 @@ class TestImportResults:
         """Resolves git info from legacy GitLab-specific metadata keys."""
         path = _write_xml(LEGACY_METADATA_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -576,8 +579,7 @@ class TestImportResults:
         """Falls back to CI_* env vars when metadata has no git info."""
         path = _write_xml(NO_METADATA_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -591,8 +593,7 @@ class TestImportResults:
         """Handles empty suite with no tests."""
         path = _write_xml(EMPTY_SUITE_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             run_id = import_results(path, db)
             assert run_id == 1
@@ -610,8 +611,7 @@ class TestImportResults:
         """TestRun includes the rfc_version field."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -624,8 +624,7 @@ class TestImportResults:
         """Uses Timestamp from metadata when available."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -638,8 +637,7 @@ class TestImportResults:
         """Falls back to datetime.now() when metadata has no Timestamp."""
         path = _write_xml(NO_METADATA_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             before = datetime.now()
             import_results(path, db)
@@ -654,8 +652,7 @@ class TestImportResults:
         """Duration is passed through from XML parsing."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -668,8 +665,7 @@ class TestImportResults:
         """Imports combined rebot output with nested suites."""
         path = _write_xml(NESTED_SUITES_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 
@@ -688,9 +684,7 @@ class TestImportResults:
         """output.xml is gzip-compressed and written to the archive table."""
         path = _write_xml(MINIMAL_OUTPUT_XML)
         try:
-            db = MagicMock()
-            db.add_test_run.return_value = 1
-            db.get_result_ids_for_run.return_value = {}
+            db = _mock_db(run_id=1)
 
             import_results(path, db)
 

@@ -27,6 +27,7 @@ from rfc.test_database import (
     TestRun,
     TestRunArtifact,
     _SQLAlchemyBackend,
+    build_result_artifacts,
 )
 
 
@@ -513,7 +514,7 @@ class TestResultsFullView:
         db.add_test_run_artifact(
             TestRunArtifact(run_id=run_id, output_xml_source="/tmp/output.xml")
         )
-        db.add_test_results(
+        [result_id] = db.add_test_results(
             [
                 TestResult(
                     run_id=run_id,
@@ -524,7 +525,6 @@ class TestResultsFullView:
                 ),
             ]
         )
-        result_id = db.get_result_ids_for_run(run_id)["Full Data Test"]
 
         db.add_test_result_artifacts(
             [
@@ -622,10 +622,9 @@ class TestTestResultArtifact:
     def test_add_and_get_result_artifact(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         run_id = db.add_test_run(_make_run())
-        db.add_test_results(
+        [result_id] = db.add_test_results(
             [TestResult(run_id=run_id, test_name="T", test_status="PASS")]
         )
-        result_id = db.get_result_ids_for_run(run_id)["T"]
 
         db.add_test_result_artifacts(
             [
@@ -658,6 +657,66 @@ class TestTestResultArtifact:
         assert a.actual_answer == ""
         assert a.grading_reason == ""
         assert a.thinking_text == ""
+
+    def test_build_result_artifacts_matches_positionally(self) -> None:
+        artifacts = build_result_artifacts(
+            test_cases=[
+                {"name": "A", "actual_answer": "a"},
+                {"name": "A", "actual_answer": "b"},  # duplicate name
+                {"name": "B", "actual_answer": "c"},
+            ],
+            result_ids=[10, 11, 12],
+        )
+        assert len(artifacts) == 3
+        assert artifacts[0].result_id == 10 and artifacts[0].actual_answer == "a"
+        assert artifacts[1].result_id == 11 and artifacts[1].actual_answer == "b"
+        assert artifacts[2].result_id == 12 and artifacts[2].actual_answer == "c"
+
+    def test_build_result_artifacts_skips_all_empty(self) -> None:
+        artifacts = build_result_artifacts(
+            test_cases=[
+                {"name": "A", "actual_answer": "keep"},
+                {"name": "B"},  # no archive fields → skipped
+                {"name": "C", "thinking_text": "keep"},
+            ],
+            result_ids=[1, 2, 3],
+        )
+        assert [a.result_id for a in artifacts] == [1, 3]
+
+    def test_build_result_artifacts_rejects_length_mismatch(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            build_result_artifacts(
+                test_cases=[{"name": "A"}, {"name": "B"}],
+                result_ids=[1],
+            )
+
+    def test_duplicate_test_names_get_distinct_artifact_rows(
+        self, tmp_path: object
+    ) -> None:
+        """Regression: templated tests with repeated names must each get
+        their own archive row rather than collapsing onto a single id."""
+        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
+        run_id = db.add_test_run(_make_run())
+        result_ids = db.add_test_results(
+            [
+                TestResult(run_id=run_id, test_name="Templated", test_status="PASS"),
+                TestResult(run_id=run_id, test_name="Templated", test_status="PASS"),
+                TestResult(run_id=run_id, test_name="Templated", test_status="PASS"),
+            ]
+        )
+        assert len(result_ids) == 3
+        assert len(set(result_ids)) == 3  # distinct ids
+
+        db.add_test_result_artifacts(
+            [
+                TestResultArtifact(result_id=result_ids[0], actual_answer="first"),
+                TestResultArtifact(result_id=result_ids[1], actual_answer="second"),
+                TestResultArtifact(result_id=result_ids[2], actual_answer="third"),
+            ]
+        )
+        assert db.get_test_result_artifact(result_ids[0])["actual_answer"] == "first"
+        assert db.get_test_result_artifact(result_ids[1])["actual_answer"] == "second"
+        assert db.get_test_result_artifact(result_ids[2])["actual_answer"] == "third"
 
 
 class TestModelsTable:

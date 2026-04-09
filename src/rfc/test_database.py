@@ -138,18 +138,25 @@ _ARCHIVE_FIELDS: tuple[str, ...] = (
 
 def build_result_artifacts(
     test_cases: List[Dict[str, Any]],
-    result_id_by_name: Dict[str, int],
+    result_ids: List[int],
 ) -> List[TestResultArtifact]:
     """Build per-result archive rows from test-case dicts.
 
-    Skips cases with no matching result_id and cases where every archive
-    field is empty — Superset only needs rows that carry drill-down text.
+    ``result_ids`` must be positionally aligned with ``test_cases`` —
+    i.e. ``result_ids[i]`` is the primary key for ``test_cases[i]``.
+    Skips cases where every archive field is empty; Superset only needs
+    rows that carry drill-down text.
+
+    Positional matching is mandatory: name-based matching would silently
+    collapse duplicate test names (templated tests) onto a single id.
     """
+    if len(test_cases) != len(result_ids):
+        raise ValueError(
+            f"test_cases ({len(test_cases)}) and result_ids ({len(result_ids)}) "
+            "must have the same length"
+        )
     artifacts: List[TestResultArtifact] = []
-    for tc in test_cases:
-        result_id = result_id_by_name.get(tc.get("name", ""))
-        if result_id is None:
-            continue
+    for tc, result_id in zip(test_cases, result_ids):
         if not any(tc.get(field) for field in _ARCHIVE_FIELDS):
             continue
         artifacts.append(
@@ -212,7 +219,13 @@ class _Backend(abc.ABC):
     def add_test_run(self, run: TestRun) -> int: ...
 
     @abc.abstractmethod
-    def add_test_results(self, results: List[TestResult]) -> None: ...
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
+        """Bulk-insert test results and return their primary keys.
+
+        Returned ids are positionally aligned with ``results`` so callers
+        can attach per-result archive rows without a name-based lookup.
+        """
+        ...
 
     @abc.abstractmethod
     def add_test_run_artifact(self, artifact: TestRunArtifact) -> None: ...
@@ -227,17 +240,6 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def get_test_result_artifact(self, result_id: int) -> Optional[Dict[str, Any]]: ...
-
-    @abc.abstractmethod
-    def get_result_ids_for_run(self, run_id: int) -> Dict[str, int]:
-        """Return a ``{test_name: result_id}`` map for the given run.
-
-        When a run has multiple rows with the same ``test_name`` (e.g.
-        templated data-driven tests that did not override ``NAME``), the
-        last row wins.  Callers that need a 1:1 mapping should generate
-        unique per-iteration names before inserting.
-        """
-        ...
 
     @abc.abstractmethod
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]: ...
@@ -408,19 +410,23 @@ class _SQLiteBackend(_Backend):
             run_id = cursor.lastrowid
             return run_id if run_id is not None else 0
 
-    def add_test_results(self, results: List[TestResult]) -> None:
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
         if not results:
-            return
+            return []
+        # executemany() cannot report individual ``lastrowid`` values, so
+        # loop with per-row execute().  All inserts share one transaction
+        # via the context manager, keeping write cost low.
         with sqlite3.connect(self.db_path) as conn:
-            conn.executemany(
-                """
-                INSERT INTO test_results
-                (run_id, test_name, test_status, score, tags,
-                 tag_severity, tag_tier, tag_verify,
-                 eval_count, thinking_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
+            inserted_ids: List[int] = []
+            for r in results:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO test_results
+                    (run_id, test_name, test_status, score, tags,
+                     tag_severity, tag_tier, tag_verify,
+                     eval_count, thinking_tokens)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         r.run_id,
                         r.test_name,
@@ -432,10 +438,12 @@ class _SQLiteBackend(_Backend):
                         r.tag_verify,
                         r.eval_count,
                         r.thinking_tokens,
-                    )
-                    for r in results
-                ],
-            )
+                    ),
+                )
+                row_id = cursor.lastrowid
+                assert row_id is not None, "INSERT did not return a row id"
+                inserted_ids.append(int(row_id))
+            return inserted_ids
 
     def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -484,15 +492,6 @@ class _SQLiteBackend(_Backend):
                     for a in artifacts
                 ],
             )
-
-    def get_result_ids_for_run(self, run_id: int) -> Dict[str, int]:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT id, test_name FROM test_results WHERE run_id = ?",
-                (run_id,),
-            ).fetchall()
-            return {row["test_name"]: int(row["id"]) for row in rows}
 
     def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
@@ -828,28 +827,32 @@ class _SQLAlchemyBackend(_Backend):
             assert pk is not None, "INSERT did not return a primary key"
             return int(pk[0])
 
-    def add_test_results(self, results: List[TestResult]) -> None:
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
         if not results:
-            return
+            return []
+        # PG supports RETURNING with multi-row inserts via SQLAlchemy 2.0's
+        # insertmanyvalues; rows come back in the same order we submitted.
+        payload = [
+            {
+                "run_id": r.run_id,
+                "test_name": r.test_name,
+                "test_status": r.test_status,
+                "score": r.score,
+                "tags": r.tags,
+                "tag_severity": r.tag_severity,
+                "tag_tier": r.tag_tier,
+                "tag_verify": r.tag_verify,
+                "eval_count": r.eval_count,
+                "thinking_tokens": r.thinking_tokens,
+            }
+            for r in results
+        ]
         with self.engine.begin() as conn:
-            conn.execute(
-                self._test_results.insert(),
-                [
-                    {
-                        "run_id": r.run_id,
-                        "test_name": r.test_name,
-                        "test_status": r.test_status,
-                        "score": r.score,
-                        "tags": r.tags,
-                        "tag_severity": r.tag_severity,
-                        "tag_tier": r.tag_tier,
-                        "tag_verify": r.tag_verify,
-                        "eval_count": r.eval_count,
-                        "thinking_tokens": r.thinking_tokens,
-                    }
-                    for r in results
-                ],
+            result = conn.execute(
+                self._test_results.insert().returning(self._test_results.c.id),
+                payload,
             )
+            return [int(row.id) for row in result]
 
     def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
         # PostgreSQL ON CONFLICT syntax — we deliberately do not use
@@ -906,18 +909,6 @@ class _SQLAlchemyBackend(_Backend):
                     for a in artifacts
                 ],
             )
-
-    def get_result_ids_for_run(self, run_id: int) -> Dict[str, int]:
-        from sqlalchemy import select  # type: ignore[import-not-found]
-
-        with self.engine.connect() as conn:
-            rows = conn.execute(
-                select(
-                    self._test_results.c.id,
-                    self._test_results.c.test_name,
-                ).where(self._test_results.c.run_id == run_id)
-            )
-            return {str(row.test_name): int(row.id) for row in rows}
 
     def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
         with self.engine.connect() as conn:
@@ -1074,17 +1065,14 @@ class TestDatabase:
     def add_test_run(self, run: TestRun) -> int:
         return self._backend.add_test_run(run)
 
-    def add_test_results(self, results: List[TestResult]) -> None:
-        self._backend.add_test_results(results)
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
+        return self._backend.add_test_results(results)
 
     def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
         self._backend.add_test_run_artifact(artifact)
 
     def add_test_result_artifacts(self, artifacts: List[TestResultArtifact]) -> None:
         self._backend.add_test_result_artifacts(artifacts)
-
-    def get_result_ids_for_run(self, run_id: int) -> Dict[str, int]:
-        return self._backend.get_result_ids_for_run(run_id)
 
     def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
         return self._backend.get_test_run_artifact(run_id)

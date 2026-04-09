@@ -295,11 +295,9 @@ class DbListener(BaseListener):
                 )
                 for tc in self._test_cases
             ]
-            db.add_test_results(results)
+            result_ids = db.add_test_results(results)
 
-            artifacts = build_result_artifacts(
-                self._test_cases, db.get_result_ids_for_run(run_id)
-            )
+            artifacts = build_result_artifacts(self._test_cases, result_ids)
             if artifacts:
                 db.add_test_result_artifacts(artifacts)
 
