@@ -48,6 +48,8 @@ from .test_database import (
     TestDatabase,
     TestResult,
     TestRun,
+    TestRunArtifact,
+    build_result_artifacts,
 )
 
 # Backward-compatible aliases (these names are imported by tests).
@@ -177,7 +179,6 @@ class DbListener(BaseListener):
         parsed = parse_tags(tags)
         tags_str = parsed["tags_sorted"]
 
-        # Extract performance metrics from llm_metrics JSON
         metrics = extract_llm_metrics(self._current_test_data.get("llm_metrics"))
 
         self._test_cases.append(
@@ -186,39 +187,21 @@ class DbListener(BaseListener):
                 "status": result.status,
                 "score": score,
                 "tags": tags_str,
-                "question": doc if doc else "",
                 "message": result.message,
-                "actual_answer": self._current_test_data.get("actual_answer"),
-                "expected_answer": self._current_test_data.get("expected_answer"),
-                "grading_reason": self._current_test_data.get("grading_reason"),
                 "tag_severity": parsed["tag_severity"],
                 "tag_tier": parsed["tag_tier"],
                 "tag_verify": parsed["tag_verify"],
-                "thinking_text": self._current_test_data.get("thinking_text"),
+                "eval_count": metrics.get("eval_count"),
                 "thinking_tokens": safe_int(
                     self._current_test_data.get("thinking_tokens")
                 ),
-                "num_ctx": safe_int(self._current_test_data.get("num_ctx"))
-                or metrics.get("num_ctx"),
-                "num_predict": safe_int(self._current_test_data.get("num_predict"))
-                or metrics.get("num_predict"),
-                "eval_count": metrics.get("eval_count"),
-                "eval_duration_ns": metrics.get("eval_duration_ns"),
-                "prompt_eval_count": metrics.get("prompt_eval_count"),
-                "prompt_eval_duration_ns": metrics.get("prompt_eval_duration_ns"),
-                "load_duration_ns": metrics.get("load_duration_ns"),
-                "total_duration_ns": metrics.get("total_duration_ns"),
-                "tokens_per_second": metrics.get("eval_rate"),
-                "reasoning_tokens": metrics.get("reasoning_tokens"),
-                "cached_tokens": metrics.get("cached_tokens"),
-                "accepted_prediction_tokens": metrics.get("accepted_prediction_tokens"),
-                "rejected_prediction_tokens": metrics.get("rejected_prediction_tokens"),
-                "token_retry_count": safe_int(
-                    self._current_test_data.get("token_retry_count")
-                ),
-                "token_retry_max_tokens": safe_int(
-                    self._current_test_data.get("token_retry_max_tokens")
-                ),
+                # Archive fields — written to test_result_artifacts after
+                # the per-result primary key is known.
+                "question": doc if doc else "",
+                "actual_answer": self._current_test_data.get("actual_answer"),
+                "expected_answer": self._current_test_data.get("expected_answer"),
+                "grading_reason": self._current_test_data.get("grading_reason"),
+                "thinking_text": self._current_test_data.get("thinking_text"),
             }
         )
         self._current_test_name = None
@@ -264,15 +247,8 @@ class DbListener(BaseListener):
 
         # output.xml is read later in close(), after Robot flushes the file.
         # Resolve the path now while Robot context is still available.
-        output_xml_url = build_output_xml_url()
         output_xml_source = build_output_xml_source()
         self._resolved_output_path = resolve_output_file()
-
-        # Collect inference params from Robot variables or environment
-        run_temperature = get_robot_float("TEMPERATURE")
-        run_seed = get_robot_int("SEED")
-        run_top_p = get_robot_float("TOP_P")
-        run_top_k = get_robot_int("TOP_K")
 
         run = TestRun(
             timestamp=self._start_time or end_time,
@@ -287,19 +263,22 @@ class DbListener(BaseListener):
             git_branch=self._ci_info.get("Branch", ""),
             hostname=hostname,
             rfc_version=__version__,
-            output_xml_url=output_xml_url,
-            output_xml_gz=b"",
-            output_xml_source=output_xml_source,
-            temperature=run_temperature,
-            seed=run_seed,
-            top_p=run_top_p,
-            top_k=run_top_k,
         )
 
         try:
             db = self._get_db()
             run_id = db.add_test_run(run)
             self._last_run_id = run_id
+
+            # Record the source path immediately so Superset drill-down can
+            # show where the XML lives even before close() compresses it.
+            if output_xml_source:
+                db.add_test_run_artifact(
+                    TestRunArtifact(
+                        run_id=run_id,
+                        output_xml_source=output_xml_source,
+                    )
+                )
 
             results = [
                 TestResult(
@@ -308,39 +287,19 @@ class DbListener(BaseListener):
                     test_status=tc["status"],
                     score=nvl(tc.get("score"), -1.0),
                     tags=nvl(tc.get("tags"), ""),
-                    question=nvl(tc.get("question"), ""),
-                    expected_answer=nvl(tc.get("expected_answer"), ""),
-                    actual_answer=nvl(tc.get("actual_answer"), ""),
-                    grading_reason=nvl(tc.get("grading_reason"), ""),
-                    rfc_version=__version__,
                     tag_severity=nvl(tc.get("tag_severity"), ""),
                     tag_tier=nvl(tc.get("tag_tier"), -1),
                     tag_verify=nvl(tc.get("tag_verify"), ""),
-                    thinking_text=nvl(tc.get("thinking_text"), ""),
-                    thinking_tokens=nvl(tc.get("thinking_tokens"), 0),
-                    reasoning_tokens=nvl(tc.get("reasoning_tokens"), 0),
-                    cached_tokens=nvl(tc.get("cached_tokens"), 0),
-                    accepted_prediction_tokens=nvl(
-                        tc.get("accepted_prediction_tokens"), 0
-                    ),
-                    rejected_prediction_tokens=nvl(
-                        tc.get("rejected_prediction_tokens"), 0
-                    ),
-                    num_ctx=nvl(tc.get("num_ctx"), 0),
-                    num_predict=nvl(tc.get("num_predict"), 0),
                     eval_count=nvl(tc.get("eval_count"), 0),
-                    eval_duration_ns=nvl(tc.get("eval_duration_ns"), 0),
-                    prompt_eval_count=nvl(tc.get("prompt_eval_count"), 0),
-                    prompt_eval_duration_ns=nvl(tc.get("prompt_eval_duration_ns"), 0),
-                    load_duration_ns=nvl(tc.get("load_duration_ns"), 0),
-                    total_duration_ns=nvl(tc.get("total_duration_ns"), 0),
-                    tokens_per_second=nvl(tc.get("tokens_per_second"), 0.0),
-                    token_retry_count=nvl(tc.get("token_retry_count"), 0),
-                    token_retry_max_tokens=nvl(tc.get("token_retry_max_tokens"), 0),
+                    thinking_tokens=nvl(tc.get("thinking_tokens"), 0),
                 )
                 for tc in self._test_cases
             ]
-            db.add_test_results(results)
+            result_ids = db.add_test_results(results)
+
+            artifacts = build_result_artifacts(self._test_cases, result_ids)
+            if artifacts:
+                db.add_test_result_artifacts(artifacts)
 
             dest = self._describe_database_destination()
             summary = (

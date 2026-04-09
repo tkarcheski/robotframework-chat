@@ -4,9 +4,17 @@ Manages test result storage with support for SQLite (default)
 and PostgreSQL (for Superset integration). Backend is selected
 via DATABASE_URL environment variable or constructor parameter.
 
-Schema: 2 tables (test_runs + test_results). output.xml is the
-source of truth — the database stores a gzip-compressed copy and
-an HTTP URL for web access.
+Schema (4 tables):
+    - ``test_runs``            — lean per-suite metrics
+    - ``test_results``         — lean per-test metrics
+    - ``test_run_artifacts``   — per-run heavy archive
+      (gzip-compressed ``output.xml`` + source path)
+    - ``test_result_artifacts`` — per-result heavy archive
+      (question / expected_answer / actual_answer / grading_reason /
+      thinking_text)
+
+Dashboards query the lean tables directly. Superset drill-down joins
+the archive tables via the ``test_results_full`` view (LEFT JOIN).
 
 SQLite:      sqlite:///data/test_history.db  (default)
 PostgreSQL:  postgresql://user:pass@host:5433/dbname
@@ -48,7 +56,7 @@ except ImportError:
 
 @dataclass
 class TestRun:
-    """Represents a single test run/suite execution."""
+    """Lean per-suite metrics (heavy fields live in TestRunArtifact)."""
 
     timestamp: datetime
     model_name: str
@@ -62,51 +70,45 @@ class TestRun:
     git_branch: str = ""
     hostname: str = ""
     rfc_version: str = ""
-    output_xml_url: str = ""
-    output_xml_gz: bytes = b""
-    output_xml_source: str = ""
-    temperature: float = 0.0
-    seed: int = 0
-    top_p: float = 0.0
-    top_k: int = 0
     id: int = -1
 
 
 @dataclass
 class TestResult:
-    """Represents an individual test case result."""
+    """Lean per-test metrics (heavy fields live in TestResultArtifact)."""
 
     run_id: int
     test_name: str
     test_status: str
     score: float = -1.0
     tags: str = ""
+    tag_severity: str = ""
+    tag_tier: int = -1
+    tag_verify: str = ""
+    eval_count: int = 0
+    thinking_tokens: int = 0
+    id: int = -1
+
+
+@dataclass
+class TestRunArtifact:
+    """Per-run heavy archive: output.xml gzip blob and its source path."""
+
+    run_id: int
+    output_xml_gz: bytes = b""
+    output_xml_source: str = ""
+
+
+@dataclass
+class TestResultArtifact:
+    """Per-result heavy archive: question/answer/grading/thinking text."""
+
+    result_id: int
     question: str = ""
     expected_answer: str = ""
     actual_answer: str = ""
     grading_reason: str = ""
-    rfc_version: str = ""
-    tag_severity: str = ""
-    tag_tier: int = -1
-    tag_verify: str = ""
     thinking_text: str = ""
-    thinking_tokens: int = 0
-    reasoning_tokens: int = 0
-    cached_tokens: int = 0
-    accepted_prediction_tokens: int = 0
-    rejected_prediction_tokens: int = 0
-    num_ctx: int = 0
-    num_predict: int = 0
-    eval_count: int = 0
-    eval_duration_ns: int = 0
-    prompt_eval_count: int = 0
-    prompt_eval_duration_ns: int = 0
-    load_duration_ns: int = 0
-    total_duration_ns: int = 0
-    tokens_per_second: float = 0.0
-    token_retry_count: int = 0
-    token_retry_max_tokens: int = 0
-    id: int = -1
 
 
 @dataclass
@@ -122,6 +124,94 @@ class Model:
     family: str = ""
 
 
+# Fields the archive row borrows from a test-case dict.  Shared between the
+# Robot listener and the XML importer so both write the same columns and
+# apply the same "all-empty → skip" policy.
+_ARCHIVE_FIELDS: tuple[str, ...] = (
+    "question",
+    "expected_answer",
+    "actual_answer",
+    "grading_reason",
+    "thinking_text",
+)
+
+
+def build_result_artifacts(
+    test_cases: List[Dict[str, Any]],
+    result_ids: List[int],
+) -> List[TestResultArtifact]:
+    """Build per-result archive rows from test-case dicts.
+
+    ``result_ids`` must be positionally aligned with ``test_cases`` —
+    i.e. ``result_ids[i]`` is the primary key for ``test_cases[i]``.
+    Skips cases where every archive field is empty; Superset only needs
+    rows that carry drill-down text.
+
+    Positional matching is mandatory: name-based matching would silently
+    collapse duplicate test names (templated tests) onto a single id.
+    """
+    if len(test_cases) != len(result_ids):
+        raise ValueError(
+            f"test_cases ({len(test_cases)}) and result_ids ({len(result_ids)}) "
+            "must have the same length"
+        )
+    artifacts: List[TestResultArtifact] = []
+    for tc, result_id in zip(test_cases, result_ids):
+        if not any(tc.get(field) for field in _ARCHIVE_FIELDS):
+            continue
+        artifacts.append(
+            TestResultArtifact(
+                result_id=result_id,
+                question=tc.get("question") or "",
+                expected_answer=tc.get("expected_answer") or "",
+                actual_answer=tc.get("actual_answer") or "",
+                grading_reason=tc.get("grading_reason") or "",
+                thinking_text=tc.get("thinking_text") or "",
+            )
+        )
+    return artifacts
+
+
+# Single source of truth for the ``test_results_full`` view body.  Both
+# backends and ``superset/bootstrap_dashboards.py`` render a CREATE VIEW
+# statement around this SELECT so the column set cannot drift.
+TEST_RESULTS_FULL_VIEW_BODY: str = """\
+SELECT
+    tr.id AS result_id,
+    tr.run_id,
+    tr.test_name,
+    tr.test_status,
+    tr.score,
+    tr.tags,
+    tr.tag_severity,
+    tr.tag_tier,
+    tr.tag_verify,
+    tr.eval_count,
+    tr.thinking_tokens,
+    r.timestamp,
+    r.model_name,
+    r.test_suite,
+    r.total_tests,
+    r.passed,
+    r.failed,
+    r.skipped,
+    r.duration_seconds,
+    r.git_commit,
+    r.git_branch,
+    r.hostname,
+    r.rfc_version,
+    ra.output_xml_source,
+    rsa.question,
+    rsa.expected_answer,
+    rsa.actual_answer,
+    rsa.grading_reason,
+    rsa.thinking_text
+FROM test_results tr
+JOIN test_runs r ON tr.run_id = r.id
+LEFT JOIN test_run_artifacts ra ON ra.run_id = r.id
+LEFT JOIN test_result_artifacts rsa ON rsa.result_id = tr.id"""
+
+
 class _Backend(abc.ABC):
     """Abstract interface shared by all database backends."""
 
@@ -129,7 +219,27 @@ class _Backend(abc.ABC):
     def add_test_run(self, run: TestRun) -> int: ...
 
     @abc.abstractmethod
-    def add_test_results(self, results: List[TestResult]) -> None: ...
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
+        """Bulk-insert test results and return their primary keys.
+
+        Returned ids are positionally aligned with ``results`` so callers
+        can attach per-result archive rows without a name-based lookup.
+        """
+        ...
+
+    @abc.abstractmethod
+    def add_test_run_artifact(self, artifact: TestRunArtifact) -> None: ...
+
+    @abc.abstractmethod
+    def add_test_result_artifacts(
+        self, artifacts: List[TestResultArtifact]
+    ) -> None: ...
+
+    @abc.abstractmethod
+    def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def get_test_result_artifact(self, result_id: int) -> Optional[Dict[str, Any]]: ...
 
     @abc.abstractmethod
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]: ...
@@ -170,14 +280,7 @@ class _SQLiteBackend(_Backend):
         git_commit TEXT,
         git_branch TEXT,
         hostname TEXT,
-        rfc_version TEXT,
-        output_xml_url TEXT,
-        output_xml_gz BLOB,
-        output_xml_source TEXT,
-        temperature REAL,
-        seed INTEGER,
-        top_p REAL,
-        top_k INTEGER
+        rfc_version TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -187,32 +290,29 @@ class _SQLiteBackend(_Backend):
         test_status TEXT NOT NULL,
         score REAL,
         tags TEXT,
+        tag_severity TEXT,
+        tag_tier INTEGER,
+        tag_verify TEXT,
+        eval_count INTEGER,
+        thinking_tokens INTEGER,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS test_run_artifacts (
+        run_id INTEGER PRIMARY KEY,
+        output_xml_gz BLOB,
+        output_xml_source TEXT,
+        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS test_result_artifacts (
+        result_id INTEGER PRIMARY KEY,
         question TEXT,
         expected_answer TEXT,
         actual_answer TEXT,
         grading_reason TEXT,
-        rfc_version TEXT,
-        tag_severity TEXT,
-        tag_tier INTEGER,
-        tag_verify TEXT,
         thinking_text TEXT,
-        thinking_tokens INTEGER,
-        reasoning_tokens INTEGER,
-        cached_tokens INTEGER,
-        accepted_prediction_tokens INTEGER,
-        rejected_prediction_tokens INTEGER,
-        num_ctx INTEGER,
-        num_predict INTEGER,
-        eval_count INTEGER,
-        eval_duration_ns INTEGER,
-        prompt_eval_count INTEGER,
-        prompt_eval_duration_ns INTEGER,
-        load_duration_ns INTEGER,
-        total_duration_ns INTEGER,
-        tokens_per_second REAL,
-        token_retry_count INTEGER,
-        token_retry_max_tokens INTEGER,
-        FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
+        FOREIGN KEY (result_id) REFERENCES test_results(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS models (
@@ -231,85 +331,42 @@ class _SQLiteBackend(_Backend):
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
     """
 
-    _VIEW_SQL = """
-    DROP VIEW IF EXISTS test_results_full;
-    CREATE VIEW test_results_full AS
-    SELECT
-        tr.id AS result_id,
-        tr.run_id,
-        tr.test_name,
-        tr.test_status,
-        tr.score,
-        tr.tags,
-        tr.question,
-        tr.expected_answer,
-        tr.actual_answer,
-        tr.grading_reason,
-        tr.rfc_version,
-        tr.tag_severity,
-        tr.tag_tier,
-        tr.tag_verify,
-        tr.thinking_text,
-        tr.thinking_tokens,
-        tr.reasoning_tokens,
-        tr.cached_tokens,
-        tr.accepted_prediction_tokens,
-        tr.rejected_prediction_tokens,
-        tr.num_ctx,
-        tr.num_predict,
-        tr.eval_count,
-        tr.eval_duration_ns,
-        tr.prompt_eval_count,
-        tr.prompt_eval_duration_ns,
-        tr.load_duration_ns,
-        tr.total_duration_ns,
-        tr.tokens_per_second,
-        tr.token_retry_count,
-        tr.token_retry_max_tokens,
-        r.timestamp,
-        r.model_name,
-        r.test_suite,
-        r.total_tests,
-        r.passed,
-        r.failed,
-        r.skipped,
-        r.duration_seconds,
-        r.git_commit,
-        r.git_branch,
-        r.hostname,
-        r.output_xml_url,
-        r.output_xml_source,
-        r.temperature,
-        r.seed,
-        r.top_p,
-        r.top_k
-    FROM test_results tr
-    JOIN test_runs r ON tr.run_id = r.id;
-    """
+    _VIEW_SQL = (
+        "DROP VIEW IF EXISTS test_results_full;\n"
+        f"CREATE VIEW test_results_full AS\n{TEST_RESULTS_FULL_VIEW_BODY};\n"
+    )
 
-    # SQLite migrations for existing databases (new columns added via ALTER TABLE)
+    # Idempotent migrations that drop legacy columns from upgrading databases.
+    # SQLite supports DROP COLUMN in 3.35+; older versions will raise and we
+    # swallow the error (new databases never had these columns anyway).
     _SQLITE_MIGRATIONS = [
-        "ALTER TABLE test_runs ADD COLUMN temperature REAL",
-        "ALTER TABLE test_runs ADD COLUMN seed INTEGER",
-        "ALTER TABLE test_runs ADD COLUMN top_p REAL",
-        "ALTER TABLE test_runs ADD COLUMN top_k INTEGER",
-        "ALTER TABLE test_results ADD COLUMN thinking_text TEXT",
-        "ALTER TABLE test_results ADD COLUMN thinking_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN num_ctx INTEGER",
-        "ALTER TABLE test_results ADD COLUMN num_predict INTEGER",
-        "ALTER TABLE test_results ADD COLUMN eval_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN eval_duration_ns INTEGER",
-        "ALTER TABLE test_results ADD COLUMN prompt_eval_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN prompt_eval_duration_ns INTEGER",
-        "ALTER TABLE test_results ADD COLUMN load_duration_ns INTEGER",
-        "ALTER TABLE test_results ADD COLUMN total_duration_ns INTEGER",
-        "ALTER TABLE test_results ADD COLUMN tokens_per_second REAL",
-        "ALTER TABLE test_results ADD COLUMN reasoning_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN cached_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN accepted_prediction_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN rejected_prediction_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN token_retry_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN token_retry_max_tokens INTEGER",
+        "ALTER TABLE test_runs DROP COLUMN temperature",
+        "ALTER TABLE test_runs DROP COLUMN seed",
+        "ALTER TABLE test_runs DROP COLUMN top_p",
+        "ALTER TABLE test_runs DROP COLUMN top_k",
+        "ALTER TABLE test_runs DROP COLUMN output_xml_gz",
+        "ALTER TABLE test_runs DROP COLUMN output_xml_url",
+        "ALTER TABLE test_runs DROP COLUMN output_xml_source",
+        "ALTER TABLE test_results DROP COLUMN question",
+        "ALTER TABLE test_results DROP COLUMN expected_answer",
+        "ALTER TABLE test_results DROP COLUMN actual_answer",
+        "ALTER TABLE test_results DROP COLUMN grading_reason",
+        "ALTER TABLE test_results DROP COLUMN thinking_text",
+        "ALTER TABLE test_results DROP COLUMN rfc_version",
+        "ALTER TABLE test_results DROP COLUMN reasoning_tokens",
+        "ALTER TABLE test_results DROP COLUMN cached_tokens",
+        "ALTER TABLE test_results DROP COLUMN accepted_prediction_tokens",
+        "ALTER TABLE test_results DROP COLUMN rejected_prediction_tokens",
+        "ALTER TABLE test_results DROP COLUMN num_ctx",
+        "ALTER TABLE test_results DROP COLUMN num_predict",
+        "ALTER TABLE test_results DROP COLUMN eval_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN prompt_eval_count",
+        "ALTER TABLE test_results DROP COLUMN prompt_eval_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN load_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN total_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN tokens_per_second",
+        "ALTER TABLE test_results DROP COLUMN token_retry_count",
+        "ALTER TABLE test_results DROP COLUMN token_retry_max_tokens",
     ]
 
     def __init__(self, db_path: str):
@@ -317,12 +374,12 @@ class _SQLiteBackend(_Backend):
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         with sqlite3.connect(db_path) as conn:
             conn.executescript(self.SCHEMA)
-            # Run migrations for existing databases (idempotent)
+            # Drop legacy columns from upgrading databases (idempotent).
             for sql in self._SQLITE_MIGRATIONS:
                 try:
                     conn.execute(sql)
                 except sqlite3.OperationalError:
-                    pass  # Column already exists
+                    pass  # Column absent or SQLite too old for DROP COLUMN.
             conn.executescript(self._VIEW_SQL)
 
     def add_test_run(self, run: TestRun) -> int:
@@ -332,9 +389,8 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_runs
                 (timestamp, model_name, test_suite, total_tests, passed,
                  failed, skipped, duration_seconds, git_commit, git_branch,
-                 hostname, rfc_version, output_xml_url, output_xml_gz,
-                 output_xml_source, temperature, seed, top_p, top_k)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hostname, rfc_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -349,82 +405,129 @@ class _SQLiteBackend(_Backend):
                     run.git_branch,
                     run.hostname,
                     run.rfc_version,
-                    run.output_xml_url,
-                    run.output_xml_gz,
-                    run.output_xml_source,
-                    run.temperature,
-                    run.seed,
-                    run.top_p,
-                    run.top_k,
                 ),
             )
             run_id = cursor.lastrowid
             return run_id if run_id is not None else 0
 
-    def add_test_results(self, results: List[TestResult]) -> None:
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
         if not results:
-            return
+            return []
+        # executemany() cannot report individual ``lastrowid`` values, so
+        # loop with per-row execute().  All inserts share one transaction
+        # via the context manager, keeping write cost low.
         with sqlite3.connect(self.db_path) as conn:
-            conn.executemany(
-                """
-                INSERT INTO test_results
-                (run_id, test_name, test_status, score, tags, question,
-                 expected_answer, actual_answer, grading_reason,
-                 rfc_version, tag_severity, tag_tier, tag_verify,
-                 thinking_text, thinking_tokens,
-                 reasoning_tokens, cached_tokens,
-                 accepted_prediction_tokens, rejected_prediction_tokens,
-                 num_ctx, num_predict,
-                 eval_count, eval_duration_ns, prompt_eval_count,
-                 prompt_eval_duration_ns, load_duration_ns,
-                 total_duration_ns, tokens_per_second,
-                 token_retry_count, token_retry_max_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?)
-                """,
-                [
+            inserted_ids: List[int] = []
+            for r in results:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO test_results
+                    (run_id, test_name, test_status, score, tags,
+                     tag_severity, tag_tier, tag_verify,
+                     eval_count, thinking_tokens)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         r.run_id,
                         r.test_name,
                         r.test_status,
                         r.score,
                         r.tags,
-                        r.question,
-                        r.expected_answer,
-                        r.actual_answer,
-                        r.grading_reason,
-                        r.rfc_version,
                         r.tag_severity,
                         r.tag_tier,
                         r.tag_verify,
-                        r.thinking_text,
-                        r.thinking_tokens,
-                        r.reasoning_tokens,
-                        r.cached_tokens,
-                        r.accepted_prediction_tokens,
-                        r.rejected_prediction_tokens,
-                        r.num_ctx,
-                        r.num_predict,
                         r.eval_count,
-                        r.eval_duration_ns,
-                        r.prompt_eval_count,
-                        r.prompt_eval_duration_ns,
-                        r.load_duration_ns,
-                        r.total_duration_ns,
-                        r.tokens_per_second,
-                        r.token_retry_count,
-                        r.token_retry_max_tokens,
+                        r.thinking_tokens,
+                    ),
+                )
+                row_id = cursor.lastrowid
+                assert row_id is not None, "INSERT did not return a row id"
+                inserted_ids.append(int(row_id))
+            return inserted_ids
+
+    def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO test_run_artifacts
+                (run_id, output_xml_gz, output_xml_source)
+                VALUES (?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    output_xml_gz = excluded.output_xml_gz,
+                    output_xml_source = excluded.output_xml_source
+                """,
+                (
+                    artifact.run_id,
+                    artifact.output_xml_gz,
+                    artifact.output_xml_source,
+                ),
+            )
+
+    def add_test_result_artifacts(self, artifacts: List[TestResultArtifact]) -> None:
+        if not artifacts:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO test_result_artifacts
+                (result_id, question, expected_answer, actual_answer,
+                 grading_reason, thinking_text)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(result_id) DO UPDATE SET
+                    question = excluded.question,
+                    expected_answer = excluded.expected_answer,
+                    actual_answer = excluded.actual_answer,
+                    grading_reason = excluded.grading_reason,
+                    thinking_text = excluded.thinking_text
+                """,
+                [
+                    (
+                        a.result_id,
+                        a.question,
+                        a.expected_answer,
+                        a.actual_answer,
+                        a.grading_reason,
+                        a.thinking_text,
                     )
-                    for r in results
+                    for a in artifacts
                 ],
             )
 
+    def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM test_run_artifacts WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_test_result_artifact(self, result_id: int) -> Optional[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM test_result_artifacts WHERE result_id = ?",
+                (result_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
+        """Upsert the per-run archive row with the given gzip blob.
+
+        Silently no-ops on a missing run_id via ``WHERE EXISTS`` — SQLite
+        does not enforce foreign keys by default, so relying on the FK
+        alone would create orphan artifact rows.
+        """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "UPDATE test_runs SET output_xml_gz = ? WHERE id = ?",
-                (output_xml_gz, run_id),
+                """
+                INSERT INTO test_run_artifacts (run_id, output_xml_gz)
+                SELECT ?, ?
+                WHERE EXISTS (SELECT 1 FROM test_runs WHERE id = ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    output_xml_gz = excluded.output_xml_gz
+                """,
+                (run_id, output_xml_gz, run_id),
             )
 
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -461,8 +564,6 @@ class _SQLiteBackend(_Backend):
             data: List[Dict[str, Any]] = []
             for run in runs:
                 run_dict = dict(run)
-                # Remove binary blob from JSON export
-                run_dict.pop("output_xml_gz", None)
                 results = conn.execute(
                     "SELECT * FROM test_results WHERE run_id = ?",
                     (run_dict["id"],),
@@ -508,13 +609,14 @@ class _SQLiteBackend(_Backend):
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL backend using SQLAlchemy."""
 
-    # Idempotent DDL migrations run after create_all().
+    # Idempotent DDL migrations run after create_all().  They first drop
+    # the legacy view, then drop the heavy columns, then (re)create the
+    # archive tables, and finally rebuild the denormalised view.
     _PG_MIGRATIONS: list[str] = [
         # Drop old tables from pre-redesign schema.
         "DROP TABLE IF EXISTS keyword_results CASCADE",
         "DROP TABLE IF EXISTS ollama_metrics CASCADE",
         "DROP TABLE IF EXISTS host_info CASCADE",
-        "DROP TABLE IF EXISTS models CASCADE",
         "DROP TABLE IF EXISTS pipeline_results CASCADE",
         "DROP TABLE IF EXISTS robot_dry_run_results CASCADE",
         "DROP TABLE IF EXISTS analytics_model_trends CASCADE",
@@ -522,41 +624,66 @@ class _SQLAlchemyBackend(_Backend):
         "DROP TABLE IF EXISTS analytics_model_comparison CASCADE",
         "DROP TABLE IF EXISTS analytics_regression_alerts CASCADE",
         "DROP TABLE IF EXISTS analytics_performance_fingerprints CASCADE",
-        # Add columns that may be missing from pre-existing test_runs tables.
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_url TEXT",
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_gz BYTEA",
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS output_xml_source TEXT",
-        # Add tags column to test_results.
+        # The denormalised view depends on many of the columns we are
+        # about to drop, so take it down first.
+        "DROP VIEW IF EXISTS test_results_full",
+        # Drop inference-parameter columns from test_runs (never queried).
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS temperature",
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS seed",
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS top_p",
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS top_k",
+        # Drop output.xml columns from test_runs (moved to test_run_artifacts).
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_gz",
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_url",
+        "ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_source",
+        # Drop heavy text columns from test_results (moved to
+        # test_result_artifacts).
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS question",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS expected_answer",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS actual_answer",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS grading_reason",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS thinking_text",
+        # Drop duplicated version column (lives on test_runs only now).
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS rfc_version",
+        # Drop never-queried numeric metrics from test_results.
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS reasoning_tokens",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS cached_tokens",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS accepted_prediction_tokens",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS rejected_prediction_tokens",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS num_ctx",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS num_predict",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS eval_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS prompt_eval_count",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS prompt_eval_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS load_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS total_duration_ns",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS tokens_per_second",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS token_retry_count",
+        "ALTER TABLE test_results DROP COLUMN IF EXISTS token_retry_max_tokens",
+        # Ensure structured tag columns are present (for databases that
+        # were created before the tag-split migration).
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tags TEXT",
-        # Add structured tag columns.
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_severity VARCHAR(20)",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50)",
-        # New columns: test_runs inference parameters.
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS temperature REAL",
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS seed INTEGER",
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS top_p REAL",
-        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS top_k INTEGER",
-        # New columns: test_results thinking and performance metrics.
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_text TEXT",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS num_ctx INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS num_predict INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_duration_ns BIGINT",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS prompt_eval_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS prompt_eval_duration_ns BIGINT",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS load_duration_ns BIGINT",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS total_duration_ns BIGINT",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tokens_per_second REAL",
-        # OpenAI token detail columns.
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS reasoning_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cached_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS accepted_prediction_tokens INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS rejected_prediction_tokens INTEGER",
-        # Token retry columns.
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS token_retry_count INTEGER",
-        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS token_retry_max_tokens INTEGER",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER",
+        # Archive tables.
+        """CREATE TABLE IF NOT EXISTS test_run_artifacts (
+            run_id INTEGER PRIMARY KEY REFERENCES test_runs(id)
+                ON DELETE CASCADE,
+            output_xml_gz BYTEA,
+            output_xml_source TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS test_result_artifacts (
+            result_id INTEGER PRIMARY KEY REFERENCES test_results(id)
+                ON DELETE CASCADE,
+            question TEXT,
+            expected_answer TEXT,
+            actual_answer TEXT,
+            grading_reason TEXT,
+            thinking_text TEXT
+        )""",
         # Models table.
         """CREATE TABLE IF NOT EXISTS models (
             name TEXT PRIMARY KEY,
@@ -569,56 +696,8 @@ class _SQLAlchemyBackend(_Backend):
         )""",
         # Migrate score column from INTEGER to REAL (float).
         "ALTER TABLE test_results ALTER COLUMN score TYPE REAL USING score::real",
-        # Joined view for Superset — one flat dataset with all columns.
-        "DROP VIEW IF EXISTS test_results_full",
-        """CREATE VIEW test_results_full AS
-        SELECT
-            tr.id AS result_id,
-            tr.run_id,
-            tr.test_name,
-            tr.test_status,
-            tr.score,
-            tr.tags,
-            tr.question,
-            tr.expected_answer,
-            tr.actual_answer,
-            tr.grading_reason,
-            tr.rfc_version,
-            tr.tag_severity,
-            tr.tag_tier,
-            tr.tag_verify,
-            tr.thinking_text,
-            tr.thinking_tokens,
-            tr.num_ctx,
-            tr.num_predict,
-            tr.eval_count,
-            tr.eval_duration_ns,
-            tr.prompt_eval_count,
-            tr.prompt_eval_duration_ns,
-            tr.load_duration_ns,
-            tr.total_duration_ns,
-            tr.tokens_per_second,
-            tr.token_retry_count,
-            tr.token_retry_max_tokens,
-            r.timestamp,
-            r.model_name,
-            r.test_suite,
-            r.total_tests,
-            r.passed,
-            r.failed,
-            r.skipped,
-            r.duration_seconds,
-            r.git_commit,
-            r.git_branch,
-            r.hostname,
-            r.output_xml_url,
-            r.output_xml_source,
-            r.temperature,
-            r.seed,
-            r.top_p,
-            r.top_k
-        FROM test_results tr
-        JOIN test_runs r ON tr.run_id = r.id""",
+        # Joined view for Superset — lean columns + archive LEFT JOIN.
+        f"CREATE VIEW test_results_full AS {TEST_RESULTS_FULL_VIEW_BODY}",
     ]
 
     def __init__(self, database_url: str):
@@ -650,13 +729,6 @@ class _SQLAlchemyBackend(_Backend):
             Column("git_branch", Text),
             Column("hostname", Text),
             Column("rfc_version", Text),
-            Column("output_xml_url", Text),
-            Column("output_xml_gz", LargeBinary),
-            Column("output_xml_source", Text),
-            Column("temperature", Float),
-            Column("seed", Integer),
-            Column("top_p", Float),
-            Column("top_k", Integer),
             Index("idx_test_runs_model", "model_name"),
             Index("idx_test_runs_timestamp", "timestamp"),
             Index("idx_test_runs_suite", "test_suite"),
@@ -676,32 +748,41 @@ class _SQLAlchemyBackend(_Backend):
             Column("test_status", String, nullable=False),
             Column("score", Float),
             Column("tags", Text),
+            Column("tag_severity", String(20)),
+            Column("tag_tier", Integer),
+            Column("tag_verify", String(50)),
+            Column("eval_count", Integer),
+            Column("thinking_tokens", Integer),
+            Index("idx_test_results_run_id", "run_id"),
+        )
+
+        self._test_run_artifacts = Table(
+            "test_run_artifacts",
+            self.metadata,
+            Column(
+                "run_id",
+                Integer,
+                ForeignKey("test_runs.id", ondelete="CASCADE"),
+                primary_key=True,
+            ),
+            Column("output_xml_gz", LargeBinary),
+            Column("output_xml_source", Text),
+        )
+
+        self._test_result_artifacts = Table(
+            "test_result_artifacts",
+            self.metadata,
+            Column(
+                "result_id",
+                Integer,
+                ForeignKey("test_results.id", ondelete="CASCADE"),
+                primary_key=True,
+            ),
             Column("question", Text),
             Column("expected_answer", Text),
             Column("actual_answer", Text),
             Column("grading_reason", Text),
-            Column("rfc_version", Text),
-            Column("tag_severity", String(20)),
-            Column("tag_tier", Integer),
-            Column("tag_verify", String(50)),
             Column("thinking_text", Text),
-            Column("thinking_tokens", Integer),
-            Column("reasoning_tokens", Integer),
-            Column("cached_tokens", Integer),
-            Column("accepted_prediction_tokens", Integer),
-            Column("rejected_prediction_tokens", Integer),
-            Column("num_ctx", Integer),
-            Column("num_predict", Integer),
-            Column("eval_count", Integer),
-            Column("eval_duration_ns", Integer),
-            Column("prompt_eval_count", Integer),
-            Column("prompt_eval_duration_ns", Integer),
-            Column("load_duration_ns", Integer),
-            Column("total_duration_ns", Integer),
-            Column("tokens_per_second", Float),
-            Column("token_retry_count", Integer),
-            Column("token_retry_max_tokens", Integer),
-            Index("idx_test_results_run_id", "run_id"),
         )
 
         self._models = Table(
@@ -740,68 +821,131 @@ class _SQLAlchemyBackend(_Backend):
                     git_branch=run.git_branch,
                     hostname=run.hostname,
                     rfc_version=run.rfc_version,
-                    output_xml_url=run.output_xml_url,
-                    output_xml_gz=run.output_xml_gz,
-                    output_xml_source=run.output_xml_source,
-                    temperature=run.temperature,
-                    seed=run.seed,
-                    top_p=run.top_p,
-                    top_k=run.top_k,
                 )
             )
             pk = result.inserted_primary_key
             assert pk is not None, "INSERT did not return a primary key"
             return int(pk[0])
 
-    def add_test_results(self, results: List[TestResult]) -> None:
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
         if not results:
+            return []
+        # PG supports RETURNING with multi-row inserts via SQLAlchemy 2.0's
+        # insertmanyvalues; rows come back in the same order we submitted.
+        payload = [
+            {
+                "run_id": r.run_id,
+                "test_name": r.test_name,
+                "test_status": r.test_status,
+                "score": r.score,
+                "tags": r.tags,
+                "tag_severity": r.tag_severity,
+                "tag_tier": r.tag_tier,
+                "tag_verify": r.tag_verify,
+                "eval_count": r.eval_count,
+                "thinking_tokens": r.thinking_tokens,
+            }
+            for r in results
+        ]
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                self._test_results.insert().returning(self._test_results.c.id),
+                payload,
+            )
+            return [int(row.id) for row in result]
+
+    def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
+        # PostgreSQL ON CONFLICT syntax — we deliberately do not use
+        # SQLAlchemy Core Postgres dialect helpers to keep this module
+        # dialect-agnostic at import time.
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO test_run_artifacts
+                        (run_id, output_xml_gz, output_xml_source)
+                    VALUES (:run_id, :gz, :src)
+                    ON CONFLICT (run_id) DO UPDATE SET
+                        output_xml_gz = EXCLUDED.output_xml_gz,
+                        output_xml_source = EXCLUDED.output_xml_source
+                    """
+                ),
+                {
+                    "run_id": artifact.run_id,
+                    "gz": artifact.output_xml_gz,
+                    "src": artifact.output_xml_source,
+                },
+            )
+
+    def add_test_result_artifacts(self, artifacts: List[TestResultArtifact]) -> None:
+        if not artifacts:
             return
         with self.engine.begin() as conn:
             conn.execute(
-                self._test_results.insert(),
+                text(
+                    """
+                    INSERT INTO test_result_artifacts
+                        (result_id, question, expected_answer, actual_answer,
+                         grading_reason, thinking_text)
+                    VALUES (:result_id, :question, :expected_answer,
+                            :actual_answer, :grading_reason, :thinking_text)
+                    ON CONFLICT (result_id) DO UPDATE SET
+                        question = EXCLUDED.question,
+                        expected_answer = EXCLUDED.expected_answer,
+                        actual_answer = EXCLUDED.actual_answer,
+                        grading_reason = EXCLUDED.grading_reason,
+                        thinking_text = EXCLUDED.thinking_text
+                    """
+                ),
                 [
                     {
-                        "run_id": r.run_id,
-                        "test_name": r.test_name,
-                        "test_status": r.test_status,
-                        "score": r.score,
-                        "tags": r.tags,
-                        "question": r.question,
-                        "expected_answer": r.expected_answer,
-                        "actual_answer": r.actual_answer,
-                        "grading_reason": r.grading_reason,
-                        "rfc_version": r.rfc_version,
-                        "tag_severity": r.tag_severity,
-                        "tag_tier": r.tag_tier,
-                        "tag_verify": r.tag_verify,
-                        "thinking_text": r.thinking_text,
-                        "thinking_tokens": r.thinking_tokens,
-                        "reasoning_tokens": r.reasoning_tokens,
-                        "cached_tokens": r.cached_tokens,
-                        "accepted_prediction_tokens": r.accepted_prediction_tokens,
-                        "rejected_prediction_tokens": r.rejected_prediction_tokens,
-                        "num_ctx": r.num_ctx,
-                        "num_predict": r.num_predict,
-                        "eval_count": r.eval_count,
-                        "eval_duration_ns": r.eval_duration_ns,
-                        "prompt_eval_count": r.prompt_eval_count,
-                        "prompt_eval_duration_ns": r.prompt_eval_duration_ns,
-                        "load_duration_ns": r.load_duration_ns,
-                        "total_duration_ns": r.total_duration_ns,
-                        "tokens_per_second": r.tokens_per_second,
-                        "token_retry_count": r.token_retry_count,
-                        "token_retry_max_tokens": r.token_retry_max_tokens,
+                        "result_id": a.result_id,
+                        "question": a.question,
+                        "expected_answer": a.expected_answer,
+                        "actual_answer": a.actual_answer,
+                        "grading_reason": a.grading_reason,
+                        "thinking_text": a.thinking_text,
                     }
-                    for r in results
+                    for a in artifacts
                 ],
             )
 
+    def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                self._test_run_artifacts.select().where(
+                    self._test_run_artifacts.c.run_id == run_id
+                )
+            ).fetchone()
+            return dict(row._mapping) if row else None
+
+    def get_test_result_artifact(self, result_id: int) -> Optional[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                self._test_result_artifacts.select().where(
+                    self._test_result_artifacts.c.result_id == result_id
+                )
+            ).fetchone()
+            return dict(row._mapping) if row else None
+
     def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
+        """Upsert the per-run archive row with the given gzip blob.
+
+        ``WHERE EXISTS`` gives SQLite-identical "silently no-op if the
+        run is missing" semantics while staying in a single round trip.
+        """
         with self.engine.begin() as conn:
             conn.execute(
-                self._test_runs.update()
-                .where(self._test_runs.c.id == run_id)
-                .values(output_xml_gz=output_xml_gz)
+                text(
+                    """
+                    INSERT INTO test_run_artifacts (run_id, output_xml_gz)
+                    SELECT :run_id, :gz
+                    WHERE EXISTS (SELECT 1 FROM test_runs WHERE id = :run_id)
+                    ON CONFLICT (run_id) DO UPDATE SET
+                        output_xml_gz = EXCLUDED.output_xml_gz
+                    """
+                ),
+                {"run_id": run_id, "gz": output_xml_gz},
             )
 
     def get_recent_runs(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -829,8 +973,6 @@ class _SQLAlchemyBackend(_Backend):
 
     def export_to_json(self, output_path: str) -> None:
         runs = self.get_recent_runs(limit=10000)
-        for run in runs:
-            run.pop("output_xml_gz", None)
         with open(output_path, "w") as f:
             json.dump(runs, f, indent=2, default=str)
 
@@ -923,8 +1065,20 @@ class TestDatabase:
     def add_test_run(self, run: TestRun) -> int:
         return self._backend.add_test_run(run)
 
-    def add_test_results(self, results: List[TestResult]) -> None:
-        self._backend.add_test_results(results)
+    def add_test_results(self, results: List[TestResult]) -> List[int]:
+        return self._backend.add_test_results(results)
+
+    def add_test_run_artifact(self, artifact: TestRunArtifact) -> None:
+        self._backend.add_test_run_artifact(artifact)
+
+    def add_test_result_artifacts(self, artifacts: List[TestResultArtifact]) -> None:
+        self._backend.add_test_result_artifacts(artifacts)
+
+    def get_test_run_artifact(self, run_id: int) -> Optional[Dict[str, Any]]:
+        return self._backend.get_test_run_artifact(run_id)
+
+    def get_test_result_artifact(self, result_id: int) -> Optional[Dict[str, Any]]:
+        return self._backend.get_test_result_artifact(result_id)
 
     def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None:
         self._backend.update_output_xml(run_id, output_xml_gz)

@@ -1,7 +1,7 @@
 """Tests for the result importer with dedup and output.xml blob storage.
 
-Covers SHA-256 deduplication, core import flow, report_base_url,
-OSError handling, and the CLI entry point (main).
+Covers SHA-256 deduplication, core import flow, OSError handling, and
+the CLI entry point (main).
 """
 
 import hashlib
@@ -71,6 +71,9 @@ class TestImportResults:
         db = MagicMock()
         db.db_path = ":memory:"
         db.add_test_run.return_value = 42
+        db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
         return db
 
     def test_imports_and_returns_result(self, tmp_path: Path) -> None:
@@ -96,15 +99,6 @@ class TestImportResults:
         db = self._mock_db()
         result = import_results(str(xml_file), db, source="ci")
         assert result.source == "ci"
-
-    def test_report_base_url_generates_output_xml_url(self, tmp_path: Path) -> None:
-        xml_file = self._write_xml(tmp_path)
-        db = self._mock_db()
-        result = import_results(
-            str(xml_file), db, report_base_url="https://results.example.com/math"
-        )
-        assert result.run_id == 42
-        assert not result.skipped
 
     def test_oserror_on_xml_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -149,6 +143,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr("sys.argv", ["result_importer", str(xml_file)])
         monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
@@ -173,6 +170,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr(
             "sys.argv", ["result_importer", str(tmp_path), "--recursive"]
@@ -194,6 +194,9 @@ class TestResultImporterMain:
         mock_db = MagicMock()
         mock_db.db_path = ":memory:"
         mock_db.add_test_run.return_value = 1
+        mock_db.add_test_results.side_effect = lambda results: list(
+            range(1, len(results) + 1)
+        )
 
         monkeypatch.setattr("sys.argv", ["result_importer", str(tmp_path)])
         monkeypatch.setattr("src.rfc.result_importer.TestDatabase", lambda: mock_db)
