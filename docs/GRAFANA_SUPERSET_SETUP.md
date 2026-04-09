@@ -218,12 +218,15 @@ This one-shot command:
 2. Creates the admin user (credentials from `.env`)
 3. Initializes Superset internals
 4. Executes `superset/bootstrap_dashboards.py` which:
-   - Creates the 6 PostgreSQL tables (`test_runs`, `test_results`, `models`,
-     `pipeline_results`, `robot_dry_run_results`, `keyword_results`)
-   - Creates 10 database indexes for query performance
-   - Registers the PostgreSQL connection in Superset as "Robot Framework Results"
-   - Creates 6 physical datasets + 3 virtual datasets (JOINed views)
-   - Creates 25+ charts across 3 dashboards
+   - Creates the PostgreSQL tables: `test_runs`, `test_results`,
+     `test_run_artifacts`, `test_result_artifacts`, and `coverage_reports`
+   - Creates the `test_results_full` view (LEFT-JOINs the artifact
+     tables so drill-down still sees question/answer/grading text)
+   - Creates indexes for query performance
+   - Registers the PostgreSQL connection in Superset as
+     "Robot Framework Results"
+   - Creates virtual datasets and charts across the RFC Test Health
+     dashboard
 
 **You only need to run `make bootstrap` once.** Subsequent `make docker-up`
 commands will reuse the existing data.
@@ -347,15 +350,6 @@ The primary dashboard for monitoring test execution and model quality.
 Use the dropdowns at the top of the dashboard to filter by specific models or
 suites. Multi-select is enabled — you can compare any subset of models.
 
-#### 2. RFC Pipeline Health (`rfc_pipeline_health.json`)
-
-Monitors CI/CD pipeline performance (requires GitLab pipeline data).
-
-#### 3. RFC Keyword Timing (`rfc_keyword_timing.json`)
-
-Analyzes individual keyword execution times, focusing on `Ask LLM` response
-times across models.
-
 ### Creating Custom Panels
 
 To add your own panels to Grafana:
@@ -394,48 +388,17 @@ Open `http://localhost:8088` and log in with the credentials from `.env`
 
 ### Pre-configured Dashboards
 
-The bootstrap script creates three dashboards with 25+ charts:
+The bootstrap script creates the **RFC Test Health** dashboard, which
+covers KPIs, host health, model performance, token efficiency, flaky
+tests, and coverage.  All charts read from the lean `test_runs` /
+`test_results` / `coverage_reports` tables; drill-down charts use the
+`test_results_full` view to pull question / answer / grading text from
+the artifact tables.
 
-#### 1. Robot Framework Test Results (10 charts)
-
-| Chart | Type | Data Source |
-|-------|------|-------------|
-| Pass Rate Over Time | Line | `test_runs` — grouped by model, daily grain |
-| Model Comparison - Pass Rate | Bar | `test_runs` — avg pass rate per model |
-| Test Results Breakdown | Pie | `test_results` — pass/fail/skip counts |
-| Test Suite Duration Trend | Line | `test_runs` — avg duration per suite |
-| Recent Test Runs | Table | `test_runs` — latest 50 runs |
-| Failures by Test Name | Bar | `test_results` — filtered to FAIL status |
-| Pass Rate by Branch | Bar | `test_runs` — grouped by git branch |
-| Pass Rate by Suite | Bar | `test_runs` — grouped by test suite |
-| Score Distribution | Bar | `test_results_detail` — score counts by model |
-| Test Results Detail | Table | `test_results_detail` — full result details |
-
-#### 2. Pipeline Health (6 charts)
-
-| Chart | Type | Data Source |
-|-------|------|-------------|
-| Pipeline Status Distribution | Pie | `pipeline_results` |
-| Pipeline Duration Over Time | Line | `pipeline_results` |
-| Pipeline Queue Time | Line | `pipeline_results` |
-| Pipelines by Branch | Bar | `pipeline_results` |
-| Pipeline Success Rate Over Time | Line | `pipeline_results` |
-| Recent Pipelines | Table | `pipeline_results` |
-
-#### 3. Model Analytics (10 charts)
-
-| Chart | Type | Data Source |
-|-------|------|-------------|
-| Model Catalog | Table | `models` — all registered model metadata |
-| Model x Suite Performance | Table | `model_suite_performance` — cross-model/suite matrix |
-| Tests Per Model | Bar | `test_runs` — run count per model |
-| Avg Duration by Model | Bar | `test_runs` — average execution time |
-| Dry Run Validation Trend | Line | `robot_dry_run_results` |
-| Recent Dry Runs | Table | `robot_dry_run_results` |
-| Avg Keyword Duration by Model | Bar | `keyword_timing` — `Ask LLM` keyword only |
-| Keyword Execution Count | Bar | `keyword_timing` |
-| Keyword Timing Detail | Table | `keyword_timing` |
-| LLM Response Time Trend | Line | `keyword_timing` — `Ask LLM` response times over time |
+The legacy "Pipeline Health" and "Model Analytics" dashboards (backed
+by the removed `pipeline_results`, `robot_dry_run_results`, and
+`keyword_results` tables) were retired along with the schema
+simplification.
 
 ### Using SQL Lab
 
@@ -630,7 +593,7 @@ A matrix showing every model-suite combination with:
 - `total_passed` / `total_failed` — absolute counts
 - `last_run` — when this combination was last tested
 
-This is powered by the `model_suite_performance` virtual dataset:
+Example SQL:
 
 ```sql
 SELECT
@@ -646,16 +609,6 @@ FROM test_runs
 WHERE total_tests > 0
 GROUP BY model_name, test_suite
 ```
-
-**Avg Keyword Duration by Model** (bar):
-
-Compares LLM response time across models by measuring the `Ask LLM` keyword
-duration. Slower models have taller bars.
-
-**LLM Response Time Trend** (line):
-
-Shows how each model's response time changes over time. Useful for detecting
-performance degradation.
 
 **Score Distribution** (bar):
 
@@ -730,22 +683,6 @@ SELECT
 FROM test_runs
 GROUP BY model_name
 ORDER BY avg_duration_s ASC;
-```
-
-#### LLM Response Time per Model (Keyword-Level)
-
-```sql
-SELECT
-    runs.model_name,
-    COUNT(*) AS calls,
-    ROUND(AVG(kw.duration_seconds)::numeric, 2) AS avg_llm_seconds,
-    ROUND(MIN(kw.duration_seconds)::numeric, 2) AS min_llm_seconds,
-    ROUND(MAX(kw.duration_seconds)::numeric, 2) AS max_llm_seconds
-FROM keyword_results kw
-JOIN test_runs runs ON kw.run_id = runs.id
-WHERE kw.keyword_name = 'Ask LLM'
-GROUP BY runs.model_name
-ORDER BY avg_llm_seconds ASC;
 ```
 
 #### Regression Detection (Pass Rate Drop Between Latest Two Runs)
@@ -866,9 +803,11 @@ db.export_to_json("full_export.json")
 
 ## Database Schema Reference
 
+See `docs/TEST_DATABASE.md` for the full schema narrative.  Summary:
+
 ### Physical Tables
 
-#### `test_runs` — One row per suite execution
+#### `test_runs` — One row per suite execution (lean metrics only)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -876,92 +815,62 @@ db.export_to_json("full_export.json")
 | `timestamp` | TIMESTAMP | When the test ran |
 | `model_name` | VARCHAR(255) | LLM model identifier (e.g., `llama3.1:8b`) |
 | `test_suite` | VARCHAR(255) | Suite name (`math`, `docker`, `safety`) |
-| `git_commit` | VARCHAR(255) | Git commit SHA |
-| `git_branch` | VARCHAR(255) | Git branch name |
-| `hostname` | VARCHAR(255) | Machine name where tests ran |
 | `total_tests` | INTEGER | Total test count |
 | `passed` | INTEGER | Passed count |
 | `failed` | INTEGER | Failed count |
 | `skipped` | INTEGER | Skipped count |
 | `duration_seconds` | DOUBLE PRECISION | Execution time |
+| `git_commit` | VARCHAR(255) | Git commit SHA |
+| `git_branch` | VARCHAR(255) | Git branch name |
+| `hostname` | VARCHAR(255) | Machine name where tests ran |
 | `rfc_version` | VARCHAR(50) | robotframework-chat version |
-| `output_xml_url` | TEXT | URL for web access to output.xml |
-| `output_xml_gz` | BYTEA | Gzip-compressed output.xml blob |
-| `output_xml_source` | TEXT | Filesystem path to source output.xml |
 
-#### `test_results` — One row per individual test case
+#### `test_results` — One row per individual test case (lean metrics)
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | SERIAL PK | Auto-incrementing ID |
 | `run_id` | INTEGER FK | References `test_runs.id` |
-| `test_name` | VARCHAR(255) | Test case name |
-| `test_status` | VARCHAR(50) | `PASS`, `FAIL`, or `SKIP` |
-| `score` | INTEGER | Graded score (0 or 1) |
+| `test_name` | VARCHAR(500) | Test case name |
+| `test_status` | VARCHAR(20) | `PASS`, `FAIL`, or `SKIP` |
+| `score` | DOUBLE PRECISION | Graded score (0.0–1.0) |
+| `tags` | TEXT | Comma-joined tag string |
+| `tag_severity` | VARCHAR(20) | Parsed severity tag |
+| `tag_tier` | INTEGER | Parsed tier tag |
+| `tag_verify` | VARCHAR(50) | Parsed verify tag |
+| `eval_count` | INTEGER | Tokens generated |
+| `thinking_tokens` | INTEGER | Estimated tokens of `<think>` content |
+
+#### `test_run_artifacts` — Per-run heavy archive
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `run_id` | INTEGER PK / FK | One-to-one with `test_runs.id` |
+| `output_xml_gz` | BYTEA | Gzip-compressed `output.xml` |
+| `output_xml_source` | TEXT | Filesystem path the blob came from |
+
+#### `test_result_artifacts` — Per-result heavy archive
+
+Written only when at least one field is non-empty.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `result_id` | INTEGER PK / FK | One-to-one with `test_results.id` |
 | `question` | TEXT | Prompt sent to the model |
 | `expected_answer` | TEXT | Expected correct answer |
 | `actual_answer` | TEXT | Model's response |
-| `grading_reason` | TEXT | Explanation from grader |
+| `grading_reason` | TEXT | Explanation from the grader |
+| `thinking_text` | TEXT | Extracted `<think>` content |
 
-#### `models` — Model metadata registry
+#### `coverage_reports` — Code coverage snapshots
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `name` | VARCHAR(255) PK | Model identifier |
-| `full_name` | VARCHAR(255) | Human-readable name |
-| `organization` | VARCHAR(255) | Model creator |
-| `last_tested` | TIMESTAMP | Last test timestamp |
+Populated by `scripts/collect_coverage.py`; one row per module per run.
 
-#### `keyword_results` — Keyword execution timing
+### `test_results_full` view
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | SERIAL PK | Auto-incrementing ID |
-| `run_id` | INTEGER FK | References `test_runs.id` |
-| `test_name` | VARCHAR(255) | Test case name |
-| `keyword_name` | VARCHAR(255) | Keyword name (e.g., `Ask LLM`) |
-| `library_name` | VARCHAR(255) | Library providing the keyword |
-| `status` | VARCHAR(50) | `PASS` or `FAIL` |
-| `start_time` | VARCHAR(255) | Execution start |
-| `end_time` | VARCHAR(255) | Execution end |
-| `duration_seconds` | DOUBLE PRECISION | Execution time |
-| `args` | TEXT | Keyword arguments |
-
-#### `pipeline_results` — CI/CD pipeline metadata
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | SERIAL PK | Auto-incrementing ID |
-| `pipeline_id` | BIGINT UNIQUE | GitLab pipeline ID |
-| `status` | VARCHAR(50) | Pipeline status |
-| `ref` | VARCHAR(255) | Git ref (branch/tag) |
-| `sha` | VARCHAR(255) | Commit SHA |
-| `web_url` | TEXT | Link to pipeline |
-| `duration_seconds` | DOUBLE PRECISION | Total duration |
-| `queued_duration_seconds` | DOUBLE PRECISION | Time in queue |
-
-#### `robot_dry_run_results` — Validation results
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | SERIAL PK | Auto-incrementing ID |
-| `timestamp` | TIMESTAMP | When the dry run happened |
-| `test_suite` | VARCHAR(255) | Suite name |
-| `total_tests` | INTEGER | Tests found |
-| `passed` / `failed` / `skipped` | INTEGER | Counts |
-| `duration_seconds` | DOUBLE PRECISION | Validation time |
-| `errors` | TEXT | Error messages if any |
-
-### Virtual Datasets (Superset)
-
-These are registered as Superset virtual datasets (SQL queries), not database
-views:
-
-| Dataset | Purpose |
-|---------|---------|
-| `test_results_detail` | JOINs `test_results` + `test_runs` for full context per test |
-| `model_suite_performance` | Aggregated pass rates by model x suite combination |
-| `keyword_timing` | JOINs `keyword_results` + `test_runs` for timing analysis |
+Drill-down view for Superset.  JOINs `test_results` + `test_runs` and
+LEFT-JOINs both artifact tables so dashboards can still fetch the
+question / answer / grading / thinking text alongside metrics.
 
 ### Indexes
 
@@ -970,13 +879,8 @@ idx_test_runs_model           ON test_runs(model_name)
 idx_test_runs_timestamp       ON test_runs(timestamp)
 idx_test_runs_suite           ON test_runs(test_suite)
 idx_test_results_run_id       ON test_results(run_id)
-idx_keyword_results_run_id    ON keyword_results(run_id)
-idx_keyword_results_name      ON keyword_results(keyword_name)
-idx_pipeline_results_pipeline_id  ON pipeline_results(pipeline_id)
-idx_pipeline_results_ref      ON pipeline_results(ref)
-idx_pipeline_results_status   ON pipeline_results(status)
-idx_dry_run_results_timestamp ON robot_dry_run_results(timestamp)
-idx_dry_run_results_suite     ON robot_dry_run_results(test_suite)
+idx_coverage_reports_timestamp ON coverage_reports(timestamp)
+idx_coverage_reports_git_commit ON coverage_reports(git_commit)
 ```
 
 ---

@@ -1,8 +1,7 @@
 """Robot Framework listener for dry-run validation results.
 
-Logs dry-run results to the console. The robot_dry_run_results table
-has been dropped in the 2-table schema redesign — dry-run validation
-results are now logged only, not persisted to the database.
+Logs dry-run results to the console only.  Dry-run validation results
+are not persisted to the test database.
 
 Usage:
     robot --dryrun --listener rfc.dry_run_listener.DryRunListener robot/

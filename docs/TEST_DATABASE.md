@@ -1,10 +1,13 @@
 # Test Results Database
 
-This document describes the SQL database for storing and analyzing Robot Framework test results, with support for SQLite and PostgreSQL backends.
+This document describes the SQL database for storing and analyzing Robot
+Framework test results, with support for SQLite and PostgreSQL backends.
 
 ## Overview
 
-The test database provides persistent storage for Robot Framework test results, enabling:
+The test database provides persistent storage for Robot Framework test
+results, enabling:
+
 - Historical tracking of model performance
 - Comparison between models over time
 - Analysis of test trends and patterns
@@ -18,7 +21,8 @@ The test database provides persistent storage for Robot Framework test results, 
 | **SQLite** | Default when `DATABASE_URL` is not set | Built-in (no extra deps) |
 | **PostgreSQL** | When `DATABASE_URL` is set to a `postgresql://` URL | `uv sync --extra superset` |
 
-Backend selection is automatic based on the `DATABASE_URL` environment variable:
+Backend selection is automatic based on the `DATABASE_URL` environment
+variable:
 
 ```bash
 # PostgreSQL (used with Superset)
@@ -30,7 +34,8 @@ export DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
 
 ## How Results Get Into the Database
 
-Results are archived automatically via the `DbListener` Robot Framework listener:
+Results are archived automatically via the `DbListener` Robot Framework
+listener:
 
 ```bash
 uv run robot -d results/math \
@@ -40,9 +45,14 @@ uv run robot -d results/math \
 ```
 
 The `DbListener` hooks into Robot Framework's lifecycle:
+
 1. `start_suite` — records start time, collects CI metadata
-2. `end_test` — accumulates per-test results (name, status, score)
-3. `end_suite` — at the top-level suite, writes a `TestRun` and all `TestResult` rows to the database
+2. `end_test` — accumulates per-test results (name, status, score, lean
+   metrics, plus archive fields captured via `RFC_DATA:` log messages)
+3. `end_suite` — writes a `TestRun`, the associated `TestResult` rows,
+   and per-run / per-result archive rows to the database
+4. `close` — compresses the finalised `output.xml` and upserts it into
+   `test_run_artifacts`
 
 The `Makefile` targets and CI pipeline always attach both listeners.
 
@@ -61,10 +71,13 @@ uv run python scripts/import_test_results.py results/math/output.xml --model lla
 
 ## Schema
 
-### Tables
+The schema splits lean metrics from heavy archive data.  Dashboards hit
+the lean tables directly; Superset drill-down joins the archive tables
+through the `test_results_full` view.
 
-#### `test_runs`
-One row per test suite execution (or per pipeline-level combined run):
+### `test_runs` — lean per-suite metrics
+
+One row per test suite execution.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -72,25 +85,19 @@ One row per test suite execution (or per pipeline-level combined run):
 | `timestamp` | DATETIME | When the test ran |
 | `model_name` | TEXT | LLM model used (e.g., llama3, mistral) |
 | `test_suite` | TEXT | Test suite name (math, docker, safety) |
-| `git_commit` | TEXT | Git commit SHA |
-| `git_branch` | TEXT | Git branch name |
-| `hostname` | TEXT | Machine name where tests ran |
 | `total_tests` | INTEGER | Total test count |
 | `passed` | INTEGER | Passed test count |
 | `failed` | INTEGER | Failed test count |
 | `skipped` | INTEGER | Skipped test count |
 | `duration_seconds` | REAL | Test execution time in seconds |
+| `git_commit` | TEXT | Git commit SHA |
+| `git_branch` | TEXT | Git branch name |
+| `hostname` | TEXT | Machine name where tests ran |
 | `rfc_version` | TEXT | Version of robotframework-chat |
-| `output_xml_url` | TEXT | URL for web access to output.xml |
-| `output_xml_gz` | BLOB | Gzip-compressed output.xml blob |
-| `output_xml_source` | TEXT | Filesystem path to source output.xml |
-| `temperature` | REAL | Inference temperature used |
-| `seed` | INTEGER | Random seed for reproducibility |
-| `top_p` | REAL | Top-p sampling parameter |
-| `top_k` | INTEGER | Top-k sampling parameter |
 
-#### `test_results`
-Individual test case results:
+### `test_results` — lean per-test metrics
+
+Individual test case results.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -98,24 +105,52 @@ Individual test case results:
 | `run_id` | INTEGER FK | Foreign key to `test_runs.id` |
 | `test_name` | TEXT | Test case name |
 | `test_status` | TEXT | PASS, FAIL, or SKIP |
-| `score` | INTEGER | Graded score (0 or 1) if applicable |
-| `question` | TEXT | Test question/prompt |
+| `score` | REAL | Graded score (0.0–1.0) if applicable |
+| `tags` | TEXT | Comma-joined tag string |
+| `tag_severity` | TEXT | Parsed severity tag |
+| `tag_tier` | INTEGER | Parsed tier tag |
+| `tag_verify` | TEXT | Parsed verify tag |
+| `eval_count` | INTEGER | Tokens generated (from LLM metrics) |
+| `thinking_tokens` | INTEGER | Estimated token count of `<think>` content |
+
+### `test_run_artifacts` — per-run heavy archive
+
+One row per `test_runs.id`.  Written by the listener at `close()` time
+and by the importer at import time.  The `run_id` is the primary key
+and FK to `test_runs.id` with `ON DELETE CASCADE`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `run_id` | INTEGER PK/FK | One-to-one with `test_runs.id` |
+| `output_xml_gz` | BLOB / BYTEA | Gzip-compressed `output.xml` |
+| `output_xml_source` | TEXT | Filesystem path the blob came from |
+
+### `test_result_artifacts` — per-result heavy archive
+
+One row per `test_results.id` (skipped entirely when every field is
+empty).  The `result_id` is the primary key and FK to `test_results.id`
+with `ON DELETE CASCADE`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `result_id` | INTEGER PK/FK | One-to-one with `test_results.id` |
+| `question` | TEXT | Test question / prompt |
 | `expected_answer` | TEXT | Expected correct answer |
 | `actual_answer` | TEXT | Model's response (thinking tags stripped) |
-| `grading_reason` | TEXT | Explanation from grader |
-| `thinking_text` | TEXT | Extracted `<think>` content from LLM response |
-| `thinking_tokens` | INTEGER | Estimated token count of thinking content |
-| `num_ctx` | INTEGER | Context window size used |
-| `num_predict` | INTEGER | Max generation tokens configured |
-| `eval_count` | INTEGER | Tokens generated |
-| `eval_duration_ns` | INTEGER | Time to generate (nanoseconds) |
-| `prompt_eval_count` | INTEGER | Prompt tokens processed |
-| `prompt_eval_duration_ns` | INTEGER | Time to process prompt (ns) |
-| `load_duration_ns` | INTEGER | Time to load model (ns) |
-| `total_duration_ns` | INTEGER | Total request time (ns) |
-| `tokens_per_second` | REAL | Generation speed (tokens/s) |
+| `grading_reason` | TEXT | Explanation from the grader |
+| `thinking_text` | TEXT | Extracted `<think>` content |
 
-#### `models`
+### `test_results_full` view
+
+Superset drill-down view — `JOIN test_runs` + `LEFT JOIN` both artifact
+tables — so dashboards can still show per-test questions, answers, and
+grading text alongside the lean metrics.  The column set is defined
+once as `TEST_RESULTS_FULL_VIEW_BODY` in `src/rfc/test_database.py` and
+is mirrored into `superset/bootstrap_dashboards.py`; a drift test keeps
+the two in sync.
+
+### `models`
+
 LLM model metadata:
 
 | Column | Type | Description |
@@ -128,19 +163,14 @@ LLM model metadata:
 | `context_length` | INTEGER | Max context window |
 | `family` | TEXT | Model family |
 
-### Future Schema Additions
+### Upgrade semantics
 
-The following columns are planned but not yet implemented:
-
-**`test_runs`:**
-- `cost_seconds` (REAL) — Wall-clock time (local cost)
-- `cost_dollars` (REAL NULL) — Dollar cost (cloud/OpenRouter)
-- `suite_version` (TEXT) — Git SHA of the `.robot` file
-- `node_hostname` (TEXT) — Which hardware node ran this
-- `hardware_gpu` (TEXT) — GPU/TPU model (e.g., "RTX 4090")
-- `hardware_vram_gb` (REAL) — VRAM in GB
-
-**Data retention:** 90-day rolling window. Older data archived to compressed exports.
+When an older database starts up, the backend runs idempotent
+`ALTER TABLE ... DROP COLUMN IF EXISTS` migrations that remove the old
+heavy columns from `test_runs` / `test_results` and create the two
+artifact tables.  **Legacy column data is not migrated** — historical
+rows keep their metric columns but lose their heavy archive fields.
+Start fresh if you need those fields for older runs.
 
 ---
 
@@ -181,7 +211,7 @@ uv run python scripts/query_results.py export --output my_export.json
 ### Programmatic Access
 
 ```python
-from rfc.test_database import TestDatabase
+from rfc.test_database import TestDatabase, TestResult, TestRunArtifact
 
 # SQLite (default)
 db = TestDatabase()
@@ -189,24 +219,23 @@ db = TestDatabase()
 # PostgreSQL
 db = TestDatabase(database_url="postgresql://rfc:changeme@localhost:5433/rfc")
 
-# Get performance stats
-stats = db.get_model_performance()
-for stat in stats:
-    print(f"{stat['model_name']}: {stat['avg_pass_rate']:.1f}%")
-
 # Get recent runs
 runs = db.get_recent_runs(limit=5)
 
 # Get test history
 history = db.get_test_history("IQ 100 Basic Addition")
 
-# Export to JSON
+# Fetch the per-run artifact (gzipped output.xml + source path)
+artifact = db.get_test_run_artifact(runs[0]["id"])
+
+# Export to JSON (archives are not included in the export)
 db.export_to_json("export.json")
 ```
 
 ## Superset Visualization
 
-When using PostgreSQL, results can be visualized in Apache Superset dashboards.
+When using PostgreSQL, results can be visualized in Apache Superset
+dashboards.
 
 ### Setup
 
@@ -214,7 +243,7 @@ When using PostgreSQL, results can be visualized in Apache Superset dashboards.
 cp .env.example .env          # edit credentials
 make docker-up                # start PostgreSQL + Redis + Superset
 make bootstrap                # first-time init (creates admin, charts, dashboard)
-open http://localhost:8088     # login with credentials from .env
+open http://localhost:8088    # login with credentials from .env
 ```
 
 ### Pre-configured Charts
@@ -230,7 +259,10 @@ The bootstrap script creates these charts in Superset:
 | Recent Test Runs | Table | Latest test run details |
 | Failures by Test Name | Bar | Most common failing tests |
 
-All charts are assembled into a "Robot Framework Test Results" dashboard.
+All charts are assembled into a "Robot Framework Test Results"
+dashboard.  Detail charts for per-test question / answer / grading
+text use the `test_results_full` view, which LEFT-JOINs the archive
+tables.
 
 ## CI/CD Integration
 
@@ -248,10 +280,14 @@ report stage:          rebot merges output.xml files
                            └── import → DB  (pipeline-level combined run)
 ```
 
-1. **Per-suite archiving** (test stage): The `DbListener` on each test job archives results as each suite completes
-2. **Combined archiving** (report stage): `rebot` merges all `output.xml` files, then `import_test_results.py` imports the combined result
+1. **Per-suite archiving** (test stage): The `DbListener` on each test
+   job archives results as each suite completes.
+2. **Combined archiving** (report stage): `rebot` merges all
+   `output.xml` files, then `import_test_results.py` imports the
+   combined result.
 
-Set `DATABASE_URL` in GitLab CI/CD variables to archive to PostgreSQL. When unset, archiving falls back to local SQLite.
+Set `DATABASE_URL` in GitLab CI/CD variables to archive to PostgreSQL.
+When unset, archiving falls back to local SQLite.
 
 ## Database Maintenance
 
