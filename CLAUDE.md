@@ -172,7 +172,15 @@ follow it and fill in every section — no placeholders, no "see above."
    make robot-dryrun 2>&1 | tee /tmp/pr-dryrun.txt
    ```
 
-4. **Ask the user for the version bump** (`pyproject.toml` + `src/rfc/__init__.py`).
+4. **Ask the user for the version bump** (`pyproject.toml` + `src/rfc/__init__.py`):
+   ```
+   This PR is ready for a version bump. What level?
+   a) Patch (x.y.Z) — bug fix, no new features
+   b) Minor (x.Y.0) — new feature, backward compatible
+   c) Major (X.0.0) — breaking change
+   d) Skip — no version bump needed for this PR
+   ```
+   Commit the bump as a separate `chore: bump version to X.Y.Z` commit.
 
 ### Writing the PR description
 

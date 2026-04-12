@@ -68,3 +68,4 @@
 - [ ] No unresolved `TODO`/`FIXME` in changed files
 - [ ] Type hints on all new Python code
 - [ ] Commit history is atomic and bisectable
+- [ ] Version bump confirmed with user (`pyproject.toml` + `src/rfc/__init__.py`)
