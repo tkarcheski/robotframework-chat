@@ -655,6 +655,31 @@ def _pg_to_sqlite(sql: str) -> str:
     return sql
 
 
+class TestTableDDLSplitting:
+    """Guard against SQL comments with semicolons breaking _create_tables()."""
+
+    def test_no_comment_only_fragments_after_split(self) -> None:
+        """Splitting _TABLE_DDL on ';' must not produce comment-only fragments.
+
+        The _create_tables() function splits on ';' and executes each piece.
+        A SQL comment containing a semicolon would produce a fragment that is
+        non-empty but has no executable SQL, causing psycopg2 to raise
+        ``ProgrammingError: can't execute an empty query``.
+        """
+        for i, fragment in enumerate(_TABLE_DDL.split(";")):
+            # Strip comment lines and whitespace
+            executable = "\n".join(
+                ln
+                for ln in fragment.splitlines()
+                if ln.strip() and not ln.strip().startswith("--")
+            ).strip()
+            raw_stripped = fragment.strip()
+            assert not (raw_stripped and not executable), (
+                f"Fragment {i} is comment-only after ';' split — this will crash "
+                f"_create_tables():\n{raw_stripped!r}"
+            )
+
+
 class TestResultsFullViewConsistency:
     """Guard against drift between the rfc.test_database view SQL and
     the copy embedded in superset/bootstrap_dashboards.py::_TABLE_DDL."""
