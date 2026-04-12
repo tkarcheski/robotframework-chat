@@ -402,6 +402,7 @@ class TestRunIterationLoop:
     """Tests for the run_iteration_loop() outer loop."""
 
     @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
     @patch(
         "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
     )
@@ -414,6 +415,7 @@ class TestRunIterationLoop:
         mock_nodes: MagicMock,
         mock_discover: MagicMock,
         mock_run: MagicMock,
+        mock_verify_db: MagicMock,
         mock_summary: MagicMock,
     ) -> None:
         """iterations=1 (default) runs the cycle exactly once."""
@@ -422,6 +424,7 @@ class TestRunIterationLoop:
         assert not had_failure
 
     @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
     @patch(
         "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
     )
@@ -434,6 +437,7 @@ class TestRunIterationLoop:
         mock_nodes: MagicMock,
         mock_discover: MagicMock,
         mock_run: MagicMock,
+        mock_verify_db: MagicMock,
         mock_summary: MagicMock,
     ) -> None:
         """iterations=3 runs the cycle exactly 3 times."""
@@ -486,6 +490,7 @@ class TestRunIterationLoop:
         assert had_failure
 
     @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
     @patch(
         "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
     )
@@ -498,6 +503,7 @@ class TestRunIterationLoop:
         mock_nodes: MagicMock,
         mock_discover: MagicMock,
         mock_run: MagicMock,
+        mock_verify_db: MagicMock,
         mock_summary: MagicMock,
     ) -> None:
         """iterations=-1 runs until KeyboardInterrupt."""
