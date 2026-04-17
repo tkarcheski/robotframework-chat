@@ -1,0 +1,38 @@
+# Agent Contract - Machine-Readable Workflow Rules
+#
+# Defines the workflow contract each AI coding agent must obey in this repo.
+# The agentic-coding suite verifies agent behavior against these rules, so
+# tests do not need to hard-code values scraped from prose in CLAUDE.md.
+#
+# Loaded by src/rfc/agent_contract.py.
+# Consumed by src/rfc/agent_verifiers.py and robot/agentic_coding/ tests.
+
+claude-code:
+  base_branch: "claude-code-staging"
+  branch_regex: "^claude/[a-z0-9-]+-[a-z0-9]{5}$"
+  startup_checks:
+    - "uv run pytest"
+    - "pre-commit run --all-files"
+    - "make code-quality-check"
+    - "make robot-dryrun"
+  pr_template_path: ".github/PULL_REQUEST_TEMPLATE.md"
+  pr_required_sections:
+    - "Summary"
+    - "How to review"
+    - "Evidence of testing"
+    - "Critical changes"
+    - "Checklist"
+  commit_types:
+    - "test"
+    - "feat"
+    - "fix"
+    - "refactor"
+    - "docs"
+    - "chore"
+  commit_subject_regex: "^(test|feat|fix|refactor|docs|chore): .+"
+  min_clarifying_questions: 2
+  max_clarifying_questions: 4
+  forbidden_commands:
+    - "git push origin main"
+    - "git push --force origin main"
+    - "--no-verify"

@@ -202,6 +202,11 @@ test_suites:
     path: "robot/tool_hallucination/tests"
     description: "Tool hallucination detection — real vs fake tool selection precision"
 
+  agentic-coding:
+    label: "Agentic Coding"
+    path: "robot/agentic_coding/tests"
+    description: "Coding-agent workflow evaluation: branch naming, startup contract, TDD ordering, clarifying-question discipline"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -331,6 +336,11 @@ ci:
       path: "robot/swebench/"
       output_dir: "results/swebench"
       tags: ["ollama", "docker", "swebench"]
+
+    robot-agentic-coding-tests:
+      path: "robot/agentic_coding/tests/"
+      output_dir: "results/agentic_coding"
+      tags: ["agentic", "coding-agent"]
 
 # ---------------------------------------------------------------------------
 # Monitoring Configuration
