@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from rfc.tool_hallucination_keywords import (
     ToolHallucinationKeywords,
     parse_tool_mentions,
@@ -47,15 +45,13 @@ class TestParseToolMentions:
 class TestToolHallucinationKeywordsInit:
     @patch("rfc.tool_hallucination_keywords.create_provider")
     def test_default_init(self, mock_create: MagicMock) -> None:
-        kw = ToolHallucinationKeywords()
+        ToolHallucinationKeywords()
         mock_create.assert_called_once_with(timeout=5400, max_retries=2)
 
 
 class TestTestToolSelection:
     @patch("rfc.tool_hallucination_keywords.create_provider")
-    def test_only_real_tools_mentioned_scores_1(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_only_real_tools_mentioned_scores_1(self, mock_create: MagicMock) -> None:
         """LLM mentions only real tools — precision = 1.0."""
         kw = ToolHallucinationKeywords()
         kw.client.generate.return_value = "I would use calculator for this task."
@@ -64,7 +60,13 @@ class TestTestToolSelection:
             task="What is 2+2?",
             real_tools=json.dumps(["calculator", "search_web"]),
             fake_tools=json.dumps(
-                ["quantum_solver", "mind_reader", "time_machine", "reality_bender", "dream_parser"]
+                [
+                    "quantum_solver",
+                    "mind_reader",
+                    "time_machine",
+                    "reality_bender",
+                    "dream_parser",
+                ]
             ),
         )
         assert result["precision"] == 1.0
@@ -72,9 +74,7 @@ class TestTestToolSelection:
         assert "calculator" in result["real_tools_mentioned"]
 
     @patch("rfc.tool_hallucination_keywords.create_provider")
-    def test_fake_tool_mentioned_reduces_score(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_fake_tool_mentioned_reduces_score(self, mock_create: MagicMock) -> None:
         """LLM mentions a fake tool — precision < 1.0."""
         kw = ToolHallucinationKeywords()
         kw.client.generate.return_value = (
@@ -85,16 +85,20 @@ class TestTestToolSelection:
             task="What is 2+2?",
             real_tools=json.dumps(["calculator", "search_web"]),
             fake_tools=json.dumps(
-                ["quantum_solver", "mind_reader", "time_machine", "reality_bender", "dream_parser"]
+                [
+                    "quantum_solver",
+                    "mind_reader",
+                    "time_machine",
+                    "reality_bender",
+                    "dream_parser",
+                ]
             ),
         )
         assert result["precision"] == 0.5  # 1 real / 2 total
         assert "quantum_solver" in result["hallucinated_tools"]
 
     @patch("rfc.tool_hallucination_keywords.create_provider")
-    def test_no_tools_mentioned_scores_zero(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_no_tools_mentioned_scores_zero(self, mock_create: MagicMock) -> None:
         """LLM mentions no tools at all — score 0.0 (failed to select)."""
         kw = ToolHallucinationKeywords()
         kw.client.generate.return_value = "I don't need any tools."
@@ -102,35 +106,43 @@ class TestTestToolSelection:
         result = kw.test_tool_selection(
             task="What is 2+2?",
             real_tools=json.dumps(["calculator", "search_web"]),
-            fake_tools=json.dumps(["quantum_solver", "mind_reader", "time_machine", "reality_bender", "dream_parser"]),
+            fake_tools=json.dumps(
+                [
+                    "quantum_solver",
+                    "mind_reader",
+                    "time_machine",
+                    "reality_bender",
+                    "dream_parser",
+                ]
+            ),
         )
         assert result["precision"] == 0.0
         assert result["tools_mentioned"] == []
 
     @patch("rfc.tool_hallucination_keywords.create_provider")
-    def test_all_fake_tools_scores_zero(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_all_fake_tools_scores_zero(self, mock_create: MagicMock) -> None:
         """LLM only mentions fake tools — precision = 0.0."""
         kw = ToolHallucinationKeywords()
-        kw.client.generate.return_value = (
-            "I would use quantum_solver and mind_reader."
-        )
+        kw.client.generate.return_value = "I would use quantum_solver and mind_reader."
 
         result = kw.test_tool_selection(
             task="What is 2+2?",
             real_tools=json.dumps(["calculator", "search_web"]),
             fake_tools=json.dumps(
-                ["quantum_solver", "mind_reader", "time_machine", "reality_bender", "dream_parser"]
+                [
+                    "quantum_solver",
+                    "mind_reader",
+                    "time_machine",
+                    "reality_bender",
+                    "dream_parser",
+                ]
             ),
         )
         assert result["precision"] == 0.0
         assert len(result["hallucinated_tools"]) == 2
 
     @patch("rfc.tool_hallucination_keywords.create_provider")
-    def test_string_json_parsing(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_string_json_parsing(self, mock_create: MagicMock) -> None:
         """Tool lists passed as JSON strings are correctly parsed."""
         kw = ToolHallucinationKeywords()
         kw.client.generate.return_value = "Use search_web."

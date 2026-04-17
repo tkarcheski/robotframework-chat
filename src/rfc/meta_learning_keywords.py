@@ -85,13 +85,6 @@ class MetaLearningKeywords:
         logger.info(f"Turn 1 response: {skill_ack}")
 
         # Turn 2: Distractor
-        transcript_t2 = build_conversation_transcript(
-            skill_description=skill_description,
-            skill_ack=skill_ack,
-            distractor_prompt=distractor_prompt,
-            distractor_response="",  # placeholder, we'll generate
-            test_prompt="",
-        )
         distractor_full = (
             f"User: I want to teach you a new skill. {skill_description}\n"
             f"Assistant: {skill_ack}\n"

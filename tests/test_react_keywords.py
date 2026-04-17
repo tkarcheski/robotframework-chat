@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from rfc.react_keywords import ReActKeywords, parse_react_response
 
 
@@ -44,7 +42,7 @@ class TestReActKeywordsInit:
     @patch("rfc.react_keywords.create_provider")
     @patch("rfc.react_keywords.Grader")
     def test_default_init(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
-        kw = ReActKeywords()
+        ReActKeywords()
         mock_create.assert_called_once_with(timeout=5400, max_retries=2)
         MockGrader.assert_called_once_with(mock_create.return_value)
 
