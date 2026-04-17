@@ -22,7 +22,7 @@ class MultiTurnKeywords:
     def __init__(
         self,
         timeout: Optional[int] = None,
-        hide_thinking: bool = True,
+        hide_thinking: bool | str = True,
     ) -> None:
         timeout = resolve_timeout(timeout)
         self.client: Any = create_provider(timeout=timeout)
@@ -51,17 +51,13 @@ class MultiTurnKeywords:
         """Generate a response given conversation history."""
         prompt = self._build_conversation_prompt(messages)
         raw = self.client.generate(prompt)
-        clean, thinking = parse_thinking(
-            raw, strip_unclosed=self._hide_thinking
-        )
+        clean, thinking = parse_thinking(raw, strip_unclosed=self._hide_thinking)
         if thinking is not None:
             emit_rfc_data("thinking_text", thinking)
         return clean
 
     @keyword("Run Multi Turn Conversation")
-    def run_multi_turn_conversation(
-        self, turns: List[Dict[str, str]]
-    ) -> List[str]:
+    def run_multi_turn_conversation(self, turns: List[Dict[str, str]]) -> List[str]:
         """Run a multi-turn conversation, generating LLM responses incrementally.
 
         Walks through the turn list. User turns are added to history as-is.
@@ -97,9 +93,7 @@ class MultiTurnKeywords:
             # Skip generation when the next turn is scripted (assistant)
             # or a system instruction — only generate when the next turn
             # is another user turn or this is the last turn.
-            next_role = (
-                turns[i + 1].get("role", "user") if i + 1 < len(turns) else None
-            )
+            next_role = turns[i + 1].get("role", "user") if i + 1 < len(turns) else None
             should_generate = next_role not in ("assistant", "system")
 
             if should_generate:
@@ -239,9 +233,7 @@ class MultiTurnKeywords:
         per_turn: List[str] = []
 
         for i, response in enumerate(post_switch):
-            result = self.grader.grade_topic_isolation(
-                prior_topic, new_topic, response
-            )
+            result = self.grader.grade_topic_isolation(prior_topic, new_topic, response)
             scores.append(result.score)
             turn_num = window_start + i + 1
             per_turn.append(

@@ -24,8 +24,7 @@ _TITLE_ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st"}
 
 # Suffix abbreviations may end a sentence (e.g. "Acme Inc. It ships."). They
 # only suppress a sentence break when followed by a lowercase continuation.
-_SUFFIX_ABBREVIATIONS = {"inc", "ltd", "corp", "etc", "vs", "approx",
-                         "e.g", "i.e"}
+_SUFFIX_ABBREVIATIONS = {"inc", "ltd", "corp", "etc", "vs", "approx", "e.g", "i.e"}
 
 _ABBREVIATIONS = _TITLE_ABBREVIATIONS | _SUFFIX_ABBREVIATIONS
 
@@ -71,9 +70,7 @@ class FormatKeywords:
     """Keywords for validating LLM output format compliance."""
 
     @keyword("Validate JSON Response")
-    def validate_json_response(
-        self, response: str, expected_keys: str
-    ) -> float:
+    def validate_json_response(self, response: str, expected_keys: str) -> float:
         """Parse JSON from response and validate expected keys.
 
         Supports JSON objects and arrays (validates keys of first element).
@@ -136,9 +133,7 @@ class FormatKeywords:
         return score
 
     @keyword("Validate YAML Response")
-    def validate_yaml_response(
-        self, response: str, expected_keys: str
-    ) -> float:
+    def validate_yaml_response(self, response: str, expected_keys: str) -> float:
         """Parse YAML from response and validate expected keys.
 
         Args:
@@ -224,9 +219,8 @@ class FormatKeywords:
         data_rows = len(data_row_widths)
 
         # All data rows must match the expected column count for full credit
-        all_rows_match = (
-            actual_columns == expected_columns
-            and all(w == expected_columns for w in data_row_widths)
+        all_rows_match = actual_columns == expected_columns and all(
+            w == expected_columns for w in data_row_widths
         )
 
         emit_rfc_data("actual_columns", str(actual_columns))
@@ -279,7 +273,7 @@ class FormatKeywords:
                     # Suffix abbreviations may end a sentence. Only skip the
                     # boundary if the next word looks like a mid-sentence
                     # continuation (starts with a lowercase letter).
-                    rest = text[match.end():].lstrip()
+                    rest = text[match.end() :].lstrip()
                     if rest and rest[0].islower():
                         continue
             count += 1
@@ -309,9 +303,7 @@ class FormatKeywords:
         return count
 
     @keyword("Check Forbidden Words")
-    def check_forbidden_words(
-        self, response: str, forbidden_words: str
-    ) -> list[str]:
+    def check_forbidden_words(self, response: str, forbidden_words: str) -> list[str]:
         """Check for forbidden words in response using word-boundary matching.
 
         Case-insensitive. Uses ``\\b`` word boundaries to avoid matching

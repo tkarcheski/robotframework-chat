@@ -96,9 +96,7 @@ class PersonaKeywords:
                 f"The user said: '{turn}'. "
                 f"Does the assistant's response maintain the persona?"
             )
-            grade_result = self.grader.grade(
-                grade_question, persona_criteria, response
-            )
+            grade_result = self.grader.grade(grade_question, persona_criteria, response)
 
             turn_scores.append(grade_result.score)
             turn_details.append(
@@ -167,13 +165,9 @@ class PersonaKeywords:
         scores = result.get("turn_scores", [])
 
         # Check per-turn scores first — any single break is a failure
-        failed_turns = [
-            (i + 1, s) for i, s in enumerate(scores) if s < min_score
-        ]
+        failed_turns = [(i + 1, s) for i, s in enumerate(scores) if s < min_score]
         if failed_turns:
-            details = ", ".join(
-                f"turn {t}={s:.2f}" for t, s in failed_turns
-            )
+            details = ", ".join(f"turn {t}={s:.2f}" for t, s in failed_turns)
             raise AssertionError(
                 f"Persona broken on {len(failed_turns)} turn(s): {details}\n"
                 f"Threshold: {min_score:.2f}, All scores: {scores}"

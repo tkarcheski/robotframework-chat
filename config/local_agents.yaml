@@ -1,0 +1,24 @@
+# Local Agent Test Configuration
+#
+# Defines AI coding agents (Claude Code, Codex CLI, Gemini CLI, ...) that the
+# agentic-coding suite evaluates. Modeled after local_models.yaml but scoped
+# to coding-agent CLIs rather than Ollama-served LLMs.
+#
+# In PR #1 only the fake replay runner is wired; live adapters land in follow-ups.
+
+agents:
+  - id: claude-code
+    runner: fake
+    timeout_seconds: 900
+    env_vars: []
+    capabilities:
+      - git
+      - pr
+      - interactive
+
+executions:
+  - suite: agentic-coding
+    agent: claude-code
+    extra_args:
+      - "--variable"
+      - "AGENT_ID:claude-code"

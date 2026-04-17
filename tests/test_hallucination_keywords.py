@@ -37,9 +37,7 @@ class TestExtractReferences:
 
     @patch("rfc.hallucination_keywords.create_provider")
     @patch("rfc.hallucination_keywords.Grader")
-    def test_extracts_urls(
-        self, MockGrader: MagicMock, mock_create: MagicMock
-    ) -> None:
+    def test_extracts_urls(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
         kw = HallucinationKeywords()
         text = "See https://example.com/paper and http://test.org/doc for details."
         refs = kw._extract_references(text)
@@ -68,9 +66,7 @@ class TestExtractReferences:
 
     @patch("rfc.hallucination_keywords.create_provider")
     @patch("rfc.hallucination_keywords.Grader")
-    def test_extracts_dois(
-        self, MockGrader: MagicMock, mock_create: MagicMock
-    ) -> None:
+    def test_extracts_dois(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
         kw = HallucinationKeywords()
         text = "DOI: 10.1038/nature12373"
         refs = kw._extract_references(text)
@@ -474,9 +470,7 @@ class TestAskAndCheckCitations:
         mock_client.generate.return_value = "See https://known.com for details."
         mock_create.return_value = mock_client
         kw = HallucinationKeywords()
-        result = kw.ask_and_check_citations(
-            "Cite the paper.", ["https://known.com"]
-        )
+        result = kw.ask_and_check_citations("Cite the paper.", ["https://known.com"])
         mock_client.generate.assert_called_once_with("Cite the paper.")
         assert result["is_clean"] is True
 
@@ -492,9 +486,7 @@ class TestAskAndCheckCitations:
         mock_logger: MagicMock,
     ) -> None:
         mock_client = MagicMock()
-        mock_client.generate.return_value = (
-            "The paper is at https://fake-url.com/paper"
-        )
+        mock_client.generate.return_value = "The paper is at https://fake-url.com/paper"
         mock_create.return_value = mock_client
         kw = HallucinationKeywords()
         result = kw.ask_and_check_citations("Cite it.", ["https://real.com"])
@@ -587,9 +579,7 @@ class TestCheckAdversarialSummary:
         mock_grader.grade.assert_called_once()
         call_args = mock_grader.grade.call_args
         # The question should mention the fabricated fact
-        assert "fake fact here" in call_args[0][0] or "fake fact here" in str(
-            call_args
-        )
+        assert "fake fact here" in call_args[0][0] or "fake fact here" in str(call_args)
 
 
 class TestLegalCitationFabrication:
@@ -655,14 +645,10 @@ class TestThinkingTagStripping:
         )
         mock_create.return_value = mock_client
         kw = HallucinationKeywords()
-        result = kw.ask_and_check_citations(
-            "Cite it.", ["https://real.com/paper"]
-        )
+        result = kw.ask_and_check_citations("Cite it.", ["https://real.com/paper"])
         # Thinking content must not count as fabrication.
         assert result["is_clean"] is True
-        assert all(
-            "scratch-pad" not in r for r in result["fabricated_refs"]
-        )
+        assert all("scratch-pad" not in r for r in result["fabricated_refs"])
 
 
 class TestKnownRefWordBoundary:

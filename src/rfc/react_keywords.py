@@ -96,18 +96,32 @@ class ReActKeywords:
 
             if directive == "FINAL_ANSWER":
                 final_answer = value
-                trace.append({"step": str(step), "type": "FINAL_ANSWER", "content": value or ""})
+                trace.append(
+                    {"step": str(step), "type": "FINAL_ANSWER", "content": value or ""}
+                )
                 break
 
             if directive == "ACTION":
                 observation = tools_map.get(
-                    value or "", f"Error: tool '{value}' not found or returned no result."
+                    value or "",
+                    f"Error: tool '{value}' not found or returned no result.",
                 )
-                trace.append({"step": str(step), "type": "ACTION", "action": value or "", "observation": observation})
-                conversation += f"\n\nAssistant: {response}\nObservation: {observation}\n"
+                trace.append(
+                    {
+                        "step": str(step),
+                        "type": "ACTION",
+                        "action": value or "",
+                        "observation": observation,
+                    }
+                )
+                conversation += (
+                    f"\n\nAssistant: {response}\nObservation: {observation}\n"
+                )
             else:
                 # Unparseable — treat as wasted step
-                trace.append({"step": str(step), "type": "UNPARSEABLE", "content": response})
+                trace.append(
+                    {"step": str(step), "type": "UNPARSEABLE", "content": response}
+                )
                 conversation += f"\n\nAssistant: {response}\nSystem: Please respond with ACTION: or FINAL_ANSWER:\n"
 
         budget_exceeded = final_answer is None

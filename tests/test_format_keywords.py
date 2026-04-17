@@ -122,7 +122,9 @@ class TestValidateCsvResponse:
     @patch("rfc.format_keywords.emit_rfc_data")
     def test_valid_csv(self, mock_emit: patch) -> None:
         """CSV with correct columns and enough rows scores 1.0."""
-        response = "name,department,salary\nAlice,Engineering,100000\nBob,Marketing,90000"
+        response = (
+            "name,department,salary\nAlice,Engineering,100000\nBob,Marketing,90000"
+        )
         score = self.fk.validate_csv_response(response, 3, 2)
         assert score == 1.0
         mock_emit.assert_any_call("parse_valid", "true")
@@ -292,9 +294,7 @@ class TestCheckForbiddenWords:
     @patch("rfc.format_keywords.emit_rfc_data")
     def test_case_insensitive(self, mock_emit: patch) -> None:
         """Detection is case-insensitive."""
-        violations = self.fk.check_forbidden_words(
-            "HOWEVER, this works.", "however"
-        )
+        violations = self.fk.check_forbidden_words("HOWEVER, this works.", "however")
         assert violations == ["however"]
 
     @patch("rfc.format_keywords.emit_rfc_data")
@@ -307,9 +307,7 @@ class TestCheckForbiddenWords:
     @patch("rfc.format_keywords.emit_rfc_data")
     def test_word_boundary_no_false_positive(self, mock_emit: patch) -> None:
         """Should not match substrings: 'show' should not trigger 'how'."""
-        violations = self.fk.check_forbidden_words(
-            "Let me show you the way.", "how"
-        )
+        violations = self.fk.check_forbidden_words("Let me show you the way.", "how")
         assert violations == []
 
     @patch("rfc.format_keywords.emit_rfc_data")

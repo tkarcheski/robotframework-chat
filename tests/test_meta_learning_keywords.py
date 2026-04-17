@@ -4,7 +4,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rfc.meta_learning_keywords import MetaLearningKeywords, build_conversation_transcript
+from rfc.meta_learning_keywords import (
+    MetaLearningKeywords,
+    build_conversation_transcript,
+)
 
 
 class TestBuildConversationTranscript:
@@ -37,7 +40,7 @@ class TestMetaLearningKeywordsInit:
     @patch("rfc.meta_learning_keywords.create_provider")
     @patch("rfc.meta_learning_keywords.Grader")
     def test_default_init(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
-        kw = MetaLearningKeywords()
+        MetaLearningKeywords()
         mock_create.assert_called_once_with(timeout=5400, max_retries=2)
         MockGrader.assert_called_once_with(mock_create.return_value)
 

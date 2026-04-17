@@ -21,7 +21,7 @@ class LLMKeywords:
         self,
         timeout: Optional[int] = None,
         max_retries: int = 2,
-        hide_thinking: bool = True,
+        hide_thinking: bool | str = True,
     ):
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
