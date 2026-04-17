@@ -128,7 +128,10 @@ class TestCollectSkipped:
 
 class TestMain:
     def test_prints_test_flags(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(MIXED_OUTPUT_XML)
@@ -138,7 +141,10 @@ class TestMain:
         assert captured.out.strip() == "--test\nExample.Skipped Test"
 
     def test_no_output_when_no_skipped(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(ALL_PASS_OUTPUT_XML)
@@ -153,7 +159,10 @@ class TestMain:
             main()
 
     def test_multiple_skipped_flags(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(MULTI_SKIPPED_XML)
@@ -164,7 +173,10 @@ class TestMain:
         assert lines == ["--test", "Suite.Skip A", "--test", "Suite.Skip B"]
 
     def test_print0_null_delimited(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(MIXED_OUTPUT_XML)
@@ -174,7 +186,10 @@ class TestMain:
         assert captured.out == "--test\0Example.Skipped Test\0"
 
     def test_print0_multiple(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(MULTI_SKIPPED_XML)
@@ -184,7 +199,10 @@ class TestMain:
         assert captured.out == "--test\0Suite.Skip A\0--test\0Suite.Skip B\0"
 
     def test_print0_no_skipped(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         xml = tmp_path / "output.xml"
         xml.write_text(ALL_PASS_OUTPUT_XML)

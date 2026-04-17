@@ -40,7 +40,7 @@ class CreativityKeywords:
         self,
         timeout: Optional[int] = None,
         max_retries: int = 2,
-        hide_thinking: bool = True,
+        hide_thinking: bool | str = True,
     ) -> None:
         timeout = resolve_timeout(timeout)
         self.client: Any = create_provider(

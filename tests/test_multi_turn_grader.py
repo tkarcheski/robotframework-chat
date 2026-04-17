@@ -24,7 +24,11 @@ class TestGradeFactConsistency:
         grader = MultiTurnGrader(client)
         result = grader.grade_fact_consistency(
             "User birthday is March 15",
-            ["March 15th is your birthday!", "hiking gear", "Your birthday is March 15."],
+            [
+                "March 15th is your birthday!",
+                "hiking gear",
+                "Your birthday is March 15.",
+            ],
             [0, 2],
         )
         assert result.score == 0.9
@@ -77,9 +81,7 @@ class TestGradeInstructionCompliance:
         client = MagicMock()
         client.generate.return_value = '{"score": 1.0, "reason": "ok"}'
         grader = MultiTurnGrader(client)
-        grader.grade_instruction_compliance(
-            "only bullet points", "- item 1"
-        )
+        grader.grade_instruction_compliance("only bullet points", "- item 1")
         prompt = client.generate.call_args[0][0]
         assert "only bullet points" in prompt
         assert "- item 1" in prompt

@@ -133,9 +133,7 @@ class TestBuildToolPrompt:
         with pytest.raises(ValueError, match="question"):
             gaia.build_tool_prompt(SAMPLE_TOOLS, "")
 
-    def test_includes_no_tool_refusal_instruction(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_includes_no_tool_refusal_instruction(self, gaia: GaiaKeywords) -> None:
         prompt = gaia.build_tool_prompt(SAMPLE_TOOLS, "question")
         assert "none" in prompt.lower() or "no suitable tool" in prompt.lower()
 
@@ -149,9 +147,7 @@ class TestParseToolCalls:
     def test_parse_valid_single_call(self, gaia: GaiaKeywords) -> None:
         response = json.dumps(
             {
-                "tool_calls": [
-                    {"tool": "Ask LLM", "arguments": {"prompt": "hello"}}
-                ],
+                "tool_calls": [{"tool": "Ask LLM", "arguments": {"prompt": "hello"}}],
                 "reasoning": "need to ask",
             }
         )
@@ -210,9 +206,7 @@ class TestParseToolCalls:
         self, gaia: GaiaKeywords
     ) -> None:
         """null arguments must not crash downstream grading."""
-        response = json.dumps(
-            {"tool_calls": [{"tool": "Ask LLM", "arguments": None}]}
-        )
+        response = json.dumps({"tool_calls": [{"tool": "Ask LLM", "arguments": None}]})
         calls = gaia.parse_tool_calls(response)
         assert len(calls) == 1
         assert calls[0].arguments == {}
@@ -247,9 +241,7 @@ class TestParseToolCalls:
         result = gaia.grade_tool_arguments({"prompt": "hi"}, call)
         assert result["score"] == 0.0
 
-    def test_parse_json_wrapped_in_plain_text_prefix(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_parse_json_wrapped_in_plain_text_prefix(self, gaia: GaiaKeywords) -> None:
         """Models often prepend 'Sure, here is the JSON:' before the object."""
         response = (
             "Sure, here is the JSON for your tool call:\n"
@@ -294,16 +286,14 @@ class TestParseToolCalls:
         scanning must continue until it finds one with tool_calls."""
         response = (
             '{"note": "preamble metadata", "version": 1}\n'
-            'Here is the tool call:\n'
+            "Here is the tool call:\n"
             '{"tool_calls": [{"tool": "Ask LLM", "arguments": {"prompt": "hi"}}]}'
         )
         calls = gaia.parse_tool_calls(response)
         assert len(calls) == 1
         assert calls[0].tool == "Ask LLM"
 
-    def test_parse_skips_multiple_auxiliary_objects(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_parse_skips_multiple_auxiliary_objects(self, gaia: GaiaKeywords) -> None:
         """Multiple aux objects before the envelope must be skipped."""
         response = (
             '{"a": 1} {"b": 2} '
@@ -434,9 +424,7 @@ class TestGradeToolSelection:
 
 class TestGradeToolArguments:
     def test_exact_match(self, gaia: GaiaKeywords) -> None:
-        call = ToolCall(
-            tool="Ask LLM", arguments={"prompt": "What is 2+2?"}
-        )
+        call = ToolCall(tool="Ask LLM", arguments={"prompt": "What is 2+2?"})
         expected = {"prompt": "What is 2+2?"}
         result = gaia.grade_tool_arguments(expected, call)
         assert result["score"] == 1.0
@@ -480,20 +468,14 @@ class TestGradeToolArguments:
         result = gaia.grade_tool_arguments(expected, call)
         assert 0.0 < result["score"] < 1.0
 
-    def test_strings_compared_case_sensitively(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_strings_compared_case_sensitively(self, gaia: GaiaKeywords) -> None:
         """Code, model IDs, and other tokens must be matched case-sensitively
         so 'Mistral' is not graded as equal to 'mistral'."""
-        call = ToolCall(
-            tool="Set LLM Model", arguments={"model": "Mistral"}
-        )
+        call = ToolCall(tool="Set LLM Model", arguments={"model": "Mistral"})
         result = gaia.grade_tool_arguments({"model": "mistral"}, call)
         assert result["score"] == 0.0
 
-    def test_python_code_matched_case_sensitively(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_python_code_matched_case_sensitively(self, gaia: GaiaKeywords) -> None:
         """Python code differing only in case must NOT match."""
         call = ToolCall(
             tool="Execute Python In Container",
@@ -552,9 +534,7 @@ class TestGradeToolRefusal:
         result = gaia.grade_tool_refusal("blah blah blah qwertyuiop")
         assert result["score"] == 0.0
 
-    def test_refusal_empty_response_not_a_pass(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_refusal_empty_response_not_a_pass(self, gaia: GaiaKeywords) -> None:
         """Empty/whitespace response is not an explicit refusal."""
         assert gaia.grade_tool_refusal("")["score"] == 0.0
         assert gaia.grade_tool_refusal("   \n  ")["score"] == 0.0
@@ -568,9 +548,7 @@ class TestGradeToolRefusal:
         )
         assert gaia.grade_tool_refusal(response)["score"] == 1.0
 
-    def test_refusal_valid_json_empty_reasoning_fails(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_refusal_valid_json_empty_reasoning_fails(self, gaia: GaiaKeywords) -> None:
         """Empty tool_calls with NO reasoning is not an explicit refusal."""
         response = json.dumps({"tool_calls": [], "reasoning": ""})
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
@@ -586,16 +564,12 @@ class TestGradeToolRefusal:
         )
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
 
-    def test_refusal_generic_cannot_alone_fails(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_refusal_generic_cannot_alone_fails(self, gaia: GaiaKeywords) -> None:
         """Bare 'cannot' without an explicit no-tool signal is not a refusal."""
         response = "I cannot answer that right now."
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
 
-    def test_refusal_explicit_no_tool_phrase_passes(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_refusal_explicit_no_tool_phrase_passes(self, gaia: GaiaKeywords) -> None:
         """Explicit 'no suitable tool available' is the canonical refusal."""
         response = "There is no suitable tool available for this task."
         assert gaia.grade_tool_refusal(response)["score"] == 1.0
@@ -618,18 +592,12 @@ class TestGradeToolRefusal:
         self, gaia: GaiaKeywords
     ) -> None:
         """tool_calls must be a list, not a string or dict."""
-        response = json.dumps(
-            {"tool_calls": "none", "reasoning": "No suitable tool"}
-        )
+        response = json.dumps({"tool_calls": "none", "reasoning": "No suitable tool"})
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
 
-    def test_refusal_json_with_null_tool_calls_fails(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_refusal_json_with_null_tool_calls_fails(self, gaia: GaiaKeywords) -> None:
         """tool_calls = null is not the same as an empty list."""
-        response = json.dumps(
-            {"tool_calls": None, "reasoning": "No suitable tool"}
-        )
+        response = json.dumps({"tool_calls": None, "reasoning": "No suitable tool"})
         assert gaia.grade_tool_refusal(response)["score"] == 0.0
 
 
@@ -654,7 +622,9 @@ class TestRunGaiaToolUseTest:
         gaia.client.num_ctx = None
         gaia.client.max_tokens = 256
 
-        expected_calls = [{"tool": "Ask LLM", "arguments": {"prompt": "capital of France"}}]
+        expected_calls = [
+            {"tool": "Ask LLM", "arguments": {"prompt": "capital of France"}}
+        ]
         score, reason, response = gaia.run_gaia_tool_use_test(
             SAMPLE_TOOLS, "Ask the model about the capital of France", expected_calls
         )
@@ -763,9 +733,7 @@ class TestRunGaiaToolUseTest:
         assert score < 1.0
         assert score >= 0.5
 
-    def test_zero_score_retries_retain_diagnostics(
-        self, gaia: GaiaKeywords
-    ) -> None:
+    def test_zero_score_retries_retain_diagnostics(self, gaia: GaiaKeywords) -> None:
         """When every retry scores 0.0, the response and reason must be
         non-empty so post-run debugging has the actual model output."""
         llm_response = json.dumps(
@@ -834,6 +802,8 @@ class TestGaiaKeywordsInit:
 
     @patch("rfc.gaia_keywords.create_provider")
     @patch("rfc.gaia_keywords.Grader")
-    def test_custom_timeout(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
+    def test_custom_timeout(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
         GaiaKeywords(timeout=60, max_retries=5)
         mock_create.assert_called_once_with(timeout=60, max_retries=5)

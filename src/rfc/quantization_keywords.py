@@ -107,10 +107,14 @@ class QuantizationKeywords:
         q8_model: Optional[str] = None
         common_stems = set(q4_by_stem) & set(q8_by_stem)
         if common_stems:
-            stem = target_stem if target_stem in common_stems else sorted(common_stems)[0]
+            stem = (
+                target_stem if target_stem in common_stems else sorted(common_stems)[0]
+            )
             q4_model = q4_by_stem[stem]
             q8_model = q8_by_stem[stem]
-            logger.info(f"Paired variants on stem '{stem}': Q4={q4_model}, Q8={q8_model}")
+            logger.info(
+                f"Paired variants on stem '{stem}': Q4={q4_model}, Q8={q8_model}"
+            )
 
         both_available = q4_model is not None and q8_model is not None
         result: Dict[str, Any] = {
@@ -207,9 +211,7 @@ class QuantizationKeywords:
         q4_avg = sum(q4_scores) / len(q4_scores) if q4_scores else 0.0
         q8_avg = sum(q8_scores) / len(q8_scores) if q8_scores else 0.0
         delta = q4_avg - q8_avg
-        degradation_pct = (
-            ((q8_avg - q4_avg) / q8_avg * 100.0) if q8_avg > 0 else 0.0
-        )
+        degradation_pct = ((q8_avg - q4_avg) / q8_avg * 100.0) if q8_avg > 0 else 0.0
 
         # Emit structured data for DB archiving
         emit_rfc_data("score", str(round(q4_avg, 2)))
@@ -263,9 +265,7 @@ class QuantizationKeywords:
                 f"{pct:.1f}% > {max_degradation_pct:.1f}%\n"
                 f"Q4 avg={q4_avg:.2f}, Q8 avg={q8_avg:.2f}"
             )
-        logger.info(
-            f"Degradation acceptable: {pct:.1f}% <= {max_degradation_pct:.1f}%"
-        )
+        logger.info(f"Degradation acceptable: {pct:.1f}% <= {max_degradation_pct:.1f}%")
 
     @keyword("Log Quantization Delta")
     def log_quantization_delta(self, result: Dict[str, Any]) -> None:

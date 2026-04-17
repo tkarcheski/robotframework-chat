@@ -39,9 +39,7 @@ class TestCheckSentenceCount:
         assert passed is False
 
     def test_exclamation_and_question(self) -> None:
-        passed, _ = IFEvalKeywords.check_sentence_count(
-            "What? Yes! Done.", 3
-        )
+        passed, _ = IFEvalKeywords.check_sentence_count("What? Yes! Done.", 3)
         assert passed is True
 
     def test_empty_response(self) -> None:
@@ -142,8 +140,7 @@ class TestCheckNumberedList:
 
     def test_extra_prose_fails(self) -> None:
         text = (
-            "Here are the days:\n1. Mon\n2. Tue\n3. Wed\n"
-            "4. Thu\n5. Fri\n6. Sat\n7. Sun"
+            "Here are the days:\n1. Mon\n2. Tue\n3. Wed\n4. Thu\n5. Fri\n6. Sat\n7. Sun"
         )
         passed, reason = IFEvalKeywords.check_numbered_list(text, 7)
         assert passed is False
@@ -186,9 +183,7 @@ class TestCheckForbiddenLetter:
         assert passed is False
 
     def test_case_insensitive(self) -> None:
-        passed, _ = IFEvalKeywords.check_forbidden_letter(
-            "EVERY day is good.", "e"
-        )
+        passed, _ = IFEvalKeywords.check_forbidden_letter("EVERY day is good.", "e")
         assert passed is False
 
     def test_empty_passes(self) -> None:
@@ -216,15 +211,11 @@ class TestCheckSentenceStart:
 
 class TestCheckEndsWithWord:
     def test_ends_correctly(self) -> None:
-        passed, _ = IFEvalKeywords.check_ends_with_word(
-            "The ocean is vast. END", "END"
-        )
+        passed, _ = IFEvalKeywords.check_ends_with_word("The ocean is vast. END", "END")
         assert passed is True
 
     def test_ends_wrong(self) -> None:
-        passed, _ = IFEvalKeywords.check_ends_with_word(
-            "The ocean is vast.", "END"
-        )
+        passed, _ = IFEvalKeywords.check_ends_with_word("The ocean is vast.", "END")
         assert passed is False
 
     def test_trailing_whitespace(self) -> None:
@@ -315,9 +306,7 @@ class TestAskAndCheckConstraint:
         mock_client.generate.return_value = "HELLO WORLD"
         mock_create.return_value = mock_client
         kw = IFEvalKeywords()
-        result = kw.ask_and_check_constraint(
-            "Say hello in caps", "all_caps"
-        )
+        result = kw.ask_and_check_constraint("Say hello in caps", "all_caps")
         assert result["passed"] is True
         mock_emit.assert_any_call("actual_answer", "HELLO WORLD")
         mock_emit.assert_any_call("score", "1")
@@ -331,9 +320,7 @@ class TestAskAndCheckConstraint:
         mock_client.generate.return_value = "Hello World"
         mock_create.return_value = mock_client
         kw = IFEvalKeywords()
-        result = kw.ask_and_check_constraint(
-            "Say hello in caps", "all_caps"
-        )
+        result = kw.ask_and_check_constraint("Say hello in caps", "all_caps")
         assert result["passed"] is False
         mock_emit.assert_any_call("score", "0")
 
@@ -346,9 +333,7 @@ class TestAskAndCheckConstraint:
         mock_client.generate.return_value = "<think>hmm</think>HELLO WORLD"
         mock_create.return_value = mock_client
         kw = IFEvalKeywords()
-        result = kw.ask_and_check_constraint(
-            "Say hello in caps", "all_caps"
-        )
+        result = kw.ask_and_check_constraint("Say hello in caps", "all_caps")
         assert result["passed"] is True
 
 

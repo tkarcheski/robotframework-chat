@@ -109,7 +109,10 @@ class ToolHallucinationKeywords:
         emit_rfc_data("score", str(precision))
         emit_rfc_data("actual_answer", response)
         emit_rfc_data("expected_answer", f"real tools only: {real_list}")
-        emit_rfc_data("grading_reason", f"precision={precision:.2f}, hallucinated={hallucinated_list}")
+        emit_rfc_data(
+            "grading_reason",
+            f"precision={precision:.2f}, hallucinated={hallucinated_list}",
+        )
         emit_rfc_data("tools_mentioned", json.dumps(tools_mentioned_list))
         emit_rfc_data("hallucinated_tools", json.dumps(hallucinated_list))
 

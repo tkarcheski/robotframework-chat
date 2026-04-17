@@ -154,7 +154,9 @@ class HallucinationKeywords:
         Returns:
             Dict with is_clean, fabricated_refs, real_refs_found.
         """
-        logger.info(f"Checking response for fabricated citations ({len(response)} chars)")
+        logger.info(
+            f"Checking response for fabricated citations ({len(response)} chars)"
+        )
 
         refs = self._extract_references(response)
         all_found: List[str] = (

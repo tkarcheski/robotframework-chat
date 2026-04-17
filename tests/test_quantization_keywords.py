@@ -186,10 +186,12 @@ class TestRunQuantizationComparison:
         kw.client.generate.return_value = "answer"
 
         # Q4 gets 0.5, Q8 gets 1.0 → 50% degradation
-        scores = iter([
-            MagicMock(score=0.5, reason="partial"),   # Q4
-            MagicMock(score=1.0, reason="correct"),    # Q8
-        ])
+        scores = iter(
+            [
+                MagicMock(score=0.5, reason="partial"),  # Q4
+                MagicMock(score=1.0, reason="correct"),  # Q8
+            ]
+        )
         kw.grader.grade.side_effect = lambda *a, **k: next(scores)
 
         prompts = [{"question": "Q", "expected": "A"}]

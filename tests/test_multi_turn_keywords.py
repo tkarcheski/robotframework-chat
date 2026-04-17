@@ -89,9 +89,7 @@ class TestRunMultiTurnConversation:
         assert "First reply" in second_prompt
 
     @patch("rfc.multi_turn_keywords.create_provider")
-    def test_skips_generation_when_next_is_system(
-        self, mock_create: MagicMock
-    ) -> None:
+    def test_skips_generation_when_next_is_system(self, mock_create: MagicMock) -> None:
         mock_client = MagicMock()
         mock_client.generate.side_effect = ["Final response"]
         mock_create.return_value = mock_client
@@ -166,9 +164,7 @@ class TestScoreInstructionComplianceBatch:
         mock_client = MagicMock()
         mock_create.return_value = mock_client
         kw = MultiTurnKeywords()
-        ratio, summary = kw.score_instruction_compliance_batch(
-            "bullet points", []
-        )
+        ratio, summary = kw.score_instruction_compliance_batch("bullet points", [])
         assert ratio == 0.0
 
 

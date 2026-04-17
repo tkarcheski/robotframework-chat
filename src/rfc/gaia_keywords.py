@@ -83,9 +83,7 @@ class GaiaKeywords:
     # ------------------------------------------------------------------
 
     @keyword("Build Tool Prompt")
-    def build_tool_prompt(
-        self, tools: List[Dict[str, Any]], question: str
-    ) -> str:
+    def build_tool_prompt(self, tools: List[Dict[str, Any]], question: str) -> str:
         """Build a prompt presenting available tools and a task question.
 
         Args:
@@ -397,8 +395,7 @@ class GaiaKeywords:
                 return {
                     "score": 0.0,
                     "reason": (
-                        f"tool_calls must be a list, got "
-                        f"{type(raw_calls).__name__}"
+                        f"tool_calls must be a list, got {type(raw_calls).__name__}"
                     ),
                 }
             if raw_calls:
@@ -473,9 +470,7 @@ class GaiaKeywords:
                 emit_rfc_data("thinking_text", thinking)
 
             if self.client.last_metrics is not None:
-                emit_rfc_data(
-                    "llm_metrics", json.dumps(self.client.last_metrics)
-                )
+                emit_rfc_data("llm_metrics", json.dumps(self.client.last_metrics))
 
             # Refusal scenario
             if not expected_calls:
@@ -499,11 +494,7 @@ class GaiaKeywords:
                 remaining = list(actual_calls)
                 for exp in expected_calls:
                     match_idx = next(
-                        (
-                            i
-                            for i, c in enumerate(remaining)
-                            if c.tool == exp["tool"]
-                        ),
+                        (i for i, c in enumerate(remaining) if c.tool == exp["tool"]),
                         None,
                     )
                     if match_idx is not None:
@@ -515,9 +506,7 @@ class GaiaKeywords:
                     else:
                         arg_scores.append(0.0)
 
-                avg_arg_score = (
-                    sum(arg_scores) / len(arg_scores) if arg_scores else 0.0
-                )
+                avg_arg_score = sum(arg_scores) / len(arg_scores) if arg_scores else 0.0
                 score = round(0.5 * sel_score + 0.5 * avg_arg_score, 4)
                 reason = (
                     f"selection={sel_score:.2f}, arguments={avg_arg_score:.2f}"

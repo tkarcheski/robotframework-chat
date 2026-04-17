@@ -107,9 +107,7 @@ class IFEvalKeywords:
             "bullet_points": lambda: self.check_bullet_points(
                 response, int(expected_value)
             ),
-            "word_count": lambda: self.check_word_count(
-                response, int(expected_value)
-            ),
+            "word_count": lambda: self.check_word_count(response, int(expected_value)),
             "numbered_list": lambda: self.check_numbered_list(
                 response, int(expected_value)
             ),
@@ -131,8 +129,7 @@ class IFEvalKeywords:
 
         if constraint not in dispatch:
             raise ValueError(
-                f"Unknown constraint: {constraint!r}.  "
-                f"Supported: {sorted(dispatch)}"
+                f"Unknown constraint: {constraint!r}.  Supported: {sorted(dispatch)}"
             )
 
         constraints_requiring_value = {
@@ -163,8 +160,7 @@ class IFEvalKeywords:
         """Raise ``AssertionError`` if the constraint check failed."""
         if not result["passed"]:
             raise AssertionError(
-                f"IFEval constraint {result['constraint']!r} failed: "
-                f"{result['reason']}"
+                f"IFEval constraint {result['constraint']!r} failed: {result['reason']}"
             )
 
     # ------------------------------------------------------------------
@@ -199,9 +195,7 @@ class IFEvalKeywords:
         lines = [ln for ln in response.split("\n") if ln.strip()]
         non_bullet = [ln for ln in lines if not _BULLET_PATTERN.match(ln)]
         if non_bullet:
-            return False, (
-                f"Non-bullet line(s) found: {non_bullet[0]!r}"
-            )
+            return False, (f"Non-bullet line(s) found: {non_bullet[0]!r}")
         actual = len(lines)
         if actual == expected:
             return True, f"Found {actual} bullet points as expected"
@@ -227,14 +221,10 @@ class IFEvalKeywords:
                 return False, f"Non-numbered line found: {ln!r}"
             numbers.append(int(m.group(1)))
         if len(numbers) != expected:
-            return False, (
-                f"Expected {expected} numbered items, found {len(numbers)}"
-            )
+            return False, (f"Expected {expected} numbered items, found {len(numbers)}")
         expected_seq = list(range(1, expected + 1))
         if numbers != expected_seq:
-            return False, (
-                f"Expected sequence {expected_seq}, got {numbers}"
-            )
+            return False, (f"Expected sequence {expected_seq}, got {numbers}")
         return True, f"Found numbered list 1..{expected} as expected"
 
     @staticmethod
