@@ -70,43 +70,45 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 	@echo "Created .env from .env.example – edit it if needed."
 
 # ── Foundation: Robot Framework Tests ────────────────────────────────
+# Pass extra `robot` CLI args via ARGS, e.g.:
+#   make robot ARGS="--include agent:claude_code"
 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) robot/math/tests/
+	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) $(ARGS) robot/math/tests/
 
 robot-accounting: ## Run accounting tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) robot/accounting/tests/
+	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) $(ARGS) robot/accounting/tests/
 
 robot-docker: ## Run Docker tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/docker $(LISTENER) robot/docker/
+	$(ROBOT) -d results/$(VERSION)/docker $(LISTENER) $(ARGS) robot/docker/
 
 robot-safety: ## Run safety tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/safety $(LISTENER) robot/safety/
+	$(ROBOT) -d results/$(VERSION)/safety $(LISTENER) $(ARGS) robot/safety/
 
 robot-bash: ## Run bash scripting tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/bash $(LISTENER) robot/docker/bash/
+	$(ROBOT) -d results/$(VERSION)/bash $(LISTENER) $(ARGS) robot/docker/bash/
 
 robot-c: ## Run C programming tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/c $(LISTENER) robot/docker/c/
+	$(ROBOT) -d results/$(VERSION)/c $(LISTENER) $(ARGS) robot/docker/c/
 
 robot-rust: ## Run Rust programming tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/rust $(LISTENER) robot/docker/rust/
+	$(ROBOT) -d results/$(VERSION)/rust $(LISTENER) $(ARGS) robot/docker/rust/
 
 robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
-	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) robot/superset/tests/
+	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/tests/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) robot/swebench/
+	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) $(ARGS) robot/swebench/
 
 swebench-discover: ## List available SWE-bench instances
 	uv run python scripts/run_swebench.py --discover
 
 robot-dryrun: ## Validate all Robot tests (dry run, no execution)
-	$(ROBOT) --dryrun --exclude browser -d results/$(VERSION)/dryrun $(DRYRUN_LISTENER) robot/
+	$(ROBOT) --dryrun --exclude browser -d results/$(VERSION)/dryrun $(DRYRUN_LISTENER) $(ARGS) robot/
 
 robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 	uv run python scripts/robot_review.py
