@@ -71,8 +71,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run SWE-bench evaluation")
     parser.add_argument(
         "--model",
-        default=os.environ.get("DEFAULT_MODEL", "phi4:14b"),
-        help="LLM model to evaluate (default: $DEFAULT_MODEL or phi4:14b)",
+        default=os.environ.get("DEFAULT_MODEL"),
+        help="LLM model to evaluate (default: $DEFAULT_MODEL; required if unset)",
     )
     parser.add_argument(
         "--max-instances",
@@ -97,6 +97,8 @@ def main() -> None:
     if args.discover:
         discover_instances(split=args.split, max_instances=args.max_instances)
     else:
+        if not args.model:
+            parser.error("--model is required when DEFAULT_MODEL env var is not set")
         sys.exit(run_swebench(args.model, args.max_instances, args.split))
 
 

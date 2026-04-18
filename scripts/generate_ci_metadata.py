@@ -50,7 +50,7 @@ data = {
     "ci": ci_data,
     "ollama": {
         "endpoint": os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "phi4:14b"),
+        "default_model": os.getenv("DEFAULT_MODEL", ""),
     },
     "timestamp": datetime.utcnow().isoformat() + "Z",
 }

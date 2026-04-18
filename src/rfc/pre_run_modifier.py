@@ -33,13 +33,17 @@ class ModelAwarePreRunModifier:
         Args:
             ollama_endpoint: Ollama API endpoint (default: env OLLAMA_ENDPOINT or localhost:11434)
             config_path: Path to models.yaml config file
-            default_model: Default model to use (default: env DEFAULT_MODEL or phi4:14b)
+            default_model: Model to use (required; falls back to env DEFAULT_MODEL)
         """
         self.ollama_endpoint = (
             ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
         self.config_path = config_path or "robot/ci/models.yaml"
-        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or "phi4:14b"
+        self.default_model = default_model or os.getenv("DEFAULT_MODEL") or ""
+        if not self.default_model:
+            raise ValueError(
+                "No model configured: pass default_model= or set DEFAULT_MODEL env var"
+            )
 
         self._client = OllamaClient(
             base_url=self.ollama_endpoint, model=self.default_model
@@ -97,10 +101,8 @@ class ModelAwarePreRunModifier:
             )
         except Exception as e:
             logger.error(f"Error querying Ollama models: {e}")
-            self.available_models = [self.default_model or "phi4:14b"]
-            logger.info(
-                f"Falling back to default model: {self.default_model or 'phi4:14b'}"
-            )
+            self.available_models = [self.default_model]
+            logger.info(f"Falling back to default model: {self.default_model}")
 
     def _filter_tests_by_models(self, suite: TestSuite) -> None:
         """Filter tests based on available models.

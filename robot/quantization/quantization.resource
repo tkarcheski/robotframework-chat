@@ -26,7 +26,7 @@ Resolve Base Model
     IF    "${BASE_MODEL}" != ""
         RETURN    ${BASE_MODEL}
     END
-    ${default_model}=    Get Environment Variable    DEFAULT_MODEL    default=phi4:14b
+    ${default_model}=    Get Environment Variable    DEFAULT_MODEL
     RETURN    ${default_model}
 
 Run Degradation Comparison

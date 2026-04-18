@@ -142,7 +142,10 @@ class TestDefaults:
             (tmp_path / "results" / "combined" / "ci_metadata.json").read_text()
         )
         assert data["ollama"]["endpoint"] == "http://localhost:11434"
-        assert data["ollama"]["default_model"] == "phi4:14b"
+        # No hardcoded model fallback: empty when DEFAULT_MODEL is unset,
+        # so downstream consumers can detect & surface "unknown" instead of
+        # silently mislabelling runs with a stale default.
+        assert data["ollama"]["default_model"] == ""
 
     def test_creates_output_directory(self, tmp_path):
         env = _clean_env()

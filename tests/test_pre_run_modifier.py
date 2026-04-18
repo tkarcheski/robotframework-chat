@@ -10,16 +10,18 @@ from rfc.pre_run_modifier import ModelAwarePreRunModifier, main
 
 class TestPreRunModifierInit:
     @patch("rfc.pre_run_modifier.OllamaClient")
-    def test_defaults(self, MockClient):
+    def test_missing_model_raises(self, MockClient):
+        """No silent fallback: instantiation must fail when DEFAULT_MODEL is unset.
+
+        A hardcoded default (e.g. ``phi4:14b``) would silently mislabel runs.
+        """
+        import pytest
+
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("OLLAMA_ENDPOINT", None)
             os.environ.pop("DEFAULT_MODEL", None)
-            mod = ModelAwarePreRunModifier()
-            assert mod.ollama_endpoint == "http://localhost:11434"
-            assert mod.config_path == "robot/ci/models.yaml"
-            assert mod.default_model == "phi4:14b"
-            assert mod.available_models == []
-            assert mod.model_config == {}
+            with pytest.raises(ValueError, match="No model configured"):
+                ModelAwarePreRunModifier()
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_custom_args(self, MockClient):
@@ -76,7 +78,7 @@ class TestQueryAvailableModels:
         mock_client.list_models.return_value = ["llama3", "mistral", "phi3"]
         MockClient.return_value = mock_client
 
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod._query_available_models()
 
         assert mod.available_models == ["llama3", "mistral", "phi3"]
@@ -96,7 +98,7 @@ class TestQueryAvailableModels:
 class TestFilterTestsByModels:
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_no_model_tags_keeps_all(self, MockClient):
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3"]
 
         suite = MagicMock()
@@ -112,7 +114,7 @@ class TestFilterTestsByModels:
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_removes_tests_requiring_unavailable_model(self, MockClient):
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3"]
 
         suite = MagicMock()
@@ -133,7 +135,7 @@ class TestFilterTestsByModels:
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_keeps_tests_with_available_model(self, MockClient):
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3", "codellama"]
 
         suite = MagicMock()
@@ -151,7 +153,7 @@ class TestFilterTestsByModels:
 class TestAddMetadata:
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_adds_ci_metadata(self, MockClient):
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.ci_metadata = {"Branch": "main", "Commit_SHA": "abc123"}
         mod.available_models = ["llama3"]
 
@@ -184,7 +186,7 @@ class TestAddMetadata:
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_skips_empty_metadata(self, MockClient):
-        mod = ModelAwarePreRunModifier()
+        mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.ci_metadata = {"Branch": "main", "Tag": ""}
         mod.available_models = []
 
@@ -235,6 +237,7 @@ class TestPreRunModifierStartSuite:
 
 
 class TestPreRunModifierMain:
+    @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_main_with_models(self, MockClient, capsys):
         mock_client = MagicMock()
@@ -246,6 +249,7 @@ class TestPreRunModifierMain:
         assert "Available models" in captured.out
         assert result == 0
 
+    @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_main_no_models(self, MockClient, capsys):
         mock_client = MagicMock()

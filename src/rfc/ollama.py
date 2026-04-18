@@ -77,7 +77,9 @@ class OllamaClient:
         if not base_url:
             base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
         if not model:
-            model = os.getenv("DEFAULT_MODEL", "phi4:14b")
+            # No hardcoded fallback: a stale default silently mislabels runs.
+            # Let the non-empty-string validation below raise instead.
+            model = os.getenv("DEFAULT_MODEL", "")
         if timeout is None:
             timeout = int(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_TIMEOUT)))
         if not isinstance(base_url, str) or not base_url:
