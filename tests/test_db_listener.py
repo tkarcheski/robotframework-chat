@@ -319,6 +319,25 @@ class TestDbListenerEndSuiteArchival:
         assert runs[0]["model_name"] == "mistral"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_model_name_unknown_without_any_source(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        """No Robot variable, no env var, no CI metadata → ``unknown`` — never
+        a hardcoded default like ``phi4:14b``."""
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        with patch.dict(os.environ, {}, clear=True):
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["model_name"] == "unknown"
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_model_name_from_robot_variable_overrides_env(
         self, _mock_ci: MagicMock, tmp_path: object
     ) -> None:

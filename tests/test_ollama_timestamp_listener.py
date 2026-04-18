@@ -47,6 +47,34 @@ class TestOllamaTimestampListener:
         assert listener._chats == []
         assert listener._current_kw_record is None
 
+    def test_suite_start_picks_up_robot_variables(self) -> None:
+        """``--variable DEFAULT_MODEL:X`` must propagate into the audit log."""
+        with patch.dict(os.environ, {}, clear=True):
+            listener = OllamaTimestampListener()
+        assert listener._model == "unknown"
+        with patch("rfc.ollama_timestamp_listener.BuiltIn") as mock_builtin_cls:
+            mock_builtin_cls.return_value.get_variable_value.side_effect = (
+                lambda name: {
+                    "${DEFAULT_MODEL}": "llama3:70b",
+                    "${OLLAMA_ENDPOINT}": "http://ai-node:11434",
+                }.get(name)
+            )
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        assert listener._model == "llama3:70b"
+        assert listener._endpoint == "http://ai-node:11434"
+
+    def test_suite_start_keeps_env_when_no_robot_variable(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"DEFAULT_MODEL": "phi4:14b", "OLLAMA_ENDPOINT": "http://x:11434"},
+        ):
+            listener = OllamaTimestampListener()
+            with patch("rfc.ollama_timestamp_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        assert listener._model == "phi4:14b"
+        assert listener._endpoint == "http://x:11434"
+
     def test_start_keyword_tracks_ask_llm(self) -> None:
         listener = OllamaTimestampListener()
         listener.start_keyword(

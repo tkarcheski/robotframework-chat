@@ -22,6 +22,7 @@ from datetime import datetime, UTC
 from typing import Any, ClassVar, Dict, List, Optional
 
 from robot.api import logger  # type: ignore
+from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from .base_listener import BaseListener
 
@@ -72,6 +73,25 @@ class OllamaTimestampListener(BaseListener):
     # ------------------------------------------------------------------
     # BaseListener hooks
     # ------------------------------------------------------------------
+
+    def on_suite_start(self, data: Any, result: Any) -> None:
+        """Pick up ``--variable DEFAULT_MODEL:X`` and ``--variable
+        OLLAMA_ENDPOINT:Y`` once Robot context exists.
+
+        ``__init__`` runs before Robot parses ``--variable``, so env-var reads
+        there miss values set only via the CLI flag.
+        """
+        try:
+            builtin = BuiltIn()
+            robot_model = builtin.get_variable_value("${DEFAULT_MODEL}")
+            robot_endpoint = builtin.get_variable_value("${OLLAMA_ENDPOINT}")
+        except Exception:
+            robot_model = None  # Not running inside Robot (e.g. unit tests)
+            robot_endpoint = None
+        if robot_model:
+            self._model = robot_model
+        if robot_endpoint:
+            self._endpoint = robot_endpoint
 
     def on_keyword_start(self, data: Any, result: Any, keyword_type: str) -> None:
         """Record the start time when an Ollama keyword begins."""
