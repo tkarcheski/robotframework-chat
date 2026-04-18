@@ -33,10 +33,17 @@ class TestCollectGitMetadata:
         assert result["Timestamp"].endswith("Z")
         assert "+00:00" not in result["Timestamp"]
 
-    def test_always_has_default_model(self):
+    def test_default_model_absent_without_env(self):
+        """Without DEFAULT_MODEL set, the key is filtered out instead of
+        defaulting to a hardcoded model name that would silently mislabel runs."""
         with patch.dict(os.environ, {}, clear=True):
             result = collect_ci_metadata()
-        assert "Default_Model" in result
+        assert "Default_Model" not in result
+
+    def test_default_model_from_env(self):
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "llama3:70b"}, clear=True):
+            result = collect_ci_metadata()
+        assert result["Default_Model"] == "llama3:70b"
 
     def test_always_has_ollama_endpoint(self):
         with patch.dict(os.environ, {}, clear=True):
