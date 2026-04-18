@@ -151,7 +151,9 @@ def collect_ci_metadata() -> Dict[str, str]:
 
     # Common fields (always present regardless of platform)
     metadata["Ollama_Endpoint"] = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    metadata["Default_Model"] = os.getenv("DEFAULT_MODEL", "phi4:14b")
+    # No silent fallback: downstream consumers (DbListener, import_test_results)
+    # fall through to "unknown". A hardcoded default here would mislabel runs.
+    metadata["Default_Model"] = os.getenv("DEFAULT_MODEL", "")
     metadata["Timestamp"] = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
 
     return {k: v for k, v in metadata.items() if v}

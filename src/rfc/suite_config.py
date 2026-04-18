@@ -159,7 +159,14 @@ def node_dropdown_options() -> list[dict[str, str]]:
 
 
 def default_model() -> str:
-    return defaults().get("model", "phi4:14b")
+    model = defaults().get("model", "")
+    if not model:
+        raise ValueError(
+            "config/test_suites.yaml must define defaults.model (or set "
+            "DEFAULT_MODEL env var): a hardcoded fallback would silently "
+            "mislabel runs."
+        )
+    return model
 
 
 def default_iq_levels() -> list[str]:

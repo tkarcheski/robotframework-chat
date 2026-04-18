@@ -12,14 +12,22 @@ from rfc.ollama import OllamaClient, LLMClient, OllamaModelNotFoundError
 
 
 class TestOllamaClientInit:
+    @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3:70b"})
     def test_defaults(self):
         client = OllamaClient()
         assert client.base_url == os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-        assert client.model == os.getenv("DEFAULT_MODEL", "phi4:14b")
+        assert client.model == "llama3:70b"
         assert client.temperature == 0.0
         assert client.max_tokens == 256
         assert client.timeout == 5400
         assert client.max_retries == 2
+
+    def test_missing_model_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without DEFAULT_MODEL env or explicit arg, init must fail loudly
+        instead of silently labelling runs with a stale ``phi4:14b`` default."""
+        monkeypatch.delenv("DEFAULT_MODEL", raising=False)
+        with pytest.raises(ValueError, match="model must be a non-empty string"):
+            OllamaClient()
 
     @patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"})
     def test_default_base_url_from_env(self):

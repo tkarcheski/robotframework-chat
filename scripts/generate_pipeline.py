@@ -65,7 +65,12 @@ def generate_regular(config: dict[str, Any]) -> dict[str, Any]:
     defs = config.get("defaults", {})
     listeners = ci.get("listeners", [])
     job_groups = ci.get("job_groups", {})
-    model = defs.get("model", "phi4:14b")
+    model = defs.get("model")
+    if not model:
+        raise ValueError(
+            "config/test_suites.yaml must define defaults.model: a hardcoded "
+            "fallback would silently mislabel CI runs."
+        )
     endpoint = defs.get("ollama_endpoint", "http://localhost:11434")
 
     pipeline: dict[str, Any] = {
@@ -241,7 +246,7 @@ def generate_dynamic(config: dict[str, Any]) -> dict[str, Any]:
 
 def _report_job(
     upstream_jobs: list[str],
-    model: str = "phi4:14b",
+    model: str | None = None,
     output_pattern: str | None = None,
     combined_dir: str = "results/combined",
 ) -> dict[str, Any]:
@@ -286,7 +291,10 @@ def _report_job(
                 f"$OUTPUT_FILES && "
                 f'echo "Combined report: {combined_dir}/report.html"'
             ),
-            f'uv run python scripts/import_test_results.py {combined_dir}/output.xml --model "{model}"',
+            (
+                f"uv run python scripts/import_test_results.py {combined_dir}/output.xml"
+                + (f' --model "{model}"' if model else "")
+            ),
             "uv run python scripts/generate_ci_metadata.py || echo 'Metadata generation skipped'",
         ],
         "artifacts": {

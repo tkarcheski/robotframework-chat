@@ -10,7 +10,7 @@ Library           Collections
 *** Variables ***
 ${SWEBENCH_SPLIT}       test
 ${MAX_INSTANCES}        10
-${DEFAULT_MODEL}        %{DEFAULT_MODEL=phi4:14b}
+${DEFAULT_MODEL}        %{DEFAULT_MODEL}
 
 *** Test Cases ***
 SWE-bench Patch Generation And Validation

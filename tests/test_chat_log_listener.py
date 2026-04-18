@@ -64,6 +64,35 @@ class TestChatLogListener:
             listener = ChatLogListener()
         assert listener._model == "unknown"
 
+    def test_suite_start_picks_up_robot_variable(self) -> None:
+        """``--variable DEFAULT_MODEL:X`` must reach the listener even when
+        the env var was not set before robot started."""
+        with patch.dict(os.environ, {}, clear=True):
+            listener = ChatLogListener()
+        assert listener._model == "unknown"
+        with patch("rfc.chat_log_listener.BuiltIn") as mock_builtin_cls:
+            mock_builtin_cls.return_value.get_variable_value.return_value = "llama3:70b"
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        assert listener._model == "llama3:70b"
+
+    def test_suite_start_robot_variable_overrides_env(self) -> None:
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
+            listener = ChatLogListener()
+            with patch("rfc.chat_log_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "qwen3:30b"
+                )
+                listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        assert listener._model == "qwen3:30b"
+
+    def test_suite_start_keeps_env_when_no_robot_variable(self) -> None:
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "phi4:14b"}):
+            listener = ChatLogListener()
+            with patch("rfc.chat_log_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = None
+                listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        assert listener._model == "phi4:14b"
+
     # ------------------------------------------------------------------
     # Config keywords
     # ------------------------------------------------------------------

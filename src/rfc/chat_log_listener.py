@@ -19,6 +19,7 @@ from datetime import datetime, UTC
 from typing import Any, ClassVar, Dict, List, Tuple
 
 from robot.api import logger  # type: ignore
+from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from .base_listener import BaseListener
 
@@ -54,6 +55,19 @@ class ChatLogListener(BaseListener):
     # ------------------------------------------------------------------
     # BaseListener hooks
     # ------------------------------------------------------------------
+
+    def on_suite_start(self, data: Any, result: Any) -> None:
+        """Pick up ``--variable DEFAULT_MODEL:X`` once Robot context exists.
+
+        ``__init__`` runs before Robot parses ``--variable``, so the env-var
+        read there misses values set only via the CLI flag.
+        """
+        try:
+            robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
+        except Exception:
+            robot_model = None  # Not running inside Robot (e.g. unit tests)
+        if robot_model:
+            self._model = robot_model
 
     def on_suite_end(self, data: Any, result: Any) -> None:
         if not self._entries:
