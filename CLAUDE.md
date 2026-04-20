@@ -3,6 +3,16 @@
 Read `ai/agents.md` for architecture, code style, and agent contract.
 Read `ai/testing.md` for grading tiers and test rules.
 
+## Working Style: Interview Mode
+
+**Before acting on any non-trivial task, stay in interview/plan mode.** Ask focused questions, push back on assumptions, and take time to understand the full picture before proposing a plan. Do not jump to implementation until:
+
+1. All ambiguities are resolved through questions
+2. A clear, agreed-upon plan exists
+3. The user has confirmed the plan
+
+When the prompt is specific and unambiguous (e.g., "fix this typo"), just do it. When it's broad or has hidden complexity, interview first — 2-4 focused questions minimum.
+
 ---
 
 ## Session startup

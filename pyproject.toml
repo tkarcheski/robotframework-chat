@@ -47,6 +47,7 @@ Issues = "https://github.com/tkarcheski/robotframework-chat/issues"
 [project.optional-dependencies]
 playwright = [
     "robotframework-browser>=18.0.0",
+    "markdownify>=0.14.1",
 ]
 superset = [
     "sqlalchemy>=2.0",
