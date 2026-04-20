@@ -3,13 +3,12 @@ Documentation     Browser-based GitHub repository evaluation.
 ...               Visits the public GitHub repo and issues page, converts to
 ...               markdown, and asks the LLM to evaluate project health and
 ...               suggest improvements.
-Library           Browser    WITH NAME    Playwright
 Library           rfc.browser_keywords.BrowserKeywords    WITH NAME    Page
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           String
 
-Suite Setup       New Browser    chromium    headless=true
-Suite Teardown    Close Browser
+Suite Setup       Import Browser Or Skip
+Suite Teardown    Run Keyword And Ignore Error    Close Browser
 
 *** Variables ***
 ${GITHUB_REPO_URL}      https://github.com/tkarcheski/robotframework-chat
@@ -73,5 +72,15 @@ GitHub Issues Count Is Reasonable
         Should Be True    ${open_count} < 50
         ...    Too many open issues (${open_count}). Triage needed.
     ELSE
-        Log    Could not extract issue count from page.
+        Fail    Could not extract issue count from page. GitHub markup may have changed.
     END
+
+*** Keywords ***
+Import Browser Or Skip
+    [Documentation]    Import Browser library; skip suite if playwright is not installed.
+    TRY
+        Import Library    Browser
+    EXCEPT
+        Skip    Browser library not installed. Install with: uv sync --extra playwright && rfbrowser init
+    END
+    New Browser    chromium    headless=true

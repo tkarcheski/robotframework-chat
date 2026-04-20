@@ -3,14 +3,13 @@ Documentation     Browser-based Superset dashboard evaluation.
 ...               Logs into Superset, visits each dashboard, converts the page
 ...               to markdown, and asks the LLM to evaluate data quality and
 ...               suggest improvements.
-Library           Browser    WITH NAME    Playwright
 Library           rfc.browser_keywords.BrowserKeywords    WITH NAME    Page
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           String
 Library           OperatingSystem
 
-Suite Setup       Open Superset And Login
-Suite Teardown    Close Browser
+Suite Setup       Import Browser And Login Or Skip
+Suite Teardown    Run Keyword And Ignore Error    Close Browser
 
 *** Variables ***
 ${SUPERSET_URL}         http://ai1:8088
@@ -75,8 +74,13 @@ LLM Evaluates Model Details Dashboard
     Log    LLM Feedback: ${feedback}
 
 *** Keywords ***
-Open Superset And Login
-    [Documentation]    Launch browser, navigate to Superset, and authenticate.
+Import Browser And Login Or Skip
+    [Documentation]    Import Browser library; skip suite if playwright is not installed.
+    TRY
+        Import Library    Browser
+    EXCEPT
+        Skip    Browser library not installed. Install with: uv sync --extra playwright && rfbrowser init
+    END
     New Browser    chromium    headless=true
     New Page    ${SUPERSET_URL}/login/
     Wait For Load State    networkidle    timeout=30s
