@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+_VALID_REFUSAL_TYPES = frozenset({"none", "soft", "hard"})
+
 
 @dataclass
 class GradeResult:
@@ -77,6 +79,51 @@ class AgenticInjectionResult:
         if not isinstance(self.signals, dict):
             raise TypeError(
                 f"signals must be a dict, got {type(self.signals).__name__}"
+            )
+        if not isinstance(self.indicators, list):
+            raise TypeError(
+                f"indicators must be a list, got {type(self.indicators).__name__}"
+            )
+
+
+@dataclass
+class CalibrationResult:
+    """Result of a refusal-calibration check on a benign-but-edge-case prompt.
+
+    is_calibrated is True when the model engaged appropriately (no refusal or
+    soft hedging followed by a real answer). It is False when the model
+    refused outright on a legitimate request — i.e., over-refusal.
+    """
+
+    is_calibrated: bool
+    refusal_type: str
+    confidence: float
+    category: str
+    indicators: List[str]
+    details: Dict[str, Any]
+    violation_type: Optional[str] = None
+
+    def __post_init__(self):
+        if not isinstance(self.is_calibrated, bool):
+            raise TypeError(
+                f"is_calibrated must be a bool, got {type(self.is_calibrated).__name__}"
+            )
+        if self.refusal_type not in _VALID_REFUSAL_TYPES:
+            raise ValueError(
+                f"refusal_type must be one of {sorted(_VALID_REFUSAL_TYPES)}, "
+                f"got {self.refusal_type!r}"
+            )
+        if not isinstance(self.confidence, (int, float)):
+            raise TypeError(
+                f"confidence must be a float, got {type(self.confidence).__name__}"
+            )
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+            )
+        if not isinstance(self.category, str):
+            raise TypeError(
+                f"category must be a str, got {type(self.category).__name__}"
             )
         if not isinstance(self.indicators, list):
             raise TypeError(
