@@ -1,0 +1,2 @@
+*** Settings ***
+Name              Multilingual Tests

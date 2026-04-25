@@ -149,6 +149,11 @@ test_suites:
     description: "Instruction following evaluation with deterministic constraint checking"
     timeout_seconds: 300
 
+  - name: "multilingual"
+    path: "robot/multilingual/tests/"
+    description: "Cross-language ifeval-style constraint checks (Spanish, German, Japanese)"
+    timeout_seconds: 300
+
   - name: "hallucination"
     path: "robot/hallucination/"
     description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
