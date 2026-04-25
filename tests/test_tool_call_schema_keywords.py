@@ -147,6 +147,33 @@ class TestExtractToolCall:
         assert call is not None
         assert call["tool"] == "get_user_by_id"
 
+    def test_skips_name_only_object_without_arguments(self) -> None:
+        """A `{"name": "..."}` blob with no arguments-shaped key is metadata, not a call."""
+        text = (
+            '{"name": "metadata"}\n'
+            '{"tool": "get_user_by_id", "arguments": {"user_id": 7}}'
+        )
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "get_user_by_id"
+        assert call["arguments"] == {"user_id": 7}
+
+    def test_anthropic_tool_use_input_args(self) -> None:
+        """Anthropic-style tool_use uses `input` for arguments — must be parsed."""
+        text = '{"tool_use": {"name": "create_user", "input": {"username": "alice"}}}'
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "create_user"
+        assert call["arguments"] == {"username": "alice"}
+
+    def test_anthropic_top_level_input_args(self) -> None:
+        """A top-level Anthropic-style call (`name` + `input`) must also work."""
+        text = '{"name": "create_user", "input": {"username": "alice"}}'
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "create_user"
+        assert call["arguments"] == {"username": "alice"}
+
 
 # ---------------------------------------------------------------------------
 # validate_against_schema: deterministic schema validation

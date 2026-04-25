@@ -87,8 +87,18 @@ def _iter_balanced_json_objects(text: str) -> Iterator[str]:
                     start = -1
 
 
+_ARG_KEYS = ("arguments", "parameters", "input")
+
+
 def _try_parse_call(blob: str) -> Optional[Dict[str, Any]]:
-    """Parse one balanced JSON blob into a normalized tool call, or None."""
+    """Parse one balanced JSON blob into a normalized tool call, or None.
+
+    A blob is treated as a tool call only if it has the unambiguous
+    ``tool`` key, OR it has a ``name`` plus at least one arguments-shaped
+    key (``arguments`` / ``parameters`` / ``input``).  Bare ``{"name":
+    "..."}`` metadata blobs are rejected so the caller can keep scanning
+    for the real call.
+    """
     try:
         parsed = json.loads(blob)
     except json.JSONDecodeError:
@@ -96,17 +106,26 @@ def _try_parse_call(blob: str) -> Optional[Dict[str, Any]]:
     if not isinstance(parsed, dict):
         return None
 
-    # Unwrap {"function": {...}} or {"tool_call": {...}} envelopes.
+    # Unwrap {"function": {...}} / {"tool_call": {...}} / {"tool_use": {...}} envelopes.
     for wrapper in ("function", "tool_call", "tool_use"):
         if wrapper in parsed and isinstance(parsed[wrapper], dict):
             parsed = parsed[wrapper]
             break
 
+    has_tool_key = isinstance(parsed.get("tool"), str) and parsed["tool"]
+    has_args_key = any(k in parsed for k in _ARG_KEYS)
     name = parsed.get("tool") or parsed.get("name")
     if not isinstance(name, str) or not name:
         return None
+    if not has_tool_key and not has_args_key:
+        # Bare {"name": "..."} — likely metadata, not a call.
+        return None
 
-    args = parsed.get("arguments", parsed.get("parameters", {}))
+    args: Any = {}
+    for key in _ARG_KEYS:
+        if key in parsed:
+            args = parsed[key]
+            break
     if isinstance(args, str):
         # OpenAI emits arguments as a JSON string; parse it.
         try:
