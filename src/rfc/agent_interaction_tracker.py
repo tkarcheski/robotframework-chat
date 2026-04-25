@@ -70,6 +70,12 @@ class AgentInteractionTracker:
         return self._builder is not None
 
     def start_interaction(self, turn_number: int) -> None:
+        if self._builder is not None:
+            raise RuntimeError(
+                f"Cannot start interaction {turn_number}: "
+                f"interaction {self._builder.turn_number} is already active. "
+                f"Call end_interaction() first."
+            )
         self._builder = _InteractionBuilder(turn_number=turn_number)
 
     def add_message(self, role: str, content: str) -> None:

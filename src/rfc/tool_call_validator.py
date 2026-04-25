@@ -58,6 +58,9 @@ class ToolCallValidator:
         expected_type: type | None = None,
     ) -> tuple[bool, str]:
         """Check result matches expectations."""
+        if result.tool_call_id != call.id:
+            return False, f"Result tool_call_id '{result.tool_call_id}' does not match call.id '{call.id}'"
+
         if not result.success:
             return False, f"Tool call failed: {result.error}"
 
@@ -66,7 +69,9 @@ class ToolCallValidator:
                 if expected_type is int:
                     int(result.output)
                 elif expected_type is dict:
-                    json.loads(result.output)
+                    parsed = json.loads(result.output)
+                    if not isinstance(parsed, dict):
+                        return False, f"Expected dict, got {type(parsed).__name__}"
             except (ValueError, json.JSONDecodeError) as e:
                 return False, f"Result type mismatch: {e}"
 

@@ -164,6 +164,11 @@ class TestAgentInteractionTracker:
         with pytest.raises(RuntimeError, match="No active interaction"):
             tracker.add_message("user", "Hello")
 
+    def test_start_interaction_while_active_raises(self, active_tracker):
+        """Cannot start a new interaction while one is already active."""
+        with pytest.raises(RuntimeError, match="already active"):
+            active_tracker.start_interaction(2)
+
     def test_full_realistic_workflow(self):
         """Simulate realistic agent workflow: analyze issue → clone → edit → create PR."""
         tracker = AgentInteractionTracker(

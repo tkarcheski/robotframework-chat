@@ -185,6 +185,36 @@ class TestToolCallValidator:
         valid, msg = validator.validate_result(call, result, expected_type=dict)
         assert valid is True
 
+    def test_validate_result_mismatched_call_id(self):
+        """Result tool_call_id must match call.id."""
+        validator = ToolCallValidator()
+        call = ToolCall("c1", "tool_a", {}, 1.0, 0)
+        result = ToolResult("c2", True, "Success")
+
+        valid, msg = validator.validate_result(call, result)
+        assert valid is False
+        assert "does not match" in msg
+
+    def test_validate_result_type_dict_rejects_array(self):
+        """expected_type=dict must verify result is dict, not array."""
+        validator = ToolCallValidator()
+        call = ToolCall("c1", "parse_json", {}, 1.0, 0)
+        result = ToolResult("c1", True, json.dumps([1, 2, 3]))
+
+        valid, msg = validator.validate_result(call, result, expected_type=dict)
+        assert valid is False
+        assert "Expected dict" in msg
+
+    def test_validate_result_type_dict_rejects_string(self):
+        """expected_type=dict must verify result is dict, not string."""
+        validator = ToolCallValidator()
+        call = ToolCall("c1", "parse_json", {}, 1.0, 0)
+        result = ToolResult("c1", True, json.dumps("just a string"))
+
+        valid, msg = validator.validate_result(call, result, expected_type=dict)
+        assert valid is False
+        assert "Expected dict" in msg
+
 
 class TestToolResultValidator:
     """ToolResultValidator: Assert output properties."""
