@@ -1,6 +1,7 @@
 """Tests for rfc.tool_call_schema_keywords.ToolCallSchemaKeywords."""
 
 import json
+from typing import Any, List, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,24 @@ from rfc.tool_call_schema_keywords import (
     extract_tool_call,
     validate_against_schema,
 )
+
+
+def _capture_rfc_data() -> Tuple[List[Tuple[str, str]], Any]:
+    """Patch ``emit_rfc_data`` to record all emitted (key, value) pairs."""
+    from unittest.mock import patch as _patch
+
+    captured: List[Tuple[str, str]] = []
+
+    def _fake(key: str, value: str) -> None:
+        captured.append((key, value))
+
+    return captured, _patch(
+        "rfc.tool_call_schema_keywords.emit_rfc_data", side_effect=_fake
+    )
+
+
+def _score_for(captured: List[Tuple[str, str]]) -> str:
+    return next(v for k, v in captured if k == "score")
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +125,27 @@ class TestExtractToolCall:
 
     def test_returns_none_when_json_lacks_tool_name(self) -> None:
         assert extract_tool_call('{"foo": "bar"}') is None
+
+    def test_skips_first_json_block_without_tool_name(self) -> None:
+        """A leading metadata JSON should not block extraction of the real call."""
+        text = (
+            '{"thinking": "I should look this up."}\n'
+            "Here is the call:\n"
+            '{"tool": "get_user_by_id", "arguments": {"user_id": 7}}'
+        )
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "get_user_by_id"
+        assert call["arguments"] == {"user_id": 7}
+
+    def test_skips_unparseable_first_block(self) -> None:
+        """A malformed first ``{...}`` should not stop later valid extraction."""
+        text = (
+            '{not json at all}\n{"tool": "get_user_by_id", "arguments": {"user_id": 7}}'
+        )
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "get_user_by_id"
 
 
 # ---------------------------------------------------------------------------
@@ -294,3 +334,63 @@ class TestEvaluateToolCall:
         kw = ToolCallSchemaKeywords()
         with pytest.raises(json.JSONDecodeError):
             kw.evaluate_tool_call(prompt="x", tools="not json")
+
+
+class TestEvaluateToolCallScoring:
+    """The emitted RFC score must reflect *all* failure modes, not just schema validity."""
+
+    @patch("rfc.tool_call_schema_keywords.create_provider")
+    def test_wrong_tool_selection_scores_zero(self, mock_create: MagicMock) -> None:
+        """Wrong tool but valid schema → schema_valid=True yet score=0.0."""
+        captured, ctx = _capture_rfc_data()
+        kw = ToolCallSchemaKeywords()
+        kw.client.generate.return_value = json.dumps(
+            {"tool": "get_user_by_email", "arguments": {"email": "a@b.com"}}
+        )
+        with ctx:
+            result = kw.evaluate_tool_call(
+                prompt="Look up user 42.",
+                tools=json.dumps([GET_BY_ID_SCHEMA, GET_BY_EMAIL_SCHEMA]),
+                expected_tool="get_user_by_id",
+            )
+        assert result["schema_valid"] is True
+        assert result["tool_correct"] is False
+        assert result["overall_pass"] is False
+        assert _score_for(captured) == "0.0"
+
+    @patch("rfc.tool_call_schema_keywords.create_provider")
+    def test_wrong_arg_values_score_zero(self, mock_create: MagicMock) -> None:
+        """Right tool + valid schema but wrong extracted value → score=0.0."""
+        captured, ctx = _capture_rfc_data()
+        kw = ToolCallSchemaKeywords()
+        kw.client.generate.return_value = json.dumps(
+            {"tool": "get_user_by_id", "arguments": {"user_id": 99}}
+        )
+        with ctx:
+            result = kw.evaluate_tool_call(
+                prompt="Look up user 42.",
+                tools=json.dumps([GET_BY_ID_SCHEMA]),
+                expected_tool="get_user_by_id",
+                expected_args=json.dumps({"user_id": 42}),
+            )
+        assert result["schema_valid"] is True
+        assert result["arg_value_errors"]
+        assert result["overall_pass"] is False
+        assert _score_for(captured) == "0.0"
+
+    @patch("rfc.tool_call_schema_keywords.create_provider")
+    def test_fully_correct_call_scores_one(self, mock_create: MagicMock) -> None:
+        captured, ctx = _capture_rfc_data()
+        kw = ToolCallSchemaKeywords()
+        kw.client.generate.return_value = json.dumps(
+            {"tool": "get_user_by_id", "arguments": {"user_id": 42}}
+        )
+        with ctx:
+            result = kw.evaluate_tool_call(
+                prompt="Look up user 42.",
+                tools=json.dumps([GET_BY_ID_SCHEMA]),
+                expected_tool="get_user_by_id",
+                expected_args=json.dumps({"user_id": 42}),
+            )
+        assert result["overall_pass"] is True
+        assert _score_for(captured) == "1.0"

@@ -16,6 +16,12 @@ Assert Schema Valid
     Should Be True    ${result}[schema_valid]
     ...    Schema validation failed: missing=${result}[missing_required] extra=${result}[extra_fields] type_errors=${result}[type_errors] enum=${result}[enum_violations]
 
+Assert Overall Pass
+    [Documentation]    Assert every grading dimension is clean (schema, tool, args).
+    [Arguments]    ${result}
+    Should Be True    ${result}[overall_pass]
+    ...    Overall pass failed: schema_valid=${result}[schema_valid] tool_correct=${result}[tool_correct] arg_value_errors=${result}[arg_value_errors]
+
 Assert Tool Selected
     [Documentation]    Assert the LLM picked the expected tool name.
     [Arguments]    ${result}    ${expected}

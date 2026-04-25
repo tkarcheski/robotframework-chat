@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
@@ -57,8 +57,8 @@ def _strip_markdown_fence(text: str) -> str:
     return text
 
 
-def _find_balanced_json_object(text: str) -> Optional[str]:
-    """Return the first balanced ``{...}`` substring, or None."""
+def _iter_balanced_json_objects(text: str) -> Iterator[str]:
+    """Yield every balanced ``{...}`` substring in *text*, in order."""
     depth = 0
     start = -1
     in_string = False
@@ -80,27 +80,15 @@ def _find_balanced_json_object(text: str) -> Optional[str]:
                 start = i
             depth += 1
         elif ch == "}":
-            depth -= 1
-            if depth == 0 and start != -1:
-                return text[start : i + 1]
-    return None
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    yield text[start : i + 1]
+                    start = -1
 
 
-def extract_tool_call(response: str) -> Optional[Dict[str, Any]]:
-    """Pull a normalized ``{"tool", "arguments"}`` dict from an LLM response.
-
-    Tolerates markdown fences, surrounding prose, OpenAI-style
-    ``{"name", "arguments"}``, Anthropic-style ``{"function": {...}}``
-    wrappers, and ``arguments`` emitted as a stringified JSON blob.
-
-    Returns None if no recognizable tool call is found.
-    """
-    if not response:
-        return None
-    cleaned = _strip_markdown_fence(response)
-    blob = _find_balanced_json_object(cleaned)
-    if blob is None:
-        return None
+def _try_parse_call(blob: str) -> Optional[Dict[str, Any]]:
+    """Parse one balanced JSON blob into a normalized tool call, or None."""
     try:
         parsed = json.loads(blob)
     except json.JSONDecodeError:
@@ -129,6 +117,28 @@ def extract_tool_call(response: str) -> Optional[Dict[str, Any]]:
         args = {}
 
     return {"tool": name, "arguments": args}
+
+
+def extract_tool_call(response: str) -> Optional[Dict[str, Any]]:
+    """Pull a normalized ``{"tool", "arguments"}`` dict from an LLM response.
+
+    Tolerates markdown fences, surrounding prose, OpenAI-style
+    ``{"name", "arguments"}``, Anthropic-style ``{"function": {...}}``
+    wrappers, and ``arguments`` emitted as a stringified JSON blob.
+    Iterates through every balanced ``{...}`` block so that auxiliary
+    JSON (thinking traces, metadata) preceding the real call does not
+    cause a false ``no_call_detected``.
+
+    Returns None if no recognizable tool call is found.
+    """
+    if not response:
+        return None
+    cleaned = _strip_markdown_fence(response)
+    for blob in _iter_balanced_json_objects(cleaned):
+        call = _try_parse_call(blob)
+        if call is not None:
+            return call
+    return None
 
 
 def _empty_validation_result() -> Dict[str, Any]:
@@ -293,8 +303,11 @@ class ToolCallSchemaKeywords:
                     arg_errors.append({"field": field, "expected": want, "actual": got})
         result["arg_value_errors"] = arg_errors
         result["response"] = response
+        result["overall_pass"] = bool(
+            result["schema_valid"] and result["tool_correct"] and not arg_errors
+        )
 
-        emit_rfc_data("score", "1.0" if result["schema_valid"] else "0.0")
+        emit_rfc_data("score", "1.0" if result["overall_pass"] else "0.0")
         emit_rfc_data("actual_answer", response)
         emit_rfc_data(
             "expected_answer",
