@@ -6,7 +6,7 @@ Documentation     Numerical Accuracy Tests
 ...               and mathematics. Extends the math test suite with factual
 ...               (not derived) numerics.
 
-Resource          ../../resources/ask_and_validate.resource
+Resource          ../resources/ask_and_validate.resource
 Variables         ../variables/numerical_facts.yaml
 
 Default Tags      hallucination    numerical    tier:2    verify:llm

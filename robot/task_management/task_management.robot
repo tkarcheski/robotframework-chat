@@ -1,7 +1,7 @@
 *** Settings ***
 Documentation     Tests LLM task management abilities: prioritization, decomposition,
 ...               dependency analysis, triage, scheduling, and planning.
-Resource          ../../resources/ask_and_validate.resource
+Resource          ../resources/ask_and_validate.resource
 
 *** Test Cases ***
 IQ 100 Simple Task Prioritization
