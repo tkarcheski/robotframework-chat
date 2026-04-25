@@ -7,6 +7,7 @@ Suite Teardown    Cleanup LLM Suite
 
 *** Variables ***
 ${OLLAMA_CONTAINER_NAME}    rfc-ollama-${SUITE_NAME}
+${DEFAULT_MODEL}            %{DEFAULT_MODEL}
 
 *** Keywords ***
 Start LLM Suite
@@ -19,7 +20,7 @@ Start LLM Suite
     Set Suite Variable    ${OLLAMA_CONTAINER_NAME}    ${unique_name}
 
     # Start fresh container with unique name
-    ${container}=    Start LLM Container    OLLAMA_CPU    ${OLLAMA_CONTAINER_NAME}    %{DEFAULT_MODEL}
+    ${container}=    Start LLM Container    OLLAMA_CPU    ${OLLAMA_CONTAINER_NAME}    ${DEFAULT_MODEL}
     Log    LLM suite started with container: ${container} (${OLLAMA_CONTAINER_NAME}) on port ${OLLAMA_PORT}
 
 Cleanup LLM Suite
