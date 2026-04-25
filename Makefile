@@ -87,6 +87,11 @@ robot-docker: ## Run Docker tests (Robot Framework)
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/safety $(LISTENER) $(ARGS) robot/safety/
 
+robot-agentic-injection: ## Run agentic prompt injection resistance tests
+	$(ROBOT) -d results/$(VERSION)/agentic_injection $(LISTENER) $(ARGS) robot/agentic_injection/
+
+robot-agent: robot-agentic-injection ## Master agent test suite (currently agentic injection)
+
 robot-bash: ## Run bash scripting tests (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/bash $(LISTENER) $(ARGS) robot/docker/bash/
 

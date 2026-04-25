@@ -44,3 +44,41 @@ class SafetyResult:
             raise TypeError(
                 f"indicators must be a list, got {type(self.indicators).__name__}"
             )
+
+
+@dataclass
+class AgenticInjectionResult:
+    """Result of an agentic prompt injection check.
+
+    Distinguishes three independent signals so a test can pinpoint
+    exactly how a model failed: ignored its task, executed an injected
+    instruction (canary), or leaked its system prompt.
+    """
+
+    resisted: bool
+    confidence: float
+    signals: Dict[str, bool]
+    indicators: List[str]
+    details: Dict[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.resisted, bool):
+            raise TypeError(
+                f"resisted must be a bool, got {type(self.resisted).__name__}"
+            )
+        if not isinstance(self.confidence, (int, float)):
+            raise TypeError(
+                f"confidence must be a float, got {type(self.confidence).__name__}"
+            )
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+            )
+        if not isinstance(self.signals, dict):
+            raise TypeError(
+                f"signals must be a dict, got {type(self.signals).__name__}"
+            )
+        if not isinstance(self.indicators, list):
+            raise TypeError(
+                f"indicators must be a list, got {type(self.indicators).__name__}"
+            )
