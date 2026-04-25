@@ -289,10 +289,89 @@ class TestValidateAgainstSchema:
         assert result["schema_valid"] is True
         assert result["selected_tool"] == "get_user_by_email"
 
-    def test_no_tool_call_in_response(self) -> None:
-        result = validate_against_schema(None, [CREATE_USER_SCHEMA])
+    def test_union_type_accepted_when_value_matches_first(self) -> None:
+        """Union types like ['string', 'null'] should accept either type."""
+        call = {
+            "tool": "create_user",
+            "arguments": {
+                "username": "alice",
+                "email": "a@example.com",
+                "role": "admin",
+                "bio": "optional bio",
+            },
+        }
+        schema = {
+            "name": "create_user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string"},
+                    "email": {"type": "string"},
+                    "role": {"type": "string"},
+                    "bio": {"type": ["string", "null"]},
+                },
+                "required": ["username", "email", "role"],
+            },
+        }
+        result = validate_against_schema(call, [schema])
+        assert result["schema_valid"] is True
+        assert result["type_errors"] == []
+
+    def test_union_type_accepted_when_value_matches_second(self) -> None:
+        """Union type ['string', 'null'] accepts null value."""
+        call = {
+            "tool": "create_user",
+            "arguments": {
+                "username": "alice",
+                "email": "a@example.com",
+                "role": "admin",
+                "bio": None,
+            },
+        }
+        schema = {
+            "name": "create_user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string"},
+                    "email": {"type": "string"},
+                    "role": {"type": "string"},
+                    "bio": {"type": ["string", "null"]},
+                },
+                "required": ["username", "email", "role"],
+            },
+        }
+        result = validate_against_schema(call, [schema])
+        assert result["schema_valid"] is True
+        assert result["type_errors"] == []
+
+    def test_union_type_rejected_when_value_matches_neither(self) -> None:
+        """Union type ['string', 'null'] rejects integer."""
+        call = {
+            "tool": "create_user",
+            "arguments": {
+                "username": "alice",
+                "email": "a@example.com",
+                "role": "admin",
+                "bio": 42,
+            },
+        }
+        schema = {
+            "name": "create_user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string"},
+                    "email": {"type": "string"},
+                    "role": {"type": "string"},
+                    "bio": {"type": ["string", "null"]},
+                },
+                "required": ["username", "email", "role"],
+            },
+        }
+        result = validate_against_schema(call, [schema])
         assert result["schema_valid"] is False
-        assert result["no_call_detected"] is True
+        assert any(e["field"] == "bio" for e in result["type_errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +452,24 @@ class TestEvaluateToolCall:
         kw = ToolCallSchemaKeywords()
         with pytest.raises(json.JSONDecodeError):
             kw.evaluate_tool_call(prompt="x", tools="not json")
+
+    @patch("rfc.tool_call_schema_keywords.create_provider")
+    def test_expected_args_mismatch_when_no_call_detected(
+        self, mock_create: MagicMock
+    ) -> None:
+        """When expected_args is set but no call detected, arg_errors should be populated."""
+        kw = ToolCallSchemaKeywords()
+        kw.client.generate.return_value = "Sorry, I cannot help."
+        result = kw.evaluate_tool_call(
+            prompt="Do something",
+            tools=json.dumps([CREATE_USER_SCHEMA]),
+            expected_tool="create_user",
+            expected_args=json.dumps({"username": "alice"}),
+        )
+        assert result["schema_valid"] is False
+        assert result["no_call_detected"] is True
+        assert len(result["arg_value_errors"]) > 0
+        assert result["arg_value_errors"][0]["field"] == "username"
 
 
 class TestEvaluateToolCallScoring:

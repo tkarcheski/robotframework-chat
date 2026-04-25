@@ -215,16 +215,22 @@ def validate_against_schema(
         if not prop:
             continue
         expected_type = prop.get("type")
-        check = _TYPE_CHECKS.get(expected_type) if expected_type else None
-        if check and not check(value):
-            result["type_errors"].append(
-                {
-                    "field": field,
-                    "expected_type": expected_type,
-                    "actual_value": value,
-                }
+        if expected_type:
+            expected_types = (
+                expected_type if isinstance(expected_type, list) else [expected_type]
             )
-            continue
+            type_checks = [_TYPE_CHECKS.get(t) for t in expected_types]
+            if any(c is None for c in type_checks):
+                continue
+            if not any(check(value) for check in type_checks):
+                result["type_errors"].append(
+                    {
+                        "field": field,
+                        "expected_type": expected_type,
+                        "actual_value": value,
+                    }
+                )
+                continue
         allowed = prop.get("enum")
         if allowed is not None and value not in allowed:
             result["enum_violations"].append(
@@ -315,11 +321,19 @@ class ToolCallSchemaKeywords:
         )
 
         arg_errors: List[Dict[str, Any]] = []
-        if expected_args_dict and call is not None:
-            for field, want in expected_args_dict.items():
-                got = call.get("arguments", {}).get(field, _MISSING)
-                if got != want:
-                    arg_errors.append({"field": field, "expected": want, "actual": got})
+        if expected_args_dict:
+            if call is None:
+                for field, want in expected_args_dict.items():
+                    arg_errors.append(
+                        {"field": field, "expected": want, "actual": _MISSING}
+                    )
+            else:
+                for field, want in expected_args_dict.items():
+                    got = call.get("arguments", {}).get(field, _MISSING)
+                    if got != want:
+                        arg_errors.append(
+                            {"field": field, "expected": want, "actual": got}
+                        )
         result["arg_value_errors"] = arg_errors
         result["response"] = response
         result["overall_pass"] = bool(
