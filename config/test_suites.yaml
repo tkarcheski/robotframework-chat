@@ -209,7 +209,7 @@ test_suites:
 
   agentic-injection:
     label: "Agentic Prompt Injection"
-    path: "robot/agentic_injection/tests"
+    path: "robot/agentic_injection"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, file reads); canary-based detection of agent compliance with embedded instructions"
 
 # Special "run all" entry

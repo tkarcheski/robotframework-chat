@@ -185,7 +185,7 @@ test_suites:
     timeout_seconds: 600
 
   - name: "agentic-injection"
-    path: "robot/agentic_injection/tests/"
+    path: "robot/agentic_injection/"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, files)"
     timeout_seconds: 600
 
