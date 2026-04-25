@@ -10,7 +10,7 @@ Documentation     CEO Agent — Vending Machine Product Pipeline
 ...               quality grading (tier:3) are applied at every stage.
 
 Resource          ceo.resource
-Variables         ${CURDIR}/../variables/vending_inputs.yaml
+Variables         ${CURDIR}/variables/vending_inputs.yaml
 
 Test Timeout      3 minutes
 

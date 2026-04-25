@@ -5,7 +5,7 @@ Documentation     C interview questions - multithreading and concurrency
 ...               synchronization primitives, and common concurrency pitfalls.
 
 Resource          c_interview.resource
-Variables         ${CURDIR}/../variables/c_threading_questions.yaml
+Variables         ${CURDIR}/variables/c_threading_questions.yaml
 
 *** Test Cases ***
 C Interview - Thread Vs Process (IQ:100)

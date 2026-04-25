@@ -6,7 +6,7 @@ Documentation     Fabricated Citation Detection Tests
 ...               Cross-checks extracted references against known-real lists.
 
 Resource          hallucination.resource
-Variables         ../variables/citations.yaml
+Variables         variables/citations.yaml
 
 Default Tags      hallucination    citation    tier:2    verify:llm
 

@@ -7,7 +7,7 @@ Documentation     Adversarial Hallucination Tests
 ...               Asserts the fabricated fact is not reproduced in the summary.
 
 Resource          hallucination.resource
-Variables         ../variables/adversarial_prompts.yaml
+Variables         variables/adversarial_prompts.yaml
 
 Default Tags      hallucination    adversarial    tier:2    verify:llm
 

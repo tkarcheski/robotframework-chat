@@ -5,7 +5,7 @@ Documentation     C core language interview questions - pointers, memory, and fu
 ...               structs, function pointers, and core C behavior.
 
 Resource          c_interview.resource
-Variables         ${CURDIR}/../variables/c_interview_questions.yaml
+Variables         ${CURDIR}/variables/c_interview_questions.yaml
 
 *** Test Cases ***
 C Interview - What Is A Pointer (IQ:100)

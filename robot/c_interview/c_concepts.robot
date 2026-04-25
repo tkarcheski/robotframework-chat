@@ -5,7 +5,7 @@ Documentation     C interview questions - code and concept oriented
 ...               preprocessor, and common pitfalls in C programming.
 
 Resource          c_interview.resource
-Variables         ${CURDIR}/../variables/c_concepts_questions.yaml
+Variables         ${CURDIR}/variables/c_concepts_questions.yaml
 
 *** Test Cases ***
 C Interview - Malloc Vs Calloc Vs Realloc (IQ:110)
