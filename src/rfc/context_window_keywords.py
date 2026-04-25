@@ -14,7 +14,6 @@ from robot.api.deco import keyword
 
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
-from .thinking import estimate_token_count
 
 
 # Filler corpus: Wikipedia-style passages for realistic RAG simulation.

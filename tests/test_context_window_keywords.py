@@ -1,7 +1,5 @@
 """Tests for context_window_keywords — filled-context retrieval stress testing."""
 
-import pytest
-
 from rfc.context_window_keywords import ContextWindowKeywords
 
 
