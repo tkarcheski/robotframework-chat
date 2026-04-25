@@ -194,6 +194,11 @@ test_suites:
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, files)"
     timeout_seconds: 600
 
+  - name: "context-window"
+    path: "robot/context_window/tests/"
+    description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
+    timeout_seconds: 600
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
