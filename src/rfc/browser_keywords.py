@@ -45,8 +45,7 @@ class BrowserKeywords:
         """
         if md is None:
             raise RuntimeError(
-                "markdownify is not installed. "
-                "Run: uv sync --extra playwright"
+                "markdownify is not installed. Run: uv sync --extra playwright"
             )
 
         strip_tags = [t.strip() for t in strip.split(",") if t.strip()]
