@@ -207,6 +207,74 @@ make discover-local-nodes
 
 ---
 
+## Generating Model Cards
+
+Model cards are objective SWOT analysis summaries of LLM test performance. They combine empirical metrics (pass rates, latency, throughput) with LLM-generated qualitative analysis.
+
+### Setup
+
+Install the Superset extra (required for database querying):
+
+```bash
+uv sync --extra superset
+```
+
+### Generate Cards for All Models
+
+```bash
+# Using Make
+make model-cards
+
+# Or directly
+uv run python -m rfc.make_model_cards
+```
+
+Cards are written to `model_cards/<model_slug>.md` and ready to commit and publish.
+
+### Generate Card for a Single Model
+
+```bash
+uv run python -m rfc.make_model_cards --model qwen2.5:72b
+```
+
+### Customize Output Directory
+
+```bash
+uv run python -m rfc.make_model_cards --output docs/models/
+```
+
+### Configuration
+
+Environment variables (or CLI flags):
+
+| Variable | CLI Flag | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | `--database-url` | `sqlite:///data/test_history.db` | Test results database |
+| `OLLAMA_ENDPOINT` | `--ollama-endpoint` | `http://localhost:11434` | Ollama API endpoint |
+| `MODEL_CARD_LLM` | `--llm-model` | `qwen2.5:72b` | LLM for SWOT analysis |
+
+Example with custom settings:
+
+```bash
+uv run python -m rfc.make_model_cards \
+  --output model_cards/ \
+  --ollama-endpoint http://gpu-server:11434 \
+  --llm-model llama3.2:latest
+```
+
+### Card Format
+
+Each card includes:
+
+- **Metadata:** Provider, parameters, quantization, context window
+- **Benchmarks:** Pass rate, latency (p50/p95/p99), throughput per suite
+- **Overall Results:** Aggregated metrics + 7d vs 30d prior trend
+- **SWOT Analysis:** LLM-generated Strengths, Weaknesses, Opportunities, Threats
+
+Example card: [model_cards/qwen2.5_72b.md](model_cards/qwen2.5_72b.md) (if available)
+
+---
+
 ## Example Test
 
 ```robot
