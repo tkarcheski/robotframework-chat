@@ -5,7 +5,7 @@ Documentation     CEO Agent — Stage 2: Market Research Tests
 ...               including demand scoring, market sizing, competitor identification,
 ...               and profitability assessment.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 
 Test Timeout      3 minutes
 

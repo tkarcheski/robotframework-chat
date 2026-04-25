@@ -9,7 +9,7 @@ Documentation     Two-sided clarifying-question discipline:
 ...               Thresholds come from config/agent_contract.yaml, so changes
 ...               to CLAUDE.md propagate automatically without editing tests.
 
-Resource          ../agentic_coding.resource
+Resource          agentic_coding.resource
 
 *** Test Cases ***
 Claude Code Asks Grounded Multiple Choice Questions On Ambiguous Task

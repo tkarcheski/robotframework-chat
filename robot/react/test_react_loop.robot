@@ -5,7 +5,7 @@ Documentation     ReAct loop reasoning tests.
 ...               think, call tools, observe results, and reach a final answer
 ...               within a configured step budget.
 
-Resource          ../react.resource
+Resource          react.resource
 
 Test Timeout      3 minutes
 

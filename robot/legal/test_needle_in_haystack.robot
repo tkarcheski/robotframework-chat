@@ -8,7 +8,7 @@ Documentation     Needle-in-a-Haystack Legal Document Tests
 ...               to find a specific "needle" — a clause that is deliberately
 ...               embedded among dense boilerplate language.
 
-Resource          ../legal.resource
+Resource          legal.resource
 
 Default Tags      needle-in-haystack    tier:2    verify:llm
 

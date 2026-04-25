@@ -9,7 +9,7 @@ Documentation     CEO Agent — Vending Machine Product Pipeline
 ...               vending scenario. Structural validation (tier:1) and multi-LLM
 ...               quality grading (tier:3) are applied at every stage.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 Variables         ${CURDIR}/../variables/vending_inputs.yaml
 
 Test Timeout      3 minutes

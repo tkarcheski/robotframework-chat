@@ -8,7 +8,7 @@ Documentation     TDD red -> green verification.
 ...
 ...               These tests enforce that sequence on the normalized AgentRun.
 
-Resource          ../agentic_coding.resource
+Resource          agentic_coding.resource
 
 *** Test Cases ***
 Claude Code First Material Change Lands Under Tests

@@ -5,7 +5,7 @@ Documentation     Length Compliance Format Tests
 ...               M words. Assert against the constraint. Bridges with existing
 ...               tokens: benchmark infrastructure.
 
-Resource          ../format.resource
+Resource          format.resource
 
 Default Tags      length-compliance    tier:1    verify:python
 

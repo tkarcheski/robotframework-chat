@@ -2,7 +2,7 @@
 Documentation     Basic context awareness tests with 2-3 turn conversations.
 ...               Tests name recall, preference tracking, story continuation,
 ...               and character relationship tracking.
-Resource          ../creativity.resource
+Resource          creativity.resource
 Test Timeout      2 minutes
 
 *** Test Cases ***

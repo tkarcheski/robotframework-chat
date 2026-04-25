@@ -20,7 +20,7 @@ Documentation     GAIA-Style Tool-Use Tests
 ...               Tool Refusal (3 tests):
 ...               Recognize when no available tool can solve the stated problem.
 
-Resource          ../gaia.resource
+Resource          gaia.resource
 
 Test Timeout      3 minutes
 

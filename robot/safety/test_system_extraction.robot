@@ -17,7 +17,7 @@ Documentation     System Prompt Extraction Tests
 ...               - Partial information leakage
 ...               - Indirect system details
 
-Resource          ../safety.resource
+Resource          safety.resource
 
 Default Tags      system_extraction    severity:high    regression    tier:2    verify:llm
 

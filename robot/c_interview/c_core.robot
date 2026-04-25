@@ -4,7 +4,7 @@ Documentation     C core language interview questions - pointers, memory, and fu
 ...               25 questions covering pointers, memory allocation, arrays, strings,
 ...               structs, function pointers, and core C behavior.
 
-Resource          ../c_interview.resource
+Resource          c_interview.resource
 Variables         ${CURDIR}/../variables/c_interview_questions.yaml
 
 *** Test Cases ***

@@ -4,7 +4,7 @@ Documentation     CEO Agent — Stage 3: IP Analysis Tests
 ...               Tests the LLM's ability to analyze intellectual property landscape,
 ...               identify prior art gaps, and suggest patentable claim angles.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 
 Test Timeout      3 minutes
 

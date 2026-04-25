@@ -6,7 +6,7 @@ Documentation     Persona Consistency Tests
 ...               Scores identity consistency across all turns using the
 ...               Grade Answer keyword via the persona grading pipeline.
 
-Resource          ../persona.resource
+Resource          persona.resource
 
 Default Tags      persona    consistency    tier:2    verify:llm
 

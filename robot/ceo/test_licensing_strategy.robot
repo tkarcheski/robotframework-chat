@@ -4,7 +4,7 @@ Documentation     CEO Agent — Stage 5: Licensing Strategy Tests
 ...               Tests the LLM's ability to develop IP licensing strategies including
 ...               target licensees, pricing models, revenue projections, and terms.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 
 Test Timeout      3 minutes
 

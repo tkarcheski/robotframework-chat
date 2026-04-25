@@ -2,7 +2,7 @@
 Documentation     Complex context awareness tests with 4+ turn conversations.
 ...               Tests contradiction detection, implicit context inference,
 ...               and complex multi-character narrative recall.
-Resource          ../creativity.resource
+Resource          creativity.resource
 Test Timeout      3 minutes
 
 *** Test Cases ***

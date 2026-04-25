@@ -12,7 +12,7 @@ Documentation     Token output benchmark: measures completion ratio and throughp
 ...               - **Technical Reference**: Python standard library documentation
 ...               - **Implementation Code**: Task management system in Python
 ...               - **Architecture Analysis**: Distributed systems deep-dive
-Resource          ../benchmark.resource
+Resource          benchmark.resource
 Suite Setup       Verify LLM Available
 
 *** Variables ***

@@ -5,7 +5,7 @@ Documentation     Structured Output Format Tests
 ...               Parse the result programmatically and assert it validates
 ...               against the schema. Uses score: tags for partial-credit grading.
 
-Resource          ../format.resource
+Resource          format.resource
 
 Default Tags      structured-output    tier:1    verify:python
 

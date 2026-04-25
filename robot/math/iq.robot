@@ -1,6 +1,6 @@
 *** Settings ***
 Documentation     Progressive IQ-based math tests with randomized inputs
-Resource          ../math.resource
+Resource          math.resource
 Library           Collections
 Library           OperatingSystem
 Library           String

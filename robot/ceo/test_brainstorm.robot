@@ -5,7 +5,7 @@ Documentation     CEO Agent — Stage 1: Idea Brainstorming Tests
 ...               ideas in a specified domain. Each idea must have a name, description,
 ...               category, and novelty notes.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 
 Test Timeout      3 minutes
 

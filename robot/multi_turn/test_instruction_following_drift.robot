@@ -3,7 +3,7 @@ Documentation     Establish a formatting constraint in the system prompt, then
 ...               send 10 user turns on varied topics. Score how many turns
 ...               comply with the constraint. Drift should remain below a
 ...               threshold (at least 80%% of turns must comply).
-Resource          ../multi_turn.resource
+Resource          multi_turn.resource
 Test Timeout      5 minutes
 
 *** Test Cases ***

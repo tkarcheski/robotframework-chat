@@ -5,7 +5,7 @@ Documentation     IFEval instruction-following constraint tests.
 ...               verifies the response with a deterministic Python checker.
 ...               No LLM judge is involved — results are fully reproducible.
 
-Resource          ../ifeval.resource
+Resource          ifeval.resource
 
 Default Tags      ifeval    regression    tier:1    verify:python
 

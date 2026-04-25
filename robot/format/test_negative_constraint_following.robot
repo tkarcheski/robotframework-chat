@@ -5,7 +5,7 @@ Documentation     Negative Constraint Following Tests
 ...               (e.g., "do not use the word 'however'"). Assert the forbidden
 ...               words are absent from the response.
 
-Resource          ../format.resource
+Resource          format.resource
 
 Default Tags      negative-constraint    tier:1    verify:python
 

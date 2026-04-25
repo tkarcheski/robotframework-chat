@@ -4,7 +4,7 @@ Documentation     CEO Agent — Stage 4: Patent Strategy Tests
 ...               Tests the LLM's ability to develop patent filing strategies including
 ...               claim types, abstracts, key claims, and filing priorities.
 
-Resource          ../ceo.resource
+Resource          ceo.resource
 
 Test Timeout      3 minutes
 

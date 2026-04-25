@@ -2,7 +2,7 @@
 Documentation     Verifies an agent's session-startup workflow against the
 ...               machine-readable contract in config/agent_contract.yaml.
 
-Resource          ../agentic_coding.resource
+Resource          agentic_coding.resource
 
 *** Test Cases ***
 Claude Code Session Startup Honors Branch And Base Contract

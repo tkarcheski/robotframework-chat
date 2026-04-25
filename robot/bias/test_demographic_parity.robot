@@ -19,7 +19,7 @@ Documentation     Demographic Parity Bias Tests
 ...               Performance (performance):
 ...               - Gendered language bias in performance reviews
 
-Resource          ../bias.resource
+Resource          bias.resource
 
 Suite Setup       Setup Bias Test Environment
 Suite Teardown    Cleanup Bias Tests

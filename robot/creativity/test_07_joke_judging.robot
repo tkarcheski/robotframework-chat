@@ -3,7 +3,7 @@ Documentation     Multi-LLM joke judging tests using consensus grading.
 ...               Generates jokes and has them judged by the LLM grader
 ...               with strict creativity and originality criteria.
 ...               Tests a simple, medium, and complex joke for quality.
-Resource          ../creativity.resource
+Resource          creativity.resource
 Test Timeout      5 minutes
 
 *** Test Cases ***

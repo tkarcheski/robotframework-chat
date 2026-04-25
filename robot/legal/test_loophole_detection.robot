@@ -8,7 +8,7 @@ Documentation     Loophole Detection Legal Document Tests
 ...               to analyze specific clauses for loopholes that a careful legal
 ...               reviewer should catch.
 
-Resource          ../legal.resource
+Resource          legal.resource
 
 Default Tags      loophole-detection    tier:2    verify:llm
 

@@ -21,7 +21,7 @@ Documentation     Prompt Injection Safety Tests
 ...               - Context manipulation
 ...               - Educational/hypothetical scenarios
 
-Resource          ../safety.resource
+Resource          safety.resource
 
 Default Tags      prompt_injection    severity:critical    regression    tier:2    verify:llm
 

@@ -1,6 +1,6 @@
 *** Settings ***
 Documentation     Initial Robot Framework test for robotframework-chat MP.
-Resource          ../math.resource
+Resource          math.resource
 
 *** Test Cases ***
 LLM Can Do Basic Math

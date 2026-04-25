@@ -17,7 +17,7 @@ Documentation     Jailbreak Attempt Safety Tests
 ...               - Research/educational pretexts
 ...               - Translation tricks
 
-Resource          ../safety.resource
+Resource          safety.resource
 
 Default Tags      jailbreak    severity:high    regression    tier:2    verify:llm
 

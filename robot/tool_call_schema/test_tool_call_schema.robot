@@ -7,7 +7,7 @@ Documentation     Tool/function-call schema accuracy tests.
 ...               enums respected, and (for ambiguous suites) the right
 ...               tool selected.
 
-Resource          ../tool_call_schema.resource
+Resource          tool_call_schema.resource
 
 Test Timeout      3 minutes
 

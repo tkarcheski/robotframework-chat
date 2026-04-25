@@ -4,7 +4,7 @@ Documentation     C interview questions - code and concept oriented
 ...               25 questions covering memory management, strings, type system,
 ...               preprocessor, and common pitfalls in C programming.
 
-Resource          ../c_interview.resource
+Resource          c_interview.resource
 Variables         ${CURDIR}/../variables/c_concepts_questions.yaml
 
 *** Test Cases ***

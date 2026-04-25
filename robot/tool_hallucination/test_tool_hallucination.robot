@@ -4,7 +4,7 @@ Documentation     Tool hallucination detection tests.
 ...               Presents the LLM with a mix of real and fake tool names,
 ...               then measures whether it only selects real tools.
 
-Resource          ../tool_hallucination.resource
+Resource          tool_hallucination.resource
 
 Test Timeout      3 minutes
 

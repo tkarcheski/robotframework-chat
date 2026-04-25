@@ -9,7 +9,7 @@ Documentation     Covert Adversarial Prompt Injection Tests
 ...               embed the injection covertly so the model must resist instructions
 ...               that are not visually obvious in the prompt text.
 
-Resource          ../adversarial.resource
+Resource          adversarial.resource
 
 Default Tags      adversarial    covert_injection    tier:2    verify:llm
 

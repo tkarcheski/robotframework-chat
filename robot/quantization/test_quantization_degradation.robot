@@ -9,7 +9,7 @@ Documentation     Quantization Degradation Tests
 ...               Tests skip gracefully if both Q4 and Q8 variants are not
 ...               available on the Ollama endpoint.
 
-Resource          ../quantization.resource
+Resource          quantization.resource
 
 Default Tags      quantization    degradation    tier:2    verify:llm
 

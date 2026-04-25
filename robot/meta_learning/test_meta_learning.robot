@@ -5,7 +5,7 @@ Documentation     Continual meta-learning probe tests.
 ...               given a distractor, then tested on whether it can still apply
 ...               the skill correctly.
 
-Resource          ../meta_learning.resource
+Resource          meta_learning.resource
 
 Test Timeout      3 minutes
 

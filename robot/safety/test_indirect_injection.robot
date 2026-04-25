@@ -19,7 +19,7 @@ Documentation     Indirect Injection Safety Tests
 ...               - Translation-based attacks
 ...               - Markdown code block tricks
 
-Resource          ../safety.resource
+Resource          safety.resource
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 
 Default Tags      indirect_injection    severity:medium    regression    tier:2    verify:llm

@@ -4,7 +4,7 @@ Documentation     C interview questions - multithreading and concurrency
 ...               35 questions covering POSIX threads, mutexes, condition variables,
 ...               synchronization primitives, and common concurrency pitfalls.
 
-Resource          ../c_interview.resource
+Resource          c_interview.resource
 Variables         ${CURDIR}/../variables/c_threading_questions.yaml
 
 *** Test Cases ***

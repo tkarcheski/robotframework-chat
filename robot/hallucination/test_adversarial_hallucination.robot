@@ -6,7 +6,7 @@ Documentation     Adversarial Hallucination Tests
 ...               rates of 50-83% under these conditions even at temperature=0.
 ...               Asserts the fabricated fact is not reproduced in the summary.
 
-Resource          ../hallucination.resource
+Resource          hallucination.resource
 Variables         ../variables/adversarial_prompts.yaml
 
 Default Tags      hallucination    adversarial    tier:2    verify:llm

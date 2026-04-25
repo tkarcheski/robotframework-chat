@@ -5,7 +5,7 @@ Documentation     Fabricated Citation Detection Tests
 ...               or citation numbers when asked to cite real or fictional works.
 ...               Cross-checks extracted references against known-real lists.
 
-Resource          ../hallucination.resource
+Resource          hallucination.resource
 Variables         ../variables/citations.yaml
 
 Default Tags      hallucination    citation    tier:2    verify:llm

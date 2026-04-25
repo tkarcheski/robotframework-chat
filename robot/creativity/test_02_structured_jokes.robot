@@ -1,7 +1,7 @@
 *** Settings ***
 Documentation     Structured joke tests requiring specific formats and wordplay.
 ...               Medium token budget (512). Tests format compliance and cross-domain humor.
-Resource          ../creativity.resource
+Resource          creativity.resource
 Test Timeout      2 minutes
 
 *** Test Cases ***
