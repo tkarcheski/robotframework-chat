@@ -202,6 +202,11 @@ test_suites:
     path: "robot/tool_hallucination/tests"
     description: "Tool hallucination detection — real vs fake tool selection precision"
 
+  tool-call-schema:
+    label: "Tool Call Schema"
+    path: "robot/tool_call_schema"
+    description: "Tool/function-call schema accuracy — required fields, enums, types, ambiguous-signature selection"
+
   agentic-coding:
     label: "Agentic Coding"
     path: "robot/agentic_coding/tests"
