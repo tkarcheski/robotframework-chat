@@ -193,7 +193,9 @@ def validate_against_schema(
     args = call.get("arguments", {}) or {}
     result["selected_tool"] = name
 
-    schema = next((t for t in tools if t.get("name") == name), None)
+    schema = next(
+        (t for t in tools if isinstance(t, dict) and t.get("name") == name), None
+    )
     if schema is None:
         result["unknown_tool"] = True
         return result
@@ -311,6 +313,14 @@ class ToolCallSchemaKeywords:
         expected_args_dict: Dict[str, Any] = (
             json.loads(expected_args) if expected_args else {}
         )
+        if not isinstance(expected_args_dict, dict):
+            result = _empty_validation_result()
+            result["response"] = f"expected_args must be a JSON object, got {type(expected_args_dict).__name__}"
+            emit_rfc_data("score", "0.0")
+            emit_rfc_data("actual_answer", result["response"])
+            emit_rfc_data("expected_answer", "expected_args: dict or empty string")
+            emit_rfc_data("grading_reason", "expected_args payload not a dict")
+            return result
 
         full_prompt = _build_prompt(prompt, tool_list)
         logger.info(
