@@ -207,6 +207,11 @@ test_suites:
     path: "robot/agentic_coding/tests"
     description: "Coding-agent workflow evaluation: branch naming, startup contract, TDD ordering, clarifying-question discipline"
 
+  agentic-injection:
+    label: "Agentic Prompt Injection"
+    path: "robot/agentic_injection/tests"
+    description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, file reads); canary-based detection of agent compliance with embedded instructions"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
