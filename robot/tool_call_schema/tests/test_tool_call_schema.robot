@@ -119,6 +119,7 @@ No Extra Fields Hallucinated
     ...    prompt=Create an editor user named bob with email bob@example.com.
     ...    tools=${CREATE_USER_TOOLS}
     ...    expected_tool=create_user
+    Assert Tool Selected    ${result}    create_user
     Assert No Extra Fields    ${result}
 
 Enum Field Uses Allowed Value
@@ -129,6 +130,7 @@ Enum Field Uses Allowed Value
     ...    tools=${SET_LOG_LEVEL_TOOLS}
     ...    expected_tool=set_log_level
     ...    expected_args={"level": "warning"}
+    Assert Tool Selected    ${result}    set_log_level
     Assert Enum Values Valid    ${result}
     Assert Argument Values Match    ${result}
 
@@ -140,6 +142,7 @@ Enum Selection From Multiple Options
     ...    tools=${SET_LOG_LEVEL_TOOLS}
     ...    expected_tool=set_log_level
     ...    expected_args={"level": "debug"}
+    Assert Tool Selected    ${result}    set_log_level
     Assert Enum Values Valid    ${result}
     Assert Argument Values Match    ${result}
 
@@ -151,6 +154,7 @@ Numeric Field Has Correct Type
     ...    tools=${SCHEDULE_MEETING_TOOLS}
     ...    expected_tool=schedule_meeting
     ...    expected_args={"duration_minutes": 30}
+    Assert Tool Selected    ${result}    schedule_meeting
     Assert No Type Errors    ${result}
     Assert Argument Values Match    ${result}
 
