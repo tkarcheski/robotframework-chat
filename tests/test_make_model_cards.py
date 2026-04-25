@@ -120,7 +120,12 @@ class TestRenderBenchmarksTable:
             p99_duration_ms=10000.0,
             avg_throughput_tokens_per_sec=20.5,
             suite_metrics={
-                "math": {"runs": 5, "passed": 4, "pass_rate_pct": 80.0, "p95_ms": 4500.0},
+                "math": {
+                    "runs": 5,
+                    "passed": 4,
+                    "pass_rate_pct": 80.0,
+                    "p95_ms": 4500.0,
+                },
                 "docker": {
                     "runs": 5,
                     "passed": 5,
@@ -155,7 +160,14 @@ class TestRenderCard:
             p95_duration_ms=7500.0,
             p99_duration_ms=9500.0,
             avg_throughput_tokens_per_sec=25.0,
-            suite_metrics={"math": {"runs": 25, "passed": 23, "pass_rate_pct": 92.0, "p95_ms": 7000.0}},
+            suite_metrics={
+                "math": {
+                    "runs": 25,
+                    "passed": 23,
+                    "pass_rate_pct": 92.0,
+                    "p95_ms": 7000.0,
+                }
+            },
         )
         metadata = {
             "name": "qwen2.5:72b",
@@ -257,7 +269,9 @@ class TestFetchModelMetadata:
         del mock_db._models
         mock_ollama = MagicMock()
 
-        metadata = fetch_model_metadata("qwen2.5:72b", mock_db, ollama_client=mock_ollama)
+        metadata = fetch_model_metadata(
+            "qwen2.5:72b", mock_db, ollama_client=mock_ollama
+        )
 
         assert metadata["name"] == "qwen2.5:72b"
         assert "Qwen" in metadata["provider"]
@@ -293,7 +307,9 @@ class TestGenerateSwot:
         }
 
         mock_ollama = MagicMock()
-        mock_ollama.generate.return_value = "### Strengths\n- Fast\n### Weaknesses\n- Limited"
+        mock_ollama.generate.return_value = (
+            "### Strengths\n- Fast\n### Weaknesses\n- Limited"
+        )
 
         swot = generate_swot(metrics, metadata, mock_ollama)
 

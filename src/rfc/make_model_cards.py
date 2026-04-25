@@ -18,7 +18,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -70,14 +70,14 @@ def get_distinct_models(db: TestDatabase) -> List[str]:
 
     try:
         if hasattr(db, "_test_runs"):
-            # PostgreSQL backend
             query = select(db._test_runs.c.model_name).distinct()
             with db.engine.connect() as conn:  # type: ignore[attr-defined]
                 result = conn.execute(query)
                 return sorted([row[0] for row in result if row[0]])
         else:
-            # Fallback: shouldn't happen, but log gracefully
-            logger.warning("Cannot introspect test_runs table; skipping model discovery")
+            logger.warning(
+                "Cannot introspect test_runs table; skipping model discovery"
+            )
             return []
     except Exception as e:
         logger.error(f"Failed to query distinct models: {e}")
@@ -92,9 +92,11 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
     try:
         from sqlalchemy import select  # type: ignore[import-not-found]
     except ImportError:
-        raise ImportError("SQLAlchemy not installed; install with: uv sync --extra superset")
+        raise ImportError(
+            "SQLAlchemy not installed; install with: uv sync --extra superset"
+        )
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff_7d = now - timedelta(days=7)
     cutoff_30d_prior_start = now - timedelta(days=37)
     cutoff_30d_prior_end = now - timedelta(days=7)
@@ -102,7 +104,6 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
     if not hasattr(db, "_test_runs") or not hasattr(db, "_test_results"):
         raise RuntimeError("Database backend does not support SQL queries")
 
-    # Join test_results + test_runs
     query_all = (
         select(
             db._test_results.c.test_status,
@@ -139,22 +140,17 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
             suite_metrics={},
         )
 
-    # Aggregate metrics
     total_tests = len(rows)
     passed = sum(1 for r in rows if r[0] == "PASS")
     failed = sum(1 for r in rows if r[0] == "FAIL")
     skipped = sum(1 for r in rows if r[0] == "SKIP")
 
-    # Duration percentiles (convert to ms)
-    durations_ms = [
-        (r[3] or 0.0) * 1000 for r in rows if r[3] is not None
-    ]
+    durations_ms = [(r[3] or 0.0) * 1000 for r in rows if r[3] is not None]
     durations_ms.sort()
     p50 = durations_ms[int(len(durations_ms) * 0.50)] if durations_ms else 0.0
     p95 = durations_ms[int(len(durations_ms) * 0.95)] if durations_ms else 0.0
     p99 = durations_ms[int(len(durations_ms) * 0.99)] if durations_ms else 0.0
 
-    # Throughput: eval_count / duration_seconds
     throughputs = []
     for row in rows:
         eval_count = row[2] or 0
@@ -163,7 +159,6 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
             throughputs.append(eval_count / duration_s)
     avg_throughput = sum(throughputs) / len(throughputs) if throughputs else 0.0
 
-    # Time-window pass rates
     rows_7d = [r for r in rows if r[4] and r[4] >= cutoff_7d]
     rows_30d_prior = [
         r
@@ -182,7 +177,6 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
         else None
     )
 
-    # Suite breakdown
     suite_metrics: Dict[str, Dict[str, Any]] = {}
     for suite in set(r[1] for r in rows if r[1]):
         suite_rows = [r for r in rows if r[1] == suite]
@@ -205,7 +199,7 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
             "p95_ms": suite_p95,
         }
 
-    # Get unique run count (group by run_id is implicit; we use distinct timestamps)
+    # Distinct timestamps approximate run count without an extra join on run_id.
     unique_runs = len(set(r[4] for r in rows if r[4] is not None))
 
     return ModelMetrics(
@@ -247,10 +241,10 @@ def fetch_model_metadata(
         "context_window": "unknown",
     }
 
-    # Try local models table first
     if hasattr(db, "_models"):
         try:
             from sqlalchemy import select  # type: ignore[import-not-found]
+
             query = select(
                 db._models.c.architecture,
                 db._models.c.family,
@@ -261,7 +255,7 @@ def fetch_model_metadata(
             with db.engine.connect() as conn:  # type: ignore[attr-defined]
                 row = conn.execute(query).fetchone()
                 if row:
-                    metadata["provider"] = row[1] or "unknown"  # family
+                    metadata["provider"] = row[1] or "unknown"
                     metadata["quantization"] = row[2] or "unknown"
                     context_len = row[3]
                     if context_len:
@@ -270,12 +264,9 @@ def fetch_model_metadata(
         except Exception as e:
             logger.warning(f"Failed to query local models table: {e}")
 
-    # Fallback to Ollama (if available)
     if ollama_client:
         try:
-            # Ollama doesn't directly expose param count, so we use model name as proxy
             metadata["provider"] = "ollama"
-            # Try to infer from model name (e.g., qwen2.5 → Qwen)
             if "qwen" in model_name.lower():
                 metadata["provider"] = "Qwen"
             elif "llama" in model_name.lower():
@@ -295,10 +286,10 @@ def render_metadata_table(metadata: Dict[str, Any]) -> str:
 
 | Field | Value |
 |---|---|
-| Provider | {metadata.get('provider', 'unknown')} |
-| Parameters | {metadata.get('parameters_b', 'unknown')}B |
-| Quantization | {metadata.get('quantization', 'unknown')} |
-| Context Window | {metadata.get('context_window', 'unknown')} |
+| Provider | {metadata.get("provider", "unknown")} |
+| Parameters | {metadata.get("parameters_b", "unknown")}B |
+| Quantization | {metadata.get("quantization", "unknown")} |
+| Context Window | {metadata.get("context_window", "unknown")} |
 """
 
 
@@ -351,7 +342,10 @@ def generate_swot(
         },
     }
 
-    if metrics.pass_rate_7d_pct is not None and metrics.pass_rate_30d_prior_pct is not None:
+    if (
+        metrics.pass_rate_7d_pct is not None
+        and metrics.pass_rate_30d_prior_pct is not None
+    ):
         payload["pass_rate_7d_vs_30d_prior"] = round(
             metrics.pass_rate_7d_pct - metrics.pass_rate_30d_prior_pct, 1
         )
@@ -375,7 +369,9 @@ def generate_swot(
         swot_text = retry_on_transient(_generate_swot, max_retries=3)
         return swot_text
     except Exception as e:
-        logger.warning(f"SWOT generation failed for {metrics.model_name}: {e} (skipping)")
+        logger.warning(
+            f"SWOT generation failed for {metrics.model_name}: {e} (skipping)"
+        )
         return (
             "_SWOT analysis unavailable — LLM service temporarily unavailable. "
             "Rerun the command when Ollama is accessible._"
@@ -409,11 +405,9 @@ def render_card(
     card_lines.append(render_metadata_table(metadata).strip())
     card_lines.append("")
 
-    # Benchmarks table
     card_lines.append(render_benchmarks_table(metrics).strip())
     card_lines.append("")
 
-    # Overall metrics summary
     card_lines.extend(
         [
             "## Overall Results",
@@ -426,7 +420,10 @@ def render_card(
         ]
     )
 
-    if metrics.pass_rate_7d_pct is not None and metrics.pass_rate_30d_prior_pct is not None:
+    if (
+        metrics.pass_rate_7d_pct is not None
+        and metrics.pass_rate_30d_prior_pct is not None
+    ):
         delta = metrics.pass_rate_7d_pct - metrics.pass_rate_30d_prior_pct
         direction = "↑" if delta > 0 else "↓" if delta < 0 else "→"
         card_lines.append(
@@ -451,9 +448,7 @@ def main() -> None:
     """CLI entry point for model card generation."""
     import argparse
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Generate Markdown model cards from test results"
@@ -486,11 +481,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Create output directory
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize database and LLM client
     db = TestDatabase(database_url=args.database_url)
 
     try:
@@ -505,7 +498,6 @@ def main() -> None:
         logger.warning(f"Failed to initialize Ollama client: {e}")
         ollama_client = None
 
-    # Determine which models to process
     if args.model:
         model_names = [args.model]
     else:
@@ -515,7 +507,10 @@ def main() -> None:
         logger.warning("No models found in database; exiting")
         return
 
-    timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    timestamp = (
+        datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+        + "Z"
+    )
     skipped_models: Dict[str, str] = {}
     generated_cards = 0
 
@@ -523,18 +518,14 @@ def main() -> None:
         try:
             logger.info(f"Processing {model_name}...")
 
-            # Compute metrics
             metrics = compute_metrics(model_name, db)
             if metrics.total_tests == 0:
                 logger.warning(f"Skipping {model_name}: no test results")
                 skipped_models[model_name] = "no test results"
                 continue
 
-            # Fetch metadata
             metadata = fetch_model_metadata(model_name, db, ollama_client)
 
-            # Generate SWOT (skip model if LLM unavailable)
-            swot_text = ""
             if ollama_client and ollama_client.is_available():
                 swot_text = generate_swot(metrics, metadata, ollama_client)
             else:
@@ -546,7 +537,6 @@ def main() -> None:
                     "Rerun when Ollama is available._"
                 )
 
-            # Render and write card
             card = render_card(metrics, metadata, swot_text, timestamp)
             card_file = output_dir / f"{slugify(model_name)}.md"
             card_file.write_text(card)
@@ -558,7 +548,6 @@ def main() -> None:
             logger.error(f"Failed to generate card for {model_name}: {e}")
             skipped_models[model_name] = str(e)
 
-    # Summary
     print(f"\n{'=' * 60}")
     print(f"Generated {generated_cards} model card(s) in {output_dir}/")
     if skipped_models:
