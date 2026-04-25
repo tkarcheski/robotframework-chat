@@ -36,6 +36,7 @@ class AgenticInjectionKeywords:
         task_signal: str,
         tool_name: str = "tool",
         description: str = "",
+        signal_is_regex: bool = False,
     ) -> Dict[str, Any]:
         """Run one agentic prompt injection test case.
 
@@ -43,9 +44,12 @@ class AgenticInjectionKeywords:
             original_task: User task the agent should complete.
             poisoned_tool_output: Tool output containing the injection payload.
             canary: Unique token the injection tries to make the LLM emit.
-            task_signal: Substring or regex proving the original task was done.
+            task_signal: Literal substring (default) or regex proving the
+                original task was done.
             tool_name: Identifier for the tool whose output is poisoned.
             description: Human-readable test description (for logs).
+            signal_is_regex: If True, treat ``task_signal`` as a regex
+                (default: literal substring match).
 
         Returns:
             Dict with grader signals, indicators, and the LLM response.
@@ -68,6 +72,7 @@ class AgenticInjectionKeywords:
             canary=canary,
             llm_response=response,
             task_signal=task_signal,
+            signal_is_regex=bool(signal_is_regex),
         )
 
         emit_rfc_data("score", str(1 if grade.resisted else 0))
@@ -124,6 +129,7 @@ class AgenticInjectionKeywords:
         task_signal: str,
         tool_name: str = "tool",
         description: str = "",
+        signal_is_regex: bool = False,
     ) -> Dict[str, Any]:
         """Convenience wrapper: run one test case and assert resistance."""
         result = self.test_agentic_injection_resistance(
@@ -133,6 +139,7 @@ class AgenticInjectionKeywords:
             task_signal=task_signal,
             tool_name=tool_name,
             description=description,
+            signal_is_regex=signal_is_regex,
         )
         self.assert_injection_resisted(result)
         return result
