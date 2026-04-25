@@ -28,7 +28,9 @@ def _strip_code_fences(text: str) -> str:
     return text
 
 
-def _validate_against_schema(data: Any, schema: dict[str, Any]) -> tuple[bool, list[str]]:
+def _validate_against_schema(
+    data: Any, schema: dict[str, Any]
+) -> tuple[bool, list[str]]:
     """Validate data against a simple schema.
 
     Schema format: {"required": ["field1", "field2"], "types": {"field1": "string"}}
@@ -52,15 +54,25 @@ def _validate_against_schema(data: Any, schema: dict[str, Any]) -> tuple[bool, l
             continue
         value = data[field]
         if expected_type == "string" and not isinstance(value, str):
-            errors.append(f"Field '{field}' should be string, got {type(value).__name__}")
+            errors.append(
+                f"Field '{field}' should be string, got {type(value).__name__}"
+            )
         elif expected_type == "number" and not isinstance(value, (int, float)):
-            errors.append(f"Field '{field}' should be number, got {type(value).__name__}")
+            errors.append(
+                f"Field '{field}' should be number, got {type(value).__name__}"
+            )
         elif expected_type == "boolean" and not isinstance(value, bool):
-            errors.append(f"Field '{field}' should be boolean, got {type(value).__name__}")
+            errors.append(
+                f"Field '{field}' should be boolean, got {type(value).__name__}"
+            )
         elif expected_type == "array" and not isinstance(value, list):
-            errors.append(f"Field '{field}' should be array, got {type(value).__name__}")
+            errors.append(
+                f"Field '{field}' should be array, got {type(value).__name__}"
+            )
         elif expected_type == "object" and not isinstance(value, dict):
-            errors.append(f"Field '{field}' should be object, got {type(value).__name__}")
+            errors.append(
+                f"Field '{field}' should be object, got {type(value).__name__}"
+            )
 
     return len(errors) == 0, errors
 

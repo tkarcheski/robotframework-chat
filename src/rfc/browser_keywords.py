@@ -15,7 +15,9 @@ except ImportError:
     md = None  # type: ignore[assignment]
 
 try:
-    from bs4 import BeautifulSoup  # type: ignore[import-not-found]
+    from bs4 import (  # type: ignore[import-not-found,import-untyped]
+        BeautifulSoup,
+    )
 except ImportError:
     BeautifulSoup = None  # type: ignore[assignment,misc]
 
@@ -45,8 +47,7 @@ class BrowserKeywords:
         """
         if md is None:
             raise RuntimeError(
-                "markdownify is not installed. "
-                "Run: uv sync --extra playwright"
+                "markdownify is not installed. Run: uv sync --extra playwright"
             )
 
         strip_tags = [t.strip() for t in strip.split(",") if t.strip()]

@@ -1,6 +1,5 @@
 """Tests for rfc.json_schema_keywords.JSONSchemaKeywords."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 from rfc.json_schema_keywords import (
@@ -193,7 +192,7 @@ class TestValidateJsonWithSchema:
 
     def test_json_in_code_fence_is_extracted(self) -> None:
         """JSON wrapped in code fence is extracted."""
-        with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
+        with patch("rfc.json_schema_keywords.emit_rfc_data"):
             schema = '{"required": ["name"]}'
             response = '```json\n{"name": "Alice"}\n```'
             score = self.jk.validate_json_with_schema(response, schema)
@@ -203,8 +202,10 @@ class TestValidateJsonWithSchema:
         """Schema name is recorded in RFC data."""
         with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
             schema = '{"required": []}'
-            response = '{}'
-            self.jk.validate_json_with_schema(response, schema, schema_name="test_schema")
+            response = "{}"
+            self.jk.validate_json_with_schema(
+                response, schema, schema_name="test_schema"
+            )
             mock_emit.assert_any_call("schema_name", "test_schema")
 
     def test_validation_errors_recorded(self) -> None:
@@ -213,8 +214,11 @@ class TestValidateJsonWithSchema:
             schema = '{"required": ["name", "age"]}'
             response = '{"name": "Alice"}'
             self.jk.validate_json_with_schema(response, schema)
-            calls = [call for call in mock_emit.call_args_list
-                     if call[0][0] == "validation_errors"]
+            calls = [
+                call
+                for call in mock_emit.call_args_list
+                if call[0][0] == "validation_errors"
+            ]
             assert len(calls) > 0
             assert "Missing required field: age" in calls[0][0][1]
 
@@ -222,10 +226,9 @@ class TestValidateJsonWithSchema:
         """Score is formatted to 4 decimal places."""
         with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
             schema = '{"required": []}'
-            response = '{}'
+            response = "{}"
             score = self.jk.validate_json_with_schema(response, schema)
-            calls = [call for call in mock_emit.call_args_list
-                     if call[0][0] == "score"]
+            calls = [call for call in mock_emit.call_args_list if call[0][0] == "score"]
             assert len(calls) > 0
             assert calls[-1][0][1] == f"{score:.4f}"
 
@@ -287,7 +290,10 @@ class TestValidateJsonWithRetries:
     def test_respects_custom_max_retries_parameter(self) -> None:
         """Custom max_retries parameter overrides default."""
         from rfc.exceptions import EmptyLLMResponseError
-        with patch.object(self.jk.client, "generate", side_effect=EmptyLLMResponseError("test-model")):
+
+        with patch.object(
+            self.jk.client, "generate", side_effect=EmptyLLMResponseError("test-model")
+        ):
             with patch("rfc.json_schema_keywords.emit_rfc_data"):
                 schema = '{"required": []}'
                 score, attempt = self.jk.validate_json_with_retries(
@@ -297,8 +303,11 @@ class TestValidateJsonWithRetries:
 
     def test_emits_attempt_number(self) -> None:
         """Attempt number is recorded in RFC data."""
-        with patch("rfc.json_schema_keywords.JSONSchemaKeywords.validate_json_with_schema", return_value=1.0):
-            with patch.object(self.jk.client, "generate", return_value='{}'):
+        with patch(
+            "rfc.json_schema_keywords.JSONSchemaKeywords.validate_json_with_schema",
+            return_value=1.0,
+        ):
+            with patch.object(self.jk.client, "generate", return_value="{}"):
                 with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
                     schema = '{"required": []}'
                     self.jk.validate_json_with_retries("Generate JSON", schema)
@@ -307,11 +316,14 @@ class TestValidateJsonWithRetries:
     def test_emits_final_score(self) -> None:
         """Final score is recorded in RFC data."""
         with patch.object(self.jk, "validate_json_with_schema", return_value=0.75):
-            with patch.object(self.jk.client, "generate", return_value='{}'):
+            with patch.object(self.jk.client, "generate", return_value="{}"):
                 with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
                     schema = '{"required": []}'
                     self.jk.validate_json_with_retries("Generate JSON", schema)
-                    calls = [call for call in mock_emit.call_args_list
-                             if call[0][0] == "final_score"]
+                    calls = [
+                        call
+                        for call in mock_emit.call_args_list
+                        if call[0][0] == "final_score"
+                    ]
                     assert len(calls) > 0
                     assert calls[-1][0][1] == "0.7500"
