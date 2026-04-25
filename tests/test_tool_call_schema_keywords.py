@@ -174,6 +174,18 @@ class TestExtractToolCall:
         assert call["tool"] == "create_user"
         assert call["arguments"] == {"username": "alice"}
 
+    def test_skips_schema_blob_before_real_call(self) -> None:
+        """A schema blob with `parameters` key should not be treated as a call."""
+        text = (
+            '{"name": "create_user", "parameters": '
+            '{"type": "object", "properties": {"username": {"type": "string"}}}}\n'
+            '{"tool": "create_user", "arguments": {"username": "alice"}}'
+        )
+        call = extract_tool_call(text)
+        assert call is not None
+        assert call["tool"] == "create_user"
+        assert call["arguments"] == {"username": "alice"}
+
 
 # ---------------------------------------------------------------------------
 # validate_against_schema: deterministic schema validation

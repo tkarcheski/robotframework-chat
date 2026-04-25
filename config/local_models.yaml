@@ -175,7 +175,7 @@ test_suites:
     timeout_seconds: 300
 
   - name: "tool-call-schema"
-    path: "robot/tool_call_schema/tests/"
+    path: "robot/tool_call_schema/"
     description: "Tool/function-call schema accuracy — required fields, enums, types, ambiguous-signature selection"
     timeout_seconds: 300
 

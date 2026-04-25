@@ -87,7 +87,7 @@ def _iter_balanced_json_objects(text: str) -> Iterator[str]:
                     start = -1
 
 
-_ARG_KEYS = ("arguments", "parameters", "input")
+_ARG_KEYS = ("arguments", "input")
 
 
 def _try_parse_call(blob: str) -> Optional[Dict[str, Any]]:
