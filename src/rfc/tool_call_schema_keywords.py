@@ -222,7 +222,8 @@ def validate_against_schema(
             type_checks = [_TYPE_CHECKS.get(t) for t in expected_types]
             if any(c is None for c in type_checks):
                 continue
-            if not any(check(value) for check in type_checks):
+            checks = [c for c in type_checks if c is not None]
+            if not any(check(value) for check in checks):
                 result["type_errors"].append(
                     {
                         "field": field,
@@ -299,6 +300,14 @@ class ToolCallSchemaKeywords:
             type_errors, enum_violations, arg_value_errors, response.
         """
         tool_list: List[Dict[str, Any]] = json.loads(tools)
+        if not isinstance(tool_list, list):
+            result = _empty_validation_result()
+            result["response"] = f"tools must be a JSON list, got {type(tool_list).__name__}"
+            emit_rfc_data("score", "0.0")
+            emit_rfc_data("actual_answer", result["response"])
+            emit_rfc_data("expected_answer", "tools: list of schema objects")
+            emit_rfc_data("grading_reason", "tools payload not a list")
+            return result
         expected_args_dict: Dict[str, Any] = (
             json.loads(expected_args) if expected_args else {}
         )
