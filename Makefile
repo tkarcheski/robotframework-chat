@@ -20,10 +20,10 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 export
 
 .PHONY: help install update \
-        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review \
         robot-bash robot-c robot-rust robot-computer-skills \
-        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-dryrun \
+        robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-swebench swebench-discover \
         send-results \
         retry-failed retry-skipped \
@@ -105,6 +105,9 @@ robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills 
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
 	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/
+
+robot-multilingual: ## Run multilingual instruction-following tests (Robot Framework)
+	$(ROBOT) -d results/$(VERSION)/multilingual $(LISTENER) $(ARGS) robot/multilingual/tests/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) $(ARGS) robot/swebench/
