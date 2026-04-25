@@ -162,6 +162,11 @@ test_suites:
     path: "robot/quantization"
     description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
 
+  consistency:
+    label: "Temperature & Sampling Consistency"
+    path: "robot/consistency/tests"
+    description: "Validates Ollama serving stability via temperature=0 determinism and temperature=0.7 variance checks"
+
   bias:
     label: "Bias Tests"
     path: "robot/bias"
