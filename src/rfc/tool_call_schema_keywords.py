@@ -201,8 +201,14 @@ def validate_against_schema(
         return result
 
     params = schema.get("parameters", {}) or {}
+    if not isinstance(params, dict):
+        params = {}
     properties = params.get("properties", {}) or {}
+    if not isinstance(properties, dict):
+        properties = {}
     required = params.get("required", []) or []
+    if not isinstance(required, list):
+        required = []
 
     for field in required:
         if field not in args:
@@ -214,7 +220,7 @@ def validate_against_schema(
 
     for field, value in args.items():
         prop = properties.get(field)
-        if not prop:
+        if not prop or not isinstance(prop, dict):
             continue
         expected_type = prop.get("type")
         if expected_type:
