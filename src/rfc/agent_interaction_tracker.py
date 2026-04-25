@@ -4,30 +4,26 @@ from __future__ import annotations
 
 import time
 import uuid
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .agent_interaction import AgentInteraction, AgentMessage
 from .agent_memory import AgentMemory
-from .agent_workflow import AgentWorkflow
+from .agent_tool import ToolCall, ToolResult
+from .agent_workflow import AgentWorkflow, WorkflowStatus
 
 
+@dataclass
 class _InteractionBuilder:
-    """Mutable builder for AgentInteraction (internal use only)."""
+    turn_number: int
+    messages: list[AgentMessage] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    tool_results: list[ToolResult] = field(default_factory=list)
+    state_before: dict[str, Any] = field(default_factory=dict)
+    state_after: dict[str, Any] = field(default_factory=dict)
+    reasoning: str = ""
 
-    def __init__(self, turn_number: int) -> None:
-        self.turn_number = turn_number
-        self.messages: list[AgentMessage] = []
-        self.tool_calls: list[Any] = []
-        self.tool_results: list[Any] = []
-        self.state_before: dict[str, Any] = {}
-        self.state_after: dict[str, Any] = {}
-        self.reasoning: str = ""
-        self.duration_ms: float = 0.0
-        self.success: bool = True
-        self.error: str | None = None
-
-    def build(self) -> AgentInteraction:
-        """Create frozen AgentInteraction from builder state."""
+    def build(self, success: bool, error: str | None, duration_ms: float) -> AgentInteraction:
         return AgentInteraction(
             turn_number=self.turn_number,
             messages=tuple(self.messages),
@@ -36,9 +32,9 @@ class _InteractionBuilder:
             state_before=self.state_before,
             state_after=self.state_after,
             reasoning=self.reasoning,
-            duration_ms=self.duration_ms,
-            success=self.success,
-            error=self.error,
+            duration_ms=duration_ms,
+            success=success,
+            error=error,
         )
 
 
@@ -46,41 +42,52 @@ class AgentInteractionTracker:
     """Capture multi-turn agent interactions in real-time."""
 
     def __init__(self, workflow_id: str, agent_id: str, task: str) -> None:
-        self.workflow = AgentWorkflow(
-            workflow_id=workflow_id,
-            agent_id=agent_id,
-            task_description=task,
-            started_at=time.time(),
-            ended_at=None,
-            status="running",
-            memory=AgentMemory(),
-        )
+        self._workflow_id = workflow_id
+        self._agent_id = agent_id
+        self._task = task
+        self._started_at = time.time()
+        self._interactions: list[AgentInteraction] = []
+        self._memory = AgentMemory()
         self._builder: _InteractionBuilder | None = None
+        self._final_workflow: AgentWorkflow | None = None
+
+    @property
+    def workflow(self) -> AgentWorkflow:
+        if self._final_workflow is not None:
+            return self._final_workflow
+        return AgentWorkflow(
+            workflow_id=self._workflow_id,
+            agent_id=self._agent_id,
+            task_description=self._task,
+            started_at=self._started_at,
+            ended_at=None,
+            status=WorkflowStatus.RUNNING,
+            interactions=tuple(self._interactions),
+            memory=self._memory,
+        )
+
+    def is_interaction_active(self) -> bool:
+        return self._builder is not None
 
     def start_interaction(self, turn_number: int) -> None:
-        """Begin tracking a new conversation turn."""
-        self._builder = _InteractionBuilder(turn_number)
+        self._builder = _InteractionBuilder(turn_number=turn_number)
 
     def add_message(self, role: str, content: str) -> None:
-        """Log a message (user/assistant/system)."""
-        assert self._builder is not None, "Call start_interaction() first"
-        msg = AgentMessage(role=role, content=content, timestamp=time.time())
-        self._builder.messages.append(msg)
+        builder = self._require_builder()
+        builder.messages.append(AgentMessage(role=role, content=content, timestamp=time.time()))
 
     def add_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> str:
-        """Log a tool call, return call ID."""
-        from .agent_tool import ToolCall
-
-        assert self._builder is not None, "Call start_interaction() first"
+        builder = self._require_builder()
         call_id = str(uuid.uuid4())
-        call = ToolCall(
-            id=call_id,
-            tool_name=tool_name,
-            arguments=arguments,
-            timestamp=time.time(),
-            call_number=len(self._builder.tool_calls),
+        builder.tool_calls.append(
+            ToolCall(
+                id=call_id,
+                tool_name=tool_name,
+                arguments=arguments,
+                timestamp=time.time(),
+                call_number=len(builder.tool_calls),
+            )
         )
-        self._builder.tool_calls.append(call)
         return call_id
 
     def add_tool_result(
@@ -91,18 +98,16 @@ class AgentInteractionTracker:
         error: str | None = None,
         execution_time_ms: float = 0.0,
     ) -> None:
-        """Log result from tool execution."""
-        from .agent_tool import ToolResult
-
-        assert self._builder is not None, "Call start_interaction() first"
-        result = ToolResult(
-            tool_call_id=call_id,
-            success=success,
-            output=output,
-            error=error,
-            execution_time_ms=execution_time_ms,
+        builder = self._require_builder()
+        builder.tool_results.append(
+            ToolResult(
+                tool_call_id=call_id,
+                success=success,
+                output=output,
+                error=error,
+                execution_time_ms=execution_time_ms,
+            )
         )
-        self._builder.tool_results.append(result)
 
     def set_interaction_state(
         self,
@@ -110,64 +115,31 @@ class AgentInteractionTracker:
         state_before: dict[str, Any],
         state_after: dict[str, Any],
     ) -> None:
-        """Capture reasoning and state snapshots."""
-        assert self._builder is not None, "Call start_interaction() first"
-        self._builder.reasoning = reasoning
-        self._builder.state_before = state_before
-        self._builder.state_after = state_after
+        builder = self._require_builder()
+        builder.reasoning = reasoning
+        builder.state_before = state_before
+        builder.state_after = state_after
 
     def end_interaction(self, success: bool, error: str | None = None) -> AgentInteraction:
-        """Finalize current turn and add to workflow."""
-        assert self._builder is not None, "Call start_interaction() first"
-
-        # Calculate duration based on message timestamps
-        duration = 0.0
-        if self._builder.messages:
-            first_msg_time = self._builder.messages[0].timestamp
-            last_msg_time = self._builder.messages[-1].timestamp
-            duration = (last_msg_time - first_msg_time) * 1000  # Convert to ms
-
-        self._builder.success = success
-        self._builder.error = error
-        self._builder.duration_ms = duration
-
-        # Build frozen interaction
-        interaction = self._builder.build()
-
-        # Add to workflow
-        updated_workflow = AgentWorkflow(
-            workflow_id=self.workflow.workflow_id,
-            agent_id=self.workflow.agent_id,
-            task_description=self.workflow.task_description,
-            started_at=self.workflow.started_at,
-            ended_at=self.workflow.ended_at,
-            status=self.workflow.status,
-            interactions=self.workflow.interactions + (interaction,),
-            memory=self.workflow.memory,
-            initial_state=self.workflow.initial_state,
-            final_state=self.workflow.final_state,
-            error=self.workflow.error,
-            metadata=self.workflow.metadata,
-        )
-        object.__setattr__(self, "workflow", updated_workflow)
+        builder = self._require_builder()
+        duration_ms = 0.0
+        if builder.messages:
+            duration_ms = (builder.messages[-1].timestamp - builder.messages[0].timestamp) * 1000
+        interaction = builder.build(success=success, error=error, duration_ms=duration_ms)
+        self._interactions.append(interaction)
+        self._builder = None
         return interaction
 
     def end_workflow(self, success: bool, error: str | None = None) -> AgentWorkflow:
-        """Finalize entire agent session."""
-        status = "completed" if success else "failed"
-        updated_workflow = AgentWorkflow(
-            workflow_id=self.workflow.workflow_id,
-            agent_id=self.workflow.agent_id,
-            task_description=self.workflow.task_description,
-            started_at=self.workflow.started_at,
+        self._final_workflow = replace(
+            self.workflow,
             ended_at=time.time(),
-            status=status,
-            interactions=self.workflow.interactions,
-            memory=self.workflow.memory,
-            initial_state=self.workflow.initial_state,
-            final_state=self.workflow.final_state,
+            status=WorkflowStatus.COMPLETED if success else WorkflowStatus.FAILED,
             error=error,
-            metadata=self.workflow.metadata,
         )
-        object.__setattr__(self, "workflow", updated_workflow)
-        return self.workflow
+        return self._final_workflow
+
+    def _require_builder(self) -> _InteractionBuilder:
+        if self._builder is None:
+            raise RuntimeError("No active interaction; call start_interaction() first")
+        return self._builder

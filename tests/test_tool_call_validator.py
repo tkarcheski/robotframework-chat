@@ -2,7 +2,7 @@
 
 import json
 
-from rfc.agent_tool import ToolCall, ToolSchema
+from rfc.agent_tool import ToolCall, ToolResult, ToolSchema
 from rfc.tool_call_validator import ToolCallValidator, ToolResultValidator
 
 
@@ -84,7 +84,6 @@ class TestToolCallValidator:
         )
         validator.register_tool(schema)
 
-        # Missing required 'url' parameter
         call = ToolCall(
             id="c1",
             tool_name="git_clone",
@@ -141,7 +140,6 @@ class TestToolCallValidator:
         assert valid is False
 
     def test_validate_result_success(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolCallValidator()
         call = ToolCall("c1", "tool_a", {}, 1.0, 0)
@@ -151,7 +149,6 @@ class TestToolCallValidator:
         assert valid is True
 
     def test_validate_result_failure(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolCallValidator()
         call = ToolCall("c1", "tool_a", {}, 1.0, 0)
@@ -162,7 +159,6 @@ class TestToolCallValidator:
         assert "failed" in msg.lower()
 
     def test_validate_result_type_int(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolCallValidator()
         call = ToolCall("c1", "count_files", {}, 1.0, 0)
@@ -172,7 +168,6 @@ class TestToolCallValidator:
         assert valid is True
 
     def test_validate_result_type_int_invalid(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolCallValidator()
         call = ToolCall("c1", "count_files", {}, 1.0, 0)
@@ -182,7 +177,6 @@ class TestToolCallValidator:
         assert valid is False
 
     def test_validate_result_type_dict(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolCallValidator()
         call = ToolCall("c1", "parse_json", {}, 1.0, 0)
@@ -201,7 +195,6 @@ class TestToolResultValidator:
         assert validator.assertions == []
 
     def test_assert_output_contains(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
@@ -213,7 +206,6 @@ class TestToolResultValidator:
         assert failures == []
 
     def test_assert_output_contains_failure(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_contains("error")
@@ -225,7 +217,6 @@ class TestToolResultValidator:
         assert len(failures) == 1
 
     def test_assert_output_matches_regex(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_matches_regex(r"PR #\d+")
@@ -236,7 +227,6 @@ class TestToolResultValidator:
         assert valid is True
 
     def test_assert_output_matches_regex_failure(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_matches_regex(r"PR #\d+")
@@ -247,7 +237,6 @@ class TestToolResultValidator:
         assert valid is False
 
     def test_assert_result_valid_json(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_result_valid_json()
@@ -258,7 +247,6 @@ class TestToolResultValidator:
         assert valid is True
 
     def test_assert_result_valid_json_failure(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_result_valid_json()
@@ -269,7 +257,6 @@ class TestToolResultValidator:
         assert valid is False
 
     def test_multiple_assertions(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
@@ -281,7 +268,6 @@ class TestToolResultValidator:
         assert valid is True
 
     def test_multiple_assertions_partial_failure(self):
-        from rfc.agent_tool import ToolResult
 
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
