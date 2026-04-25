@@ -287,6 +287,12 @@ c) Add a TODO to revisit later
 - Always rebase onto `claude-code-staging`, not `main`.
 - **Never commit `uv.lock`.** It is gitignored. Run `uv sync` to regenerate
   locally. `pyproject.toml` pins exact versions and is the source of truth.
+- **Prefer skip-and-log over hard failure for optional / external dependencies.**
+  When a CLI tool depends on an optional service (LLM endpoint, optional DB
+  table, network resource), skip the affected unit (one model, one suite, one
+  metric) with a clear log message and continue, rather than aborting the whole
+  run. Hard-fail only when the work cannot meaningfully proceed (e.g., primary
+  DB URL is unset). Always surface a final summary of what was skipped and why.
 
 ---
 
