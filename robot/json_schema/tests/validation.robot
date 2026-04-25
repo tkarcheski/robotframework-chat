@@ -6,62 +6,45 @@ Documentation     JSON Schema Validation Tests
 ...               retry logic, and optional model comparison.
 
 Resource          ../json_schema.resource
+Suite Setup       Setup JSON Schema Test Environment
 
 Default Tags      json-schema    tier:2    verify:llm
 
 *** Test Cases ***
 
 Basic Profile JSON Validation
-    [Documentation]    Ask for a user profile in JSON and validate the schema.
     [Tags]    basic    score:partial
-    Setup JSON Schema Test Environment
-    ${scenario}=    Set Variable    ${basic_profile}
-    Ask For JSON With Schema
-    ...    ${scenario}[prompt]
-    ...    ${scenario}[schema]
-    ...    schema_name=${scenario}[name]
-    ...    min_score=${scenario}[min_score]
+    Validate Scenario    ${basic_profile}
 
 Product List JSON Validation
-    [Documentation]    Ask for a product list in JSON and validate schema.
     [Tags]    array    score:partial
-    Setup JSON Schema Test Environment
-    ${scenario}=    Set Variable    ${product_list}
-    Ask For JSON With Schema
-    ...    ${scenario}[prompt]
-    ...    ${scenario}[schema]
-    ...    schema_name=${scenario}[name]
-    ...    min_score=${scenario}[min_score]
+    Validate Scenario    ${product_list}
 
 Configuration Object JSON Validation
-    [Documentation]    Ask for a configuration object and validate nested structure.
     [Tags]    nested    score:partial
-    Setup JSON Schema Test Environment
-    ${scenario}=    Set Variable    ${config_object}
-    Ask For JSON With Schema
-    ...    ${scenario}[prompt]
-    ...    ${scenario}[schema]
-    ...    schema_name=${scenario}[name]
-    ...    min_score=${scenario}[min_score]
+    Validate Scenario    ${config_object}
 
 JSON Validation With Retry Logic
-    [Documentation]    Test JSON schema validation with automatic retry on failure.
+    [Documentation]    Asks for JSON and retries with escalating prompts on failure.
     [Tags]    retry    score:partial
-    Setup JSON Schema Test Environment
-    ${scenario}=    Set Variable    ${basic_profile}
     ${score}    ${attempt}=    Ask For JSON With Retries
-    ...    ${scenario}[prompt]
-    ...    ${scenario}[schema]
-    ...    schema_name=${scenario}[name]
+    ...    ${basic_profile}[prompt]
+    ...    ${basic_profile}[schema]
+    ...    schema_name=${basic_profile}[name]
     ...    max_retries=5
     Log    Achieved score ${score} on attempt ${attempt}
 
 Batch Schema Validation
     [Documentation]    Validate all schema scenarios in sequence.
     [Tags]    batch    score:partial
-    Setup JSON Schema Test Environment
-    @{all_scenarios}=    Create List
-    ...    ${basic_profile}
-    ...    ${product_list}
-    ...    ${config_object}
+    @{all_scenarios}=    Create List    ${basic_profile}    ${product_list}    ${config_object}
     Test JSON Schema Across Scenarios    @{all_scenarios}
+
+*** Keywords ***
+Validate Scenario
+    [Arguments]    ${scenario}
+    Ask For JSON With Schema
+    ...    ${scenario}[prompt]
+    ...    ${scenario}[schema]
+    ...    schema_name=${scenario}[name]
+    ...    min_score=${scenario}[min_score]

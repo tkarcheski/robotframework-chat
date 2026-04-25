@@ -1,80 +1,94 @@
 """Robot Framework keywords for JSON schema validation.
 
-Provides keywords to validate JSON against schemas with retry logic
-and support for multiple schema types. Useful for testing LLM output
-compliance with expected structured formats.
+Validates LLM JSON output against a lightweight schema (required fields and
+field types) with retry-on-failure support for measuring parse failure rates.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
 
 from .exceptions import EmptyLLMResponseError
+from .format_keywords import _strip_code_fences
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
+_TYPE_CHECKS: dict[str, tuple[type | tuple[type, ...], str]] = {
+    "string": (str, "string"),
+    "number": ((int, float), "number"),
+    "boolean": (bool, "boolean"),
+    "array": (list, "array"),
+    "object": (dict, "object"),
+}
 
-def _strip_code_fences(text: str) -> str:
-    """Extract JSON from markdown code fences if present."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        if len(lines) >= 3:
-            return "\n".join(lines[1:-1]).strip()
-    return text
+_RETRY_HINTS = [
+    "",
+    "\n\nPlease provide valid JSON that strictly follows this schema.",
+    "\n\nEnsure the JSON is valid and complete. Double-check all required fields.",
+    "\n\nThis is your final attempt. Provide valid JSON matching the schema exactly.",
+]
 
 
 def _validate_against_schema(
     data: Any, schema: dict[str, Any]
 ) -> tuple[bool, list[str]]:
-    """Validate data against a simple schema.
-
-    Schema format: {"required": ["field1", "field2"], "types": {"field1": "string"}}
-
-    Returns (is_valid, error_messages).
-    """
-    errors = []
-
+    """Validate data against a simple {"required": [...], "types": {...}} schema."""
     if not isinstance(data, dict):
-        errors.append(f"Expected dict, got {type(data).__name__}")
-        return False, errors
+        return False, [f"Expected dict, got {type(data).__name__}"]
 
-    required_fields = schema.get("required", [])
-    for field in required_fields:
+    errors: list[str] = []
+    for field in schema.get("required", []):
         if field not in data:
             errors.append(f"Missing required field: {field}")
 
-    type_specs = schema.get("types", {})
-    for field, expected_type in type_specs.items():
+    for field, expected_type in schema.get("types", {}).items():
         if field not in data:
             continue
-        value = data[field]
-        if expected_type == "string" and not isinstance(value, str):
+        check = _TYPE_CHECKS.get(expected_type)
+        if check is None:
+            continue
+        py_type, label = check
+        if not isinstance(data[field], py_type):
             errors.append(
-                f"Field '{field}' should be string, got {type(value).__name__}"
-            )
-        elif expected_type == "number" and not isinstance(value, (int, float)):
-            errors.append(
-                f"Field '{field}' should be number, got {type(value).__name__}"
-            )
-        elif expected_type == "boolean" and not isinstance(value, bool):
-            errors.append(
-                f"Field '{field}' should be boolean, got {type(value).__name__}"
-            )
-        elif expected_type == "array" and not isinstance(value, list):
-            errors.append(
-                f"Field '{field}' should be array, got {type(value).__name__}"
-            )
-        elif expected_type == "object" and not isinstance(value, dict):
-            errors.append(
-                f"Field '{field}' should be object, got {type(value).__name__}"
+                f"Field '{field}' should be {label}, got {type(data[field]).__name__}"
             )
 
-    return len(errors) == 0, errors
+    return not errors, errors
+
+
+def _validate_parsed(
+    response: str, schema_obj: dict[str, Any], schema_name: str
+) -> float:
+    """Parse `response` and validate against an already-parsed schema object."""
+    emit_rfc_data("schema_valid", "true")
+    emit_rfc_data("schema_name", schema_name)
+
+    text = _strip_code_fences(response)
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warn(f"Parse failed: {e}")
+        emit_rfc_data("parse_valid", "false")
+        emit_rfc_data("parse_error", str(e))
+        return 0.0
+
+    emit_rfc_data("parse_valid", "true")
+    is_valid, errors = _validate_against_schema(parsed, schema_obj)
+
+    if is_valid:
+        score = 1.0
+        emit_rfc_data("validation_valid", "true")
+    else:
+        score = 0.5
+        emit_rfc_data("validation_valid", "false")
+        emit_rfc_data("validation_errors", ";".join(errors))
+
+    emit_rfc_data("score", f"{score:.4f}")
+    return score
 
 
 class JSONSchemaKeywords:
@@ -100,18 +114,10 @@ class JSONSchemaKeywords:
         schema: str,
         schema_name: str = "custom",
     ) -> float:
-        """Validate JSON response against a schema with retry logic.
+        """Parse `response` as JSON and validate against `schema`.
 
-        Attempts to parse JSON and validate against schema. If parsing fails,
-        retries with escalating prompts up to max_retries times.
-
-        Args:
-            response: Raw LLM response containing JSON.
-            schema: JSON string defining the schema with required fields and types.
-            schema_name: Name of the schema for logging.
-
-        Returns:
-            Score from 0.0 to 1.0. Factors: parse success (0.5), validation (0.5).
+        Returns 1.0 for full pass, 0.5 for valid parse with schema errors,
+        and 0.0 for parse failure or invalid schema.
         """
         try:
             schema_obj = json.loads(schema)
@@ -120,32 +126,7 @@ class JSONSchemaKeywords:
             emit_rfc_data("schema_valid", "false")
             return 0.0
 
-        emit_rfc_data("schema_valid", "true")
-        emit_rfc_data("schema_name", schema_name)
-
-        text = _strip_code_fences(response)
-
-        try:
-            parsed = json.loads(text)
-            emit_rfc_data("parse_valid", "true")
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warn(f"Parse failed: {e}")
-            emit_rfc_data("parse_valid", "false")
-            emit_rfc_data("parse_error", str(e))
-            return 0.0
-
-        is_valid, errors = _validate_against_schema(parsed, schema_obj)
-
-        if is_valid:
-            score = 1.0
-            emit_rfc_data("validation_valid", "true")
-        else:
-            score = 0.5
-            emit_rfc_data("validation_valid", "false")
-            emit_rfc_data("validation_errors", ";".join(errors))
-
-        emit_rfc_data("score", f"{score:.4f}")
-        return score
+        return _validate_parsed(response, schema_obj, schema_name)
 
     @keyword("Validate JSON With Retries")
     def validate_json_with_retries(
@@ -155,55 +136,46 @@ class JSONSchemaKeywords:
         schema_name: str = "custom",
         max_retries: Optional[int] = None,
     ) -> tuple[float, int]:
-        """Ask LLM for JSON and validate against schema with retries.
+        """Ask the LLM for JSON and validate it, retrying on failure.
 
-        Asks LLM to generate JSON matching the schema. If parsing or validation
-        fails, retries with escalating prompts.
-
-        Args:
-            prompt: Base prompt asking for JSON response.
-            schema: JSON string defining the schema.
-            schema_name: Name of the schema for logging.
-            max_retries: Override default max retries.
-
-        Returns:
-            Tuple of (final_score, attempt_number).
+        Returns (final_score, attempt_number). Stops early on a perfect score.
         """
-        max_retries = int(max_retries) if max_retries is not None else self.max_retries
+        retries = int(max_retries) if max_retries is not None else self.max_retries
 
-        retry_hints = [
-            "",
-            "\n\nPlease provide valid JSON that strictly follows this schema.",
-            "\n\nEnsure the JSON is valid and complete. Double-check all required fields.",
-            "\n\nThis is your final attempt. Provide valid JSON matching the schema exactly.",
-        ]
+        try:
+            schema_obj = json.loads(schema)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid schema: {e}")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0, 0
 
         last_score = 0.0
-        last_attempt = max_retries
-
-        for attempt in range(max_retries):
-            hint = retry_hints[min(attempt, len(retry_hints) - 1)]
-            full_prompt = prompt + hint
-
-            try:
-                response = self.client.generate(full_prompt)
-                if not response or not response.strip():
-                    logger.warn(f"Attempt {attempt + 1}: Empty response")
-                    last_attempt = attempt + 1
-                    continue
-            except EmptyLLMResponseError:
-                logger.warn(f"Attempt {attempt + 1}: Empty LLM response")
-                last_attempt = attempt + 1
+        for attempt in range(1, retries + 1):
+            full_prompt = prompt + _RETRY_HINTS[min(attempt - 1, len(_RETRY_HINTS) - 1)]
+            response = _generate_or_skip(self.client.generate, full_prompt, attempt)
+            if response is None:
                 continue
 
-            score = self.validate_json_with_schema(response, schema, schema_name)
-            last_score = score
-            last_attempt = attempt + 1
+            last_score = _validate_parsed(response, schema_obj, schema_name)
+            emit_rfc_data("attempt_number", str(attempt))
+            emit_rfc_data("final_score", f"{last_score:.4f}")
 
-            emit_rfc_data("attempt_number", str(attempt + 1))
-            emit_rfc_data("final_score", f"{score:.4f}")
+            if last_score == 1.0:
+                return last_score, attempt
 
-            if score == 1.0:
-                return score, attempt + 1
+        return last_score, retries
 
-        return last_score, last_attempt
+
+def _generate_or_skip(
+    generate: Callable[[str], str], prompt: str, attempt: int
+) -> Optional[str]:
+    """Call `generate`; return None and log if response is empty or LLM raises."""
+    try:
+        response = generate(prompt)
+    except EmptyLLMResponseError:
+        logger.warn(f"Attempt {attempt}: Empty LLM response")
+        return None
+    if not response or not response.strip():
+        logger.warn(f"Attempt {attempt}: Empty response")
+        return None
+    return response
