@@ -63,7 +63,6 @@ class ContextWindowKeywords:
 
     # Regex for whitespace normalization in needle matching
     _WS_COLLAPSE = re.compile(r"\s+")
-    _PUNCT_STRIP = re.compile(r"[^\w\-]")
 
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
