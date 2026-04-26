@@ -603,3 +603,24 @@ ${container_name}=    Set Variable    rfc-ollama-${timestamp}
 - Docker daemon (required for container tests)
 - Ollama (optional, default: http://localhost:11434)
 - Python 3.11+
+
+## Agent Workflow Capture
+
+For tests that exercise multi-turn agent behavior (messages, tool
+calls, state evolution), use `AgentWorkflowKeywords`:
+
+- Library: `rfc.agent_workflow_keywords.AgentWorkflowKeywords`
+- Tracker: `rfc.agent_interaction_tracker.AgentInteractionTracker`
+  builds an immutable `AgentWorkflow` with frozen interactions, tool
+  calls, and tool results.
+- Validator: `rfc.tool_call_validator.ToolCallValidator` enforces
+  schema, ordering, and result expectations.
+- Memory: `rfc.agent_memory_manager.MemoryManager` provides
+  sliding-window short-term, vector long-term, and schema-checked
+  persistent storage.
+- Listener: `rfc.agent_workflow_listener.AgentWorkflowListener` reads
+  the `agent_workflow` RFC_DATA payload at end-of-test and persists
+  via `AgentWorkflowDatabase` (SQLite or PostgreSQL).
+
+Example tests live under `robot/agent_workflows/tests/`. Suite README:
+`robot/agent_workflows/README.md`.
