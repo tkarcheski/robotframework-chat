@@ -84,6 +84,21 @@ Simple Math Should Be Deterministic
 - Shared grading keywords (single-LLM and multi-LLM) should live in common Robot resources and be used only by tests tagged with the appropriate tier.
 - Meta-tests or CI scripts should enforce that every test has valid `tier:*` and `verify:*` tags and that Tier 0–1 suites do not import LLM grading keywords.
 
+## Agent Workflow Tests
+
+Agent workflow tests capture multi-turn agent execution as a structured
+`AgentWorkflow` and assert against it with Python-backed keywords. See
+`robot/agent_workflows/README.md` for the full guide.
+
+- **Synthetic suites** (mock messages and tool results) are `tier:1
+  verify:python` — fast, deterministic, run on every CI build.
+- **Live-LLM suites** (real model invocation, Python-graded shape) are
+  `tier:3 verify:python` — gated on `Verify LLM Available`, run nightly.
+
+When the `AgentWorkflowListener` is attached, finalised workflows are
+persisted to the configured database so historic agent runs become
+queryable alongside test results.
+
 ---
 
 For Make targets and local workflows, see `humans/MAKE.md`.

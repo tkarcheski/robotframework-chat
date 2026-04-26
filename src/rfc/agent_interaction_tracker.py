@@ -137,6 +137,14 @@ class AgentInteractionTracker:
         return interaction
 
     def end_workflow(self, success: bool, error: str | None = None) -> AgentWorkflow:
+        # If an interaction is still open (test failed mid-turn or forgot
+        # End Interaction), auto-close it so the partial turn is preserved
+        # in the emitted/persisted workflow rather than silently dropped.
+        if self._builder is not None:
+            self.end_interaction(
+                success=False,
+                error="auto-closed by end_workflow: interaction was still active",
+            )
         self._final_workflow = replace(
             self.workflow,
             ended_at=time.time(),

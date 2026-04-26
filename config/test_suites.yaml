@@ -217,6 +217,11 @@ test_suites:
     path: "robot/agentic_injection"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, file reads); canary-based detection of agent compliance with embedded instructions"
 
+  agent-workflows:
+    label: "Agent Workflows"
+    path: "robot/agent_workflows/tests"
+    description: "OpenClaw-style multi-turn agent workflow capture: tool-call schema validation, ordering assertions, error recovery, state snapshots, and live-LLM smoke"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -273,6 +278,7 @@ ci:
     - "rfc.git_metadata_listener.GitMetaData"
     - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
     - "rfc.chat_log_listener.ChatLogListener"
+    - "rfc.agent_workflow_listener.AgentWorkflowListener"
 
   # Job groups: combine multiple atomic suites into a single CI job.
   # Suites not listed here run as individual jobs.
