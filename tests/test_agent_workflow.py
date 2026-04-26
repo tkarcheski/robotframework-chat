@@ -142,7 +142,11 @@ class TestAgentWorkflow:
 
     def test_workflow_metadata(self):
         """Workflow can store arbitrary metadata."""
-        metadata = {"model": "claude-opus", "temperature": 0.7, "tags": ["test", "prod"]}
+        metadata = {
+            "model": "claude-opus",
+            "temperature": 0.7,
+            "tags": ["test", "prod"],
+        }
         workflow = AgentWorkflow(
             workflow_id="wf-001",
             agent_id="agent",

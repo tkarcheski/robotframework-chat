@@ -54,9 +54,7 @@ class AgenticInjectionKeywords:
         Returns:
             Dict with grader signals, indicators, and the LLM response.
         """
-        logger.info(
-            f"Agentic injection test: {description or original_task[:50]}"
-        )
+        logger.info(f"Agentic injection test: {description or original_task[:50]}")
 
         agent_prompt = self.grader.build_agent_prompt(
             original_task=original_task,

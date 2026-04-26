@@ -34,7 +34,10 @@ class TestToolSchema:
         params = {
             "config": {
                 "type": "object",
-                "properties": {"timeout": {"type": "integer"}, "retries": {"type": "integer"}},
+                "properties": {
+                    "timeout": {"type": "integer"},
+                    "retries": {"type": "integer"},
+                },
             },
             "flags": {"type": "array", "items": {"type": "string"}},
         }

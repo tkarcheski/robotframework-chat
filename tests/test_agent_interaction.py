@@ -50,7 +50,9 @@ class TestAgentInteraction:
         )
         assert interaction.turn_number == 1
         assert len(interaction.messages) == 1
-        assert interaction.reasoning == "The issue requires cloning the repository first"
+        assert (
+            interaction.reasoning == "The issue requires cloning the repository first"
+        )
         assert interaction.success is True
 
     def test_interaction_with_tool_calls_and_results(self):

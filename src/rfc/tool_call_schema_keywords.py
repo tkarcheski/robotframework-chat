@@ -310,7 +310,9 @@ class ToolCallSchemaKeywords:
         tool_list: List[Dict[str, Any]] = json.loads(tools)
         if not isinstance(tool_list, list):
             result = _empty_validation_result()
-            result["response"] = f"tools must be a JSON list, got {type(tool_list).__name__}"
+            result["response"] = (
+                f"tools must be a JSON list, got {type(tool_list).__name__}"
+            )
             emit_rfc_data("score", "0.0")
             emit_rfc_data("actual_answer", result["response"])
             emit_rfc_data("expected_answer", "tools: list of schema objects")
@@ -321,7 +323,9 @@ class ToolCallSchemaKeywords:
         )
         if not isinstance(expected_args_dict, dict):
             result = _empty_validation_result()
-            result["response"] = f"expected_args must be a JSON object, got {type(expected_args_dict).__name__}"
+            result["response"] = (
+                f"expected_args must be a JSON object, got {type(expected_args_dict).__name__}"
+            )
             emit_rfc_data("score", "0.0")
             emit_rfc_data("actual_answer", result["response"])
             emit_rfc_data("expected_answer", "expected_args: dict or empty string")

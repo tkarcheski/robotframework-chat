@@ -59,7 +59,10 @@ class ToolCallValidator:
     ) -> tuple[bool, str]:
         """Check result matches expectations."""
         if result.tool_call_id != call.id:
-            return False, f"Result tool_call_id '{result.tool_call_id}' does not match call.id '{call.id}'"
+            return (
+                False,
+                f"Result tool_call_id '{result.tool_call_id}' does not match call.id '{call.id}'",
+            )
 
         if not result.success:
             return False, f"Tool call failed: {result.error}"
@@ -87,9 +90,7 @@ class ToolResultValidator:
 
     def assert_output_contains(self, substring: str) -> None:
         """Assert result output contains substring."""
-        self.assertions.append(
-            ("contains", lambda output: substring in output)
-        )
+        self.assertions.append(("contains", lambda output: substring in output))
 
     def assert_output_matches_regex(self, pattern: str) -> None:
         """Assert result matches regex."""
@@ -99,6 +100,7 @@ class ToolResultValidator:
 
     def assert_result_valid_json(self) -> None:
         """Assert result is valid JSON."""
+
         def is_valid_json(output: str) -> bool:
             try:
                 json.loads(output)
