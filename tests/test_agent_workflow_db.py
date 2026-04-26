@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from rfc.agent_interaction import AgentInteraction
 from rfc.agent_interaction_tracker import AgentInteractionTracker
+from rfc.agent_tool import ToolCall, ToolResult
 from rfc.agent_workflow import AgentWorkflow, WorkflowStatus
 from rfc.agent_workflow_db import (
     AgentWorkflowDatabase,
@@ -78,6 +80,56 @@ class TestPersist:
         assert db.get_table_row_count("agent_workflows") == 1
         assert db.get_table_row_count("agent_interactions") == 1
         assert db.get_table_row_count("agent_tool_calls") == 1
+        assert db.get_table_row_count("agent_tool_results") == 1
+
+    def test_re_persist_with_additional_tool_call_keeps_fk_consistent(
+        self, db: AgentWorkflowDatabase
+    ) -> None:
+        # Mirrors the real-world re-persist case: the SAME workflow object
+        # gains an additional tool call between two persist() calls, so call
+        # IDs are stable across persists. The interaction is upserted (UPDATE
+        # path), and the bug here was that cur.lastrowid returns 0 on UPDATE,
+        # so the new tool call's interaction_id pointed at no parent row and
+        # raised FOREIGN KEY constraint failed.
+        call_a = ToolCall(
+            id="call-a", tool_name="git", arguments={"cmd": "status"},
+            timestamp=1.0, call_number=0,
+        )
+        call_b = ToolCall(
+            id="call-b", tool_name="git", arguments={"cmd": "diff"},
+            timestamp=2.0, call_number=1,
+        )
+        result_a = ToolResult(
+            tool_call_id="call-a", success=True, output="clean", error=None,
+            execution_time_ms=1.0,
+        )
+        result_b = ToolResult(
+            tool_call_id="call-b", success=True, output="diff out", error=None,
+            execution_time_ms=1.0,
+        )
+
+        def _wf(calls: tuple[ToolCall, ...], results: tuple[ToolResult, ...]) -> AgentWorkflow:
+            interaction = AgentInteraction(
+                turn_number=1, messages=(), tool_calls=calls, tool_results=results,
+                state_before={}, state_after={}, reasoning="", duration_ms=0.0,
+                success=True, error=None,
+            )
+            return AgentWorkflow(
+                workflow_id="wf-extend", agent_id="claude",
+                task_description="Extend turn", started_at=0.0, ended_at=10.0,
+                status=WorkflowStatus.COMPLETED, interactions=(interaction,),
+            )
+
+        db.persist_workflow(_wf((call_a,), (result_a,)))
+        db.persist_workflow(_wf((call_a, call_b), (result_a, result_b)))
+
+        loaded = db.get_workflow("wf-extend")
+        assert loaded is not None
+        assert len(loaded["interactions"]) == 1
+        calls = loaded["interactions"][0]["tool_calls"]
+        assert sorted(c["call_id"] for c in calls) == ["call-a", "call-b"]
+        results = loaded["interactions"][0]["tool_results"]
+        assert sorted(r["call_id"] for r in results) == ["call-a", "call-b"]
 
     def test_persist_workflow_with_multiple_turns(
         self, db: AgentWorkflowDatabase

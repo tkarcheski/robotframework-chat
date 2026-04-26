@@ -186,6 +186,13 @@ class _SQLiteBackend(_Backend):
     def persist_workflow(self, workflow: AgentWorkflow) -> int:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
+            # Tool results have no natural unique key, so clear stale rows
+            # for this workflow before re-inserting. Workflows, interactions,
+            # and tool_calls are upserted by their unique keys.
+            conn.execute(
+                "DELETE FROM agent_tool_results WHERE workflow_id = ?",
+                (workflow.workflow_id,),
+            )
             cur = conn.execute(
                 """
                 INSERT INTO agent_workflows
@@ -212,7 +219,7 @@ class _SQLiteBackend(_Backend):
             workflow_pk = cur.lastrowid or _lookup_workflow_pk(conn, workflow.workflow_id)
 
             for interaction in workflow.interactions:
-                inter_cur = conn.execute(
+                conn.execute(
                     """
                     INSERT INTO agent_interactions
                         (workflow_id, turn_number, reasoning, messages_json,
@@ -249,13 +256,14 @@ class _SQLiteBackend(_Backend):
                         interaction.error,
                     ),
                 )
-                interaction_id = inter_cur.lastrowid
-                if interaction_id is None:
-                    interaction_id = conn.execute(
-                        "SELECT id FROM agent_interactions "
-                        "WHERE workflow_id = ? AND turn_number = ?",
-                        (workflow.workflow_id, interaction.turn_number),
-                    ).fetchone()[0]
+                # cur.lastrowid is unreliable on the UPDATE path of
+                # INSERT ... ON CONFLICT (returns 0 or stale rowid), so look
+                # up the interaction's primary key explicitly.
+                interaction_id = conn.execute(
+                    "SELECT id FROM agent_interactions "
+                    "WHERE workflow_id = ? AND turn_number = ?",
+                    (workflow.workflow_id, interaction.turn_number),
+                ).fetchone()[0]
 
                 for call in interaction.tool_calls:
                     conn.execute(
@@ -464,6 +472,11 @@ class _SQLAlchemyBackend(_Backend):
         # Postgres doesn't have ON CONFLICT in vanilla Core; use raw SQL with
         # ON CONFLICT (workflow_id) and read back the row id.
         with self.engine.begin() as conn:
+            # Tool results have no natural unique key (matches SQLite path).
+            conn.execute(
+                text("DELETE FROM agent_tool_results WHERE workflow_id = :wid"),
+                {"wid": workflow.workflow_id},
+            )
             conn.execute(
                 text(
                     """
