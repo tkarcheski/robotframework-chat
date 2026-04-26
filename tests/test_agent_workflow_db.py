@@ -82,6 +82,52 @@ class TestPersist:
         assert db.get_table_row_count("agent_tool_calls") == 1
         assert db.get_table_row_count("agent_tool_results") == 1
 
+    def test_re_persist_with_fewer_turns_drops_stale_rows(
+        self, db: AgentWorkflowDatabase
+    ) -> None:
+        # First persist [1, 2]; then re-persist with only [1]. Old turn 2
+        # rows in agent_interactions / agent_tool_calls / agent_tool_results
+        # must not survive the re-persist or get_workflow() will return
+        # phantom turns from prior runs.
+        def _wf(turns: tuple[int, ...]) -> AgentWorkflow:
+            interactions = tuple(
+                AgentInteraction(
+                    turn_number=t,
+                    messages=(),
+                    tool_calls=(
+                        ToolCall(
+                            id=f"call-{t}", tool_name="echo",
+                            arguments={"n": t}, timestamp=float(t),
+                            call_number=0,
+                        ),
+                    ),
+                    tool_results=(
+                        ToolResult(
+                            tool_call_id=f"call-{t}", success=True,
+                            output=str(t), error=None, execution_time_ms=1.0,
+                        ),
+                    ),
+                    state_before={}, state_after={}, reasoning="",
+                    duration_ms=0.0, success=True, error=None,
+                )
+                for t in turns
+            )
+            return AgentWorkflow(
+                workflow_id="wf-shrink", agent_id="claude",
+                task_description="Shrink", started_at=0.0, ended_at=10.0,
+                status=WorkflowStatus.COMPLETED, interactions=interactions,
+            )
+
+        db.persist_workflow(_wf((1, 2)))
+        db.persist_workflow(_wf((1,)))
+
+        loaded = db.get_workflow("wf-shrink")
+        assert loaded is not None
+        assert [i["turn_number"] for i in loaded["interactions"]] == [1]
+        assert db.get_table_row_count("agent_interactions") == 1
+        assert db.get_table_row_count("agent_tool_calls") == 1
+        assert db.get_table_row_count("agent_tool_results") == 1
+
     def test_re_persist_with_additional_tool_call_keeps_fk_consistent(
         self, db: AgentWorkflowDatabase
     ) -> None:

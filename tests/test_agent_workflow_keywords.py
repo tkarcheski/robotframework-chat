@@ -49,6 +49,24 @@ class TestLifecycle:
         # itself is what we care about.
         assert payload["interactions"][0]["messages"][0]["content"] == "ping"
 
+    def test_end_workflow_auto_closes_active_interaction(
+        self, kw: AgentWorkflowKeywords
+    ) -> None:
+        # If a test fails or forgets End Interaction, the in-flight turn
+        # would otherwise be silently dropped — exactly the scenario where
+        # you most want diagnostics. End Agent Workflow must auto-close it.
+        kw.start_agent_workflow("wf-leak", "claude", "Drop turn?")
+        kw.start_interaction(1)
+        kw.agent_message("user", "started but not ended")
+        payload = kw.end_agent_workflow(False, error="test crashed mid-turn")
+        assert len(payload["interactions"]) == 1
+        turn = payload["interactions"][0]
+        assert turn["turn_number"] == 1
+        assert turn["success"] is False
+        assert turn["error"] is not None
+        assert "auto-closed" in turn["error"].lower()
+        assert turn["messages"][0]["content"] == "started but not ended"
+
     def test_summary_counts_turns_and_tool_calls(
         self, kw: AgentWorkflowKeywords
     ) -> None:
