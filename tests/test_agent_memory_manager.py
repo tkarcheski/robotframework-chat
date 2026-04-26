@@ -104,6 +104,23 @@ class TestPersistentFacts:
         with pytest.raises(ValueError, match="Unsupported schema type"):
             mgr.add_persistent_fact("x", "y", {"type": "weird"})
 
+    def test_rejects_bool_for_integer_schema(self) -> None:
+        # bool is a subclass of int in Python, so isinstance(True, int) is
+        # True. Numeric schemas must reject booleans explicitly.
+        mgr = MemoryManager()
+        with pytest.raises(ValueError, match="Expected integer"):
+            mgr.add_persistent_fact("count", True, {"type": "integer"})
+
+    def test_rejects_bool_for_number_schema(self) -> None:
+        mgr = MemoryManager()
+        with pytest.raises(ValueError, match="Expected number"):
+            mgr.add_persistent_fact("ratio", False, {"type": "number"})
+
+    def test_accepts_bool_for_boolean_schema(self) -> None:
+        mgr = MemoryManager()
+        mgr.add_persistent_fact("flag", True, {"type": "boolean"})
+        assert mgr.get_persistent_fact("flag") is True
+
 
 class TestExecutionLedger:
     def test_logs_action_with_timestamp(self) -> None:

@@ -126,6 +126,20 @@ class TestSchemaValidation:
         with pytest.raises(AssertionError, match="not registered"):
             kw.validate_tool_call_schema("nope", "{}")
 
+    def test_validate_rejects_non_object_arguments(
+        self, kw: AgentWorkflowKeywords
+    ) -> None:
+        # `'path' in ['path']` is True, so without an object check a JSON
+        # array would silently pass a `required: ['path']` schema.
+        kw.register_tool_schema(
+            "fs",
+            json.dumps({"parameters": {"path": {}}, "required": ["path"]}),
+        )
+        with pytest.raises(ValueError, match="must decode to an object"):
+            kw.validate_tool_call_schema("fs", '["path"]')
+        with pytest.raises(ValueError, match="must decode to an object"):
+            kw.validate_tool_call_schema("fs", '"path"')
+
 
 class TestAssertions:
     def test_assert_tool_was_called_pass(

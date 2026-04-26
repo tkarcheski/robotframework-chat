@@ -73,6 +73,10 @@ def _validate_against_schema(value: Any, schema: dict[str, Any]) -> None:
         py_type = _TYPE_MAP.get(expected_type)
         if py_type is None:
             raise ValueError(f"Unsupported schema type: {expected_type}")
+        # bool is a subclass of int in Python, so isinstance(True, int) is
+        # True. Numeric schemas must reject booleans explicitly.
+        if expected_type in ("integer", "number") and isinstance(value, bool):
+            raise ValueError(f"Expected {expected_type}, got bool")
         if not isinstance(value, py_type):
             raise ValueError(
                 f"Expected {expected_type}, got {type(value).__name__}"

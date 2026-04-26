@@ -196,10 +196,20 @@ class AgentWorkflowKeywords:
         self, tool_name: str, arguments_json: str
     ) -> None:
         """Assert that the given tool call satisfies the registered schema."""
+        try:
+            args = json.loads(arguments_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"arguments_json must be valid JSON: {exc}"
+            ) from exc
+        if not isinstance(args, dict):
+            # 'x' in ['x'] is True, so a JSON array would silently satisfy
+            # a `required: ['x']` schema without this guard.
+            raise ValueError("arguments_json must decode to an object")
         call = ToolCall(
             id="validation-check",
             tool_name=tool_name,
-            arguments=json.loads(arguments_json),
+            arguments=args,
             timestamp=0.0,
             call_number=0,
         )
