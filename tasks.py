@@ -118,13 +118,13 @@ def robot() -> None:
 def robot_math() -> None:
     """Run math tests (Robot Framework)."""
     _ensure_env()
-    _uv_run("robot", "-d", "results/math", *LISTENERS, "robot/math/tests/")
+    _uv_run("robot", "-d", "results/math", *LISTENERS, "robot/math/")
 
 
 def robot_accounting() -> None:
     """Run accounting tests (Robot Framework)."""
     _ensure_env()
-    _uv_run("robot", "-d", "results/accounting", *LISTENERS, "robot/accounting/tests/")
+    _uv_run("robot", "-d", "results/accounting", *LISTENERS, "robot/accounting/")
 
 
 def robot_safety() -> None:

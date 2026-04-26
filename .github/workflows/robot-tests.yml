@@ -74,7 +74,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run math tests
-        run: uv run robot -d results/math $LISTENERS robot/math/tests/
+        run: uv run robot -d results/math $LISTENERS robot/math/
 
       - name: Run safety tests
         if: always()

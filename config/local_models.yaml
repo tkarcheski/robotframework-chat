@@ -30,12 +30,12 @@ discovery:
 # ---------------------------------------------------------------------------
 test_suites:
   - name: "math"
-    path: "robot/math/tests/"
+    path: "robot/math/"
     description: "Basic arithmetic and IQ-graded math reasoning"
     timeout_seconds: 300
 
   - name: "accounting"
-    path: "robot/accounting/tests/"
+    path: "robot/accounting/"
     description: "Applied accounting and financial math skill measurements"
     timeout_seconds: 300
 
@@ -75,62 +75,62 @@ test_suites:
     timeout_seconds: 300
 
   - name: "ceo"
-    path: "robot/ceo/tests/"
+    path: "robot/ceo/"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP, patent, licensing"
     timeout_seconds: 600
 
   - name: "superset"
-    path: "robot/superset/tests/"
+    path: "robot/superset/"
     description: "PostgreSQL connectivity check and host info registration"
     timeout_seconds: 60
 
   - name: "legal"
-    path: "robot/legal/tests/"
+    path: "robot/legal/"
     description: "Legal reasoning and analysis tests"
     timeout_seconds: 300
 
   - name: "task-management"
-    path: "robot/task_management/tests/"
+    path: "robot/task_management/"
     description: "Task management and planning tests"
     timeout_seconds: 300
 
   - name: "c-interview"
-    path: "robot/c_interview/tests/"
+    path: "robot/c_interview/"
     description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
     timeout_seconds: 300
 
   - name: "benchmark"
-    path: "robot/benchmark/tests/"
+    path: "robot/benchmark/"
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
     timeout_seconds: 1800
 
   - name: "creativity"
-    path: "robot/creativity/tests/"
+    path: "robot/creativity/"
     description: "LLM humor, joke creation, context awareness, and creative judging"
     timeout_seconds: 600
 
   - name: "multi-turn"
-    path: "robot/multi_turn/tests/"
+    path: "robot/multi_turn/"
     description: "Context retention, instruction-following drift, and topic handoff isolation"
     timeout_seconds: 600
 
   - name: "adversarial"
-    path: "robot/adversarial/tests/"
+    path: "robot/adversarial/"
     description: "Covert adversarial prompt injection tests with hidden instructions"
     timeout_seconds: 300
 
   - name: "persona"
-    path: "robot/persona/tests/"
+    path: "robot/persona/"
     description: "Multi-turn persona consistency testing under adversarial pressure"
     timeout_seconds: 600
 
   - name: "quantization"
-    path: "robot/quantization/tests/"
+    path: "robot/quantization/"
     description: "Quantization degradation comparison (Q4 vs Q8)"
     timeout_seconds: 600
 
   - name: "bias"
-    path: "robot/bias/tests/"
+    path: "robot/bias/"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
     timeout_seconds: 600
 
@@ -140,17 +140,17 @@ test_suites:
     timeout_seconds: 300
 
   - name: "gaia"
-    path: "robot/gaia/tests/"
+    path: "robot/gaia/"
     description: "GAIA-style tool-use tests for LLM tool selection and invocation"
     timeout_seconds: 300
 
   - name: "ifeval"
-    path: "robot/ifeval/tests/"
+    path: "robot/ifeval/"
     description: "Instruction following evaluation with deterministic constraint checking"
     timeout_seconds: 300
 
   - name: "hallucination"
-    path: "robot/hallucination/tests/"
+    path: "robot/hallucination/"
     description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
     timeout_seconds: 600
 
@@ -160,17 +160,17 @@ test_suites:
     timeout_seconds: 7200
 
   - name: "react"
-    path: "robot/react/tests/"
+    path: "robot/react/"
     description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
     timeout_seconds: 300
 
   - name: "meta-learning"
-    path: "robot/meta_learning/tests/"
+    path: "robot/meta_learning/"
     description: "In-context skill retention tests — teach, distract, then verify skill application"
     timeout_seconds: 300
 
   - name: "tool-hallucination"
-    path: "robot/tool_hallucination/tests/"
+    path: "robot/tool_hallucination/"
     description: "Tool hallucination detection — real vs fake tool selection precision"
     timeout_seconds: 300
 
@@ -180,12 +180,12 @@ test_suites:
     timeout_seconds: 300
 
   - name: "superset-dashboards"
-    path: "robot/superset/tests/dashboards.robot"
+    path: "robot/superset/dashboards.robot"
     description: "Browser-based Superset dashboard evaluation with LLM feedback"
     timeout_seconds: 600
 
   - name: "github-review"
-    path: "robot/github/tests/"
+    path: "robot/github/"
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     timeout_seconds: 600
 

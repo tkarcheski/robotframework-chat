@@ -76,10 +76,10 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) $(ARGS) robot/math/tests/
+	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) $(ARGS) robot/math/
 
 robot-accounting: ## Run accounting tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) $(ARGS) robot/accounting/tests/
+	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) $(ARGS) robot/accounting/
 
 robot-docker: ## Run Docker tests (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/docker $(LISTENER) $(ARGS) robot/docker/
@@ -104,7 +104,7 @@ robot-rust: ## Run Rust programming tests (Robot Framework)
 robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
-	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/tests/
+	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) $(ARGS) robot/swebench/

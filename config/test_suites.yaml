@@ -74,7 +74,7 @@ master_models:
 test_suites:
   math:
     label: "Math Tests"
-    path: "robot/math/tests"
+    path: "robot/math"
     description: "Basic arithmetic and IQ-level parameterized math tests"
 
   docker-python:
@@ -94,72 +94,72 @@ test_suites:
 
   accounting:
     label: "Accounting Tests"
-    path: "robot/accounting/tests"
+    path: "robot/accounting"
     description: "Applied accounting and financial math skill measurements"
 
   safety:
     label: "Safety Tests"
-    path: "robot/safety/tests"
+    path: "robot/safety"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
   superset:
     label: "Superset Connectivity"
-    path: "robot/superset/tests"
+    path: "robot/superset"
     description: "PostgreSQL connectivity check and host info registration"
 
   ceo:
     label: "CEO Agent"
-    path: "robot/ceo/tests"
+    path: "robot/ceo"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
 
   c-interview:
     label: "C Interview Questions"
-    path: "robot/c_interview/tests"
+    path: "robot/c_interview"
     description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
 
   benchmark:
     label: "Token Output Benchmark"
-    path: "robot/benchmark/tests"
+    path: "robot/benchmark"
     description: "Token output throughput and completion ratio benchmark (512–65536 tokens)"
 
   legal:
     label: "Legal Document Analysis"
-    path: "robot/legal/tests"
+    path: "robot/legal"
     description: "Loophole detection and needle-in-haystack clause retrieval in legal documents"
 
   task-management:
     label: "Task Management"
-    path: "robot/task_management/tests"
+    path: "robot/task_management"
     description: "Task planning and management skill measurements"
 
   creativity:
     label: "Creativity Tests"
-    path: "robot/creativity/tests"
+    path: "robot/creativity"
     description: "LLM humor, joke creation, context awareness, and creative judging"
 
   multi-turn:
     label: "Multi-Turn Conversation"
-    path: "robot/multi_turn/tests"
+    path: "robot/multi_turn"
     description: "Context retention, instruction-following drift, and topic handoff isolation"
 
   adversarial:
     label: "Adversarial Prompt Injection"
-    path: "robot/adversarial/tests"
+    path: "robot/adversarial"
     description: "Covert adversarial prompt injection tests with hidden instructions via whitespace, comments, base64, and homoglyphs"
 
   persona:
     label: "Persona Consistency"
-    path: "robot/persona/tests"
+    path: "robot/persona"
     description: "Multi-turn persona consistency testing under adversarial pressure"
 
   quantization:
     label: "Quantization Degradation"
-    path: "robot/quantization/tests"
+    path: "robot/quantization"
     description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
 
   bias:
     label: "Bias Tests"
-    path: "robot/bias/tests"
+    path: "robot/bias"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
 
   format:
@@ -169,17 +169,17 @@ test_suites:
 
   gaia:
     label: "GAIA Tool-Use"
-    path: "robot/gaia/tests"
+    path: "robot/gaia"
     description: "GAIA-style tests for LLM tool selection, argument formatting, chaining, and refusal"
 
   ifeval:
     label: "IFEval Instruction Following"
-    path: "robot/ifeval/tests"
+    path: "robot/ifeval"
     description: "Instruction following evaluation with deterministic constraint checking"
 
   hallucination:
     label: "Hallucination Tests"
-    path: "robot/hallucination/tests"
+    path: "robot/hallucination"
     description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
 
   swebench:
@@ -189,17 +189,17 @@ test_suites:
 
   react:
     label: "ReAct Loop"
-    path: "robot/react/tests"
+    path: "robot/react"
     description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
 
   meta-learning:
     label: "Meta-Learning Probe"
-    path: "robot/meta_learning/tests"
+    path: "robot/meta_learning"
     description: "In-context skill retention tests — teach, distract, then verify skill application"
 
   tool-hallucination:
     label: "Tool Hallucination"
-    path: "robot/tool_hallucination/tests"
+    path: "robot/tool_hallucination"
     description: "Tool hallucination detection — real vs fake tool selection precision"
 
   tool-call-schema:
@@ -209,7 +209,7 @@ test_suites:
 
   agentic-coding:
     label: "Agentic Coding"
-    path: "robot/agentic_coding/tests"
+    path: "robot/agentic_coding"
     description: "Coding-agent workflow evaluation: branch naming, startup contract, TDD ordering, clarifying-question discipline"
 
   agentic-injection:
@@ -278,7 +278,7 @@ ci:
   # Suites not listed here run as individual jobs.
   job_groups:
     robot-math-tests:
-      path: "robot/math/tests/"
+      path: "robot/math/"
       output_dir: "results/math"
       tags: ["ollama"]
 
@@ -288,7 +288,7 @@ ci:
       tags: ["ollama", "docker"]
 
     robot-accounting-tests:
-      path: "robot/accounting/tests/"
+      path: "robot/accounting/"
       output_dir: "results/accounting"
       tags: ["ollama"]
 
@@ -298,7 +298,7 @@ ci:
       tags: ["ollama"]
 
     robot-c-interview-tests:
-      path: "robot/c_interview/tests/"
+      path: "robot/c_interview/"
       output_dir: "results/c_interview"
       tags: ["ollama"]
 
@@ -348,7 +348,7 @@ ci:
       tags: ["ollama", "docker", "swebench"]
 
     robot-agentic-coding-tests:
-      path: "robot/agentic_coding/tests/"
+      path: "robot/agentic_coding/"
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
 
