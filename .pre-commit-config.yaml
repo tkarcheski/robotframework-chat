@@ -24,6 +24,8 @@ repos:
           - types-requests
           - types-PyYAML
           - types-docker
+          - types-beautifulsoup4
+          - markdownify
         exclude: ^(scripts|tests)/
 
   - repo: local
