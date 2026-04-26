@@ -4,14 +4,16 @@ Provides keywords for joke generation, conversational context testing,
 and creativity grading with automatic token escalation on failure.
 """
 
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
 from robot.api.deco import keyword
 
 from .creativity_grader import CreativityGrader
-from .exceptions import EmptyLLMResponseError
+from .exceptions import EmptyLLMResponseError, MissingEnvironmentError
 from .llm_client import create_provider, resolve_timeout
+from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
 from .thinking import parse_thinking
 
@@ -43,15 +45,65 @@ class CreativityKeywords:
         hide_thinking: bool | str = True,
     ) -> None:
         timeout = resolve_timeout(timeout)
+        self._timeout = timeout
+        self._max_retries = int(max_retries)
         self.client: Any = create_provider(
             timeout=timeout, max_retries=int(max_retries)
         )
-        self.creativity_grader = CreativityGrader(self.client)
+        # Joke grading uses a distinct judge panel to avoid self-grading
+        # bias (issue #260); built lazily so dryrun and non-grading keywords
+        # work without CREATIVITY_GRADER_MODELS configured.
+        self._creativity_grader: Optional[CreativityGrader] = None
+        # Context grading still uses the generation client; tracked
+        # separately so the joke-grading panel can be opt-in via env var.
+        self._context_grader = CreativityGrader(self.client)
         self._hide_thinking: bool = (
             hide_thinking.lower() not in ("false", "0", "no")
             if isinstance(hide_thinking, str)
             else bool(hide_thinking)
         )
+
+    @property
+    def creativity_grader(self) -> CreativityGrader:
+        """Lazily build a panel-backed grader from CREATIVITY_GRADER_MODELS.
+
+        Raises MissingEnvironmentError (ROBOT_SKIP) if the env var is unset
+        or has fewer than 3 models. This skips the test rather than silently
+        falling back to the generation client (issue #260).
+        """
+        if self._creativity_grader is None:
+            self._creativity_grader = CreativityGrader(self._build_judge_panel())
+        return self._creativity_grader
+
+    def _build_judge_panel(self) -> MultiGrader:
+        models_str = os.getenv("CREATIVITY_GRADER_MODELS", "").strip()
+        if not models_str:
+            raise MissingEnvironmentError("CREATIVITY_GRADER_MODELS")
+
+        models = [m.strip() for m in models_str.split(",") if m.strip()]
+        if len(models) < 3:
+            raise ValueError(
+                f"CREATIVITY_GRADER_MODELS must contain at least 3 models "
+                f"to avoid self-grading bias, got {len(models)}: {models}"
+            )
+
+        gen_model = getattr(self.client, "model", None)
+        if gen_model and gen_model in models:
+            logger.warn(
+                f"CREATIVITY_GRADER_MODELS contains the generation model "
+                f"'{gen_model}' — self-grading bias may persist for "
+                f"that judge (issue #260)."
+            )
+
+        providers = [
+            create_provider(
+                model=model,
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
+            for model in models
+        ]
+        return MultiGrader(providers=providers)
 
     @keyword("Ask For Joke")
     def ask_for_joke(self, prompt: str, max_tokens: int = 512) -> str:
@@ -157,7 +209,7 @@ class CreativityKeywords:
         """
         if isinstance(conversation, list):
             conversation = self._build_conversation_prompt(conversation)
-        result = self.creativity_grader.grade_context(
+        result = self._context_grader.grade_context(
             scenario_description, str(conversation), response, expected
         )
         emit_rfc_data("score", str(result.score))
