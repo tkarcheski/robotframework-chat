@@ -15,7 +15,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SUITE_ROOT = REPO_ROOT / "robot" / "agentic_coding"
-SUITE_TESTS = SUITE_ROOT / "tests"
+SUITE_TESTS = SUITE_ROOT
 
 TIER_PATTERN = re.compile(r"\btier:\d\b")
 VERIFY_PATTERN = re.compile(r"\bverify:(robot|python|llm|llms)\b")
@@ -24,7 +24,7 @@ TAGS_LINE = re.compile(r"^\s*\[Tags\]\s+(.+)$", re.MULTILINE)
 
 
 def _robot_test_files() -> list[Path]:
-    return sorted(SUITE_TESTS.glob("*.robot"))
+    return sorted(p for p in SUITE_TESTS.glob("*.robot") if p.name != "__init__.robot")
 
 
 def _iter_test_cases(robot_file: Path) -> list[tuple[str, str]]:
@@ -112,7 +112,7 @@ class TestAgenticCodingConfigRegistration:
             "agentic-coding suite must be registered in config/test_suites.yaml"
         )
         entry = config["test_suites"]["agentic-coding"]
-        assert entry["path"] == "robot/agentic_coding/tests"
+        assert entry["path"] == "robot/agentic_coding"
 
     def test_registered_in_local_agents_yaml(self) -> None:
         config = yaml.safe_load(
