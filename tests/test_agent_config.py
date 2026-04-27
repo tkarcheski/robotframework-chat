@@ -157,3 +157,111 @@ class TestRepoLocalAgentsYaml:
         configs = load_agent_configs()
         assert "claude-code" in configs
         assert configs["claude-code"].runner == "fake"
+
+
+class TestNullValuesInYaml:
+    """A YAML ``null`` for a present key is not the same as a missing key.
+
+    ``raw.get("model", "")`` returns ``None`` when the key exists with value
+    null; ``str(None)`` is then ``"None"`` -- a truthy string that silently
+    bypasses the ``not model`` validation. Treat null and missing identically
+    so misconfigured YAML fails loudly at load time.
+    """
+
+    def test_null_model_on_ollama_runner_is_rejected(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path, [{"id": "ollama-local", "runner": "ollama", "model": None}]
+        )
+        with pytest.raises(ValueError, match="model"):
+            load_agent_config("ollama-local", path=path)
+
+    def test_null_endpoint_treated_as_empty(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "endpoint": None,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.endpoint == ""
+
+    def test_null_env_vars_treated_as_empty_tuple(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "env_vars": None,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.env_vars == ()
+
+    def test_null_capabilities_treated_as_empty_tuple(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "capabilities": None,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.capabilities == ()
+
+    def test_null_timeout_falls_back_to_default(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "timeout_seconds": None,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.timeout_seconds == 600
+
+    def test_explicit_zero_timeout_is_preserved(self, tmp_path: Path) -> None:
+        """`or` short-circuit must not turn explicit 0 into the default."""
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "timeout_seconds": 0,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.timeout_seconds == 0
+
+    def test_null_temperature_falls_back_to_default(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "ollama-local",
+                    "runner": "ollama",
+                    "model": "phi4:14b",
+                    "temperature": None,
+                }
+            ],
+        )
+        cfg = load_agent_config("ollama-local", path=path)
+        assert cfg.temperature == 0.0

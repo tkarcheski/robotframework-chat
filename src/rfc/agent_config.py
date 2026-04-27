@@ -46,23 +46,41 @@ class AgentConfig:
     env_vars: tuple[str, ...] = field(default_factory=tuple)
 
 
+def _opt_str(raw: dict[str, Any], key: str) -> str:
+    """Return ``raw[key]`` as a string, mapping missing/null to ''.
+
+    `str(None)` would silently produce the literal `'None'` (truthy), which
+    bypasses validation like ``if not model``.
+    """
+    value = raw.get(key)
+    return "" if value is None else str(value)
+
+
+def _opt_seq(raw: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Return ``raw[key]`` as a tuple of strings, mapping missing/null to ()."""
+    value = raw.get(key)
+    if value is None:
+        return ()
+    return tuple(str(item) for item in value)
+
+
 def _coerce(raw: dict[str, Any]) -> AgentConfig:
     if "id" not in raw:
         raise ValueError(f"Agent entry missing required key 'id': {raw!r}")
-    agent_id = str(raw["id"])
+    agent_id = _opt_str(raw, "id")
 
     if "runner" not in raw:
         raise ValueError(f"Agent {agent_id!r} missing required key 'runner'")
-    runner = str(raw["runner"]).lower().strip()
+    runner = _opt_str(raw, "runner").lower().strip()
     if runner not in SUPPORTED_RUNNERS:
         raise ValueError(
             f"Agent {agent_id!r} has unknown runner {runner!r}. "
             f"Supported: {sorted(SUPPORTED_RUNNERS)}"
         )
 
-    model = str(raw.get("model", ""))
-    endpoint = str(raw.get("endpoint", ""))
-    env_vars = tuple(str(v) for v in raw.get("env_vars", ()))
+    model = _opt_str(raw, "model")
+    endpoint = _opt_str(raw, "endpoint")
+    env_vars = _opt_seq(raw, "env_vars")
 
     for field_name, env_name in _ENV_OVERRIDABLE_FIELDS.items():
         if env_name in env_vars:
@@ -79,14 +97,19 @@ def _coerce(raw: dict[str, Any]) -> AgentConfig:
             f"(or set DEFAULT_MODEL with env_vars=[DEFAULT_MODEL])"
         )
 
+    timeout_raw = raw.get("timeout_seconds")
+    timeout_seconds = 600 if timeout_raw is None else int(timeout_raw)
+    temperature_raw = raw.get("temperature")
+    temperature = 0.0 if temperature_raw is None else float(temperature_raw)
+
     return AgentConfig(
         id=agent_id,
         runner=runner,
         model=model,
         endpoint=endpoint,
-        timeout_seconds=int(raw.get("timeout_seconds", 600)),
-        temperature=float(raw.get("temperature", 0.0)),
-        capabilities=tuple(str(c) for c in raw.get("capabilities", ())),
+        timeout_seconds=timeout_seconds,
+        temperature=temperature,
+        capabilities=_opt_seq(raw, "capabilities"),
         env_vars=env_vars,
     )
 
