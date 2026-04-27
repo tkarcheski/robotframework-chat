@@ -34,7 +34,7 @@ from .agent_run import (
 )
 from .llm_client import LLMProvider
 
-_FENCE_RE = re.compile(r"```(?:yaml|yml)?\s*\n(.*?)\n?```", re.DOTALL)
+_FENCE_RE = re.compile(r"```(?:yaml|yml)?\s*\n(.*?)\n?```", re.DOTALL | re.IGNORECASE)
 
 
 def extract_yaml_block(text: str) -> str:

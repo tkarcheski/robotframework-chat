@@ -104,6 +104,12 @@ class TestExtractYamlBlock:
         text = "```yaml\nfoo: 1\n```\ntrailing prose\n```yaml\nfoo: 2\n```"
         assert extract_yaml_block(text).strip() == "foo: 1"
 
+    def test_fence_language_tag_is_case_insensitive(self) -> None:
+        """Models emit fences with varied casing -- ```YAML, ```Yaml, ```YML."""
+        for tag in ("YAML", "Yaml", "YML", "Yml"):
+            text = f"```{tag}\nfoo: 1\n```"
+            assert extract_yaml_block(text).strip() == "foo: 1", f"tag={tag!r}"
+
 
 class TestRenderPrompt:
     def test_includes_task_and_schema(self) -> None:
