@@ -36,3 +36,37 @@ claude-code:
     - "git push origin main"
     - "git push --force origin main"
     - "--no-verify"
+
+# Local Ollama-served model agents are graded against the same workflow
+# contract as Claude Code: branches off claude-code-staging, conventional
+# commits, the four-step startup sequence, etc. The runner differs (live
+# LLM call vs. fake replay) but the rules being graded are the same.
+ollama-local:
+  base_branch: "claude-code-staging"
+  branch_regex: "^claude/[a-z0-9-]+-[a-z0-9]{5}$"
+  startup_checks:
+    - "uv run pytest"
+    - "pre-commit run --all-files"
+    - "make code-quality-check"
+    - "make robot-dryrun"
+  pr_template_path: ".github/PULL_REQUEST_TEMPLATE.md"
+  pr_required_sections:
+    - "Summary"
+    - "How to review"
+    - "Evidence of testing"
+    - "Critical changes"
+    - "Checklist"
+  commit_types:
+    - "test"
+    - "feat"
+    - "fix"
+    - "refactor"
+    - "docs"
+    - "chore"
+  commit_subject_regex: "^(test|feat|fix|refactor|docs|chore): .+"
+  min_clarifying_questions: 2
+  max_clarifying_questions: 4
+  forbidden_commands:
+    - "git push origin main"
+    - "git push --force origin main"
+    - "--no-verify"
