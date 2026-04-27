@@ -127,15 +127,17 @@ def _parse_agent_run(
     if not branch_name:
         raise ValueError("Model response did not include 'branch_name'")
 
+    # Models often emit `null` for empty optional collections. Treat null and
+    # missing identically by coalescing to [] before iterating.
     return AgentRun(
         agent_id=agent_id,
         scenario_id=scenario_id,
         task=task,
         base_branch=base_branch,
         branch_name=branch_name,
-        commands=tuple(_build_command(c) for c in raw.get("commands", [])),
-        questions=tuple(_build_question(q) for q in raw.get("questions", [])),
-        commits=tuple(_build_commit(c) for c in raw.get("commits", [])),
+        commands=tuple(_build_command(c) for c in (raw.get("commands") or [])),
+        questions=tuple(_build_question(q) for q in (raw.get("questions") or [])),
+        commits=tuple(_build_commit(c) for c in (raw.get("commits") or [])),
         pr=_build_pr(raw.get("pr")),
         transcript_path=raw.get("transcript_path"),
     )

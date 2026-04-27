@@ -200,6 +200,38 @@ class TestOllamaAgentRunner:
         with pytest.raises(ValueError, match="empty"):
             runner.run("precise_task")
 
+    def test_null_collection_fields_are_normalized(self, tmp_path: Path) -> None:
+        """A model response with `commands: null` (or other nulls) must not crash.
+
+        LLM YAML often emits `null` for empty optional fields, and naive
+        `raw.get("commands", [])` returns None when the key IS present with a
+        null value, which then explodes during tuple construction.
+        """
+        _write_task(tmp_path, "precise_task")
+        canned = textwrap.dedent(
+            """\
+            agent_id: ollama-local
+            scenario_id: precise_task
+            task: Rename a function and update its tests.
+            base_branch: claude-code-staging
+            branch_name: claude/rename-fn-12345
+            commands: null
+            questions: null
+            commits: null
+            pr: null
+            """
+        )
+        runner = OllamaAgentRunner(
+            config=_config(),
+            scenarios_root=tmp_path,
+            provider=StubLLMProvider(canned=canned),
+        )
+        run = runner.run("precise_task")
+        assert run.commands == ()
+        assert run.questions == ()
+        assert run.commits == ()
+        assert run.pr is None
+
     def test_list_scenarios_uses_task_yaml(self, tmp_path: Path) -> None:
         _write_task(tmp_path, "alpha")
         _write_task(tmp_path, "bravo")
