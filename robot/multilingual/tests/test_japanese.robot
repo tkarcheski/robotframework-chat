@@ -21,7 +21,7 @@ Test Timeout      2 minutes
 Japanese Prompt Japanese Response Bullet Points
     [Documentation]    Japanese prompt requesting exactly 4 bullet points in Japanese.
     Run Multilingual IFEval Test
-    ...    日本の伝統的な食べ物を4つ挙げてください。各項目は箇条書き(-で始まる)のみを使用してください。ちょうど4つの箇条書きを出力し、それ以外は何も書かないでください。
+    ...    日本の伝統的な食べ物を4つ挙げてください。各項目は箇条書き(「- 」ハイフンとスペース)のみを使用してください。ちょうど4つの箇条書きを出力し、それ以外は何も書かないでください。
     ...    bullet_points    4
 
 Japanese Prompt Japanese Response Numbered List
@@ -57,5 +57,5 @@ Japanese Prompt English Response Ends With Word
 Japanese Prompt English Response Bullet Points
     [Documentation]    Japanese prompt requesting English bullet-point response.
     Run Multilingual IFEval Test
-    ...    英語で答えてください。運動の利点を3つ挙げてください。箇条書き(-で始まる)のみを使用してください。ちょうど3つの箇条書きを出力し、それ以外は何も書かないでください。
+    ...    英語で答えてください。運動の利点を3つ挙げてください。箇条書き(「- 」ハイフンとスペース)のみを使用してください。ちょうど3つの箇条書きを出力し、それ以外は何も書かないでください。
     ...    bullet_points    3
