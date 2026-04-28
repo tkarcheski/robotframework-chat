@@ -42,6 +42,10 @@ def _validate_against_schema(
 
     errors: list[str] = []
     for field in schema.get("required", []):
+        if not isinstance(field, str):
+            return False, [
+                f"Required field must be a string, not {type(field).__name__}"
+            ]
         if field not in data:
             errors.append(f"Missing required field: {field}")
 
@@ -50,7 +54,9 @@ def _validate_against_schema(
             continue
         check = _TYPE_CHECKS.get(expected_type)
         if check is None:
-            continue
+            return False, [
+                f"Unknown type specifier '{expected_type}' for field '{field}'"
+            ]
         py_type, label = check
         value = data[field]
         if not isinstance(value, py_type):

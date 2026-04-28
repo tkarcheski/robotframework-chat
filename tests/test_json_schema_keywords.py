@@ -81,6 +81,18 @@ class TestValidateAgainstSchema:
         is_valid, _ = _validate_against_schema({"other": "value"}, schema)
         assert is_valid
 
+    def test_rejects_non_string_required_field(self) -> None:
+        schema = {"required": [[]]}
+        is_valid, errors = _validate_against_schema({"x": 1}, schema)
+        assert not is_valid
+        assert any("required" in e.lower() and "string" in e.lower() for e in errors)
+
+    def test_rejects_unknown_type_specifier(self) -> None:
+        schema = {"types": {"age": "integer"}}
+        is_valid, errors = _validate_against_schema({"age": 30}, schema)
+        assert not is_valid
+        assert any("unknown" in e.lower() and "integer" in e.lower() for e in errors)
+
 
 class TestValidateJsonWithSchema:
     def setup_method(self) -> None:
