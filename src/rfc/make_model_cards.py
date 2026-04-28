@@ -189,6 +189,16 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
             suite_metrics={},
         )
 
+    # Normalize timestamps: SQLite returns ISO strings, PostgreSQL returns datetime.
+    normalized_rows = []
+    for r in rows:
+        timestamp = r[3]
+        if isinstance(timestamp, str):
+            # Parse ISO string from SQLite
+            timestamp = datetime.fromisoformat(timestamp)
+        normalized_rows.append((r[0], r[1], r[2], timestamp, r[4], r[5]))
+    rows = normalized_rows
+
     total_tests = len(rows)
     passed = sum(1 for r in rows if r[4] == "PASS")
     failed = sum(1 for r in rows if r[4] == "FAIL")
