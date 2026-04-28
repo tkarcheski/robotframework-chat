@@ -90,18 +90,21 @@ class ConsistencyKeywords:
 
     @keyword("Assert All Identical")
     def assert_all_identical(self, responses: List[str]) -> Dict[str, Any]:
-        """Assert every response is byte-identical (whitespace-normalized).
+        """Analyze responses for byte-identical match (whitespace-normalized).
+
+        Returns result dict with match status; does not raise. The Robot keyword
+        wrapper handles assertion so metrics can be logged even on failure.
 
         Args:
             responses: List of response strings.
 
         Returns:
             Dict with ``match_rate`` (1.0 only if all match), ``unique_count``,
-            and ``first_diff_index`` (None when all match).
+            ``first_diff_index`` (None when all match), and ``error_message``
+            (None when all match).
 
         Raises:
             ValueError: If ``responses`` is empty.
-            AssertionError: If responses are not all identical.
         """
         if not responses:
             raise ValueError("responses must be a non-empty list")
@@ -109,6 +112,7 @@ class ConsistencyKeywords:
         normalized = [r.strip() for r in responses]
         baseline = normalized[0]
         first_diff_index: Optional[int] = None
+        error_message: Optional[str] = None
         for i, r in enumerate(normalized[1:], start=1):
             if r != baseline:
                 first_diff_index = i
@@ -120,19 +124,22 @@ class ConsistencyKeywords:
             "match_rate": match_rate,
             "unique_count": unique_count,
             "first_diff_index": first_diff_index,
+            "error_message": error_message,
         }
 
         if first_diff_index is not None:
-            raise AssertionError(
+            error_message = (
                 f"Responses not identical: run #{first_diff_index} differs from #0.\n"
                 f"  Run 0: {baseline!r}\n"
                 f"  Run {first_diff_index}: {normalized[first_diff_index]!r}\n"
                 f"  Unique outputs across {len(responses)} runs: {unique_count}"
             )
-
-        logger.info(
-            f"All {len(responses)} responses identical (unique_count={unique_count})"
-        )
+            result["error_message"] = error_message
+            logger.error(error_message)
+        else:
+            logger.info(
+                f"All {len(responses)} responses identical (unique_count={unique_count})"
+            )
         return result
 
     @keyword("Measure Semantic Variance")
@@ -172,8 +179,12 @@ class ConsistencyKeywords:
 
         pairwise_scores: Dict[str, float] = {}
         for i, j in combinations(range(len(responses)), 2):
-            score = self.grader.compare_pair(responses[i], responses[j], prompt)
-            pairwise_scores[f"{i} vs {j}"] = score
+            # Short-circuit judge call for identical pairs — avoid noise and waste
+            if normalized[i] == normalized[j]:
+                pairwise_scores[f"{i} vs {j}"] = 1.0
+            else:
+                score = self.grader.compare_pair(responses[i], responses[j], prompt)
+                pairwise_scores[f"{i} vs {j}"] = score
 
         mean = sum(pairwise_scores.values()) / len(pairwise_scores)
         min_pair = min(pairwise_scores.values())

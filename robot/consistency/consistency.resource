@@ -7,7 +7,8 @@ Variables         ${CURDIR}/variables/consistency_prompts.yaml
 Run Determinism Check
     [Documentation]    Replay a prompt N times at temperature=0 and assert
     ...                every response is byte-identical. Logs metrics for
-    ...                the SQL archive.
+    ...                the SQL archive even on failure (so failures are visible
+    ...                in dashboards).
     [Arguments]    ${prompt}    ${n}=${N_RUNS}    ${seed}=${DETERMINISM_SEED}
     ${responses}=    Consistency.Run Prompt N Times
     ...    ${prompt}
@@ -15,10 +16,15 @@ Run Determinism Check
     ...    temperature=${DETERMINISM_TEMP}
     ...    seed=${seed}
     ${result}=    Consistency.Assert All Identical    ${responses}
+    # Log metrics BEFORE assertion so failures are archived (RFC_DATA always emitted)
     Consistency.Log Consistency Metrics
     ...    ${result}
     ...    kind=determinism
     ...    temperature=${DETERMINISM_TEMP}
+    # Now assert — RFC data is already logged
+    IF    ${result}[error_message]
+        FAIL    ${result}[error_message]
+    END
     Log    Determinism: match_rate=${result}[match_rate] unique=${result}[unique_count]
     RETURN    ${result}
 

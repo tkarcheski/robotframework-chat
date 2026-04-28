@@ -123,13 +123,17 @@ class TestAssertAllIdentical:
         assert result["match_rate"] == 1.0
         assert result["unique_count"] == 1
         assert result["first_diff_index"] is None
+        assert result["error_message"] is None
 
     @patch("rfc.consistency_keywords.create_provider")
     @patch("rfc.consistency_keywords.BiasGrader")
-    def test_drift_raises_assertion(self, MockGrader, mock_create):
+    def test_drift_returns_failure_dict(self, MockGrader, mock_create):
         kw = ConsistencyKeywords()
-        with pytest.raises(AssertionError, match="not identical"):
-            kw.assert_all_identical(["42", "42", "43", "42", "42"])
+        result = kw.assert_all_identical(["42", "42", "43", "42", "42"])
+        assert result["match_rate"] < 1.0
+        assert result["first_diff_index"] == 2
+        assert result["error_message"] is not None
+        assert "not identical" in result["error_message"]
 
     @patch("rfc.consistency_keywords.create_provider")
     @patch("rfc.consistency_keywords.BiasGrader")
@@ -153,6 +157,7 @@ class TestAssertAllIdentical:
         result = kw.assert_all_identical(["42"])
         assert result["match_rate"] == 1.0
         assert result["unique_count"] == 1
+        assert result["error_message"] is None
 
 
 class TestMeasureSemanticVariance:
