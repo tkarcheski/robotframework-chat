@@ -80,19 +80,25 @@ class CreativityKeywords:
         if not models_str:
             raise MissingEnvironmentError("CREATIVITY_GRADER_MODELS")
 
-        models = [m.strip() for m in models_str.split(",") if m.strip()]
+        # Dedupe while preserving declaration order so callers can't satisfy
+        # the panel-size requirement with repeats like "m,m,m" (#260).
+        raw_models = [m.strip() for m in models_str.split(",") if m.strip()]
+        models = list(dict.fromkeys(raw_models))
         if len(models) < 3:
             raise ValueError(
-                f"CREATIVITY_GRADER_MODELS must contain at least 3 models "
-                f"to avoid self-grading bias, got {len(models)}: {models}"
+                f"CREATIVITY_GRADER_MODELS must contain at least 3 distinct "
+                f"models to avoid self-grading bias, got {len(models)} "
+                f"unique: {models} (raw: {raw_models})"
             )
 
+        # Reject (not warn) the generation model in the panel — any overlap
+        # reintroduces self-grading bias for at least one judge (#260).
         gen_model = getattr(self.client, "model", None)
         if gen_model and gen_model in models:
-            logger.warn(
-                f"CREATIVITY_GRADER_MODELS contains the generation model "
-                f"'{gen_model}' — self-grading bias may persist for "
-                f"that judge (issue #260)."
+            raise ValueError(
+                f"CREATIVITY_GRADER_MODELS must not contain the generation "
+                f"model '{gen_model}' — that judge would self-grade, "
+                f"reintroducing the bias issue #260 is meant to fix."
             )
 
         providers = [

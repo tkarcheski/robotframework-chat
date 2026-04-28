@@ -75,7 +75,33 @@ class TestCreativityKeywords:
         monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "only-one")
         mock_create.return_value = _make_client_mock()
         kw = CreativityKeywords()
-        with pytest.raises(ValueError, match="at least 3 models"):
+        with pytest.raises(ValueError, match="at least 3 distinct models"):
+            kw.grade_joke("Tell me a joke", "joke text", "humor")
+
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_grade_joke_rejects_duplicate_judges(
+        self,
+        mock_create: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Duplicates must not satisfy the 3+ panel requirement (#260)."""
+        monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "judge1,judge1,judge1")
+        mock_create.return_value = _make_client_mock()
+        kw = CreativityKeywords()
+        with pytest.raises(ValueError, match="at least 3 distinct models"):
+            kw.grade_joke("Tell me a joke", "joke text", "humor")
+
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_grade_joke_rejects_generation_model_in_panel(
+        self,
+        mock_create: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Generation model in the panel = self-grading bias — reject (#260)."""
+        monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "judge1,gen-model,judge2")
+        mock_create.return_value = _make_client_mock()  # client.model = "gen-model"
+        kw = CreativityKeywords()
+        with pytest.raises(ValueError, match="must not contain the generation model"):
             kw.grade_joke("Tell me a joke", "joke text", "humor")
 
     @patch("rfc.creativity_keywords.create_provider")
