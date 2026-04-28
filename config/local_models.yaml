@@ -150,7 +150,7 @@ test_suites:
     timeout_seconds: 300
 
   - name: "multilingual"
-    path: "robot/multilingual/tests/"
+    path: "robot/multilingual/"
     description: "Cross-language ifeval-style constraint checks (Spanish, German, Japanese)"
     timeout_seconds: 300
 

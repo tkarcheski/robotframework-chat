@@ -179,7 +179,7 @@ test_suites:
 
   multilingual:
     label: "Multilingual Instruction Following"
-    path: "robot/multilingual/tests"
+    path: "robot/multilingual"
     description: "Cross-language ifeval-style constraint checks (Spanish, German, Japanese)"
 
   hallucination:

@@ -107,7 +107,7 @@ robot-superset: ## Test PostgreSQL connection and push host info to database
 	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/
 
 robot-multilingual: ## Run multilingual instruction-following tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/multilingual $(LISTENER) $(ARGS) robot/multilingual/tests/
+	$(ROBOT) -d results/$(VERSION)/multilingual $(LISTENER) $(ARGS) robot/multilingual/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
 	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) $(ARGS) robot/swebench/
