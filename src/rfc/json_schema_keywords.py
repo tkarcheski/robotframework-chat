@@ -236,19 +236,26 @@ class JSONSchemaKeywords:
 
         client = self._get_configured_client()
         last_score = 0.0
+        last_response = None
         for attempt in range(1, retries + 1):
             full_prompt = prompt + _RETRY_HINTS[min(attempt - 1, len(_RETRY_HINTS) - 1)]
             response = _generate_or_skip(client.generate, full_prompt, attempt)
             if response is None:
                 continue
 
+            last_response = response
             last_score = _validate_parsed(response, schema_obj, schema_name)
             emit_rfc_data("attempt_number", str(attempt))
             emit_rfc_data("final_score", f"{last_score:.4f}")
 
             if last_score == 1.0:
+                emit_rfc_data("actual_answer", response)
                 return last_score, attempt
 
+        # Emit score and final response even if all attempts were skipped or failed
+        emit_rfc_data("final_score", f"{last_score:.4f}")
+        if last_response is not None:
+            emit_rfc_data("actual_answer", last_response)
         return last_score, retries
 
 

@@ -309,6 +309,56 @@ class TestValidateJsonWithRetries:
             ]
             assert final_calls and final_calls[-1] == "0.7500"
 
+    def test_emits_score_when_all_attempts_skipped(self) -> None:
+        """Score is emitted even when all attempts return empty responses."""
+        with (
+            patch.object(self.jk.client, "generate", return_value=""),
+            patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit,
+        ):
+            score, attempt = self.jk.validate_json_with_retries(
+                "Generate JSON", '{"required": []}', max_retries=2
+            )
+            assert score == 0.0
+            # Verify final_score is emitted
+            final_calls = [
+                c.args[1]
+                for c in mock_emit.call_args_list
+                if c.args[0] == "final_score"
+            ]
+            assert final_calls and final_calls[-1] == "0.0000"
+
+    def test_emits_actual_answer_for_successful_attempt(self) -> None:
+        """Actual response is emitted for successful validation."""
+        with (
+            self._patched(1.0),
+            patch.object(self.jk.client, "generate", return_value='{"data": "test"}'),
+            patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit,
+        ):
+            self.jk.validate_json_with_retries("Generate JSON", '{"required": []}')
+            actual_calls = [
+                c.args[1]
+                for c in mock_emit.call_args_list
+                if c.args[0] == "actual_answer"
+            ]
+            assert actual_calls and '{"data": "test"}' in actual_calls
+
+    def test_emits_actual_answer_for_final_failed_attempt(self) -> None:
+        """Actual response is emitted even for failed validation."""
+        with (
+            self._patched(0.5),
+            patch.object(self.jk.client, "generate", return_value='{"name": "Alice"}'),
+            patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit,
+        ):
+            self.jk.validate_json_with_retries(
+                "Generate JSON", '{"required": []}', max_retries=1
+            )
+            actual_calls = [
+                c.args[1]
+                for c in mock_emit.call_args_list
+                if c.args[0] == "actual_answer"
+            ]
+            assert actual_calls and '{"name": "Alice"}' in actual_calls
+
     def test_invalid_schema_short_circuits(self) -> None:
         """An unparseable schema returns immediately without calling the LLM."""
         with (
