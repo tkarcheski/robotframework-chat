@@ -217,6 +217,10 @@ class TestValidateJsonWithSchema:
 class TestValidateJsonWithRetries:
     def setup_method(self) -> None:
         self.jk = JSONSchemaKeywords(max_retries=3)
+        # Create a mock client for testing (lazy initialization)
+        from unittest.mock import Mock
+
+        self.jk.client = Mock()
 
     def _patched(self, validate_return: float | list[float]) -> patch:
         kwarg = (

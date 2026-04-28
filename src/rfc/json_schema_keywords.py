@@ -120,18 +120,16 @@ class JSONSchemaKeywords:
         timeout: Optional[int] = None,
         max_retries: int = 5,
     ) -> None:
-        timeout = resolve_timeout(timeout)
-        self.client: Any = create_provider(
-            timeout=timeout, max_retries=int(max_retries)
-        )
+        self.timeout = resolve_timeout(timeout)
+        self.client: Any = None
         self.max_retries = int(max_retries)
 
     def _get_configured_client(self) -> Any:
-        """Get the currently configured LLM client from LLMKeywords, or fall back to self.client.
+        """Get the currently configured LLM client from LLMKeywords, or lazily create one.
 
         In Robot Framework suite execution, this returns the LLMKeywords instance's
         client, which respects LLM.Set LLM Parameters() configuration. In unit tests
-        or non-Robot contexts, falls back to self.client.
+        or non-Robot contexts, creates a provider on-demand (lazy initialization).
         """
         try:
             from robot.libraries.BuiltIn import BuiltIn  # type: ignore[import-not-found]
@@ -139,6 +137,11 @@ class JSONSchemaKeywords:
             llm_library = BuiltIn().get_library_instance("LLM")
             return llm_library.client  # type: ignore[attr-defined]
         except Exception:
+            # Lazy initialization: create provider only when needed
+            if self.client is None:
+                self.client = create_provider(
+                    timeout=self.timeout, max_retries=self.max_retries
+                )
             return self.client
 
     @keyword("Validate JSON With Schema")
