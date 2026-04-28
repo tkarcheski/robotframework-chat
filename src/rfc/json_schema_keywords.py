@@ -13,9 +13,9 @@ from robot.api import logger
 from robot.api.deco import keyword
 
 from .exceptions import EmptyLLMResponseError
-from .format_keywords import _strip_code_fences
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
+from .thinking import extract_json
 
 _TYPE_CHECKS: dict[str, tuple[type | tuple[type, ...], str]] = {
     "string": (str, "string"),
@@ -52,10 +52,13 @@ def _validate_against_schema(
         if check is None:
             continue
         py_type, label = check
-        if not isinstance(data[field], py_type):
+        value = data[field]
+        if not isinstance(value, py_type):
             errors.append(
-                f"Field '{field}' should be {label}, got {type(data[field]).__name__}"
+                f"Field '{field}' should be {label}, got {type(value).__name__}"
             )
+        elif expected_type == "number" and isinstance(value, bool):
+            errors.append(f"Field '{field}' should be {label}, got boolean")
 
     return not errors, errors
 
@@ -67,7 +70,7 @@ def _validate_parsed(
     emit_rfc_data("schema_valid", "true")
     emit_rfc_data("schema_name", schema_name)
 
-    text = _strip_code_fences(response)
+    text = extract_json(response)
     try:
         parsed = json.loads(text)
     except (json.JSONDecodeError, ValueError) as e:
@@ -107,6 +110,21 @@ class JSONSchemaKeywords:
         )
         self.max_retries = int(max_retries)
 
+    def _get_configured_client(self) -> Any:
+        """Get the currently configured LLM client from LLMKeywords, or fall back to self.client.
+
+        In Robot Framework suite execution, this returns the LLMKeywords instance's
+        client, which respects LLM.Set LLM Parameters() configuration. In unit tests
+        or non-Robot contexts, falls back to self.client.
+        """
+        try:
+            from robot.libraries.BuiltIn import BuiltIn  # type: ignore[import-not-found]
+
+            llm_library = BuiltIn().get_library_instance("LLM")
+            return llm_library.client  # type: ignore[attr-defined]
+        except Exception:
+            return self.client
+
     @keyword("Validate JSON With Schema")
     def validate_json_with_schema(
         self,
@@ -139,6 +157,7 @@ class JSONSchemaKeywords:
         """Ask the LLM for JSON and validate it, retrying on failure.
 
         Returns (final_score, attempt_number). Stops early on a perfect score.
+        Uses the configured LLM client from LLMKeywords if available.
         """
         retries = int(max_retries) if max_retries is not None else self.max_retries
 
@@ -149,10 +168,11 @@ class JSONSchemaKeywords:
             emit_rfc_data("schema_valid", "false")
             return 0.0, 0
 
+        client = self._get_configured_client()
         last_score = 0.0
         for attempt in range(1, retries + 1):
             full_prompt = prompt + _RETRY_HINTS[min(attempt - 1, len(_RETRY_HINTS) - 1)]
-            response = _generate_or_skip(self.client.generate, full_prompt, attempt)
+            response = _generate_or_skip(client.generate, full_prompt, attempt)
             if response is None:
                 continue
 

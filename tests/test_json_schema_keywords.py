@@ -56,6 +56,12 @@ class TestValidateAgainstSchema:
         is_valid, _ = _validate_against_schema({"active": "true"}, schema)
         assert not is_valid
 
+    def test_rejects_boolean_for_number_field(self) -> None:
+        schema = {"types": {"age": "number"}}
+        is_valid, errors = _validate_against_schema({"age": True}, schema)
+        assert not is_valid
+        assert any("should be number" in e and "boolean" in e for e in errors)
+
     def test_type_validation_for_array(self) -> None:
         schema = {"types": {"items": "array"}}
         is_valid, _ = _validate_against_schema({"items": [1, 2, 3]}, schema)
