@@ -93,6 +93,7 @@ def _validate_parsed(
         logger.warn(f"Parse failed: {e}")
         emit_rfc_data("parse_valid", "false")
         emit_rfc_data("parse_error", str(e))
+        emit_rfc_data("score", "0.0000")
         return 0.0
 
     emit_rfc_data("parse_valid", "true")
@@ -161,22 +162,26 @@ class JSONSchemaKeywords:
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Invalid schema: {e}")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0
 
         # Validate schema structure: both "required" and "types" must be dicts/lists
         if not isinstance(schema_obj, dict):
             logger.error("Schema must be a JSON object")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0
 
         if "types" in schema_obj and not isinstance(schema_obj["types"], dict):
             logger.error("Schema 'types' field must be a JSON object, not a list")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0
 
         if "required" in schema_obj and not isinstance(schema_obj["required"], list):
             logger.error("Schema 'required' field must be a JSON array")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0
 
         # Validate that all type specifiers are strings
@@ -186,6 +191,7 @@ class JSONSchemaKeywords:
                     f"Schema type for field '{field}' must be a string, not {type(type_spec).__name__}"
                 )
                 emit_rfc_data("schema_valid", "false")
+                emit_rfc_data("score", "0.0000")
                 return 0.0
 
         return _validate_parsed(response, schema_obj, schema_name)
@@ -210,22 +216,26 @@ class JSONSchemaKeywords:
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Invalid schema: {e}")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0, 0
 
         # Validate schema structure: both "required" and "types" must be dicts/lists
         if not isinstance(schema_obj, dict):
             logger.error("Schema must be a JSON object")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0, 0
 
         if "types" in schema_obj and not isinstance(schema_obj["types"], dict):
             logger.error("Schema 'types' field must be a JSON object, not a list")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0, 0
 
         if "required" in schema_obj and not isinstance(schema_obj["required"], list):
             logger.error("Schema 'required' field must be a JSON array")
             emit_rfc_data("schema_valid", "false")
+            emit_rfc_data("score", "0.0000")
             return 0.0, 0
 
         # Validate that all type specifiers are strings
@@ -235,6 +245,7 @@ class JSONSchemaKeywords:
                     f"Schema type for field '{field}' must be a string, not {type(type_spec).__name__}"
                 )
                 emit_rfc_data("schema_valid", "false")
+                emit_rfc_data("score", "0.0000")
                 return 0.0, 0
 
         client = self._get_configured_client()
