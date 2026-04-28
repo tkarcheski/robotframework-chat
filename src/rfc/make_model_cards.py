@@ -69,9 +69,9 @@ def get_distinct_models(db: TestDatabase) -> List[str]:
         return []
 
     try:
-        if hasattr(db, "_test_runs"):
-            query = select(db._test_runs.c.model_name).distinct()
-            with db.engine.connect() as conn:  # type: ignore[attr-defined]
+        if hasattr(db._backend, "_test_runs"):
+            query = select(db._backend._test_runs.c.model_name).distinct()
+            with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
                 result = conn.execute(query)
                 return sorted([row[0] for row in result if row[0]])
         else:
@@ -101,23 +101,25 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
     cutoff_30d_prior_start = now - timedelta(days=37)
     cutoff_30d_prior_end = now - timedelta(days=7)
 
-    if not hasattr(db, "_test_runs") or not hasattr(db, "_test_results"):
+    if not hasattr(db._backend, "_test_runs") or not hasattr(
+        db._backend, "_test_results"
+    ):
         raise RuntimeError("Database backend does not support SQL queries")
 
     query_all = (
         select(
-            db._test_results.c.test_status,
-            db._test_results.c.eval_count,
-            db._test_runs.c.test_suite,
-            db._test_runs.c.duration_seconds,
-            db._test_runs.c.timestamp,
+            db._backend._test_results.c.test_status,
+            db._backend._test_results.c.eval_count,
+            db._backend._test_runs.c.test_suite,
+            db._backend._test_runs.c.duration_seconds,
+            db._backend._test_runs.c.timestamp,
         )
-        .select_from(db._test_results)
-        .join(db._test_runs)
-        .where(db._test_runs.c.model_name == model_name)
+        .select_from(db._backend._test_results)
+        .join(db._backend._test_runs)
+        .where(db._backend._test_runs.c.model_name == model_name)
     )
 
-    with db.engine.connect() as conn:  # type: ignore[attr-defined]
+    with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
         rows = conn.execute(query_all).fetchall()
 
     if not rows:
@@ -153,7 +155,7 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
 
     throughputs = []
     for row in rows:
-        eval_count = row[2] or 0
+        eval_count = row[1] or 0
         duration_s = row[3] or 1
         if duration_s > 0:
             throughputs.append(eval_count / duration_s)
@@ -178,8 +180,8 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
     )
 
     suite_metrics: Dict[str, Dict[str, Any]] = {}
-    for suite in set(r[1] for r in rows if r[1]):
-        suite_rows = [r for r in rows if r[1] == suite]
+    for suite in set(r[2] for r in rows if r[2]):
+        suite_rows = [r for r in rows if r[2] == suite]
         suite_passed = sum(1 for r in suite_rows if r[0] == "PASS")
         suite_tests = len(suite_rows)
         suite_pass_rate = (suite_passed / suite_tests * 100) if suite_tests else 0.0
@@ -241,18 +243,18 @@ def fetch_model_metadata(
         "context_window": "unknown",
     }
 
-    if hasattr(db, "_models"):
+    if hasattr(db._backend, "_models"):
         try:
             from sqlalchemy import select  # type: ignore[import-not-found]
 
             query = select(
-                db._models.c.architecture,
-                db._models.c.family,
-                db._models.c.quantization,
-                db._models.c.context_length,
-            ).where(db._models.c.name == model_name)
+                db._backend._models.c.architecture,
+                db._backend._models.c.family,
+                db._backend._models.c.quantization,
+                db._backend._models.c.context_length,
+            ).where(db._backend._models.c.name == model_name)
 
-            with db.engine.connect() as conn:  # type: ignore[attr-defined]
+            with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
                 row = conn.execute(query).fetchone()
                 if row:
                     metadata["provider"] = row[1] or "unknown"
