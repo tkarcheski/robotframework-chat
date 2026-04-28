@@ -10,9 +10,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from rfc import agent_verifiers as verifiers
+from rfc.agent_config import (
+    DEFAULT_LOCAL_AGENTS_PATH,
+    AgentConfig,
+    load_agent_config,
+)
 from rfc.agent_contract import AgentContract, load_agent_contract
 from rfc.agent_run import AgentRun
-from rfc.fake_agent_runner import DEFAULT_FIXTURES_ROOT, FakeAgentRunner
+from rfc.agent_runner import create_agent_runner
+from rfc.fake_agent_runner import DEFAULT_FIXTURES_ROOT
+from rfc.llm_client import LLMProvider
 
 
 class AgenticCodingKeywords:
@@ -24,12 +31,19 @@ class AgenticCodingKeywords:
         self,
         fixtures_root: Path | str | None = None,
         contract_path: Path | str | None = None,
+        agents_yaml_path: Path | str | None = None,
+        provider: LLMProvider | None = None,
     ) -> None:
         self._fixtures_root = (
             Path(fixtures_root) if fixtures_root else DEFAULT_FIXTURES_ROOT
         )
         self._contract_path = Path(contract_path) if contract_path else None
+        self._agents_yaml_path = (
+            Path(agents_yaml_path) if agents_yaml_path else DEFAULT_LOCAL_AGENTS_PATH
+        )
+        self._provider = provider
         self._contract_cache: dict[str, AgentContract] = {}
+        self._config_cache: dict[str, AgentConfig] = {}
 
     def _contract(self, agent_id: str) -> AgentContract:
         if agent_id not in self._contract_cache:
@@ -38,13 +52,28 @@ class AgenticCodingKeywords:
             )
         return self._contract_cache[agent_id]
 
-    def run_coding_agent_scenario(self, agent: str, scenario: str) -> AgentRun:
-        """Load a prerecorded :class:`AgentRun` for (agent, scenario).
+    def _agent_config(self, agent_id: str) -> AgentConfig:
+        if agent_id not in self._config_cache:
+            self._config_cache[agent_id] = load_agent_config(
+                agent_id, path=self._agents_yaml_path
+            )
+        return self._config_cache[agent_id]
 
-        In PR #1 this is always a fake replay runner. A live adapter slots in
-        behind the same interface in a follow-up PR.
+    def run_coding_agent_scenario(self, agent: str, scenario: str) -> AgentRun:
+        """Run ``scenario`` for ``agent`` and return the resulting AgentRun.
+
+        Dispatches to the runner type declared in ``config/local_agents.yaml``:
+
+          * ``runner: fake``  -> replay a prerecorded ``run.yaml`` fixture.
+          * ``runner: ollama`` -> call a local Ollama-served model with the
+            scenario's ``task.yaml`` and parse the response into an AgentRun.
         """
-        runner = FakeAgentRunner(fixtures_root=self._fixtures_root, agent_id=agent)
+        config = self._agent_config(agent)
+        runner = create_agent_runner(
+            config,
+            scenarios_root=self._fixtures_root,
+            provider=self._provider,
+        )
         return runner.run(scenario)
 
     def branch_should_match_agent_contract(self, run: AgentRun) -> None:

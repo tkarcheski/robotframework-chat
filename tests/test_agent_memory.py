@@ -56,7 +56,10 @@ class TestAgentMemory:
             persistent_facts=facts,
             execution_ledger=[],
         )
-        assert memory.persistent_facts["repository_url"] == "https://github.com/foo/bar.git"
+        assert (
+            memory.persistent_facts["repository_url"]
+            == "https://github.com/foo/bar.git"
+        )
         assert memory.persistent_facts["issue_number"] == 123
 
     def test_execution_ledger_immutable_log(self):

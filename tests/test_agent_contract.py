@@ -101,3 +101,25 @@ class TestAgentContractShape:
         contract = load_agent_contract("claude-code")
         assert isinstance(contract, AgentContract)
         assert contract.agent_id == "claude-code"
+
+
+class TestOllamaLocalContract:
+    """Live local-model agents must have a contract entry too.
+
+    Verifier keywords call ``load_agent_contract(run.agent_id)`` and raise
+    KeyError when the id is unknown. Without an ``ollama-local`` entry the
+    OLLAMA_LIVE=1 path crashes before any behavioral grading runs.
+    """
+
+    def test_ollama_local_contract_loads(self) -> None:
+        contract = load_agent_contract("ollama-local")
+        assert contract.agent_id == "ollama-local"
+
+    def test_ollama_local_uses_same_workflow_as_claude_code(self) -> None:
+        ollama = load_agent_contract("ollama-local")
+        claude = load_agent_contract("claude-code")
+        assert ollama.base_branch == claude.base_branch
+        assert ollama.branch_regex == claude.branch_regex
+        assert ollama.startup_checks == claude.startup_checks
+        assert ollama.commit_subject_regex == claude.commit_subject_regex
+        assert ollama.forbidden_commands == claude.forbidden_commands

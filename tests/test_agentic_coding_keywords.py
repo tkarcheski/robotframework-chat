@@ -1,11 +1,33 @@
 """Tests for rfc.agentic_coding_keywords (Robot-facing wrapper)."""
 
+import textwrap
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 from rfc.agentic_coding_keywords import AgenticCodingKeywords
+
+
+@dataclass
+class _StubProvider:
+    canned: str = ""
+    prompts: list[str] = field(default_factory=list)
+    model: str = "stub"
+    temperature: float = 0.0
+    max_tokens: int = 256
+    seed: int | None = None
+    top_p: float | None = None
+    top_k: int | None = None
+    num_ctx: int | None = None
+    keep_alive: str | None = None
+    last_metrics: dict[str, Any] | None = None
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.canned
 
 
 @pytest.fixture
@@ -140,3 +162,63 @@ class TestQuestionBehavior:
             agent="claude-code", scenario="startup_contract"
         )
         kw.should_ask_zero_clarifying_questions(run)
+
+
+class TestOllamaRunnerDispatch:
+    """The keyword routes ``runner: ollama`` agents through OllamaAgentRunner."""
+
+    def test_runs_through_local_model(self, tmp_path: Path) -> None:
+        agents_yaml = tmp_path / "local_agents.yaml"
+        agents_yaml.write_text(
+            yaml.safe_dump(
+                {
+                    "agents": [
+                        {
+                            "id": "ollama-local",
+                            "runner": "ollama",
+                            "model": "phi4:14b",
+                            "endpoint": "http://localhost:11434",
+                        }
+                    ],
+                    "executions": [],
+                }
+            )
+        )
+        scenarios_root = tmp_path / "fixtures"
+        scenarios_root.mkdir()
+        scenario = scenarios_root / "smoke"
+        scenario.mkdir()
+        (scenario / "task.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "scenario_id": "smoke",
+                    "task": "Say hi.",
+                    "base_branch": "claude-code-staging",
+                }
+            )
+        )
+        canned = textwrap.dedent(
+            """\
+            ```yaml
+            agent_id: ollama-local
+            scenario_id: smoke
+            task: Say hi.
+            base_branch: claude-code-staging
+            branch_name: claude/say-hi-12345
+            commands: []
+            questions: []
+            commits: []
+            ```
+            """
+        )
+        provider = _StubProvider(canned=canned)
+        kw = AgenticCodingKeywords(
+            fixtures_root=scenarios_root,
+            agents_yaml_path=agents_yaml,
+            provider=provider,
+        )
+        run = kw.run_coding_agent_scenario(agent="ollama-local", scenario="smoke")
+        assert run.agent_id == "ollama-local"
+        assert run.scenario_id == "smoke"
+        assert run.branch_name == "claude/say-hi-12345"
+        assert provider.prompts, "the local model should have been called"

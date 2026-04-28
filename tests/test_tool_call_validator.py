@@ -104,7 +104,9 @@ class TestToolCallValidator:
             ToolCall("c3", "tool_c", {}, 3.0, 2),
         ]
 
-        valid, msg = validator.validate_call_sequence(calls, ["tool_a", "tool_b", "tool_c"])
+        valid, msg = validator.validate_call_sequence(
+            calls, ["tool_a", "tool_b", "tool_c"]
+        )
         assert valid is True
         assert msg == ""
 
@@ -117,7 +119,9 @@ class TestToolCallValidator:
             ToolCall("c3", "tool_c", {}, 3.0, 2),
         ]
 
-        valid, msg = validator.validate_call_sequence(calls, ["tool_a", "tool_c", "tool_b"])
+        valid, msg = validator.validate_call_sequence(
+            calls, ["tool_a", "tool_c", "tool_b"]
+        )
         assert valid is False
         assert "Expected" in msg
 
@@ -140,7 +144,6 @@ class TestToolCallValidator:
         assert valid is False
 
     def test_validate_result_success(self):
-
         validator = ToolCallValidator()
         call = ToolCall("c1", "tool_a", {}, 1.0, 0)
         result = ToolResult("c1", True, "Success")
@@ -149,7 +152,6 @@ class TestToolCallValidator:
         assert valid is True
 
     def test_validate_result_failure(self):
-
         validator = ToolCallValidator()
         call = ToolCall("c1", "tool_a", {}, 1.0, 0)
         result = ToolResult("c1", False, "", error="Tool failed")
@@ -159,7 +161,6 @@ class TestToolCallValidator:
         assert "failed" in msg.lower()
 
     def test_validate_result_type_int(self):
-
         validator = ToolCallValidator()
         call = ToolCall("c1", "count_files", {}, 1.0, 0)
         result = ToolResult("c1", True, "42")
@@ -168,7 +169,6 @@ class TestToolCallValidator:
         assert valid is True
 
     def test_validate_result_type_int_invalid(self):
-
         validator = ToolCallValidator()
         call = ToolCall("c1", "count_files", {}, 1.0, 0)
         result = ToolResult("c1", True, "not_a_number")
@@ -177,7 +177,6 @@ class TestToolCallValidator:
         assert valid is False
 
     def test_validate_result_type_dict(self):
-
         validator = ToolCallValidator()
         call = ToolCall("c1", "parse_json", {}, 1.0, 0)
         result = ToolResult("c1", True, json.dumps({"key": "value"}))
@@ -225,7 +224,6 @@ class TestToolResultValidator:
         assert validator.assertions == []
 
     def test_assert_output_contains(self):
-
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
 
@@ -236,7 +234,6 @@ class TestToolResultValidator:
         assert failures == []
 
     def test_assert_output_contains_failure(self):
-
         validator = ToolResultValidator()
         validator.assert_output_contains("error")
 
@@ -247,7 +244,6 @@ class TestToolResultValidator:
         assert len(failures) == 1
 
     def test_assert_output_matches_regex(self):
-
         validator = ToolResultValidator()
         validator.assert_output_matches_regex(r"PR #\d+")
 
@@ -257,7 +253,6 @@ class TestToolResultValidator:
         assert valid is True
 
     def test_assert_output_matches_regex_failure(self):
-
         validator = ToolResultValidator()
         validator.assert_output_matches_regex(r"PR #\d+")
 
@@ -267,7 +262,6 @@ class TestToolResultValidator:
         assert valid is False
 
     def test_assert_result_valid_json(self):
-
         validator = ToolResultValidator()
         validator.assert_result_valid_json()
 
@@ -277,7 +271,6 @@ class TestToolResultValidator:
         assert valid is True
 
     def test_assert_result_valid_json_failure(self):
-
         validator = ToolResultValidator()
         validator.assert_result_valid_json()
 
@@ -287,18 +280,18 @@ class TestToolResultValidator:
         assert valid is False
 
     def test_multiple_assertions(self):
-
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
         validator.assert_output_matches_regex(r"file:\s+\w+")
 
-        result = ToolResult("c1", True, "Operation completed successfully, file: test.txt")
+        result = ToolResult(
+            "c1", True, "Operation completed successfully, file: test.txt"
+        )
         valid, failures = validator.validate(result)
 
         assert valid is True
 
     def test_multiple_assertions_partial_failure(self):
-
         validator = ToolResultValidator()
         validator.assert_output_contains("success")
         validator.assert_output_matches_regex(r"error")  # Won't match

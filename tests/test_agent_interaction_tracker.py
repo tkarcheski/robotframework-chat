@@ -60,7 +60,9 @@ class TestAgentInteractionTracker:
         assert interaction.messages[2].role == "system"
 
     def test_add_tool_call_returns_call_id(self, active_tracker):
-        call_id_1 = active_tracker.add_tool_call("git_clone", {"url": "https://github.com/foo/bar"})
+        call_id_1 = active_tracker.add_tool_call(
+            "git_clone", {"url": "https://github.com/foo/bar"}
+        )
         call_id_2 = active_tracker.add_tool_call(
             "filesystem", {"cmd": "write", "path": "/tmp/file"}
         )
@@ -83,8 +85,12 @@ class TestAgentInteractionTracker:
         assert interaction.tool_calls[2].id == id3
 
     def test_add_tool_result(self, active_tracker):
-        call_id = active_tracker.add_tool_call("git_clone", {"url": "https://github.com/foo/bar"})
-        active_tracker.add_tool_result(call_id, True, "Cloned successfully", execution_time_ms=1500)
+        call_id = active_tracker.add_tool_call(
+            "git_clone", {"url": "https://github.com/foo/bar"}
+        )
+        active_tracker.add_tool_result(
+            call_id, True, "Cloned successfully", execution_time_ms=1500
+        )
 
         interaction = active_tracker.end_interaction(True)
         assert len(interaction.tool_results) == 1
@@ -188,8 +194,12 @@ class TestAgentInteractionTracker:
         tracker.end_interaction(True)
 
         tracker.start_interaction(2)
-        clone_id = tracker.add_tool_call("git_clone", {"url": "https://github.com/foo/bar.git"})
-        tracker.add_tool_result(clone_id, True, "Repository cloned", execution_time_ms=2000)
+        clone_id = tracker.add_tool_call(
+            "git_clone", {"url": "https://github.com/foo/bar.git"}
+        )
+        tracker.add_tool_result(
+            clone_id, True, "Repository cloned", execution_time_ms=2000
+        )
 
         edit_id = tracker.add_tool_call("filesystem_write", {"path": "src/theme.js"})
         tracker.add_tool_result(edit_id, True, "File written", execution_time_ms=100)

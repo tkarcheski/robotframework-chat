@@ -1,0 +1,5 @@
+# Live-runner input for the precise_task scenario.
+# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
+scenario_id: precise_task
+task: "In src/rfc/pager.py line 12, rename DEFAULT_LIMIT to DEFAULT_PAGE_LIMIT and update tests/test_pager.py to match."
+base_branch: claude-code-staging

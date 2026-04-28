@@ -23,7 +23,9 @@ class _InteractionBuilder:
     state_after: dict[str, Any] = field(default_factory=dict)
     reasoning: str = ""
 
-    def build(self, success: bool, error: str | None, duration_ms: float) -> AgentInteraction:
+    def build(
+        self, success: bool, error: str | None, duration_ms: float
+    ) -> AgentInteraction:
         return AgentInteraction(
             turn_number=self.turn_number,
             messages=tuple(self.messages),
@@ -80,7 +82,9 @@ class AgentInteractionTracker:
 
     def add_message(self, role: str, content: str) -> None:
         builder = self._require_builder()
-        builder.messages.append(AgentMessage(role=role, content=content, timestamp=time.time()))
+        builder.messages.append(
+            AgentMessage(role=role, content=content, timestamp=time.time())
+        )
 
     def add_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> str:
         builder = self._require_builder()
@@ -126,12 +130,18 @@ class AgentInteractionTracker:
         builder.state_before = state_before
         builder.state_after = state_after
 
-    def end_interaction(self, success: bool, error: str | None = None) -> AgentInteraction:
+    def end_interaction(
+        self, success: bool, error: str | None = None
+    ) -> AgentInteraction:
         builder = self._require_builder()
         duration_ms = 0.0
         if builder.messages:
-            duration_ms = (builder.messages[-1].timestamp - builder.messages[0].timestamp) * 1000
-        interaction = builder.build(success=success, error=error, duration_ms=duration_ms)
+            duration_ms = (
+                builder.messages[-1].timestamp - builder.messages[0].timestamp
+            ) * 1000
+        interaction = builder.build(
+            success=success, error=error, duration_ms=duration_ms
+        )
         self._interactions.append(interaction)
         self._builder = None
         return interaction
