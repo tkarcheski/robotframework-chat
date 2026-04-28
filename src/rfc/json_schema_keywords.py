@@ -120,10 +120,12 @@ class JSONSchemaKeywords:
         self,
         timeout: Optional[int] = None,
         max_retries: int = 5,
+        llm_library_alias: str = "LLM",
     ) -> None:
         self.timeout = resolve_timeout(timeout)
         self.client: Any = None
         self.max_retries = int(max_retries)
+        self.llm_library_alias = llm_library_alias
 
     def _get_configured_client(self) -> Any:
         """Get the currently configured LLM client from LLMKeywords, or lazily create one.
@@ -135,7 +137,7 @@ class JSONSchemaKeywords:
         try:
             from robot.libraries.BuiltIn import BuiltIn  # type: ignore[import-not-found]
 
-            llm_library = BuiltIn().get_library_instance("LLM")
+            llm_library = BuiltIn().get_library_instance(self.llm_library_alias)
             return llm_library.client  # type: ignore[attr-defined]
         except Exception:
             # Lazy initialization: create provider only when needed
@@ -251,8 +253,10 @@ class JSONSchemaKeywords:
         client = self._get_configured_client()
         last_score = 0.0
         last_response = None
+        schema_context = f"\n\nRequired schema (JSON):\n{schema}"
         for attempt in range(1, retries + 1):
-            full_prompt = prompt + _RETRY_HINTS[min(attempt - 1, len(_RETRY_HINTS) - 1)]
+            hint = _RETRY_HINTS[min(attempt - 1, len(_RETRY_HINTS) - 1)]
+            full_prompt = prompt + schema_context + hint
             response = _generate_or_skip(client.generate, full_prompt, attempt)
             if response is None:
                 continue
