@@ -93,6 +93,12 @@ class TestValidateAgainstSchema:
         assert not is_valid
         assert any("unknown" in e.lower() and "integer" in e.lower() for e in errors)
 
+    def test_rejects_unknown_type_even_when_field_missing(self) -> None:
+        schema = {"types": {"age": "integer"}}
+        is_valid, errors = _validate_against_schema({}, schema)
+        assert not is_valid
+        assert any("unknown" in e.lower() and "integer" in e.lower() for e in errors)
+
 
 class TestValidateJsonWithSchema:
     def setup_method(self) -> None:

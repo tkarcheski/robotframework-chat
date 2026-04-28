@@ -49,14 +49,24 @@ def _validate_against_schema(
         if field not in data:
             errors.append(f"Missing required field: {field}")
 
+    # Validate type specifiers first, before checking field presence
     for field, expected_type in schema.get("types", {}).items():
-        if field not in data:
-            continue
+        if not isinstance(expected_type, str):
+            return False, [
+                f"Schema type for field '{field}' must be a string, not {type(expected_type).__name__}"
+            ]
         check = _TYPE_CHECKS.get(expected_type)
         if check is None:
             return False, [
                 f"Unknown type specifier '{expected_type}' for field '{field}'"
             ]
+
+    # Now check field values for fields that are present
+    for field, expected_type in schema.get("types", {}).items():
+        if field not in data:
+            continue
+        check = _TYPE_CHECKS.get(expected_type)
+        assert check is not None  # Validated above in first loop
         py_type, label = check
         value = data[field]
         if not isinstance(value, py_type):
