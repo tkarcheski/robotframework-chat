@@ -61,66 +61,113 @@ class ModelMetrics:
 
 
 def get_distinct_models(db: TestDatabase) -> List[str]:
-    """Query all distinct model names from test_runs."""
-    try:
-        from sqlalchemy import select  # type: ignore[import-not-found]
-    except ImportError:
-        logger.error("SQLAlchemy not installed; install with: uv sync --extra superset")
-        return []
+    """Query all distinct model names from test_runs.
 
+    Works with both SQLite and PostgreSQL backends.
+    """
     try:
-        if hasattr(db._backend, "_test_runs"):
-            query = select(db._backend._test_runs.c.model_name).distinct()
+        from sqlalchemy import text  # type: ignore[import-not-found]
+
+        if hasattr(db._backend, "engine"):
+            # SQLAlchemy backend (PostgreSQL)
             with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
-                result = conn.execute(query)
-                return sorted([row[0] for row in result if row[0]])
-        else:
-            logger.warning(
-                "Cannot introspect test_runs table; skipping model discovery"
-            )
-            return []
+                result = conn.execute(
+                    text(
+                        "SELECT DISTINCT model_name FROM test_runs ORDER BY model_name"
+                    )
+                )
+                return [row[0] for row in result if row[0]]
+    except ImportError:
+        pass
     except Exception as e:
-        logger.error(f"Failed to query distinct models: {e}")
-        return []
+        logger.error(f"Failed to query distinct models via SQLAlchemy: {e}")
+
+    # Fallback to SQLite backend (db_path)
+    try:
+        import sqlite3
+
+        if hasattr(db._backend, "db_path"):
+            with sqlite3.connect(db._backend.db_path) as conn:  # type: ignore[attr-defined]
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT DISTINCT model_name FROM test_runs ORDER BY model_name"
+                ).fetchall()
+                return [row[0] for row in rows if row[0]]
+    except Exception as e:
+        logger.error(f"Failed to query distinct models via SQLite: {e}")
+
+    logger.warning("Could not query test_runs table; skipping model discovery")
+    return []
 
 
 def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
     """Compute all metrics for a single model from test_results.
 
     Aggregates across all runs, computes percentiles, and breaks down by suite.
+    Works with both SQLite and PostgreSQL backends.
     """
-    try:
-        from sqlalchemy import select  # type: ignore[import-not-found]
-    except ImportError:
-        raise ImportError(
-            "SQLAlchemy not installed; install with: uv sync --extra superset"
-        )
-
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff_7d = now - timedelta(days=7)
     cutoff_30d_prior_start = now - timedelta(days=37)
     cutoff_30d_prior_end = now - timedelta(days=7)
 
-    if not hasattr(db._backend, "_test_runs") or not hasattr(
-        db._backend, "_test_results"
-    ):
-        raise RuntimeError("Database backend does not support SQL queries")
+    rows: List[tuple] = []
 
-    query_all = (
-        select(
-            db._backend._test_results.c.test_status,
-            db._backend._test_results.c.eval_count,
-            db._backend._test_runs.c.test_suite,
-            db._backend._test_runs.c.duration_seconds,
-            db._backend._test_runs.c.timestamp,
-        )
-        .select_from(db._backend._test_results)
-        .join(db._backend._test_runs)
-        .where(db._backend._test_runs.c.model_name == model_name)
-    )
+    # Try SQLAlchemy backend (PostgreSQL) first
+    try:
+        from sqlalchemy import text  # type: ignore[import-not-found]
 
-    with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
-        rows = conn.execute(query_all).fetchall()
+        if hasattr(db._backend, "engine"):
+            with db._backend.engine.connect() as conn:  # type: ignore[attr-defined]
+                result = conn.execute(
+                    text(
+                        """
+                        SELECT
+                            tr.id as run_id,
+                            tr.test_suite,
+                            tr.duration_seconds,
+                            tr.timestamp,
+                            test_r.test_status,
+                            COALESCE(test_r.eval_count, 0) as eval_count
+                        FROM test_results test_r
+                        JOIN test_runs tr ON test_r.run_id = tr.id
+                        WHERE tr.model_name = :model_name
+                        ORDER BY tr.timestamp, tr.id
+                        """
+                    ),
+                    {"model_name": model_name},
+                )
+                rows = [tuple(row) for row in result.fetchall()]
+    except Exception as e:
+        logger.debug(f"SQLAlchemy backend failed: {e}")
+
+    # Fallback to SQLite backend
+    if not rows:
+        try:
+            import sqlite3
+
+            if hasattr(db._backend, "db_path"):
+                with sqlite3.connect(db._backend.db_path) as conn:  # type: ignore[attr-defined]
+                    conn.row_factory = sqlite3.Row
+                    result = conn.execute(
+                        """
+                        SELECT
+                            tr.id as run_id,
+                            tr.test_suite,
+                            tr.duration_seconds,
+                            tr.timestamp,
+                            test_r.test_status,
+                            COALESCE(test_r.eval_count, 0) as eval_count
+                        FROM test_results test_r
+                        JOIN test_runs tr ON test_r.run_id = tr.id
+                        WHERE tr.model_name = ?
+                        ORDER BY tr.timestamp, tr.id
+                        """,
+                        (model_name,),
+                    ).fetchall()
+                    rows = [tuple(row) for row in result]
+        except Exception as e:
+            logger.debug(f"SQLite backend failed: {e}")
 
     if not rows:
         logger.warning(f"No test results found for model: {model_name}")
@@ -143,50 +190,69 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
         )
 
     total_tests = len(rows)
-    passed = sum(1 for r in rows if r[0] == "PASS")
-    failed = sum(1 for r in rows if r[0] == "FAIL")
-    skipped = sum(1 for r in rows if r[0] == "SKIP")
+    passed = sum(1 for r in rows if r[4] == "PASS")
+    failed = sum(1 for r in rows if r[4] == "FAIL")
+    skipped = sum(1 for r in rows if r[4] == "SKIP")
 
-    durations_ms = [(r[3] or 0.0) * 1000 for r in rows if r[3] is not None]
-    durations_ms.sort()
+    # Get distinct run durations for latency percentiles.
+    run_durations = {}
+    for r in rows:
+        run_id = r[0]
+        if run_id not in run_durations:
+            run_durations[run_id] = (r[2] or 0.0) * 1000  # Convert to ms
+
+    durations_ms = sorted(run_durations.values())
     p50 = durations_ms[int(len(durations_ms) * 0.50)] if durations_ms else 0.0
     p95 = durations_ms[int(len(durations_ms) * 0.95)] if durations_ms else 0.0
     p99 = durations_ms[int(len(durations_ms) * 0.99)] if durations_ms else 0.0
 
-    throughputs = []
-    for row in rows:
-        eval_count = row[1] or 0
-        duration_s = row[3] or 1
-        if duration_s > 0:
-            throughputs.append(eval_count / duration_s)
+    # Compute throughput per run, then average across runs.
+    run_throughputs = {}
+    for r in rows:
+        run_id = r[0]
+        if run_id not in run_throughputs:
+            duration_s = r[2] or 1
+            run_throughputs[run_id] = {"eval_count": 0, "duration_s": duration_s}
+        run_throughputs[run_id]["eval_count"] += r[5] or 0
+
+    throughputs = [
+        run["eval_count"] / run["duration_s"]
+        for run in run_throughputs.values()
+        if run["duration_s"] > 0
+    ]
     avg_throughput = sum(throughputs) / len(throughputs) if throughputs else 0.0
 
-    rows_7d = [r for r in rows if r[4] and r[4] >= cutoff_7d]
+    rows_7d = [r for r in rows if r[3] and r[3] >= cutoff_7d]
     rows_30d_prior = [
         r
         for r in rows
-        if r[4] and cutoff_30d_prior_start <= r[4] < cutoff_30d_prior_end
+        if r[3] and cutoff_30d_prior_start <= r[3] < cutoff_30d_prior_end
     ]
 
     pass_rate_7d = (
-        (sum(1 for r in rows_7d if r[0] == "PASS") / len(rows_7d) * 100)
+        (sum(1 for r in rows_7d if r[4] == "PASS") / len(rows_7d) * 100)
         if rows_7d
         else None
     )
     pass_rate_30d_prior = (
-        (sum(1 for r in rows_30d_prior if r[0] == "PASS") / len(rows_30d_prior) * 100)
+        (sum(1 for r in rows_30d_prior if r[4] == "PASS") / len(rows_30d_prior) * 100)
         if rows_30d_prior
         else None
     )
 
     suite_metrics: Dict[str, Dict[str, Any]] = {}
-    for suite in set(r[2] for r in rows if r[2]):
-        suite_rows = [r for r in rows if r[2] == suite]
-        suite_passed = sum(1 for r in suite_rows if r[0] == "PASS")
+    for suite in set(r[1] for r in rows if r[1]):
+        suite_rows = [r for r in rows if r[1] == suite]
+        suite_passed = sum(1 for r in suite_rows if r[4] == "PASS")
         suite_tests = len(suite_rows)
         suite_pass_rate = (suite_passed / suite_tests * 100) if suite_tests else 0.0
+
+        # Count distinct runs per suite (not result rows).
+        suite_run_ids = set(r[0] for r in suite_rows)
+        suite_run_count = len(suite_run_ids)
+
         suite_durations_ms = [
-            (r[3] or 0.0) * 1000 for r in suite_rows if r[3] is not None
+            run_durations[run_id] for run_id in suite_run_ids if run_id in run_durations
         ]
         suite_durations_ms.sort()
         suite_p95 = (
@@ -195,14 +261,20 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
             else 0.0
         )
         suite_metrics[suite] = {
-            "runs": len(suite_rows),
+            "runs": suite_run_count,
             "passed": suite_passed,
             "pass_rate_pct": suite_pass_rate,
             "p95_ms": suite_p95,
         }
 
-    # Distinct timestamps approximate run count without an extra join on run_id.
-    unique_runs = len(set(r[4] for r in rows if r[4] is not None))
+    # Count distinct runs from run_id.
+    unique_runs = len(run_durations)
+
+    avg_duration_seconds = (
+        sum(run_durations.values()) / len(run_durations) / 1000
+        if run_durations
+        else 0.0
+    )
 
     return ModelMetrics(
         model_name=model_name,
@@ -214,11 +286,7 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
         pass_rate_pct=(passed / total_tests * 100) if total_tests else 0.0,
         pass_rate_7d_pct=pass_rate_7d,
         pass_rate_30d_prior_pct=pass_rate_30d_prior,
-        avg_duration_seconds=(
-            sum(r[3] or 0.0 for r in rows) / len([r for r in rows if r[3]])
-            if any(r[3] for r in rows)
-            else 0.0
-        ),
+        avg_duration_seconds=avg_duration_seconds,
         p50_duration_ms=p50,
         p95_duration_ms=p95,
         p99_duration_ms=p99,
