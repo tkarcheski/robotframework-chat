@@ -160,6 +160,15 @@ class JSONSchemaKeywords:
             emit_rfc_data("schema_valid", "false")
             return 0.0
 
+        # Validate that all type specifiers are strings
+        for field, type_spec in schema_obj.get("types", {}).items():
+            if not isinstance(type_spec, str):
+                logger.error(
+                    f"Schema type for field '{field}' must be a string, not {type(type_spec).__name__}"
+                )
+                emit_rfc_data("schema_valid", "false")
+                return 0.0
+
         return _validate_parsed(response, schema_obj, schema_name)
 
     @keyword("Validate JSON With Retries")
@@ -199,6 +208,15 @@ class JSONSchemaKeywords:
             logger.error("Schema 'required' field must be a JSON array")
             emit_rfc_data("schema_valid", "false")
             return 0.0, 0
+
+        # Validate that all type specifiers are strings
+        for field, type_spec in schema_obj.get("types", {}).items():
+            if not isinstance(type_spec, str):
+                logger.error(
+                    f"Schema type for field '{field}' must be a string, not {type(type_spec).__name__}"
+                )
+                emit_rfc_data("schema_valid", "false")
+                return 0.0, 0
 
         client = self._get_configured_client()
         last_score = 0.0
