@@ -105,6 +105,45 @@ class TestCreativityKeywords:
             kw.grade_joke("Tell me a joke", "joke text", "humor")
 
     @patch("rfc.creativity_keywords.create_provider")
+    def test_grade_joke_rejects_generation_model_alias(
+        self,
+        mock_create: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """':latest' alias of the generation model must also be rejected (#260)."""
+        monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "gen-model:latest,judge2,judge3")
+        mock_create.return_value = _make_client_mock()  # client.model = "gen-model"
+        kw = CreativityKeywords()
+        with pytest.raises(ValueError, match="must not contain the generation model"):
+            kw.grade_joke("Tell me a joke", "joke text", "humor")
+
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_grade_joke_treats_implicit_latest_as_duplicate(
+        self,
+        mock_create: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """'judge1' and 'judge1:latest' canonicalise to the same model (#260)."""
+        monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "judge1,judge1:latest,judge2")
+        mock_create.return_value = _make_client_mock()
+        kw = CreativityKeywords()
+        with pytest.raises(ValueError, match="at least 3 distinct models"):
+            kw.grade_joke("Tell me a joke", "joke text", "humor")
+
+    @patch("rfc.creativity_keywords.create_provider")
+    def test_grade_joke_treats_case_aliases_as_duplicate(
+        self,
+        mock_create: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Case-only differences canonicalise to the same model (#260)."""
+        monkeypatch.setenv("CREATIVITY_GRADER_MODELS", "Judge1,JUDGE1,judge2")
+        mock_create.return_value = _make_client_mock()
+        kw = CreativityKeywords()
+        with pytest.raises(ValueError, match="at least 3 distinct models"):
+            kw.grade_joke("Tell me a joke", "joke text", "humor")
+
+    @patch("rfc.creativity_keywords.create_provider")
     def test_grade_joke_builds_panel_from_env(
         self,
         mock_create: MagicMock,

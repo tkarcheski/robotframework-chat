@@ -75,15 +75,33 @@ class CreativityKeywords:
             self._creativity_grader = CreativityGrader(self._build_judge_panel())
         return self._creativity_grader
 
+    @staticmethod
+    def _canonical_model(name: str) -> str:
+        """Normalize a model name so tag aliases compare equal.
+
+        Ollama treats an untagged name as ``:latest`` and is case-insensitive,
+        so 'Qwen2', 'qwen2', and 'qwen2:latest' all refer to the same model.
+        Canonicalising before the dedupe and self-grading-overlap checks
+        prevents alias forms from bypassing those guards (#260).
+        """
+        canon = name.strip().lower()
+        if ":" not in canon:
+            canon = f"{canon}:latest"
+        return canon
+
     def _build_judge_panel(self) -> MultiGrader:
         models_str = os.getenv("CREATIVITY_GRADER_MODELS", "").strip()
         if not models_str:
             raise MissingEnvironmentError("CREATIVITY_GRADER_MODELS")
 
-        # Dedupe while preserving declaration order so callers can't satisfy
-        # the panel-size requirement with repeats like "m,m,m" (#260).
+        # Dedupe on canonical form so 'm', 'm:latest', and 'M' don't all
+        # count as distinct judges (#260).
         raw_models = [m.strip() for m in models_str.split(",") if m.strip()]
-        models = list(dict.fromkeys(raw_models))
+        seen: Dict[str, str] = {}
+        for raw in raw_models:
+            canon = self._canonical_model(raw)
+            seen.setdefault(canon, raw)
+        models = list(seen.values())
         if len(models) < 3:
             raise ValueError(
                 f"CREATIVITY_GRADER_MODELS must contain at least 3 distinct "
@@ -94,7 +112,7 @@ class CreativityKeywords:
         # Reject (not warn) the generation model in the panel — any overlap
         # reintroduces self-grading bias for at least one judge (#260).
         gen_model = getattr(self.client, "model", None)
-        if gen_model and gen_model in models:
+        if gen_model and self._canonical_model(gen_model) in seen:
             raise ValueError(
                 f"CREATIVITY_GRADER_MODELS must not contain the generation "
                 f"model '{gen_model}' — that judge would self-grade, "
