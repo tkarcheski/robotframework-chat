@@ -1,5 +1,7 @@
 """Tests for context_window_keywords — filled-context retrieval stress testing."""
 
+from unittest.mock import MagicMock
+
 from rfc.context_window_keywords import ContextWindowKeywords
 
 
@@ -7,7 +9,8 @@ class TestBuildFilledPrompt:
     """Test prompt assembly with filler content."""
 
     def setup_method(self):
-        self.kw = ContextWindowKeywords()
+        mock_client = MagicMock()
+        self.kw = ContextWindowKeywords(client=mock_client)
 
     def test_respects_context_budget(self):
         """Built prompt should fit within fill_pct of context window."""
@@ -146,7 +149,8 @@ class TestCheckNeedleRecalled:
     """Test needle detection in model responses."""
 
     def setup_method(self):
-        self.kw = ContextWindowKeywords()
+        mock_client = MagicMock()
+        self.kw = ContextWindowKeywords(client=mock_client)
 
     def test_exact_substring_match(self):
         """Should detect exact substring match."""
@@ -196,3 +200,19 @@ class TestCheckNeedleRecalled:
 
         result = self.kw.check_needle_recalled(response, expected)
         assert result is False
+
+    def test_no_false_positive_on_number_suffix(self):
+        """Should not match if expected is a suffix of a larger number."""
+        response = "The interval is 190 days per policy."
+        expected = "90 days"
+
+        result = self.kw.check_needle_recalled(response, expected)
+        assert result is False, "Should not match '90 days' in '190 days'"
+
+    def test_no_false_positive_on_version_substring(self):
+        """Should not match if expected is a substring of a version number."""
+        response = "API version 3.2.10 is required for compliance."
+        expected = "3.2.1"
+
+        result = self.kw.check_needle_recalled(response, expected)
+        assert result is False, "Should not match '3.2.1' in '3.2.10'"

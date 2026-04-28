@@ -64,9 +64,17 @@ class ContextWindowKeywords:
     # Regex for whitespace normalization in needle matching
     _WS_COLLAPSE = re.compile(r"\s+")
 
-    def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
-        timeout = resolve_timeout(timeout)
-        self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
+    def __init__(
+        self,
+        timeout: Optional[int] = None,
+        max_retries: int = 2,
+        client: Any = None,
+    ):
+        if client is not None:
+            self.client = client
+        else:
+            timeout = resolve_timeout(timeout)
+            self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
 
     @keyword("Build Filled Prompt")
     def build_filled_prompt(
@@ -175,6 +183,12 @@ class ContextWindowKeywords:
             needle_fact, question, fill_pct, context_window, position, max_tokens
         )
 
+        # Configure client context window before generation
+        if hasattr(self.client, "num_ctx"):
+            self.client.num_ctx = context_window
+        if hasattr(self.client, "max_tokens"):
+            self.client.max_tokens = max_tokens
+
         # Measure latency
         start_time = time.time()
         response = self.client.generate(prompt)
@@ -210,23 +224,36 @@ class ContextWindowKeywords:
     def check_needle_recalled(self, response: str, expected_answer: str) -> bool:
         """Check if the expected answer appears in the response.
 
-        Performs case-insensitive, whitespace-normalized substring matching.
+        Uses word-boundary matching to avoid false positives (e.g., "90 days"
+        won't match "190 days"). Performs case-insensitive, whitespace-normalized
+        matching on individual tokens.
 
         Args:
             response: The model's response text.
             expected_answer: The fact/snippet expected to be recalled.
 
         Returns:
-            True if expected_answer is found in response (normalized).
+            True if expected_answer tokens are found as a consecutive sequence.
         """
         if not response or not expected_answer:
             return False
 
-        # Normalize both strings: lowercase, collapse whitespace
+        # Normalize and split into words
         resp_normalized = self._normalize_text(response)
         expected_normalized = self._normalize_text(expected_answer)
 
-        return expected_normalized in resp_normalized
+        resp_words = resp_normalized.split()
+        expected_words = expected_normalized.split()
+
+        if not expected_words or not resp_words:
+            return False
+
+        # Check if expected words appear as a consecutive subsequence
+        for i in range(len(resp_words) - len(expected_words) + 1):
+            if resp_words[i : i + len(expected_words)] == expected_words:
+                return True
+
+        return False
 
     def _normalize_text(self, text: str) -> str:
         """Normalize text for comparison: lowercase, collapse whitespace."""
