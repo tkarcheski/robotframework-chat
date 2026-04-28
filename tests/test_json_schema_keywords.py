@@ -92,6 +92,28 @@ class TestValidateJsonWithSchema:
             assert score == 0.0
             mock_emit.assert_any_call("schema_valid", "false")
 
+    def test_schema_with_types_as_list_returns_zero(self) -> None:
+        with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
+            score = self.jk.validate_json_with_schema(
+                '{"name": "Alice"}', '{"types": []}'
+            )
+            assert score == 0.0
+            mock_emit.assert_any_call("schema_valid", "false")
+
+    def test_schema_with_required_as_dict_returns_zero(self) -> None:
+        with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
+            score = self.jk.validate_json_with_schema(
+                '{"name": "Alice"}', '{"required": {}}'
+            )
+            assert score == 0.0
+            mock_emit.assert_any_call("schema_valid", "false")
+
+    def test_schema_as_array_returns_zero(self) -> None:
+        with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
+            score = self.jk.validate_json_with_schema('{"name": "Alice"}', "[]")
+            assert score == 0.0
+            mock_emit.assert_any_call("schema_valid", "false")
+
     def test_valid_schema_recorded(self) -> None:
         with patch("rfc.json_schema_keywords.emit_rfc_data") as mock_emit:
             self.jk.validate_json_with_schema(
@@ -269,6 +291,18 @@ class TestValidateJsonWithRetries:
         ):
             score, attempt = self.jk.validate_json_with_retries(
                 "Generate JSON", "not valid schema"
+            )
+            assert (score, attempt) == (0.0, 0)
+            assert mock_gen.call_count == 0
+
+    def test_schema_with_types_as_list_short_circuits(self) -> None:
+        """Structurally invalid schema (types as list) short-circuits without LLM call."""
+        with (
+            patch.object(self.jk.client, "generate") as mock_gen,
+            patch("rfc.json_schema_keywords.emit_rfc_data"),
+        ):
+            score, attempt = self.jk.validate_json_with_retries(
+                "Generate JSON", '{"types": []}'
             )
             assert (score, attempt) == (0.0, 0)
             assert mock_gen.call_count == 0

@@ -144,6 +144,22 @@ class JSONSchemaKeywords:
             emit_rfc_data("schema_valid", "false")
             return 0.0
 
+        # Validate schema structure: both "required" and "types" must be dicts/lists
+        if not isinstance(schema_obj, dict):
+            logger.error("Schema must be a JSON object")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0
+
+        if "types" in schema_obj and not isinstance(schema_obj["types"], dict):
+            logger.error("Schema 'types' field must be a JSON object, not a list")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0
+
+        if "required" in schema_obj and not isinstance(schema_obj["required"], list):
+            logger.error("Schema 'required' field must be a JSON array")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0
+
         return _validate_parsed(response, schema_obj, schema_name)
 
     @keyword("Validate JSON With Retries")
@@ -165,6 +181,22 @@ class JSONSchemaKeywords:
             schema_obj = json.loads(schema)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Invalid schema: {e}")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0, 0
+
+        # Validate schema structure: both "required" and "types" must be dicts/lists
+        if not isinstance(schema_obj, dict):
+            logger.error("Schema must be a JSON object")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0, 0
+
+        if "types" in schema_obj and not isinstance(schema_obj["types"], dict):
+            logger.error("Schema 'types' field must be a JSON object, not a list")
+            emit_rfc_data("schema_valid", "false")
+            return 0.0, 0
+
+        if "required" in schema_obj and not isinstance(schema_obj["required"], list):
+            logger.error("Schema 'required' field must be a JSON array")
             emit_rfc_data("schema_valid", "false")
             return 0.0, 0
 

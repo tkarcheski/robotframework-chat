@@ -33,7 +33,7 @@ Ask For JSON With Retries
     ...    Measures how many attempts needed for successful validation.
     [Arguments]    ${prompt}    ${schema}    ${schema_name}=custom    ${max_retries}=5
     ${score}    ${attempt}=    JSONSchema.Validate JSON With Retries    ${prompt}    ${schema}    ${schema_name}    ${max_retries}
-    Should Be True    ${score} >= 0.5    JSON schema validation failed after ${attempt} attempts
+    Should Be True    ${score} == 1.0    JSON schema validation failed after ${attempt} attempts with score ${score}
     Log    JSON schema validation succeeded on attempt ${attempt} with score ${score}
     RETURN    ${score}    ${attempt}
 
