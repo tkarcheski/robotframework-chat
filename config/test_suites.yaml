@@ -102,6 +102,11 @@ test_suites:
     path: "robot/safety"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
+  refusal-calibration:
+    label: "Refusal Calibration Tests"
+    path: "robot/refusal_calibration/tests"
+    description: "Detect over-refusal on benign edge-case prompts (medical, security research, policy, legal, chemistry)"
+
   superset:
     label: "Superset Connectivity"
     path: "robot/superset"
@@ -316,6 +321,11 @@ ci:
     robot-safety-tests:
       path: "robot/safety/"
       output_dir: "results/safety"
+      tags: ["ollama"]
+
+    robot-refusal-calibration-tests:
+      path: "robot/refusal_calibration/"
+      output_dir: "results/refusal_calibration"
       tags: ["ollama"]
 
     robot-c-interview-tests:

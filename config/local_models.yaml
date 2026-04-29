@@ -44,6 +44,11 @@ test_suites:
     description: "Adversarial prompt injection and jailbreak tests"
     timeout_seconds: 300
 
+  - name: "refusal-calibration"
+    path: "robot/refusal_calibration/"
+    description: "Over-refusal detection on benign edge-case prompts"
+    timeout_seconds: 300
+
   - name: "docker-python"
     path: "robot/docker/python/tests/"
     description: "Python code generation in Docker containers"
