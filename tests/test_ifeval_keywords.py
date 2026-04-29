@@ -350,3 +350,58 @@ class TestAssertIFEvalPassed:
             kw.assert_ifeval_passed(
                 {"passed": False, "reason": "bad", "constraint": "x"}
             )
+
+
+class TestMultilingualConstraints:
+    """Verify constraint checkers work across languages (Spanish, German, Japanese)."""
+
+    def test_spanish_word_count(self) -> None:
+        spanish_text = "El gato y el perro juegan juntos"  # 7 words
+        passed, _ = IFEvalKeywords.check_word_count(spanish_text, 7)
+        assert passed is True
+
+    def test_spanish_bullet_points(self) -> None:
+        spanish_bullets = "- Manzana\n- Plátano\n- Naranja"
+        passed, _ = IFEvalKeywords.check_bullet_points(spanish_bullets, 3)
+        assert passed is True
+
+    def test_spanish_paragraph_count(self) -> None:
+        spanish_para = "Primera sección del texto.\n\nSegunda sección del texto."
+        passed, _ = IFEvalKeywords.check_paragraph_count(spanish_para, 2)
+        assert passed is True
+
+    def test_german_word_count(self) -> None:
+        german_text = "Der Hund und die Katze spielen zusammen"  # 7 words
+        passed, _ = IFEvalKeywords.check_word_count(german_text, 7)
+        assert passed is True
+
+    def test_german_numbered_list(self) -> None:
+        german_list = "1. Apfel\n2. Banane\n3. Kirsche"
+        passed, _ = IFEvalKeywords.check_numbered_list(german_list, 3)
+        assert passed is True
+
+    def test_german_ends_with_word(self) -> None:
+        german_text = "Dies ist eine Aussage ENDE"
+        passed, _ = IFEvalKeywords.check_ends_with_word(german_text, "ENDE")
+        assert passed is True
+
+    def test_japanese_word_count_no_spaces(self) -> None:
+        japanese_text = "私は毎日学校に行きます"  # No spaces; split() returns 1 element
+        passed, count_result = IFEvalKeywords.check_word_count(japanese_text, 1)
+        assert passed is True  # Single token when split by whitespace
+
+    def test_japanese_bullet_points_with_latin_numerals(self) -> None:
+        japanese_bullets = "- りんご\n- バナナ\n- オレンジ"
+        passed, _ = IFEvalKeywords.check_bullet_points(japanese_bullets, 3)
+        assert passed is True
+
+    def test_japanese_paragraph_count(self) -> None:
+        japanese_para = "最初の段落です。\n\n2番目の段落です。"
+        passed, _ = IFEvalKeywords.check_paragraph_count(japanese_para, 2)
+        assert passed is True
+
+    def test_cross_language_bullet_points_english(self) -> None:
+        """Verify format constraint works regardless of language."""
+        english_bullets = "- Apple\n- Banana\n- Cherry\n- Date"
+        passed, _ = IFEvalKeywords.check_bullet_points(english_bullets, 4)
+        assert passed is True
