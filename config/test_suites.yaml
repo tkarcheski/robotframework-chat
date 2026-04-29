@@ -172,6 +172,11 @@ test_suites:
     path: "robot/gaia"
     description: "GAIA-style tests for LLM tool selection, argument formatting, chaining, and refusal"
 
+  json_schema:
+    label: "JSON Schema Validation"
+    path: "robot/json_schema"
+    description: "JSON schema validation with retry logic and parse failure rate measurement across models"
+
   ifeval:
     label: "IFEval Instruction Following"
     path: "robot/ifeval"

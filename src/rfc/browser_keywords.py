@@ -10,12 +10,14 @@ from __future__ import annotations
 from robot.api.deco import keyword
 
 try:
-    from markdownify import markdownify as md
+    from markdownify import markdownify as md  # type: ignore[import-not-found]
 except ImportError:
     md = None  # type: ignore[assignment]
 
 try:
-    from bs4 import BeautifulSoup
+    from bs4 import (  # type: ignore[import-not-found,import-untyped]
+        BeautifulSoup,
+    )
 except ImportError:
     BeautifulSoup = None  # type: ignore[assignment,misc]
 

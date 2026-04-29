@@ -144,6 +144,11 @@ test_suites:
     description: "GAIA-style tool-use tests for LLM tool selection and invocation"
     timeout_seconds: 300
 
+  - name: "json-schema"
+    path: "robot/json_schema/"
+    description: "JSON schema validation with retry logic and parse failure rate measurement"
+    timeout_seconds: 300
+
   - name: "ifeval"
     path: "robot/ifeval/"
     description: "Instruction following evaluation with deterministic constraint checking"
