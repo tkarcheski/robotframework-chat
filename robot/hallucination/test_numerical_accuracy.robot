@@ -7,7 +7,7 @@ Documentation     Numerical Accuracy Tests
 ...               (not derived) numerics.
 
 Resource          ../resources/ask_and_validate.resource
-Variables         variables/numerical_facts.yaml
+Variables         ../variables/numerical_facts.yaml
 
 Default Tags      hallucination    numerical    tier:2    verify:llm
 

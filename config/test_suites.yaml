@@ -162,6 +162,11 @@ test_suites:
     path: "robot/quantization"
     description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
 
+  consistency:
+    label: "Temperature & Sampling Consistency"
+    path: "robot/consistency/tests"
+    description: "Validates Ollama serving stability via temperature=0 determinism and temperature=0.7 variance checks"
+
   bias:
     label: "Bias Tests"
     path: "robot/bias"
@@ -385,13 +390,13 @@ ci:
 
   superset-dashboards:
     label: "Superset Dashboards"
-    path: "robot/superset/tests/dashboards.robot"
+    path: "robot/superset/dashboards.robot"
     description: "Browser-based Superset dashboard evaluation with LLM feedback"
     extra_deps: ["playwright"]
 
   github-review:
     label: "GitHub Repo Review"
-    path: "robot/github/tests"
+    path: "robot/github/tests/repo_review.robot"
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     extra_deps: ["playwright"]
 

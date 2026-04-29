@@ -134,6 +134,11 @@ test_suites:
     description: "Quantization degradation comparison (Q4 vs Q8)"
     timeout_seconds: 600
 
+  - name: "consistency"
+    path: "robot/consistency/tests/"
+    description: "Temperature & sampling consistency (temp=0 determinism, temp=0.7 variance)"
+    timeout_seconds: 900
+
   - name: "bias"
     path: "robot/bias/"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
