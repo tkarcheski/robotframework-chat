@@ -199,6 +199,11 @@ class CreativityKeywords:
     ) -> Tuple[float, str]:
         """Grade a joke on humor, creativity, originality, and relevance.
 
+        An empty/whitespace-only joke is scored 0.0 directly without
+        calling the underlying LLM-judge grader; the upstream retry loop
+        relies on this returning rather than raising so it can decide
+        whether to escalate or surface :class:`EmptyLLMResponseError`.
+
         Args:
             prompt: The original joke prompt.
             joke: The joke text to grade.
@@ -207,6 +212,11 @@ class CreativityKeywords:
         Returns:
             Tuple of (score, reason).
         """
+        if not joke or not joke.strip():
+            score, reason = 0.0, "Empty joke — model produced no content"
+            emit_rfc_data("score", str(score))
+            emit_rfc_data("grading_reason", reason)
+            return score, reason
         result = self.creativity_grader.grade_joke(prompt, joke, expected_traits)
         emit_rfc_data("score", str(result.score))
         emit_rfc_data("grading_reason", result.reason)

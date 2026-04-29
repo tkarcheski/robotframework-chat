@@ -158,6 +158,23 @@ class HallucinationKeywords:
             f"Checking response for fabricated citations ({len(response)} chars)"
         )
 
+        # An empty response trivially contains zero fabricated references,
+        # but it also fails to produce the citation the test asked for.
+        # Treat absence as failure rather than vacuous success.
+        if not response.strip():
+            emit_rfc_data("score", "0")
+            emit_rfc_data("expected_answer", "no_fabricated_citations")
+            emit_rfc_data(
+                "grading_reason",
+                "Empty response — model produced no citation to verify",
+            )
+            logger.info("Citation check: empty response (treated as failure)")
+            return {
+                "is_clean": False,
+                "fabricated_refs": [],
+                "real_refs_found": [],
+            }
+
         refs = self._extract_references(response)
         all_found: List[str] = (
             refs["urls"]

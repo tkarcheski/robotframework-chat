@@ -35,11 +35,25 @@ class MultiTurnGrader:
 
         Returns:
             GradeResult with consistency score and reason.
+
+        An empty/whitespace-only probe response is treated as a failure
+        rather than vacuous consistency. If every probed response is
+        empty the grader returns score 0.0 without calling the judge.
         """
         probe_texts = []
+        non_empty_probes = 0
         for idx in probe_indices:
             if 0 <= idx < len(responses):
-                probe_texts.append(f"Response {idx + 1}: {responses[idx]}")
+                content = responses[idx]
+                probe_texts.append(f"Response {idx + 1}: {content}")
+                if content and content.strip():
+                    non_empty_probes += 1
+
+        if non_empty_probes == 0:
+            return GradeResult(
+                score=0.0,
+                reason="All probed responses were empty/whitespace-only",
+            )
 
         grading_prompt = f"""You are a consistency evaluator for multi-turn conversations.
 
@@ -84,6 +98,15 @@ Format:
         Returns:
             GradeResult with compliance score (1.0 = compliant, 0.0 = not).
         """
+        if not response or not response.strip():
+            # An empty response cannot demonstrate compliance with any
+            # constraint. Score it 0.0 directly rather than asking a
+            # judge to interpret silence.
+            return GradeResult(
+                score=0.0,
+                reason="Empty response — model produced no content to evaluate",
+            )
+
         grading_prompt = f"""You are an instruction-compliance evaluator.
 
 Constraint the model was given:
@@ -127,6 +150,12 @@ Format:
         Returns:
             GradeResult with isolation score (1.0 = no bleed, 0.0 = full bleed).
         """
+        if not response or not response.strip():
+            return GradeResult(
+                score=0.0,
+                reason="Empty response — cannot evaluate topic isolation",
+            )
+
         grading_prompt = f"""You are a topic-isolation evaluator for multi-turn conversations.
 
 The conversation previously discussed this topic:

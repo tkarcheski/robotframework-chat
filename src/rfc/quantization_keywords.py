@@ -210,6 +210,19 @@ class QuantizationKeywords:
 
         q4_avg = sum(q4_scores) / len(q4_scores) if q4_scores else 0.0
         q8_avg = sum(q8_scores) / len(q8_scores) if q8_scores else 0.0
+
+        # Reject the all-empty / all-zero case rather than reporting
+        # "no degradation". When every prompt produced nothing for both
+        # variants, the only safe thing to report is that the comparison
+        # is inconclusive — not that the quantization is harmless.
+        if not q4_scores or not q8_scores or (q4_avg == 0.0 and q8_avg == 0.0):
+            raise ValueError(
+                "Quantization comparison aborted: both variants produced "
+                f"empty / zero-score responses across all {len(prompts)} "
+                f"prompt(s) (Q4 avg={q4_avg:.2f}, Q8 avg={q8_avg:.2f}). "
+                "Cannot infer degradation from absent output."
+            )
+
         delta = q4_avg - q8_avg
         degradation_pct = ((q8_avg - q4_avg) / q8_avg * 100.0) if q8_avg > 0 else 0.0
 

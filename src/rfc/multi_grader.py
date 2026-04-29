@@ -63,7 +63,20 @@ class MultiGrader:
 
         Returns:
             MultiGradeResult with individual scores and the median consensus score.
+
+        Raises:
+            ValueError: If ``actual`` is empty/whitespace-only. Sending
+                an empty response to a judging panel would invite
+                charitable partial credit and silently inflate pass
+                rates; the caller must score absence as 0.0 directly.
         """
+        if not isinstance(actual, str):
+            raise TypeError(f"actual must be a str, got {type(actual).__name__}")
+        if not actual.strip():
+            raise ValueError(
+                "actual must be a non-empty string "
+                "(received empty/whitespace-only response)"
+            )
         prompt = self._build_prompt(question, expected, actual, rubric)
 
         scores: List[float] = []

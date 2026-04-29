@@ -20,6 +20,15 @@ class Grader:
                 raise TypeError(f"{name} must be a str, got {type(val).__name__}")
         if not question.strip():
             raise ValueError("question must be a non-empty string")
+        if not actual.strip():
+            # Never send an empty response to the LLM judge: judges
+            # interpret "" charitably (often returning partial credit),
+            # which silently inflates pass rates. Callers that want to
+            # record an empty response should score it as 0.0 directly.
+            raise ValueError(
+                "actual must be a non-empty string "
+                "(received empty/whitespace-only response)"
+            )
         prompt = f"""
 You are an automaed grader.
 
