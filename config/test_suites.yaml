@@ -232,6 +232,11 @@ test_suites:
     path: "robot/agent_workflows/tests"
     description: "OpenClaw-style multi-turn agent workflow capture: tool-call schema validation, ordering assertions, error recovery, state snapshots, and live-LLM smoke"
 
+  context-window:
+    label: "Context Window Stress"
+    path: "robot/context_window/tests"
+    description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
