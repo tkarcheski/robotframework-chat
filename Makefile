@@ -35,6 +35,7 @@ export
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
+        model-cards \
         ci-generate ci-report ci-deploy \
         opencode-pipeline-review opencode-local-review opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -249,6 +250,9 @@ superset-import: ## Import Superset dashboards from ZIP: make superset-import FI
 		-p /tmp/superset_import.zip \
 		-u "$${SUPERSET_ADMIN_USER:-admin}"
 	@echo "Dashboard import complete."
+
+model-cards: ## Generate Markdown model cards from test results (requires Superset DB)
+	uv run python -m rfc.make_model_cards
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
