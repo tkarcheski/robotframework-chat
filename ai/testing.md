@@ -65,6 +65,7 @@ Simple Math Should Be Deterministic
 - **Tier 3 – Robot + LLMs**
   - Three or more grader models evaluate the same output.
   - Robot computes majority vote, fails on negative consensus, and emits `WARN` if graders disagree.
+  - **Avoid self-grading bias.** Judges must be distinct from the generation model. Each pipeline that uses a panel reads its model list from a dedicated env var (e.g. `CEO_GRADER_MODELS`, `CREATIVITY_GRADER_MODELS`); when the var is unset the test skips (`ROBOT_SKIP`) rather than silently reusing the generation client. See issue #260 for the rationale.
 
 - **Tier 4 – Robot + LLMs + Docker**
   - Same as Tier 3, but candidate outputs are executed in a sandboxed Docker container.

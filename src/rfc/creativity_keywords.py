@@ -4,14 +4,16 @@ Provides keywords for joke generation, conversational context testing,
 and creativity grading with automatic token escalation on failure.
 """
 
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
 from robot.api.deco import keyword
 
 from .creativity_grader import CreativityGrader
-from .exceptions import EmptyLLMResponseError
+from .exceptions import EmptyLLMResponseError, MissingEnvironmentError
 from .llm_client import create_provider, resolve_timeout
+from .multi_grader import MultiGrader
 from .rfc_data import emit_rfc_data
 from .thinking import parse_thinking
 
@@ -43,15 +45,89 @@ class CreativityKeywords:
         hide_thinking: bool | str = True,
     ) -> None:
         timeout = resolve_timeout(timeout)
+        self._timeout = timeout
+        self._max_retries = int(max_retries)
         self.client: Any = create_provider(
             timeout=timeout, max_retries=int(max_retries)
         )
-        self.creativity_grader = CreativityGrader(self.client)
+        # Joke grading uses a distinct judge panel to avoid self-grading
+        # bias (issue #260); built lazily so dryrun and non-grading keywords
+        # work without CREATIVITY_GRADER_MODELS configured.
+        self._creativity_grader: Optional[CreativityGrader] = None
+        # Context grading still uses the generation client; tracked
+        # separately so the joke-grading panel can be opt-in via env var.
+        self._context_grader = CreativityGrader(self.client)
         self._hide_thinking: bool = (
             hide_thinking.lower() not in ("false", "0", "no")
             if isinstance(hide_thinking, str)
             else bool(hide_thinking)
         )
+
+    @property
+    def creativity_grader(self) -> CreativityGrader:
+        """Lazily build a panel-backed grader from CREATIVITY_GRADER_MODELS.
+
+        Raises MissingEnvironmentError (ROBOT_SKIP) if the env var is unset
+        or has fewer than 3 models. This skips the test rather than silently
+        falling back to the generation client (issue #260).
+        """
+        if self._creativity_grader is None:
+            self._creativity_grader = CreativityGrader(self._build_judge_panel())
+        return self._creativity_grader
+
+    @staticmethod
+    def _canonical_model(name: str) -> str:
+        """Normalize a model name so tag aliases compare equal.
+
+        Ollama treats an untagged name as ``:latest`` and is case-insensitive,
+        so 'Qwen2', 'qwen2', and 'qwen2:latest' all refer to the same model.
+        Canonicalising before the dedupe and self-grading-overlap checks
+        prevents alias forms from bypassing those guards (#260).
+        """
+        canon = name.strip().lower()
+        if ":" not in canon:
+            canon = f"{canon}:latest"
+        return canon
+
+    def _build_judge_panel(self) -> MultiGrader:
+        models_str = os.getenv("CREATIVITY_GRADER_MODELS", "").strip()
+        if not models_str:
+            raise MissingEnvironmentError("CREATIVITY_GRADER_MODELS")
+
+        # Dedupe on canonical form so 'm', 'm:latest', and 'M' don't all
+        # count as distinct judges (#260).
+        raw_models = [m.strip() for m in models_str.split(",") if m.strip()]
+        seen: Dict[str, str] = {}
+        for raw in raw_models:
+            canon = self._canonical_model(raw)
+            seen.setdefault(canon, raw)
+        models = list(seen.values())
+        if len(models) < 3:
+            raise ValueError(
+                f"CREATIVITY_GRADER_MODELS must contain at least 3 distinct "
+                f"models to avoid self-grading bias, got {len(models)} "
+                f"unique: {models} (raw: {raw_models})"
+            )
+
+        # Reject (not warn) the generation model in the panel — any overlap
+        # reintroduces self-grading bias for at least one judge (#260).
+        gen_model = getattr(self.client, "model", None)
+        if gen_model and self._canonical_model(gen_model) in seen:
+            raise ValueError(
+                f"CREATIVITY_GRADER_MODELS must not contain the generation "
+                f"model '{gen_model}' — that judge would self-grade, "
+                f"reintroducing the bias issue #260 is meant to fix."
+            )
+
+        providers = [
+            create_provider(
+                model=model,
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
+            for model in models
+        ]
+        return MultiGrader(providers=providers)
 
     @keyword("Ask For Joke")
     def ask_for_joke(self, prompt: str, max_tokens: int = 512) -> str:
@@ -157,7 +233,7 @@ class CreativityKeywords:
         """
         if isinstance(conversation, list):
             conversation = self._build_conversation_prompt(conversation)
-        result = self.creativity_grader.grade_context(
+        result = self._context_grader.grade_context(
             scenario_description, str(conversation), response, expected
         )
         emit_rfc_data("score", str(result.score))

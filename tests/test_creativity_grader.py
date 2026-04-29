@@ -6,6 +6,7 @@ import pytest
 
 from rfc.creativity_grader import CreativityGrader
 from rfc.models import GradeResult
+from rfc.multi_grader import MultiGradeResult, MultiGrader
 
 
 class TestCreativityGrader:
@@ -130,3 +131,45 @@ class TestCreativityGrader:
         grader = CreativityGrader(client)
         result = grader.grade_joke("prompt", "joke", "traits")
         assert result.score == 0.6
+
+    def test_grade_joke_routes_through_multi_grader(self) -> None:
+        """When given a MultiGrader, grade_joke uses panel consensus (#260)."""
+        panel = MagicMock(spec=MultiGrader)
+        panel.grade.return_value = MultiGradeResult(
+            scores=[0.6, 0.8, 0.7],
+            majority_score=0.7,
+            agreement_ratio=0.9,
+            reasons=["funny", "creative", "good wordplay"],
+        )
+        grader = CreativityGrader(panel)
+        result = grader.grade_joke("Tell me a joke", "knock knock", "humor")
+
+        assert isinstance(result, GradeResult)
+        assert result.score == 0.7
+        assert "agreement 90%" in result.reason
+        assert "funny" in result.reason
+        # Single-client path must not be invoked.
+        panel.grade.assert_called_once()
+        kwargs = panel.grade.call_args.kwargs
+        assert "Tell me a joke" in kwargs["question"]
+        assert kwargs["actual"] == "knock knock"
+        assert kwargs["expected"] == "humor"
+        assert "Humor" in kwargs["rubric"]
+
+    def test_grade_joke_panel_validates_inputs(self) -> None:
+        """Validation runs before dispatching to the panel."""
+        panel = MagicMock(spec=MultiGrader)
+        grader = CreativityGrader(panel)
+        with pytest.raises(ValueError, match="non-empty"):
+            grader.grade_joke("", "joke", "traits")
+        panel.grade.assert_not_called()
+
+    def test_grade_context_unaffected_by_multi_grader(self) -> None:
+        """Context grading still uses single-client path (#260 scoped to jokes)."""
+        client = MagicMock()
+        client.generate.return_value = '{"score": 0.5, "reason": "ok"}'
+        grader = CreativityGrader(client)
+        # Sanity check: this is the single-client constructor, not a MultiGrader.
+        result = grader.grade_context("desc", "conv", "resp", "expected")
+        assert result.score == 0.5
+        client.generate.assert_called_once()
