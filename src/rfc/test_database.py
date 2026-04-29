@@ -144,8 +144,12 @@ def build_result_artifacts(
 
     ``result_ids`` must be positionally aligned with ``test_cases`` —
     i.e. ``result_ids[i]`` is the primary key for ``test_cases[i]``.
-    Skips cases where every archive field is empty; Superset only needs
-    rows that carry drill-down text.
+
+    A row is produced for every test case, including ones whose archive
+    fields are all empty. A "PASS with no captured data" is itself a
+    finding (it usually means the keyword vacuously passed without
+    invoking the LLM, or the response capture path has a bug); silently
+    dropping the row would hide that signal from Superset.
 
     Positional matching is mandatory: name-based matching would silently
     collapse duplicate test names (templated tests) onto a single id.
@@ -157,8 +161,6 @@ def build_result_artifacts(
         )
     artifacts: List[TestResultArtifact] = []
     for tc, result_id in zip(test_cases, result_ids):
-        if not any(tc.get(field) for field in _ARCHIVE_FIELDS):
-            continue
         artifacts.append(
             TestResultArtifact(
                 result_id=result_id,

@@ -672,16 +672,20 @@ class TestTestResultArtifact:
         assert artifacts[1].result_id == 11 and artifacts[1].actual_answer == "b"
         assert artifacts[2].result_id == 12 and artifacts[2].actual_answer == "c"
 
-    def test_build_result_artifacts_skips_all_empty(self) -> None:
+    def test_build_result_artifacts_retains_all_empty(self) -> None:
+        # An "all archive fields empty" row used to be silently dropped,
+        # which hid PASSing tests whose graders never invoked the LLM
+        # (vacuous-pass bugs). The row is now retained so Superset can
+        # surface the gap rather than the result vanishing.
         artifacts = build_result_artifacts(
             test_cases=[
                 {"name": "A", "actual_answer": "keep"},
-                {"name": "B"},  # no archive fields → skipped
+                {"name": "B"},
                 {"name": "C", "thinking_text": "keep"},
             ],
             result_ids=[1, 2, 3],
         )
-        assert [a.result_id for a in artifacts] == [1, 3]
+        assert [a.result_id for a in artifacts] == [1, 2, 3]
 
     def test_build_result_artifacts_rejects_length_mismatch(self) -> None:
         with pytest.raises(ValueError, match="same length"):
