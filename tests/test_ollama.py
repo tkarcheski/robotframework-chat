@@ -314,7 +314,7 @@ class TestIsBusy:
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        assert OllamaClient(model="test-model", ).is_busy() is True
+        assert OllamaClient(model="test-model").is_busy() is True
 
     @patch("rfc.ollama.requests.get")
     def test_not_busy(self, mock_get):
@@ -323,12 +323,12 @@ class TestIsBusy:
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        assert OllamaClient(model="test-model", ).is_busy() is False
+        assert OllamaClient(model="test-model").is_busy() is False
 
     @patch("rfc.ollama.requests.get")
     def test_error_returns_false(self, mock_get):
         mock_get.side_effect = Exception("connection error")
-        assert OllamaClient(model="test-model", ).is_busy() is False
+        assert OllamaClient(model="test-model").is_busy() is False
 
 
 class TestIsAvailable:
@@ -338,12 +338,12 @@ class TestIsAvailable:
         mock_resp.status_code = 200
         mock_get.return_value = mock_resp
 
-        assert OllamaClient(model="test-model", ).is_available() is True
+        assert OllamaClient(model="test-model").is_available() is True
 
     @patch("rfc.ollama.requests.get")
     def test_unavailable(self, mock_get):
         mock_get.side_effect = Exception("connection refused")
-        assert OllamaClient(model="test-model", ).is_available() is False
+        assert OllamaClient(model="test-model").is_available() is False
 
 
 class TestWaitUntilReady:
@@ -356,15 +356,15 @@ class TestWaitUntilReady:
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        assert OllamaClient(model="test-model", ).wait_until_ready(timeout=5) is True
+        assert OllamaClient(model="test-model").wait_until_ready(timeout=5) is True
 
     def test_invalid_timeout(self):
         with pytest.raises(ValueError, match="timeout must be >= 1"):
-            OllamaClient(model="test-model", ).wait_until_ready(timeout=0)
+            OllamaClient(model="test-model").wait_until_ready(timeout=0)
 
     def test_invalid_poll_interval(self):
         with pytest.raises(ValueError, match="poll_interval must be >= 1"):
-            OllamaClient(model="test-model", ).wait_until_ready(poll_interval=0)
+            OllamaClient(model="test-model").wait_until_ready(poll_interval=0)
 
     @patch("rfc.ollama.logger")
     @patch("rfc.ollama.time.sleep")
