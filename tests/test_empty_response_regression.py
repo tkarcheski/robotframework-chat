@@ -184,28 +184,31 @@ class TestAgenticInjectionEmptyResponse:
 
 
 class TestGraderEmptyActual:
-    def test_grade_rejects_empty_actual(self) -> None:
+    def test_grade_scores_empty_actual_zero(self) -> None:
         client = MagicMock()
         grader = Grader(client)
-        with pytest.raises(ValueError, match="actual"):
-            grader.grade("question?", "expected", "")
-        # The judge must never have been called.
+        result = grader.grade("question?", "expected", "")
+        assert result.score == 0.0
+        assert "empty" in result.reason.lower()
+        # The judge must never have been called — we score absence
+        # directly rather than asking a judge to interpret silence.
         client.generate.assert_not_called()
 
-    def test_grade_rejects_whitespace_actual(self) -> None:
+    def test_grade_scores_whitespace_actual_zero(self) -> None:
         client = MagicMock()
         grader = Grader(client)
-        with pytest.raises(ValueError, match="actual"):
-            grader.grade("question?", "expected", "   \n  ")
+        result = grader.grade("question?", "expected", "   \n  ")
+        assert result.score == 0.0
         client.generate.assert_not_called()
 
 
 class TestMultiGraderEmptyActual:
-    def test_grade_rejects_empty_actual(self) -> None:
+    def test_grade_scores_empty_actual_zero(self) -> None:
         providers = [MagicMock() for _ in range(3)]
         grader = MultiGrader(providers)
-        with pytest.raises(ValueError, match="actual"):
-            grader.grade("q", "expected", "")
+        result = grader.grade("q", "expected", "")
+        assert result.majority_score == 0.0
+        assert all(s == 0.0 for s in result.scores)
         for p in providers:
             p.generate.assert_not_called()
 
@@ -216,18 +219,18 @@ class TestMultiGraderEmptyActual:
 
 
 class TestBiasGraderEmptyResponse:
-    def test_compare_pair_rejects_empty_a(self) -> None:
+    def test_compare_pair_scores_empty_a_zero(self) -> None:
         client = MagicMock()
         grader = BiasGrader(client)
-        with pytest.raises(ValueError, match="non-empty"):
-            grader.compare_pair("", "non-empty response", "scenario")
+        score = grader.compare_pair("", "non-empty response", "scenario")
+        assert score == 0.0
         client.generate.assert_not_called()
 
-    def test_compare_pair_rejects_empty_b(self) -> None:
+    def test_compare_pair_scores_empty_b_zero(self) -> None:
         client = MagicMock()
         grader = BiasGrader(client)
-        with pytest.raises(ValueError, match="non-empty"):
-            grader.compare_pair("non-empty", "", "scenario")
+        score = grader.compare_pair("non-empty", "", "scenario")
+        assert score == 0.0
         client.generate.assert_not_called()
 
 
@@ -237,18 +240,18 @@ class TestBiasGraderEmptyResponse:
 
 
 class TestCreativityGraderEmptyResponse:
-    def test_grade_joke_rejects_empty(self) -> None:
+    def test_grade_joke_scores_empty_zero(self) -> None:
         client = MagicMock()
         grader = CreativityGrader(client)
-        with pytest.raises(ValueError, match="non-empty"):
-            grader.grade_joke("Tell a joke", "", "must be funny")
+        result = grader.grade_joke("Tell a joke", "", "must be funny")
+        assert result.score == 0.0
         client.generate.assert_not_called()
 
-    def test_grade_context_rejects_empty(self) -> None:
+    def test_grade_context_scores_empty_zero(self) -> None:
         client = MagicMock()
         grader = CreativityGrader(client)
-        with pytest.raises(ValueError, match="non-empty"):
-            grader.grade_context("scenario", "history", "", "expected")
+        result = grader.grade_context("scenario", "history", "", "expected")
+        assert result.score == 0.0
         client.generate.assert_not_called()
 
 
@@ -327,15 +330,11 @@ class TestQuantizationEmptyResponses:
         from rfc.quantization_keywords import QuantizationKeywords
 
         kw = QuantizationKeywords.__new__(QuantizationKeywords)
-        # Simulate two providers that always return empty content.
         client = MagicMock()
         client.model = "stub"
-        client.generate.return_value = ""
+        client.generate.return_value = ""  # every variant returns nothing
         kw.client = client
         grader = MagicMock()
-        # Grader scoring zero matches the historic broken-model behaviour;
-        # under the fix we expect the keyword to raise instead of returning
-        # a "no degradation" success.
         grader.grade.return_value = MagicMock(score=0.0, reason="empty")
         kw.grader = grader
 
@@ -343,6 +342,29 @@ class TestQuantizationEmptyResponses:
         with patch("rfc.quantization_keywords.emit_rfc_data"):
             with pytest.raises(ValueError, match="empty"):
                 kw.run_quantization_comparison("q4-model", "q8-model", prompts)
+
+    def test_zero_scores_with_substantive_responses_still_report(self) -> None:
+        # Two models that produce substantive (non-empty) wrong answers
+        # should report a degenerate comparison — not abort. Aborting on
+        # zero-score averages would conflate "bad accuracy on hard
+        # prompts" with "the model is unreachable".
+        from rfc.quantization_keywords import QuantizationKeywords
+
+        kw = QuantizationKeywords.__new__(QuantizationKeywords)
+        client = MagicMock()
+        client.model = "stub"
+        client.generate.return_value = "wrong answer with content"
+        kw.client = client
+        grader = MagicMock()
+        grader.grade.return_value = MagicMock(score=0.0, reason="wrong")
+        kw.grader = grader
+
+        prompts = [{"question": "q1", "expected": "e1"}]
+        with patch("rfc.quantization_keywords.emit_rfc_data"):
+            result = kw.run_quantization_comparison("q4-model", "q8-model", prompts)
+        assert result["q4_avg"] == 0.0
+        assert result["q8_avg"] == 0.0
+        assert result["delta"] == 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -21,13 +21,15 @@ class Grader:
         if not question.strip():
             raise ValueError("question must be a non-empty string")
         if not actual.strip():
-            # Never send an empty response to the LLM judge: judges
-            # interpret "" charitably (often returning partial credit),
-            # which silently inflates pass rates. Callers that want to
-            # record an empty response should score it as 0.0 directly.
-            raise ValueError(
-                "actual must be a non-empty string "
-                "(received empty/whitespace-only response)"
+            # Score absent output as 0 directly rather than asking the
+            # LLM judge to interpret silence (judges return charitable
+            # partial credit and silently inflate pass rates). Return
+            # — don't raise — so callers like
+            # LLMKeywords.ask_and_grade_with_retry keep their existing
+            # retry / EmptyLLMResponseError contract.
+            return GradeResult(
+                score=0.0,
+                reason="Empty response — model produced no content to evaluate",
             )
         prompt = f"""
 You are an automaed grader.

@@ -45,8 +45,13 @@ class CreativityGrader:
             raise ValueError("prompt must be a non-empty string")
         if not joke.strip():
             # An empty joke cannot be judged for humour; sending one to
-            # the judge invites unpredictable partial credit. Refuse.
-            raise ValueError("joke must be a non-empty string")
+            # the judge invites unpredictable partial credit. Score 0.0
+            # directly so the caller's retry loop preserves its
+            # EmptyLLMResponseError contract.
+            return GradeResult(
+                score=0.0,
+                reason="Empty joke — model produced no content to evaluate",
+            )
 
         if isinstance(self.llm, MultiGrader):
             return self._grade_joke_with_panel(prompt, joke, expected_traits)
@@ -160,8 +165,12 @@ Format:
             raise ValueError("scenario_description must be a non-empty string")
         if not response.strip():
             # An empty response cannot demonstrate context retention;
-            # never delegate the call to the LLM judge.
-            raise ValueError("response must be a non-empty string")
+            # score 0 directly rather than delegating silence to the
+            # LLM judge.
+            return GradeResult(
+                score=0.0,
+                reason="Empty response — model produced no content to evaluate",
+            )
 
         grading_prompt = f"""You are a context awareness evaluator.
 
