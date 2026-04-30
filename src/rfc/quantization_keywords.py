@@ -166,6 +166,8 @@ class QuantizationKeywords:
 
         q4_scores: List[float] = []
         q8_scores: List[float] = []
+        q4_empty_count = 0
+        q8_empty_count = 0
         prompt_details: List[Dict[str, Any]] = []
 
         try:
@@ -177,6 +179,8 @@ class QuantizationKeywords:
                 self.client.model = q4_model
                 raw_q4 = self.client.generate(question)
                 resp_q4, _ = parse_thinking(raw_q4, strip_unclosed=True)
+                if not resp_q4 or not resp_q4.strip():
+                    q4_empty_count += 1
                 grade_q4 = self.grader.grade(question, expected, resp_q4)
                 q4_scores.append(grade_q4.score)
 
@@ -184,6 +188,8 @@ class QuantizationKeywords:
                 self.client.model = q8_model
                 raw_q8 = self.client.generate(question)
                 resp_q8, _ = parse_thinking(raw_q8, strip_unclosed=True)
+                if not resp_q8 or not resp_q8.strip():
+                    q8_empty_count += 1
                 grade_q8 = self.grader.grade(question, expected, resp_q8)
                 q8_scores.append(grade_q8.score)
 
@@ -211,15 +217,23 @@ class QuantizationKeywords:
         q4_avg = sum(q4_scores) / len(q4_scores) if q4_scores else 0.0
         q8_avg = sum(q8_scores) / len(q8_scores) if q8_scores else 0.0
 
-        # Reject the all-empty / all-zero case rather than reporting
-        # "no degradation". When every prompt produced nothing for both
-        # variants, the only safe thing to report is that the comparison
-        # is inconclusive — not that the quantization is harmless.
-        if not q4_scores or not q8_scores or (q4_avg == 0.0 and q8_avg == 0.0):
+        # Abort only when at least one variant produced *no output at
+        # all* across every prompt — that's a setup/connectivity failure
+        # masquerading as a comparison. Two zero-score averages from
+        # substantive-but-wrong answers on hard prompts are still a
+        # legitimate (degenerate) comparison and must be reportable.
+        n = len(prompts)
+        if not q4_scores or not q8_scores:
             raise ValueError(
-                "Quantization comparison aborted: both variants produced "
-                f"empty / zero-score responses across all {len(prompts)} "
-                f"prompt(s) (Q4 avg={q4_avg:.2f}, Q8 avg={q8_avg:.2f}). "
+                "Quantization comparison aborted: at least one variant "
+                f"produced zero graded prompts (Q4={len(q4_scores)}, "
+                f"Q8={len(q8_scores)} of {n})."
+            )
+        if q4_empty_count == n or q8_empty_count == n:
+            raise ValueError(
+                "Quantization comparison aborted: every response was "
+                f"empty for at least one variant (Q4 empty {q4_empty_count}/{n}, "
+                f"Q8 empty {q8_empty_count}/{n}). "
                 "Cannot infer degradation from absent output."
             )
 
