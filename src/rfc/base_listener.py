@@ -16,9 +16,14 @@ Usage::
         def on_test_end(self, data, result):
             metrics = self._current_test_data  # RFC_DATA captured here
             ...
+
+RFC_DATA emissions are recorded twice: ``_current_test_data`` keeps the
+last value per key (used by archive writers) and ``_rfc_data_history``
+keeps every emission per key in order, so a retry that eventually
+succeeds cannot silently hide an earlier empty/failed attempt.
 """
 
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from robot.api.interfaces import ListenerV3  # type: ignore
 
@@ -45,6 +50,7 @@ class BaseListener(ListenerV3):
     def __init__(self) -> None:
         self._suite_depth: int = 0
         self._current_test_data: Dict[str, str] = {}
+        self._rfc_data_history: Dict[str, List[str]] = {}
         self._in_tracked_keyword: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -70,19 +76,28 @@ class BaseListener(ListenerV3):
     def start_test(self, data: Any, result: Any) -> None:
         """Reset per-test data and call :meth:`on_test_start`."""
         self._current_test_data = {}
+        self._rfc_data_history = {}
         self.on_test_start(data, result)
 
     def end_test(self, data: Any, result: Any) -> None:
         """Call :meth:`on_test_end` then clear per-test data."""
         self.on_test_end(data, result)
         self._current_test_data = {}
+        self._rfc_data_history = {}
 
     # ------------------------------------------------------------------
     # Log message capture (RFC_DATA)
     # ------------------------------------------------------------------
 
     def log_message(self, message: Any) -> None:
-        """Parse ``RFC_DATA:`` messages; delegate others to :meth:`on_log_message`."""
+        """Parse ``RFC_DATA:`` messages; delegate others to :meth:`on_log_message`.
+
+        For each parsed key the latest value is exposed via
+        ``_current_test_data`` (preserving the existing "last write wins"
+        contract for archive writers) and every emission is appended to
+        ``_rfc_data_history`` so retry loops cannot silently hide an
+        earlier empty/failed attempt.
+        """
         text = message.message
         if not isinstance(text, str):
             return
@@ -91,8 +106,13 @@ class BaseListener(ListenerV3):
             key, _, value = payload.partition(":")
             if key:
                 self._current_test_data[key] = value
+                self._rfc_data_history.setdefault(key, []).append(value)
             return
         self.on_log_message(message)
+
+    def get_rfc_data_history(self, key: str) -> List[str]:
+        """Return every ``RFC_DATA`` value emitted for ``key`` this test, in order."""
+        return list(self._rfc_data_history.get(key, []))
 
     # ------------------------------------------------------------------
     # Keyword tracking

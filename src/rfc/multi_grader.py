@@ -63,7 +63,24 @@ class MultiGrader:
 
         Returns:
             MultiGradeResult with individual scores and the median consensus score.
+
+        An empty/whitespace-only ``actual`` is scored 0.0 across the
+        panel directly — sending "" to a judging panel invites
+        charitable partial credit and silently inflates pass rates.
+        Returning (rather than raising) preserves the retry contract in
+        callers like ``LLMKeywords.ask_and_grade_with_retry``.
         """
+        if not isinstance(actual, str):
+            raise TypeError(f"actual must be a str, got {type(actual).__name__}")
+        if not actual.strip():
+            n = len(self.providers)
+            reason = "Empty response — model produced no content to evaluate"
+            return MultiGradeResult(
+                scores=[0.0] * n,
+                majority_score=0.0,
+                agreement_ratio=1.0,
+                reasons=[reason] * n,
+            )
         prompt = self._build_prompt(question, expected, actual, rubric)
 
         scores: List[float] = []

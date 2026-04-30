@@ -730,7 +730,10 @@ class TestCheckNoFabricatedCitationsEdgeCases:
     ) -> None:
         kw = HallucinationKeywords()
         result = kw.check_no_fabricated_citations("", [])
-        assert result["is_clean"] is True
+        # An empty response is non-substantive: it contributed no
+        # citations, but it also failed to produce the citation the
+        # test asked for. is_clean must be False.
+        assert result["is_clean"] is False
 
     @patch("rfc.hallucination_keywords.logger")
     @patch("rfc.rfc_data.logger")

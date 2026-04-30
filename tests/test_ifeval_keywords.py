@@ -60,9 +60,11 @@ class TestCheckAllCaps:
         passed, _ = IFEvalKeywords.check_all_caps("ABC 123! DEF.")
         assert passed is True
 
-    def test_no_alpha_passes(self) -> None:
+    def test_no_alpha_fails(self) -> None:
+        # A response with only digits / punctuation cannot satisfy a
+        # positive content constraint like "all caps".
         passed, _ = IFEvalKeywords.check_all_caps("123 456")
-        assert passed is True
+        assert passed is False
 
 
 class TestCheckBulletPoints:
@@ -186,9 +188,11 @@ class TestCheckForbiddenLetter:
         passed, _ = IFEvalKeywords.check_forbidden_letter("EVERY day is good.", "e")
         assert passed is False
 
-    def test_empty_passes(self) -> None:
+    def test_empty_fails(self) -> None:
+        # An empty response trivially "doesn't contain" the forbidden
+        # letter, but it also fails to produce the requested content.
         passed, _ = IFEvalKeywords.check_forbidden_letter("", "e")
-        assert passed is True
+        assert passed is False
 
 
 class TestCheckSentenceStart:
@@ -254,9 +258,11 @@ class TestCheckNoDigits:
         passed, _ = IFEvalKeywords.check_no_digits("There are 4 seasons.")
         assert passed is False
 
-    def test_empty_passes(self) -> None:
+    def test_empty_fails(self) -> None:
+        # An empty response is non-substantive; it cannot satisfy a
+        # "no digits" constraint vacuously.
         passed, _ = IFEvalKeywords.check_no_digits("")
-        assert passed is True
+        assert passed is False
 
 
 class TestCheckIFEvalConstraint:

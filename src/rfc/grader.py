@@ -20,6 +20,17 @@ class Grader:
                 raise TypeError(f"{name} must be a str, got {type(val).__name__}")
         if not question.strip():
             raise ValueError("question must be a non-empty string")
+        if not actual.strip():
+            # Score absent output as 0 directly rather than asking the
+            # LLM judge to interpret silence (judges return charitable
+            # partial credit and silently inflate pass rates). Return
+            # — don't raise — so callers like
+            # LLMKeywords.ask_and_grade_with_retry keep their existing
+            # retry / EmptyLLMResponseError contract.
+            return GradeResult(
+                score=0.0,
+                reason="Empty response — model produced no content to evaluate",
+            )
         prompt = f"""
 You are an automaed grader.
 

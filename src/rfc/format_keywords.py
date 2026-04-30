@@ -101,7 +101,10 @@ class FormatKeywords:
         # only). All missing keys across elements are reported.
         if isinstance(parsed, list):
             if not parsed:
-                score = 0.5  # Valid JSON array but empty
+                # An empty array gets parse credit only when no keys
+                # were required; otherwise the response failed to
+                # produce any of the requested elements and scores 0.
+                score = 0.5 if not keys else 0.0
                 emit_rfc_data("score", f"{score:.4f}")
                 emit_rfc_data("missing_keys", ",".join(keys))
                 return score
@@ -255,6 +258,7 @@ class FormatKeywords:
         """
         if not text or not text.strip():
             emit_rfc_data("sentence_count", "0")
+            emit_rfc_data("response_empty", "true")
             return 0
 
         # Find all positions where sentence-ending punctuation occurs
@@ -297,6 +301,7 @@ class FormatKeywords:
         """
         if not text or not text.strip():
             emit_rfc_data("word_count", "0")
+            emit_rfc_data("response_empty", "true")
             return 0
         count = len(text.split())
         emit_rfc_data("word_count", str(count))
@@ -317,7 +322,15 @@ class FormatKeywords:
             List of forbidden words found (empty if none).
         """
         words = _parse_expected_keys(forbidden_words)
-        if not words or not response:
+        if not response or not response.strip():
+            # An empty response trivially has no forbidden words, but
+            # also has no content to evaluate. Flag the gap so reports
+            # can distinguish silence from a real "no violations" result.
+            emit_rfc_data("violations", "")
+            emit_rfc_data("violation_count", "0")
+            emit_rfc_data("response_empty", "true")
+            return []
+        if not words:
             emit_rfc_data("violations", "")
             emit_rfc_data("violation_count", "0")
             return []

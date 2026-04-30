@@ -147,6 +147,17 @@ class IFEvalKeywords:
                 f"Constraint {constraint!r} requires a non-empty expected_value"
             )
 
+        # An empty/whitespace-only response cannot satisfy any positive
+        # ifeval constraint. Surface the reason here so reports show
+        # "empty response" rather than a generic constraint-mismatch.
+        if not response.strip():
+            return {
+                "passed": False,
+                "constraint": constraint,
+                "reason": "Empty response — model returned no content",
+                "response": response,
+            }
+
         passed, reason = dispatch[constraint]()
         return {
             "passed": passed,
@@ -181,10 +192,17 @@ class IFEvalKeywords:
 
     @staticmethod
     def check_all_caps(response: str) -> Tuple[bool, str]:
-        """Check that every alphabetic character is uppercase."""
+        """Check that every alphabetic character is uppercase.
+
+        An empty/whitespace-only response or one with no alphabetic
+        characters at all (digits/punctuation only) cannot satisfy a
+        positive content constraint and is rejected.
+        """
+        if not response.strip():
+            return False, "Empty response"
         alpha = [c for c in response if c.isalpha()]
         if not alpha:
-            return True, "No alphabetic characters to check"
+            return False, "Response contains no alphabetic characters"
         if all(c.isupper() for c in alpha):
             return True, "All alphabetic characters are uppercase"
         return False, "Response contains lowercase alphabetic characters"
@@ -192,6 +210,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_bullet_points(response: str, expected: int) -> Tuple[bool, str]:
         """Check that all non-empty lines are bullet points and count matches."""
+        if not response.strip():
+            return False, "Empty response"
         lines = [ln for ln in response.split("\n") if ln.strip()]
         non_bullet = [ln for ln in lines if not _BULLET_PATTERN.match(ln)]
         if non_bullet:
@@ -204,6 +224,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_word_count(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* contains exactly *expected* words."""
+        if not response.strip():
+            return False, "Empty response"
         words = response.strip().split()
         actual = len(words)
         if actual == expected:
@@ -213,6 +235,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_numbered_list(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* is a numbered list 1..*expected*."""
+        if not response.strip():
+            return False, "Empty response"
         lines = [ln for ln in response.split("\n") if ln.strip()]
         numbers: list[int] = []
         for ln in lines:
@@ -230,6 +254,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_paragraph_count(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* contains exactly *expected* paragraphs."""
+        if not response.strip():
+            return False, "Empty response"
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", response) if p.strip()]
         actual = len(paragraphs)
         if actual == expected:
@@ -239,6 +265,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_forbidden_letter(response: str, letter: str) -> Tuple[bool, str]:
         """Check that *letter* does not appear in *response* (case-insensitive)."""
+        if not response.strip():
+            return False, "Empty response"
         if letter.lower() in response.lower():
             return False, f"Forbidden letter {letter!r} found in response"
         return True, f"Letter {letter!r} not found in response"
@@ -271,10 +299,15 @@ class IFEvalKeywords:
 
     @staticmethod
     def check_all_lowercase(response: str) -> Tuple[bool, str]:
-        """Check that every alphabetic character is lowercase."""
+        """Check that every alphabetic character is lowercase.
+
+        See :meth:`check_all_caps` — empty/non-alphabetic responses fail.
+        """
+        if not response.strip():
+            return False, "Empty response"
         alpha = [c for c in response if c.isalpha()]
         if not alpha:
-            return True, "No alphabetic characters to check"
+            return False, "Response contains no alphabetic characters"
         if all(c.islower() for c in alpha):
             return True, "All alphabetic characters are lowercase"
         return False, "Response contains uppercase alphabetic characters"
@@ -282,6 +315,8 @@ class IFEvalKeywords:
     @staticmethod
     def check_no_digits(response: str) -> Tuple[bool, str]:
         """Check that *response* contains no digit characters."""
+        if not response.strip():
+            return False, "Empty response"
         if any(c.isdigit() for c in response):
             return False, "Response contains digit characters"
         return True, "No digits found in response"

@@ -101,6 +101,15 @@ class MultiTurnKeywords:
                 response = self._generate_response(history)
                 logger.info(f"Turn {i + 1} response: {response}")
                 emit_rfc_data(f"turn_{len(generated_responses) + 1}_response", response)
+                if not response or not response.strip():
+                    # Surface empty turns explicitly so downstream
+                    # graders and reports can distinguish "model said
+                    # nothing" from a substantive turn.
+                    logger.warn(
+                        f"Turn {i + 1} returned empty content — recording "
+                        "for visibility; downstream graders will fail it."
+                    )
+                    emit_rfc_data(f"turn_{len(generated_responses) + 1}_empty", "true")
                 history.append({"role": "assistant", "content": response})
                 generated_responses.append(response)
 

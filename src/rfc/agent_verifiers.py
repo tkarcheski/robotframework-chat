@@ -67,7 +67,17 @@ def assert_commands_appear_in_order(
 
     Subcommands from ``bash -lc "A && B"`` wrappers are flattened, so needles
     that ran as part of the same wrapped invocation still satisfy ordering.
+
+    Raises:
+        ValueError: If ``ordered_needles`` is empty. An empty needle list
+            would vacuously pass even against an empty agent run, hiding
+            misconfigured tests.
     """
+    if not ordered_needles:
+        raise ValueError(
+            "ordered_needles must not be empty: "
+            "an empty expectation would vacuously pass any run"
+        )
     subs = _flatten_subcommands(run)
     cursor = 0
     for needle in ordered_needles:

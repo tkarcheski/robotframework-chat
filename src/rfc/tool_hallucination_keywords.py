@@ -91,6 +91,11 @@ class ToolHallucinationKeywords:
         response = self.client.generate(prompt)
         logger.info(f"LLM response: {response}")
 
+        # Distinguish "model said nothing" from "model named wrong tools"
+        # so the report can tell silence apart from hallucination.
+        if not response or not response.strip():
+            emit_rfc_data("response_empty", "true")
+
         # Parse which tools were mentioned
         mentioned = parse_tool_mentions(response, all_tools)
         real_mentioned = mentioned & real_set

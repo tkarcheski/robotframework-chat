@@ -182,15 +182,30 @@ follow it and fill in every section — no placeholders, no "see above."
    make robot-dryrun 2>&1 | tee /tmp/pr-dryrun.txt
    ```
 
-4. **Ask the user for the version bump** (`pyproject.toml` + `src/rfc/__init__.py`):
+4. **Bump the version** (`pyproject.toml` + `src/rfc/__init__.py`).
+   Default to **patch** (`x.y.Z`) — that fits almost every PR (bug
+   fixes, internal refactors, audit-driven hardening, doc tweaks).
+   Bump and commit as a separate `chore: bump version to X.Y.Z`
+   commit without asking. Only stop and ask the user when the change
+   genuinely doesn't fit a patch:
+
+   - Minor (`x.Y.0`) — a new public keyword, a new public API on an
+     existing class, a new test suite or grader, or behaviour that
+     materially changes how downstream consumers grade tests.
+   - Major (`X.0.0`) — a removed/renamed public keyword, a changed
+     keyword signature, a database schema change without a migration,
+     or any change that requires downstream code edits.
+   - Skip — pure-docs PRs, CI-only changes, or work that doesn't
+     touch installable code.
+
+   When unsure, ask:
    ```
-   This PR is ready for a version bump. What level?
-   a) Patch (x.y.Z) — bug fix, no new features
-   b) Minor (x.Y.0) — new feature, backward compatible
-   c) Major (X.0.0) — breaking change
-   d) Skip — no version bump needed for this PR
+   Version bump for this PR — defaulting to patch (x.y.Z). Override?
+   a) Patch (recommended)
+   b) Minor — <one-line reason this isn't a patch>
+   c) Major — <one-line reason this is breaking>
+   d) Skip
    ```
-   Commit the bump as a separate `chore: bump version to X.Y.Z` commit.
 
 ### Writing the PR description
 
