@@ -83,6 +83,10 @@ class CEOKeywords:
 
         This allows Robot Framework ``--dryrun`` to instantiate the library
         and discover keywords without requiring API keys.
+
+        ``response_format='json'`` forces the provider into JSON-only mode so
+        downstream parsing in ``_extract_json_response`` cannot fail on prose
+        or markdown a model adds outside the JSON payload.
         """
         if self._client is None:
             max_tokens = int(os.getenv("CEO_MAX_TOKENS", str(_DEFAULT_CEO_MAX_TOKENS)))
@@ -91,6 +95,7 @@ class CEOKeywords:
                 timeout=self._timeout,
                 max_retries=self._max_retries,
                 max_tokens=max_tokens,
+                response_format="json",
             )
         return self._client
 
@@ -120,6 +125,7 @@ class CEOKeywords:
                 provider=provider_name,
                 model=model,
                 max_tokens=max_tokens,
+                response_format="json",
             )
             providers.append(provider)
 

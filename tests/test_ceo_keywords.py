@@ -236,6 +236,21 @@ class TestCEOProviderSelection:
             call_kwargs = mock_create.call_args.kwargs
             assert call_kwargs.get("max_tokens") == _DEFAULT_CEO_MAX_TOKENS
 
+    def test_client_requests_json_response_format(self) -> None:
+        """All CEO stages parse JSON, so the client must request JSON-mode.
+
+        Without this, weaker models (e.g. llama3.3 in issue #305) frequently
+        wrap the JSON in prose or markdown, breaking ``json.loads`` and
+        producing 0% pass rates across all 23 CEO suite tests.
+        """
+        with patch("rfc.ceo_keywords.create_provider") as mock_create:
+            mock_create.return_value = object()
+            kw = CEOKeywords()
+            _ = kw.client
+
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs.get("response_format") == "json"
+
     def test_max_tokens_from_env(self) -> None:
         """CEO_MAX_TOKENS env var should override the default."""
         env = {"CEO_MAX_TOKENS": "2048"}
@@ -284,6 +299,21 @@ class TestCEOProviderSelection:
             for call in mock_create.call_args_list:
                 call_kwargs = call.kwargs
                 assert call_kwargs.get("max_tokens") == _DEFAULT_CEO_MAX_TOKENS
+
+    def test_grader_requests_json_response_format(self) -> None:
+        """Grader providers parse JSON, so they must request JSON-mode."""
+        env = {"CEO_GRADER_MODELS": "model-a,model-b,model-c"}
+        with (
+            patch.dict("os.environ", env),
+            patch("rfc.ceo_keywords.create_provider") as mock_create,
+        ):
+            mock_create.return_value = object()
+            kw = CEOKeywords()
+            kw._get_multi_grader()
+
+            for call in mock_create.call_args_list:
+                call_kwargs = call.kwargs
+                assert call_kwargs.get("response_format") == "json"
 
 
 # ---------------------------------------------------------------------------

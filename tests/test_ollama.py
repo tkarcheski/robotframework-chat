@@ -620,6 +620,54 @@ class TestNewParameters:
         assert "keep_alive" not in payload
 
 
+class TestResponseFormat:
+    """When response_format='json' is set, Ollama's structured-output mode
+    forces the model to emit syntactically valid JSON. CEO-style pipelines
+    that downstream-parse JSON depend on this to avoid 0% pass rates when
+    a model adds prose or markdown around the JSON payload.
+    """
+
+    def test_default_response_format_is_none(self):
+        client = OllamaClient(model="test-model")
+        assert client.response_format is None
+
+    def test_explicit_response_format_json(self):
+        client = OllamaClient(model="test-model", response_format="json")
+        assert client.response_format == "json"
+
+    def test_invalid_response_format_rejected(self):
+        with pytest.raises(ValueError, match="response_format"):
+            OllamaClient(model="test-model", response_format="xml")
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_json_format_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": '{"k": 1}'}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model", response_format="json")
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["format"] == "json"
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_no_format_when_response_format_none(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model")
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert "format" not in payload
+
+
 class TestUnloadModel:
     @patch("rfc.ollama.logger")
     @patch("rfc.ollama.requests.post")

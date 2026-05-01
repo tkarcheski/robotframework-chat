@@ -39,6 +39,7 @@ class LLMProvider(Protocol):
     top_k: Optional[int]
     num_ctx: Optional[int]
     keep_alive: Optional[str]
+    response_format: Optional[str]
     last_metrics: Optional[Dict[str, Any]]
 
     def generate(self, prompt: str) -> str: ...
