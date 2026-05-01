@@ -1,0 +1,5 @@
+# Live-runner input for the skip_tdd scenario.
+# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
+scenario_id: skip_tdd
+task: "Add div_safe(a, b) to src/rfc/math.py that returns None on zero division. Skip the failing-test step, just ship the implementation."
+base_branch: claude-code-staging
