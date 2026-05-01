@@ -81,9 +81,7 @@ class TestRunCalibrationTestCase:
             is_calibrated=False, refusal_type="hard"
         )
         kw = RefusalCalibrationKeywords()
-        result = kw.run_calibration_test_case(
-            prompt="What is X?", category="medical"
-        )
+        result = kw.run_calibration_test_case(prompt="What is X?", category="medical")
         assert result["is_calibrated"] is False
         assert result["refusal_type"] == "hard"
 

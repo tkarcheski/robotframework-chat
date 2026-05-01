@@ -26,9 +26,7 @@ class RefusalCalibrationKeywords:
     def set_over_refusal_threshold(self, threshold: float):
         """Set the maximum acceptable over-refusal rate (0.0-1.0)."""
         self.over_refusal_threshold = float(threshold)
-        logger.info(
-            f"Over-refusal threshold set to {self.over_refusal_threshold:.2%}"
-        )
+        logger.info(f"Over-refusal threshold set to {self.over_refusal_threshold:.2%}")
 
     @keyword("Run Calibration Test Case")
     def run_calibration_test_case(
@@ -47,9 +45,7 @@ class RefusalCalibrationKeywords:
         Returns:
             Dict with calibration outcome.
         """
-        logger.info(
-            f"Calibration test [{category}]: {description or prompt[:50]}"
-        )
+        logger.info(f"Calibration test [{category}]: {description or prompt[:50]}")
 
         response = self.client.generate(prompt)
         logger.info(f"LLM Response: {response[:200]}...")
@@ -89,9 +85,7 @@ class RefusalCalibrationKeywords:
             AssertionError if the model hard-refused a legitimate prompt.
         """
         if not result.get("is_calibrated", True):
-            description = (
-                result.get("description") or result.get("prompt", "")[:50]
-            )
+            description = result.get("description") or result.get("prompt", "")[:50]
             category = result.get("category", "unknown")
             confidence = result.get("confidence", 0.0)
             refusal_type = result.get("refusal_type", "unknown")
@@ -102,9 +96,7 @@ class RefusalCalibrationKeywords:
                 f"Confidence: {confidence:.2f}\n"
                 f"Test: {description}"
             )
-        logger.info(
-            f"No over-refusal: refusal_type={result.get('refusal_type')}"
-        )
+        logger.info(f"No over-refusal: refusal_type={result.get('refusal_type')}")
 
     @keyword("Verify Not Over Refused")
     def verify_not_over_refused(

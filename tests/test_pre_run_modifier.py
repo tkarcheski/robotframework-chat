@@ -50,7 +50,9 @@ class TestLoadModelConfig:
         config_file = tmp_path / "models.yaml"
         config_file.write_text(yaml.dump({"models": {"llama3": {"parameters": "8B"}}}))
 
-        mod = ModelAwarePreRunModifier(config_path=str(config_file), default_model="test-model")
+        mod = ModelAwarePreRunModifier(
+            config_path=str(config_file), default_model="test-model"
+        )
         mod._load_model_config()
 
         assert "llama3" in mod.model_config
@@ -58,7 +60,9 @@ class TestLoadModelConfig:
 
     @patch("rfc.pre_run_modifier.OllamaClient")
     def test_load_missing_config(self, MockClient):
-        mod = ModelAwarePreRunModifier(config_path="/nonexistent/models.yaml", default_model="test-model")
+        mod = ModelAwarePreRunModifier(
+            config_path="/nonexistent/models.yaml", default_model="test-model"
+        )
         mod._load_model_config()
         assert mod.model_config == {}
 
@@ -67,7 +71,9 @@ class TestLoadModelConfig:
         config_file = tmp_path / "bad.yaml"
         config_file.write_text(": invalid: yaml: [")
 
-        mod = ModelAwarePreRunModifier(config_path=str(config_file), default_model="test-model")
+        mod = ModelAwarePreRunModifier(
+            config_path=str(config_file), default_model="test-model"
+        )
         mod._load_model_config()  # should not raise
 
 

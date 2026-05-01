@@ -24,9 +24,7 @@ class TestLifecycle:
         assert summary["turns"] == 0
         assert summary["status"] == "running"
 
-    def test_keyword_before_start_raises(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_keyword_before_start_raises(self, kw: AgentWorkflowKeywords) -> None:
         with pytest.raises(AssertionError, match="No active agent workflow"):
             kw.get_workflow_summary()
         with pytest.raises(AssertionError, match="No active agent workflow"):
@@ -91,17 +89,13 @@ class TestMessages:
 
 
 class TestToolCalls:
-    def test_invalid_arguments_json_rejected(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_invalid_arguments_json_rejected(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         with pytest.raises(ValueError, match="must be valid JSON"):
             kw.agent_calls_tool("git", "{not json")
 
-    def test_non_object_arguments_rejected(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_non_object_arguments_rejected(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         with pytest.raises(ValueError, match="must decode to an object"):
@@ -115,9 +109,7 @@ class TestToolCalls:
 
 
 class TestSchemaValidation:
-    def test_register_and_validate_passes(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_register_and_validate_passes(self, kw: AgentWorkflowKeywords) -> None:
         schema = json.dumps(
             {
                 "description": "filesystem ops",
@@ -128,9 +120,7 @@ class TestSchemaValidation:
         kw.register_tool_schema("fs", schema)
         kw.validate_tool_call_schema("fs", '{"path": "/tmp/x"}')
 
-    def test_validate_missing_required_fails(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_validate_missing_required_fails(self, kw: AgentWorkflowKeywords) -> None:
         kw.register_tool_schema(
             "fs",
             json.dumps({"parameters": {"path": {}}, "required": ["path"]}),
@@ -138,9 +128,7 @@ class TestSchemaValidation:
         with pytest.raises(AssertionError, match="Missing required parameter"):
             kw.validate_tool_call_schema("fs", "{}")
 
-    def test_validate_unregistered_tool_fails(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_validate_unregistered_tool_fails(self, kw: AgentWorkflowKeywords) -> None:
         with pytest.raises(AssertionError, match="not registered"):
             kw.validate_tool_call_schema("nope", "{}")
 
@@ -160,9 +148,7 @@ class TestSchemaValidation:
 
 
 class TestAssertions:
-    def test_assert_tool_was_called_pass(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_assert_tool_was_called_pass(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         kw.agent_calls_tool("git", "{}")
@@ -170,9 +156,7 @@ class TestAssertions:
         kw.end_interaction(True)
         kw.assert_tool_was_called("git", 2)
 
-    def test_assert_tool_was_called_fail(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_assert_tool_was_called_fail(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         kw.agent_calls_tool("git", "{}")
@@ -180,9 +164,7 @@ class TestAssertions:
         with pytest.raises(AssertionError, match="Expected 2"):
             kw.assert_tool_was_called("git", 2)
 
-    def test_assert_tool_calls_in_order_pass(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_assert_tool_calls_in_order_pass(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         kw.agent_calls_tool("git", "{}")
@@ -192,9 +174,7 @@ class TestAssertions:
         kw.end_interaction(True)
         kw.assert_tool_calls_in_order("git", "fs")
 
-    def test_assert_tool_calls_in_order_fail(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_assert_tool_calls_in_order_fail(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         kw.agent_calls_tool("fs", "{}")
@@ -226,9 +206,7 @@ class TestAssertions:
 
 
 class TestStateSnapshot:
-    def test_set_interaction_state_stores_json(
-        self, kw: AgentWorkflowKeywords
-    ) -> None:
+    def test_set_interaction_state_stores_json(self, kw: AgentWorkflowKeywords) -> None:
         kw.start_agent_workflow("w", "a", "t")
         kw.start_interaction(1)
         kw.set_interaction_state(

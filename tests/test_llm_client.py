@@ -83,7 +83,9 @@ class TestCreateProvider:
             assert isinstance(client, OllamaClient)
 
     def test_kwargs_forwarded_to_ollama(self):
-        client = create_provider(provider="ollama", model="test-model", timeout=60, max_retries=5)
+        client = create_provider(
+            provider="ollama", model="test-model", timeout=60, max_retries=5
+        )
         assert isinstance(client, OllamaClient)
         assert client.timeout == 60
         assert client.max_retries == 5
