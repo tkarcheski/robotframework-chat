@@ -12,7 +12,7 @@ from rfc.ollama import OllamaClient
 class TestLLMProviderProtocol:
     def test_ollama_client_satisfies_protocol(self):
         """OllamaClient structurally satisfies LLMProvider."""
-        client = OllamaClient()
+        client = OllamaClient(model="test-model")
         assert isinstance(client, LLMProvider)
 
     def test_protocol_requires_generate(self):
@@ -43,12 +43,12 @@ class TestCreateProvider:
         env = os.environ.copy()
         env.pop("LLM_PROVIDER", None)
         with patch.dict(os.environ, env, clear=True):
-            client = create_provider()
+            client = create_provider(model="test-model")
             assert isinstance(client, OllamaClient)
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "ollama"})
     def test_explicit_ollama(self):
-        client = create_provider()
+        client = create_provider(model="test-model")
         assert isinstance(client, OllamaClient)
 
     @patch.dict(
@@ -79,11 +79,11 @@ class TestCreateProvider:
 
     def test_explicit_provider_arg_overrides_env(self):
         with patch.dict(os.environ, {"LLM_PROVIDER": "openai"}):
-            client = create_provider(provider="ollama")
+            client = create_provider(provider="ollama", model="test-model")
             assert isinstance(client, OllamaClient)
 
     def test_kwargs_forwarded_to_ollama(self):
-        client = create_provider(provider="ollama", timeout=60, max_retries=5)
+        client = create_provider(provider="ollama", model="test-model", timeout=60, max_retries=5)
         assert isinstance(client, OllamaClient)
         assert client.timeout == 60
         assert client.max_retries == 5
