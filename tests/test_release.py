@@ -128,3 +128,35 @@ class TestGitHubActionsPublishWorkflow:
         publish = wf["jobs"]["publish"]
         env = publish.get("environment", {})
         assert env.get("name") == "pypi"
+
+
+class TestReadmeLinks:
+    """Validate that readme.md links resolve when rendered on PyPI.
+
+    PyPI renders ``readme.md`` standalone, so any markdown link with a
+    relative filesystem path 404s on the project page. Links must either
+    be absolute URLs or in-document anchors (issue #145).
+    """
+
+    # Matches the second group of `[text](target)` while skipping image
+    # links and code spans. Captures the target only.
+    _LINK_RE = re.compile(r"(?<!\!)\[[^\]]+\]\(([^)]+)\)")
+
+    @staticmethod
+    def _readme_links() -> list[str]:
+        text = (ROOT / "readme.md").read_text()
+        return TestReadmeLinks._LINK_RE.findall(text)
+
+    def test_readme_has_no_relative_filesystem_links(self) -> None:
+        """Every readme link must be an absolute URL or in-document anchor."""
+        bad = [
+            target
+            for target in self._readme_links()
+            if not (
+                target.startswith(("http://", "https://", "mailto:", "#"))
+            )
+        ]
+        assert not bad, (
+            "readme.md contains relative links that 404 on PyPI; convert "
+            f"them to absolute https://github.com/... URLs: {bad}"
+        )

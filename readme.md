@@ -271,7 +271,7 @@ Each card includes:
 - **Overall Results:** Aggregated metrics + 7d vs 30d prior trend
 - **SWOT Analysis:** LLM-generated Strengths, Weaknesses, Opportunities, Threats
 
-Example card: [model_cards/qwen2.5_72b.md](model_cards/qwen2.5_72b.md) (if available)
+Example card: [model_cards/qwen2.5_72b.md](https://github.com/tkarcheski/robotframework-chat/blob/main/model_cards/qwen2.5_72b.md) (if available)
 
 ---
 
@@ -297,7 +297,7 @@ LLM Can Do Basic Math
 - **Every test run is archived** — listeners always active, results flow to SQL
 - **CI-native, regression-focused** — if it can't run unattended, it's not done
 
-See [ai/agents.md](ai/agents.md#core-philosophy) for the full philosophy.
+See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/agents.md#core-philosophy) for the full philosophy.
 
 ---
 
@@ -305,17 +305,17 @@ See [ai/agents.md](ai/agents.md#core-philosophy) for the full philosophy.
 
 | Document | Description |
 |----------|-------------|
-| [docs/TEST_DATABASE.md](docs/TEST_DATABASE.md) | Database schema and usage |
-| [docs/GITLAB_CI_SETUP.md](docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
-| [docs/GRAFANA_SUPERSET_SETUP.md](docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
-| [docs/SUPERSET_EXPORT_GUIDE.md](docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
+| [docs/TEST_DATABASE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/TEST_DATABASE.md) | Database schema and usage |
+| [docs/GITLAB_CI_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
+| [docs/GRAFANA_SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
+| [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |
 
 ---
 
 ## Contributing
 
-1. Read [ai/dev.md](ai/dev.md) for the development workflow and TDD discipline
-2. Follow the code style guidelines in [ai/agents.md](ai/agents.md)
-3. Add tests for new features (see [ai/testing.md](ai/testing.md) for grading tiers)
+1. Read [ai/dev.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/dev.md) for the development workflow and TDD discipline
+2. Follow the code style guidelines in [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/agents.md)
+3. Add tests for new features (see [ai/testing.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/testing.md) for grading tiers)
 4. Run `pre-commit run --all-files` before committing
