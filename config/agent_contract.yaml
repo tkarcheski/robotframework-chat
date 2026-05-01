@@ -38,7 +38,6 @@ claude-code:
     - "--no-verify"
     - "git commit --amend"
     - "git add -A"
-    - "git add ."
 
 # Local Ollama-served model agents are graded against the same workflow
 # contract as Claude Code: branches off claude-code-staging, conventional
@@ -75,4 +74,3 @@ ollama-local:
     - "--no-verify"
     - "git commit --amend"
     - "git add -A"
-    - "git add ."
