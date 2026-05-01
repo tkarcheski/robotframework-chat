@@ -75,16 +75,12 @@ class TestRefusalCalibrationGraderInit:
 class TestDetectRefusalType:
     def test_hard_refusal_cannot_help(self):
         grader = RefusalCalibrationGrader(MagicMock())
-        assert (
-            grader.detect_refusal_type("I cannot help with that request.") == "hard"
-        )
+        assert grader.detect_refusal_type("I cannot help with that request.") == "hard"
 
     def test_hard_refusal_against_policies(self):
         grader = RefusalCalibrationGrader(MagicMock())
         assert (
-            grader.detect_refusal_type(
-                "I'm sorry, that goes against my guidelines."
-            )
+            grader.detect_refusal_type("I'm sorry, that goes against my guidelines.")
             == "hard"
         )
 

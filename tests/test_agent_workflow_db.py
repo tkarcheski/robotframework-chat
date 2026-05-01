@@ -96,26 +96,39 @@ class TestPersist:
                     messages=(),
                     tool_calls=(
                         ToolCall(
-                            id=f"call-{t}", tool_name="echo",
-                            arguments={"n": t}, timestamp=float(t),
+                            id=f"call-{t}",
+                            tool_name="echo",
+                            arguments={"n": t},
+                            timestamp=float(t),
                             call_number=0,
                         ),
                     ),
                     tool_results=(
                         ToolResult(
-                            tool_call_id=f"call-{t}", success=True,
-                            output=str(t), error=None, execution_time_ms=1.0,
+                            tool_call_id=f"call-{t}",
+                            success=True,
+                            output=str(t),
+                            error=None,
+                            execution_time_ms=1.0,
                         ),
                     ),
-                    state_before={}, state_after={}, reasoning="",
-                    duration_ms=0.0, success=True, error=None,
+                    state_before={},
+                    state_after={},
+                    reasoning="",
+                    duration_ms=0.0,
+                    success=True,
+                    error=None,
                 )
                 for t in turns
             )
             return AgentWorkflow(
-                workflow_id="wf-shrink", agent_id="claude",
-                task_description="Shrink", started_at=0.0, ended_at=10.0,
-                status=WorkflowStatus.COMPLETED, interactions=interactions,
+                workflow_id="wf-shrink",
+                agent_id="claude",
+                task_description="Shrink",
+                started_at=0.0,
+                ended_at=10.0,
+                status=WorkflowStatus.COMPLETED,
+                interactions=interactions,
             )
 
         db.persist_workflow(_wf((1, 2)))
@@ -138,32 +151,57 @@ class TestPersist:
         # so the new tool call's interaction_id pointed at no parent row and
         # raised FOREIGN KEY constraint failed.
         call_a = ToolCall(
-            id="call-a", tool_name="git", arguments={"cmd": "status"},
-            timestamp=1.0, call_number=0,
+            id="call-a",
+            tool_name="git",
+            arguments={"cmd": "status"},
+            timestamp=1.0,
+            call_number=0,
         )
         call_b = ToolCall(
-            id="call-b", tool_name="git", arguments={"cmd": "diff"},
-            timestamp=2.0, call_number=1,
+            id="call-b",
+            tool_name="git",
+            arguments={"cmd": "diff"},
+            timestamp=2.0,
+            call_number=1,
         )
         result_a = ToolResult(
-            tool_call_id="call-a", success=True, output="clean", error=None,
+            tool_call_id="call-a",
+            success=True,
+            output="clean",
+            error=None,
             execution_time_ms=1.0,
         )
         result_b = ToolResult(
-            tool_call_id="call-b", success=True, output="diff out", error=None,
+            tool_call_id="call-b",
+            success=True,
+            output="diff out",
+            error=None,
             execution_time_ms=1.0,
         )
 
-        def _wf(calls: tuple[ToolCall, ...], results: tuple[ToolResult, ...]) -> AgentWorkflow:
+        def _wf(
+            calls: tuple[ToolCall, ...], results: tuple[ToolResult, ...]
+        ) -> AgentWorkflow:
             interaction = AgentInteraction(
-                turn_number=1, messages=(), tool_calls=calls, tool_results=results,
-                state_before={}, state_after={}, reasoning="", duration_ms=0.0,
-                success=True, error=None,
+                turn_number=1,
+                messages=(),
+                tool_calls=calls,
+                tool_results=results,
+                state_before={},
+                state_after={},
+                reasoning="",
+                duration_ms=0.0,
+                success=True,
+                error=None,
             )
             return AgentWorkflow(
-                workflow_id="wf-extend", agent_id="claude",
-                task_description="Extend turn", started_at=0.0, ended_at=10.0,
-                status=WorkflowStatus.COMPLETED, interactions=(interaction,),
+                workflow_id="wf-extend",
+                agent_id="claude",
+                task_description="Extend turn",
+                started_at=0.0,
+                ended_at=10.0,
+                status=WorkflowStatus.COMPLETED,
+                interactions=(interaction,),
             )
 
         db.persist_workflow(_wf((call_a,), (result_a,)))

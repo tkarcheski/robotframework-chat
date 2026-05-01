@@ -55,9 +55,7 @@ class AgentWorkflowKeywords:
     # ------------------------------------------------------------------
 
     @keyword("Start Agent Workflow")
-    def start_agent_workflow(
-        self, workflow_id: str, agent_id: str, task: str
-    ) -> None:
+    def start_agent_workflow(self, workflow_id: str, agent_id: str, task: str) -> None:
         """Initialise tracking for a new agent workflow."""
         self._tracker = AgentInteractionTracker(workflow_id, agent_id, task)
         logger.info(f"Started workflow {workflow_id} for agent {agent_id}")
@@ -105,9 +103,7 @@ class AgentWorkflowKeywords:
     def end_interaction(self, success: Any = True, error: str = "") -> None:
         """Finalise the current turn."""
         tracker = self._require_tracker()
-        tracker.end_interaction(
-            success=_coerce_bool(success), error=error or None
-        )
+        tracker.end_interaction(success=_coerce_bool(success), error=error or None)
 
     @keyword("Set Interaction State")
     def set_interaction_state(
@@ -129,9 +125,7 @@ class AgentWorkflowKeywords:
     def agent_message(self, role: str, content: str) -> None:
         """Append a message (user/assistant/system) to the current turn."""
         if role not in ("user", "assistant", "system"):
-            raise ValueError(
-                f"role must be one of user|assistant|system, got {role!r}"
-            )
+            raise ValueError(f"role must be one of user|assistant|system, got {role!r}")
         tracker = self._require_tracker()
         tracker.add_message(role, content)
 
@@ -146,9 +140,7 @@ class AgentWorkflowKeywords:
         try:
             args = json.loads(arguments_json)
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"arguments_json must be valid JSON: {exc}"
-            ) from exc
+            raise ValueError(f"arguments_json must be valid JSON: {exc}") from exc
         if not isinstance(args, dict):
             raise ValueError("arguments_json must decode to an object")
         return tracker.add_tool_call(tool_name, args)
@@ -177,9 +169,7 @@ class AgentWorkflowKeywords:
     # ------------------------------------------------------------------
 
     @keyword("Register Tool Schema")
-    def register_tool_schema(
-        self, tool_name: str, schema_json: str
-    ) -> None:
+    def register_tool_schema(self, tool_name: str, schema_json: str) -> None:
         """Register the expected schema for a tool (JSON string)."""
         schema_dict = json.loads(schema_json)
         self._validator.register_tool(
@@ -192,16 +182,12 @@ class AgentWorkflowKeywords:
         )
 
     @keyword("Validate Tool Call Schema")
-    def validate_tool_call_schema(
-        self, tool_name: str, arguments_json: str
-    ) -> None:
+    def validate_tool_call_schema(self, tool_name: str, arguments_json: str) -> None:
         """Assert that the given tool call satisfies the registered schema."""
         try:
             args = json.loads(arguments_json)
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"arguments_json must be valid JSON: {exc}"
-            ) from exc
+            raise ValueError(f"arguments_json must be valid JSON: {exc}") from exc
         if not isinstance(args, dict):
             # 'x' in ['x'] is True, so a JSON array would silently satisfy
             # a `required: ['x']` schema without this guard.
@@ -222,14 +208,10 @@ class AgentWorkflowKeywords:
     # ------------------------------------------------------------------
 
     @keyword("Assert Tool Was Called")
-    def assert_tool_was_called(
-        self, tool_name: str, count: Any = 1
-    ) -> None:
+    def assert_tool_was_called(self, tool_name: str, count: Any = 1) -> None:
         """Assert ``tool_name`` was called exactly ``count`` times across all turns."""
         tracker = self._require_tracker()
-        actual = len(
-            tracker.workflow.tool_calls_by_name().get(tool_name, [])
-        )
+        actual = len(tracker.workflow.tool_calls_by_name().get(tool_name, []))
         expected = int(count)
         if actual != expected:
             raise AssertionError(
@@ -240,12 +222,8 @@ class AgentWorkflowKeywords:
     def assert_tool_calls_in_order(self, *tool_names: str) -> None:
         """Assert all tool calls appeared in the given order across all turns."""
         tracker = self._require_tracker()
-        all_calls = [
-            c for i in tracker.workflow.interactions for c in i.tool_calls
-        ]
-        ok, msg = self._validator.validate_call_sequence(
-            all_calls, list(tool_names)
-        )
+        all_calls = [c for i in tracker.workflow.interactions for c in i.tool_calls]
+        ok, msg = self._validator.validate_call_sequence(all_calls, list(tool_names))
         if not ok:
             raise AssertionError(msg)
 

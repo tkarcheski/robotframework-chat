@@ -78,9 +78,7 @@ def _validate_against_schema(value: Any, schema: dict[str, Any]) -> None:
         if expected_type in ("integer", "number") and isinstance(value, bool):
             raise ValueError(f"Expected {expected_type}, got bool")
         if not isinstance(value, py_type):
-            raise ValueError(
-                f"Expected {expected_type}, got {type(value).__name__}"
-            )
+            raise ValueError(f"Expected {expected_type}, got {type(value).__name__}")
 
     required = schema.get("required", [])
     if required:

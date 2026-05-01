@@ -38,17 +38,13 @@ class TestRoundTripDictConversion:
         wf = workflow_from_dict(original)
         again = workflow_to_dict(wf)
         # Compare via JSON for a deep, ordering-stable check.
-        assert json.dumps(again, sort_keys=True) == json.dumps(
-            original, sort_keys=True
-        )
+        assert json.dumps(again, sort_keys=True) == json.dumps(original, sort_keys=True)
 
 
 class TestListenerPersist:
     def test_persists_emitted_workflow(self, tmp_path: Path) -> None:
         db_path = tmp_path / "agent.db"
-        listener = AgentWorkflowListener(
-            database_url=f"sqlite:///{db_path}"
-        )
+        listener = AgentWorkflowListener(database_url=f"sqlite:///{db_path}")
         listener.start_suite(SimpleNamespace(name="root"), SimpleNamespace())
         listener.start_test(SimpleNamespace(name="t1"), SimpleNamespace())
 
@@ -65,9 +61,7 @@ class TestListenerPersist:
         assert loaded["agent_id"] == "claude"
 
     def test_no_payload_does_not_persist(self, tmp_path: Path) -> None:
-        listener = AgentWorkflowListener(
-            database_url=f"sqlite:///{tmp_path / 'a.db'}"
-        )
+        listener = AgentWorkflowListener(database_url=f"sqlite:///{tmp_path / 'a.db'}")
         listener.start_test(SimpleNamespace(name="t1"), SimpleNamespace())
         listener.end_test(SimpleNamespace(name="t1"), SimpleNamespace())
         assert listener.persisted_count == 0
@@ -75,9 +69,7 @@ class TestListenerPersist:
     def test_invalid_json_payload_logged_and_skipped(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        listener = AgentWorkflowListener(
-            database_url=f"sqlite:///{tmp_path / 'a.db'}"
-        )
+        listener = AgentWorkflowListener(database_url=f"sqlite:///{tmp_path / 'a.db'}")
         listener.start_test(SimpleNamespace(name="t1"), SimpleNamespace())
         listener._current_test_data[AGENT_WORKFLOW_DATA_KEY] = "{not valid json"
         with caplog.at_level("WARNING"):
@@ -88,9 +80,7 @@ class TestListenerPersist:
     def test_missing_required_field_logged_and_skipped(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        listener = AgentWorkflowListener(
-            database_url=f"sqlite:///{tmp_path / 'a.db'}"
-        )
+        listener = AgentWorkflowListener(database_url=f"sqlite:///{tmp_path / 'a.db'}")
         listener.start_test(SimpleNamespace(name="t1"), SimpleNamespace())
         listener._current_test_data[AGENT_WORKFLOW_DATA_KEY] = json.dumps(
             {"workflow_id": "wf-bad"}  # missing agent_id, task, etc.

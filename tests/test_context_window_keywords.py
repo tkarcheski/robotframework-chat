@@ -29,8 +29,7 @@ class TestBuildFilledPrompt:
         budget = int(context_window * fill_pct / 100)
         # Allow +/- 10% margin for estimation error and safety reserves
         assert tokens <= budget + 100, (
-            f"Prompt {tokens} tokens exceeds budget {budget}; "
-            f"diff={tokens - budget}"
+            f"Prompt {tokens} tokens exceeds budget {budget}; diff={tokens - budget}"
         )
 
     def test_needle_position_at_start(self):
@@ -69,8 +68,7 @@ class TestBuildFilledPrompt:
         total_len = len(prompt)
         # Middle third: between 1/3 and 2/3
         assert total_len / 3 < needle_idx < (2 * total_len / 3), (
-            f"Needle at position {needle_idx} "
-            f"should be in middle third"
+            f"Needle at position {needle_idx} should be in middle third"
         )
 
     def test_needle_position_at_end(self):
@@ -116,8 +114,12 @@ class TestBuildFilledPrompt:
         max_tokens = 256
 
         prompt = self.kw.build_filled_prompt(
-            needle_fact, question, fill_pct, context_window, position,
-            max_tokens=max_tokens
+            needle_fact,
+            question,
+            fill_pct,
+            context_window,
+            position,
+            max_tokens=max_tokens,
         )
 
         tokens = len(prompt.split())

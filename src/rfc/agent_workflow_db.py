@@ -215,7 +215,9 @@ class _SQLiteBackend(_Backend):
                     json.dumps(workflow.metadata),
                 ),
             )
-            workflow_pk = cur.lastrowid or _lookup_workflow_pk(conn, workflow.workflow_id)
+            workflow_pk = cur.lastrowid or _lookup_workflow_pk(
+                conn, workflow.workflow_id
+            )
             conn.execute(
                 "DELETE FROM agent_interactions WHERE workflow_id = ?",
                 (workflow.workflow_id,),
@@ -490,9 +492,7 @@ class _SQLAlchemyBackend(_Backend):
                 },
             )
             row = conn.execute(
-                text(
-                    "SELECT id FROM agent_workflows WHERE workflow_id = :wid"
-                ),
+                text("SELECT id FROM agent_workflows WHERE workflow_id = :wid"),
                 {"wid": workflow.workflow_id},
             ).fetchone()
             assert row is not None, "INSERT did not create or update a row"
@@ -632,9 +632,7 @@ class _SQLAlchemyBackend(_Backend):
                             self._tool_results.c.call_id.in_(call_ids)
                         )
                     ).fetchall()
-                    interaction["tool_results"] = [
-                        dict(r._mapping) for r in results
-                    ]
+                    interaction["tool_results"] = [dict(r._mapping) for r in results]
                 else:
                     interaction["tool_results"] = []
 
