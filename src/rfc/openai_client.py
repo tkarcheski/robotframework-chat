@@ -31,6 +31,7 @@ class OpenAIClient:
         top_k: Optional[int] = None,
         num_ctx: Optional[int] = None,
         keep_alive: Optional[str] = None,
+        response_format: Optional[str] = None,
     ):
         if not base_url:
             base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -58,6 +59,10 @@ class OpenAIClient:
             raise ValueError(f"timeout must be >= 1, got {timeout}")
         if max_retries < 0:
             raise ValueError(f"max_retries must be >= 0, got {max_retries}")
+        if response_format is not None and response_format != "json":
+            raise ValueError(
+                f"response_format must be None or 'json', got {response_format!r}"
+            )
 
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -71,6 +76,7 @@ class OpenAIClient:
         self.top_k = top_k
         self.num_ctx = num_ctx  # Not used by OpenAI, kept for protocol compliance
         self.keep_alive = keep_alive  # Not used by OpenAI, kept for protocol compliance
+        self.response_format = response_format
         self.last_metrics: Optional[Dict[str, Any]] = None
 
     def generate(self, prompt: str) -> str:
@@ -102,6 +108,8 @@ class OpenAIClient:
             payload["top_p"] = self.top_p
         if self.top_k is not None:
             payload["top_k"] = self.top_k
+        if self.response_format == "json":
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

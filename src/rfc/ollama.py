@@ -73,6 +73,7 @@ class OllamaClient:
         top_k: Optional[int] = None,
         num_ctx: Optional[int] = None,
         keep_alive: Optional[str] = None,
+        response_format: Optional[str] = None,
     ):
         if not base_url:
             base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
@@ -94,6 +95,10 @@ class OllamaClient:
             raise ValueError(f"timeout must be >= 1, got {timeout}")
         if max_retries < 0:
             raise ValueError(f"max_retries must be >= 0, got {max_retries}")
+        if response_format is not None and response_format != "json":
+            raise ValueError(
+                f"response_format must be None or 'json', got {response_format!r}"
+            )
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
@@ -105,6 +110,7 @@ class OllamaClient:
         self.top_k = top_k
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
+        self.response_format = response_format
         self.last_metrics: Optional[Dict[str, Any]] = None
 
     @property
@@ -158,6 +164,8 @@ class OllamaClient:
         }
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
+        if self.response_format is not None:
+            payload["format"] = self.response_format
 
         self.last_metrics = None
 

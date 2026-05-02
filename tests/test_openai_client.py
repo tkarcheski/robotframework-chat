@@ -472,3 +472,47 @@ class TestOpenAIClientOptionalParams:
         assert payload["seed"] == 42
         assert payload["top_p"] == 0.9
         assert payload["top_k"] == 40
+
+
+class TestOpenAIResponseFormat:
+    """OpenAI Chat Completions JSON-mode parity with OllamaClient."""
+
+    def test_default_response_format_is_none(self):
+        client = OpenAIClient(api_key="sk-test")
+        assert client.response_format is None
+
+    def test_invalid_response_format_rejected(self):
+        with pytest.raises(ValueError, match="response_format"):
+            OpenAIClient(api_key="sk-test", response_format="xml")
+
+    @patch("rfc.openai_client.logger")
+    @patch("rfc.openai_client.requests.post")
+    def test_json_response_format_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": '{"k": 1}'}}],
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OpenAIClient(api_key="sk-test", response_format="json")
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["response_format"] == {"type": "json_object"}
+
+    @patch("rfc.openai_client.logger")
+    @patch("rfc.openai_client.requests.post")
+    def test_no_response_format_when_none(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "ok"}}],
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OpenAIClient(api_key="sk-test")
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert "response_format" not in payload
