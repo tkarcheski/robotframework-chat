@@ -212,6 +212,31 @@ class TestCheckSentenceStart:
         passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
         assert passed is False
 
+    def test_markdown_bold_tolerated(self) -> None:
+        text = "**Dogs** are loyal. **Dogs** love people."
+        passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
+        assert passed is True
+
+    def test_markdown_italic_tolerated(self) -> None:
+        text = "_Dogs_ are loyal. *Dogs* love people."
+        passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
+        assert passed is True
+
+    def test_leading_quotes_tolerated(self) -> None:
+        text = '"Dogs" are loyal. "Dogs" love people.'
+        passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
+        assert passed is True
+
+    def test_markdown_does_not_mask_wrong_word(self) -> None:
+        text = "**Cats** are aloof."
+        passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
+        assert passed is False
+
+    def test_markdown_does_not_mask_case_mismatch(self) -> None:
+        text = "**dogs** are loyal."
+        passed, _ = IFEvalKeywords.check_sentence_start(text, "Dogs")
+        assert passed is False
+
 
 class TestCheckEndsWithWord:
     def test_ends_correctly(self) -> None:
@@ -233,6 +258,46 @@ class TestCheckEndsWithWord:
             "The ocean is vast. END.", "END"
         )
         assert passed is True
+
+    def test_markdown_bold_wrapper_tolerated(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            "The ocean is vast. **END**", "END"
+        )
+        assert passed is True
+
+    def test_markdown_italic_wrapper_tolerated(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            "The ocean is vast. _END_", "END"
+        )
+        assert passed is True
+
+    def test_parentheses_wrapper_tolerated(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            "The ocean is vast. (END)", "END"
+        )
+        assert passed is True
+
+    def test_quote_wrapper_tolerated(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            'The ocean is vast. "END"', "END"
+        )
+        assert passed is True
+
+    def test_wrapper_does_not_mask_wrong_word(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            "The ocean is vast. **DONE**", "END"
+        )
+        assert passed is False
+
+    def test_wrapper_does_not_mask_case_mismatch(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word(
+            "The ocean is vast. **end**", "END"
+        )
+        assert passed is False
+
+    def test_empty_wrapper_does_not_pass(self) -> None:
+        passed, _ = IFEvalKeywords.check_ends_with_word("The ocean is vast. **", "END")
+        assert passed is False
 
 
 class TestCheckAllLowercase:
