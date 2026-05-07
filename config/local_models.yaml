@@ -219,6 +219,11 @@ test_suites:
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
+  - name: "summarization"
+    path: "robot/summarization/"
+    description: "Deterministic summarization grading by keyword coverage, forbidden-fact absence, and length compliance"
+    timeout_seconds: 600
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------

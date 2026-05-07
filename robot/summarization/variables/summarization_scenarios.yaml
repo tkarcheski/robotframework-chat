@@ -1,0 +1,241 @@
+# Summarization scenarios.
+#
+# Each scenario provides:
+#   - source: passage to summarize
+#   - instruction: prompt fragment placed before the source
+#   - required_keywords: list of must-include keyword groups; alternatives
+#     within a group are separated by '|' (e.g. "CEO|chief executive")
+#   - forbidden_facts: phrases the model must NOT introduce — usually
+#     plausible-but-false fabrications adjacent to the source domain
+#   - min_words / max_words: length compliance bounds for the summary
+#
+# All scenarios use deterministic Python grading (Tier 1, verify:python).
+# Source passages are paraphrases of widely-documented public facts; no
+# copyrighted material is reproduced verbatim.
+
+SUMMARIZATION_SCENARIOS:
+  # ---------------------- News / current-events ----------------------
+  - id: apollo_11_news
+    domain: history
+    instruction: "Summarize the following passage in two to four sentences. Include the key facts."
+    source: |
+      On July 20, 1969, the Apollo 11 mission successfully landed two
+      American astronauts on the Moon. Commander Neil Armstrong became
+      the first person to walk on the lunar surface, followed by pilot
+      Buzz Aldrin. Michael Collins remained in lunar orbit aboard the
+      command module Columbia. The mission was launched from the Kennedy
+      Space Center in Florida four days earlier, on July 16. Armstrong's
+      first words on the surface were "That's one small step for man,
+      one giant leap for mankind."
+    required_keywords:
+      - "Apollo 11"
+      - "Moon|lunar"
+      - "1969"
+      - "Armstrong"
+      - "Aldrin"
+    forbidden_facts:
+      - "Mars"
+      - "Soviet"
+      - "Gagarin"
+      - "1968"
+      - "1970"
+    min_words: 25
+    max_words: 90
+
+  # ---------------------- Technical document ----------------------
+  - id: tcp_handshake
+    domain: technology
+    instruction: "Summarize this technical description in two or three sentences for a developer audience. Keep all technical terms."
+    source: |
+      The TCP three-way handshake is the procedure used to establish a
+      reliable connection between two hosts. The client first sends a
+      SYN segment to the server, indicating its initial sequence number.
+      The server responds with a SYN-ACK segment that acknowledges the
+      client's SYN and proposes the server's own sequence number.
+      Finally, the client replies with an ACK segment, after which the
+      connection is considered established and data transfer can begin.
+      Each segment carries a TCP header containing the relevant flags
+      and sequence numbers.
+    required_keywords:
+      - "TCP"
+      - "three-way handshake|handshake"
+      - "SYN"
+      - "SYN-ACK|SYN ACK"
+      - "ACK"
+    forbidden_facts:
+      - "UDP"
+      - "QUIC"
+      - "four-way"
+      - "encryption"
+      - "TLS"
+    min_words: 25
+    max_words: 90
+
+  # ---------------------- Scientific abstract ----------------------
+  - id: photosynthesis
+    domain: science
+    instruction: "Summarize this passage in three to five sentences. Preserve the chemical names and the energy source."
+    source: |
+      Photosynthesis is the biochemical process by which green plants,
+      algae, and certain bacteria convert light energy from the Sun
+      into chemical energy stored in glucose. The process takes place
+      mainly in the chloroplasts of plant cells and uses the green
+      pigment chlorophyll to absorb light. Carbon dioxide is taken in
+      from the atmosphere and water is drawn up from the roots. These
+      raw materials are combined inside the chloroplast to produce
+      glucose and oxygen, with the oxygen released back into the air
+      as a by-product. The overall reaction is summarized as
+      6 CO2 + 6 H2O -> C6H12O6 + 6 O2.
+    required_keywords:
+      - "photosynthesis"
+      - "chlorophyll"
+      - "glucose"
+      - "oxygen"
+      - "carbon dioxide|CO2"
+      - "Sun|light|sunlight"
+    forbidden_facts:
+      - "respiration"
+      - "mitochondria"
+      - "nitrogen"
+      - "methane"
+    min_words: 35
+    max_words: 110
+
+  # ---------------------- Business / financial ----------------------
+  - id: quarterly_earnings
+    domain: business
+    instruction: "Summarize this earnings release in two or three sentences. Keep all monetary figures."
+    source: |
+      Acme Robotics Inc. today reported financial results for the third
+      quarter of fiscal 2024. Quarterly revenue reached 1.8 billion
+      dollars, an increase of 12 percent year over year. Net income for
+      the quarter was 240 million dollars, up from 195 million dollars
+      in the same quarter last year. Diluted earnings per share rose
+      to 1.47 dollars from 1.22 dollars. The company reaffirmed full-
+      year guidance of 7.2 to 7.4 billion dollars in revenue. Acme's
+      Industrial Automation segment grew 18 percent, while the Consumer
+      Robotics segment declined 4 percent.
+    required_keywords:
+      - "Acme Robotics|Acme"
+      - "third quarter|Q3"
+      - "1.8 billion"
+      - "240 million"
+      - "12 percent|12%"
+    forbidden_facts:
+      - "loss"
+      - "missed"
+      - "fourth quarter"
+      - "merger"
+      - "acquisition"
+    min_words: 30
+    max_words: 95
+
+  # ---------------------- Legal / policy ----------------------
+  - id: privacy_policy_change
+    domain: legal
+    instruction: "Summarize the policy change below in two or three sentences. Preserve the effective date and the user-facing impact."
+    source: |
+      Effective March 1, 2025, the company is updating its data
+      retention policy. Account activity logs will now be retained for
+      a maximum of ninety days, after which they will be permanently
+      deleted from production systems. Backup copies will continue to
+      be retained for an additional thirty days before being purged.
+      Users may request earlier deletion of their activity logs by
+      submitting a written request through the privacy portal. The new
+      retention period applies to all account types, including free
+      and paid tiers.
+    required_keywords:
+      - "March 1, 2025|March 2025"
+      - "ninety days|90 days"
+      - "retention"
+      - "deletion|deleted"
+    forbidden_facts:
+      - "indefinitely"
+      - "one year"
+      - "365 days"
+      - "encrypted"
+      - "sold"
+    min_words: 25
+    max_words: 90
+
+  # ---------------------- Narrative / fiction-adjacent ----------------------
+  - id: shipwreck_survival
+    domain: narrative
+    instruction: "Summarize this account in two to four sentences, preserving names, dates, and outcomes."
+    source: |
+      In 1916, the explorer Ernest Shackleton's ship, the Endurance,
+      became trapped in pack ice in the Weddell Sea off Antarctica.
+      After the ice eventually crushed and sank the ship, Shackleton
+      led his twenty-seven-man crew to nearby Elephant Island in the
+      ship's lifeboats. From there, Shackleton and five companions
+      sailed roughly 800 miles in an open boat to South Georgia
+      Island, where they crossed mountainous terrain to reach a
+      whaling station and arrange a rescue. Remarkably, every member
+      of the original crew survived.
+    required_keywords:
+      - "Shackleton"
+      - "Endurance"
+      - "1916"
+      - "Antarctica|Weddell"
+      - "survived|rescue|rescued"
+    forbidden_facts:
+      - "died"
+      - "perished"
+      - "lost"
+      - "Arctic"
+      - "Titanic"
+    min_words: 30
+    max_words: 95
+
+  # ---------------------- Adversarial: distractor sentences ----------------------
+  # The source contains an irrelevant sentence designed to draw the model
+  # off-topic. A good summary keeps the spotlight on the main subject.
+  - id: distractor_resistance
+    domain: adversarial
+    instruction: "Summarize the main topic of this passage in two sentences. Ignore any tangential remarks."
+    source: |
+      The Eiffel Tower is a wrought-iron lattice tower located on the
+      Champ de Mars in Paris, France. Designed by the engineer Gustave
+      Eiffel, it was completed in 1889 to serve as the entrance arch
+      to the World's Fair. By the way, did you know that octopuses
+      have three hearts and blue blood? At 330 meters tall, the Eiffel
+      Tower remained the tallest man-made structure in the world for
+      forty-one years, until the Chrysler Building in New York
+      surpassed it in 1930.
+    required_keywords:
+      - "Eiffel Tower"
+      - "Paris|France"
+      - "1889"
+      - "Gustave Eiffel|Eiffel"
+    forbidden_facts:
+      - "octopus"
+      - "octopuses"
+      - "three hearts"
+      - "blue blood"
+    min_words: 25
+    max_words: 90
+
+  # ---------------------- Numerical preservation ----------------------
+  - id: numeric_preservation
+    domain: science
+    instruction: "Summarize the passage in two or three sentences. Preserve all numeric values exactly."
+    source: |
+      The Mariana Trench, located in the western Pacific Ocean, is the
+      deepest known point in Earth's oceans. Its lowest point, known as
+      Challenger Deep, lies approximately 10,935 meters (about 35,876
+      feet) below sea level. The trench has a length of roughly 2,550
+      kilometers and an average width of 69 kilometers. The water
+      pressure at the bottom of Challenger Deep is more than 1,000
+      times the standard atmospheric pressure at sea level.
+    required_keywords:
+      - "Mariana Trench"
+      - "Challenger Deep"
+      - "10,935|10935"
+      - "Pacific"
+    forbidden_facts:
+      - "Atlantic"
+      - "Indian Ocean"
+      - "shallowest"
+      - "Everest"
+    min_words: 25
+    max_words: 90

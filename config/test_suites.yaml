@@ -247,6 +247,11 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  summarization:
+    label: "Summarization Quality"
+    path: "robot/summarization"
+    description: "Deterministic summarization grading by required-keyword coverage, forbidden-fact absence, and length compliance across news, technical, scientific, business, legal, narrative, adversarial, and numeric passages"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
