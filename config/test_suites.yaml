@@ -247,6 +247,26 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  temporal-reasoning:
+    label: "Temporal Reasoning"
+    path: "robot/temporal_reasoning"
+    description: "Date arithmetic, duration calculation, day-of-week inference, and historical event sequencing"
+
+  causal-reasoning:
+    label: "Causal Reasoning"
+    path: "robot/causal_reasoning"
+    description: "Correlation vs. causation discrimination, confound identification, counterfactual reasoning, and intervention evaluation"
+
+  self-correction:
+    label: "Self-Correction"
+    path: "robot/self_correction"
+    description: "Error detection in math, code, and logic — and correction quality assessment"
+
+  epistemic:
+    label: "Epistemic Humility & Theory of Mind"
+    path: "robot/epistemic"
+    description: "Calibrated uncertainty (hedge on unknowable, confident on established facts) and theory-of-mind false-belief attribution"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -387,6 +407,26 @@ ci:
       path: "robot/agentic_coding/"
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
+
+    robot-temporal-reasoning-tests:
+      path: "robot/temporal_reasoning/"
+      output_dir: "results/temporal_reasoning"
+      tags: ["ollama"]
+
+    robot-causal-reasoning-tests:
+      path: "robot/causal_reasoning/"
+      output_dir: "results/causal_reasoning"
+      tags: ["ollama"]
+
+    robot-self-correction-tests:
+      path: "robot/self_correction/"
+      output_dir: "results/self_correction"
+      tags: ["ollama"]
+
+    robot-epistemic-tests:
+      path: "robot/epistemic/"
+      output_dir: "results/epistemic"
+      tags: ["ollama"]
 
   superset-dashboards:
     label: "Superset Dashboards"
