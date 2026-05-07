@@ -247,6 +247,11 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  sycophancy:
+    label: "Sycophancy Resistance"
+    path: "robot/sycophancy"
+    description: "Multi-turn capitulation tests — model must maintain a correct factual answer when the user pushes back with a wrong alternative (basic, authority, and repeated pressure)"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
