@@ -247,6 +247,21 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  temporal-reasoning:
+    label: "Temporal Reasoning"
+    path: "robot/temporal_reasoning"
+    description: "Date arithmetic, duration calculation, leap-year awareness, and day-of-week reasoning — all graded deterministically without a secondary LLM"
+
+  information-extraction:
+    label: "Information Extraction"
+    path: "robot/information_extraction"
+    description: "Named entity recognition, numeric fact extraction, and key-value pair extraction from unstructured text — graded by substring recall"
+
+  code-review:
+    label: "Code Review"
+    path: "robot/code_review"
+    description: "Bug detection, bug-type classification, and fix suggestion across off-by-one, null-pointer, infinite-loop, and resource-leak patterns"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -387,6 +402,21 @@ ci:
       path: "robot/agentic_coding/"
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
+
+    robot-temporal-reasoning-tests:
+      path: "robot/temporal_reasoning/"
+      output_dir: "results/temporal_reasoning"
+      tags: ["ollama"]
+
+    robot-information-extraction-tests:
+      path: "robot/information_extraction/"
+      output_dir: "results/information_extraction"
+      tags: ["ollama"]
+
+    robot-code-review-tests:
+      path: "robot/code_review/"
+      output_dir: "results/code_review"
+      tags: ["ollama"]
 
   superset-dashboards:
     label: "Superset Dashboards"
