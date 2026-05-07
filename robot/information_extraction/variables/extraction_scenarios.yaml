@@ -1,0 +1,100 @@
+# Information extraction test scenarios.
+#
+# Graded deterministically: the LLM response is scanned for expected
+# strings (case-insensitive substring match). No secondary LLM grader.
+
+# ----------------------------------------------------------------
+# Person-name extraction scenarios
+# ----------------------------------------------------------------
+PERSON_EXTRACTION_SCENARIOS:
+  - label: "board meeting attendees"
+    entity_type: "person"
+    context: >
+      The quarterly board meeting was attended by Alice Johnson, Robert
+      Chen, and Maria Gutierrez. The chairperson, David Okafor, opened
+      the session. Notes were taken by Sarah Kim.
+    expected_entities:
+      - "Alice Johnson"
+      - "Robert Chen"
+      - "Maria Gutierrez"
+      - "David Okafor"
+      - "Sarah Kim"
+
+  - label: "press release names"
+    entity_type: "person"
+    context: >
+      NovaTech announced that CEO Priya Sharma and CTO Leon Fischer
+      will present the Q3 results. Former founder James Whitmore will
+      also attend as a special guest.
+    expected_entities:
+      - "Priya Sharma"
+      - "Leon Fischer"
+      - "James Whitmore"
+
+# ----------------------------------------------------------------
+# Organization extraction scenarios
+# ----------------------------------------------------------------
+ORG_EXTRACTION_SCENARIOS:
+  - label: "merger news"
+    entity_type: "organization"
+    context: >
+      FinCorp Holdings announced a strategic merger with Pacific Trust
+      Bank. The deal was brokered by advisory firm Sterling & Associates
+      and is pending approval from the Federal Reserve.
+    expected_entities:
+      - "FinCorp Holdings"
+      - "Pacific Trust Bank"
+      - "Sterling & Associates"
+      - "Federal Reserve"
+
+# ----------------------------------------------------------------
+# Numeric fact extraction scenarios
+# ----------------------------------------------------------------
+NUMERIC_EXTRACTION_SCENARIOS:
+  - label: "employee count"
+    context: >
+      Acme Industries reported record growth in 2024. The company now
+      employs 4,820 full-time staff across 12 regional offices, up
+      from 3,950 the previous year.
+    question: "How many full-time staff does Acme Industries currently employ?"
+    expected_value: "4820"
+
+  - label: "revenue figure"
+    context: >
+      The annual report showed total revenue of 287 million dollars,
+      a 14 percent increase over the prior fiscal year. Operating
+      expenses were 193 million dollars.
+    question: "What was the total revenue in millions of dollars?"
+    expected_value: "287"
+
+  - label: "temperature reading"
+    context: >
+      The experiment recorded a peak reaction temperature of 342
+      degrees Celsius before the catalyst was added, dropping to
+      298 degrees Celsius afterward.
+    question: "What was the peak reaction temperature in degrees Celsius before the catalyst was added?"
+    expected_value: "342"
+
+# ----------------------------------------------------------------
+# Key-value pair extraction scenarios
+# ----------------------------------------------------------------
+KV_EXTRACTION_SCENARIOS:
+  - label: "product specs"
+    context: >
+      The ProBook X7 laptop ships with a 15.6-inch display, 16 GB of
+      RAM, and a 512 GB SSD. Its battery life is rated at 10 hours.
+      The base price is $1,299.
+    expected_pairs:
+      - "RAM"
+      - "512"
+      - "1,299"
+
+  - label: "company profile"
+    context: >
+      Founded in 1998, BlueStar Logistics is headquartered in Chicago.
+      The company has 1,200 employees and operates in 18 countries.
+      Its current CEO is Thomas Ray.
+    expected_pairs:
+      - "1998"
+      - "Chicago"
+      - "Thomas Ray"

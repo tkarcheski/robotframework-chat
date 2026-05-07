@@ -1,0 +1,67 @@
+# Temporal reasoning test scenarios.
+#
+# Each entry has:
+#   question  - prompt sent to the LLM
+#   expected  - correct answer (integer for numeric, YYYY-MM-DD for dates,
+#               weekday name for weekday questions)
+#   tags      - informal label for categorization
+
+# ----------------------------------------------------------------
+# Duration / counting scenarios (numeric)
+# ----------------------------------------------------------------
+DURATION_SCENARIOS:
+  - question: "How many days are in the month of January? Answer with only the number."
+    expected: 31
+    tags: "months basic"
+
+  - question: "How many hours are in exactly 3 days? Answer with only the number."
+    expected: 72
+    tags: "hours basic"
+
+  - question: "How many days are in February 2024? Answer with only the number."
+    expected: 29
+    tags: "leap_year"
+
+  - question: "How many days are there between January 1, 2024 and February 1, 2024? Count only the days in between, not including the start or end date. Answer with only the number."
+    expected: 31
+    tags: "date_diff"
+
+  - question: "How many weeks are in exactly 28 days? Answer with only the number."
+    expected: 4
+    tags: "weeks basic"
+
+# ----------------------------------------------------------------
+# Age / elapsed-time scenarios (numeric)
+# ----------------------------------------------------------------
+AGE_SCENARIOS:
+  - question: "A person was born on March 15, 1990. How old were they on their birthday, March 15, 2025? Answer with only the number of years."
+    expected: 35
+    tags: "age"
+
+  - question: "How many years passed between 1945 and 2000? Answer with only the number."
+    expected: 55
+    tags: "year_diff"
+
+# ----------------------------------------------------------------
+# Date arithmetic scenarios (YYYY-MM-DD result)
+# ----------------------------------------------------------------
+DATE_ARITHMETIC_SCENARIOS:
+  - question: "What date is exactly 30 days after January 15, 2024? Answer in YYYY-MM-DD format."
+    expected: "2024-02-14"
+    tags: "date_add month_boundary"
+
+  - question: "What date is exactly 7 days after December 28, 2023? Answer in YYYY-MM-DD format."
+    expected: "2024-01-04"
+    tags: "date_add year_boundary"
+
+# ----------------------------------------------------------------
+# Day-of-week scenarios
+# ----------------------------------------------------------------
+WEEKDAY_SCENARIOS:
+  - question: "What day of the week is July 4, 2025? Answer with only the day name."
+    expected: "Friday"
+    tags: "weekday us_holiday"
+
+  - question: "What day of the week is January 1, 2024? Answer with only the day name."
+    expected: "Monday"
+    tags: "weekday new_year"
