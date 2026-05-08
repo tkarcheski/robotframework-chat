@@ -120,24 +120,43 @@ _NEG_ADVERBS = (
     r"completely|entirely|totally|hardly|merely|of course"
 )
 
+# Parenthetical/contrastive words that can appear between the token
+# and the negation verb-phrase, typically wrapped in commas:
+# "Sydney, however, is not the capital."
+# "Sydney, though, isn't the capital."
+_PARENTHETICAL_WORDS = rf"{_NEG_ADVERBS}|however|though|nevertheless|moreover"
+
+# Negation terminals that can appear after an auxiliary verb-phrase.
+# "no longer" is included so "Sydney is no longer the capital" reads
+# as a negation of Sydney as the answer. "never" is intentionally
+# omitted from this list — "Sydney never gives up" is praise, not
+# negation.
+_NEG_TERMINALS = r"not|no longer"
+
 # Post-token negation patterns: detect "X is not", "X isn't",
 # "X doesn't", "X is definitely not", "X really isn't", "X's not",
-# etc. The token is treated as the negated subject of the following
-# clause. Sentence boundaries (.!?) interrupt the search because the
-# pattern only consumes inline whitespace (no \. or sentence-end).
+# "X is no longer …", "X — not …", "X, however, is not …", etc. The
+# token is treated as the negated subject of the following clause.
+# Sentence boundaries (.!?) are NOT in any separator class, so the
+# pattern stops at sentence end.
 #
-# Three branches:
-#   1. "'s" + optional adverbs + "not"      ("Sydney's not …",
-#                                            "Sydney's really not …")
-#   2. <whitespace> + optional adverbs +
-#      <auxiliary> + optional adverbs + "not"
-#                                            ("Sydney is not …",
-#                                            "Sydney is definitely not …",
-#                                            "Sydney definitely is not …")
-#   3. <whitespace> + optional adverbs +
-#      <contraction>
-#                                            ("Sydney isn't …",
-#                                            "Sydney really isn't …")
+# Four branches:
+#   1. "'s" + adverbs + (not|no longer)        ("Sydney's not …",
+#                                               "Sydney's really not …")
+#   2. <separator> + parenthetical + adverbs +
+#      <auxiliary> + adverbs +
+#      (not|no longer)                         ("Sydney is not …",
+#                                               "Sydney is no longer …",
+#                                               "Sydney, however, is not …")
+#   3. <separator> + parenthetical + adverbs +
+#      <contraction>                           ("Sydney isn't …",
+#                                               "Sydney, though, isn't …")
+#   4. <em/en-dash> + adverbs +
+#      (not|no longer)                         ("Sydney — not the capital")
+#
+# The separator class for branches 2 and 3 includes em-dash, en-dash,
+# comma, semicolon and colon in addition to whitespace, so common
+# parenthetical contrast clauses are tolerated.
 #
 # No leading ^ — invoked via re.match(text, pos), which already
 # anchors at pos. (Adding ^ would re-anchor to string start.)
@@ -146,17 +165,32 @@ _POST_NEGATION_PATTERN = re.compile(
     # Branch 1: 's contraction (Sydney's = "Sydney is").
     r"'s"
     rf"(?:\s+(?:{_NEG_ADVERBS}))*"
-    r"\s+not\b"
+    rf"\s+(?:{_NEG_TERMINALS})\b"
     r"|"
-    # Branch 2: " <aux> [<adv>] not", with optional adverbs before aux.
-    rf"\s+(?:(?:{_NEG_ADVERBS})\s+)*"
+    # Branch 2: separator + parenthetical(s) + adverbs + aux + adverbs +
+    #           (not|no longer).
+    r"[\s,;:—–]+"
+    rf"(?:(?:{_PARENTHETICAL_WORDS})[,;]?\s+)*"
+    rf"(?:(?:{_NEG_ADVERBS})\s+)*"
     rf"(?:{_AUXILIARIES})"
     rf"(?:\s+(?:{_NEG_ADVERBS}))*"
-    r"\s+not\b"
+    rf"\s+(?:{_NEG_TERMINALS})\b"
     r"|"
-    # Branch 3: " <contraction>", with optional adverbs before it.
-    rf"\s+(?:(?:{_NEG_ADVERBS})\s+)*"
+    # Branch 3: separator + parenthetical(s) + adverbs + contraction.
+    r"[\s,;:—–]+"
+    rf"(?:(?:{_PARENTHETICAL_WORDS})[,;]?\s+)*"
+    rf"(?:(?:{_NEG_ADVERBS})\s+)*"
     rf"(?:{_CONTRACTIONS})\b"
+    r"|"
+    # Branch 4: em/en-dash directly to terminal ("X — not Y", "X – no longer Y").
+    # Comma is intentionally NOT a branch-4 separator: "Canberra, not
+    # Sydney" endorses Canberra (Sydney is the negated contrast),
+    # which would mis-fire as Canberra negation if comma were allowed.
+    # Dash is unambiguous enough in practice for "X — not Y" subject
+    # negation.
+    r"\s*[—–]\s*"
+    rf"(?:(?:{_NEG_ADVERBS})\s+)*"
+    rf"(?:{_NEG_TERMINALS})\b"
     r")",
     re.IGNORECASE,
 )
