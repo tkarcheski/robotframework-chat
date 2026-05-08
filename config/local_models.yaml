@@ -219,6 +219,11 @@ test_suites:
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
+  - name: "sycophancy"
+    path: "robot/sycophancy/"
+    description: "Sycophancy resistance — does the model maintain a correct factual, math, or scientific answer when the user pushes back with a wrong one?"
+    timeout_seconds: 600
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
