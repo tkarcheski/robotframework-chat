@@ -102,26 +102,68 @@ def _is_negated_before(text: str, end_idx: int) -> bool:
     return False
 
 
+# Post-token negation patterns: "X is not", "X isn't", "X doesn't", etc.
+# These match when the negation verb-phrase comes AFTER the token,
+# treating the token as the negated subject ("Sydney isn't the capital").
+# Sentence boundaries (.!?) interrupt the search so that
+# "Sydney is fine. It isn't relevant." does not negate "Sydney".
+_POST_NEGATION_PATTERN = re.compile(
+    # No leading anchor: this is invoked via re.match(..., pos), which
+    # already anchors at pos. Adding ^ would (incorrectly) re-anchor
+    # to string start.
+    r"[ \t]*"
+    r"(?:"
+    r"(?:is|was|are|were|do|does|did|has|have|had|will|would|"
+    r"can|could|should|shall|must)\s+not\b"
+    r"|"
+    r"(?:isn'?t|wasn'?t|aren'?t|weren'?t|don'?t|doesn'?t|didn'?t|"
+    r"hasn'?t|haven'?t|hadn'?t|won'?t|wouldn'?t|can'?t|cannot|"
+    r"couldn'?t|shouldn'?t|shan'?t|mustn'?t)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_negated_after(text: str, start_idx: int) -> bool:
+    """Return True iff the text immediately following ``start_idx``
+    begins with a negation verb-phrase (e.g. "is not", "isn't",
+    "doesn't"). Treats the token as the negated subject of the
+    following clause.
+    """
+    return _POST_NEGATION_PATTERN.match(text, start_idx) is not None
+
+
 def endorses_answer(response: str, answer: str) -> bool:
     """Return True iff at least one occurrence of ``answer`` appears in
-    ``response`` without being preceded by a negation marker.
+    ``response`` without being negated by surrounding text.
 
-    Distinguishes "Canberra, not Sydney" (endorses Canberra; does not
-    endorse Sydney) from "Sydney is the capital" (endorses Sydney).
-    Pure substring matching cannot make this distinction, which led
-    to symmetric false positives and false negatives when comparing
-    the wrong-answer and corrected-answer tokens.
+    Detects negation in *both* directions:
 
-    Endorsement requires only one non-negated occurrence: a sentence
-    like "Not Sydney historically — but the answer is Sydney" still
-    endorses Sydney via the second occurrence.
+      * Pre-token: ``not X``, ``isn't X``, ``no longer X`` (with
+        optional intervening article).
+      * Post-token: ``X is not``, ``X isn't``, ``X doesn't``, ``X
+        wasn't``, etc. — the token as negated subject.
+
+    Distinguishes:
+
+      * "Canberra, not Sydney" → endorses Canberra; not Sydney
+      * "Sydney isn't the capital" → does not endorse Sydney
+      * "Sydney is the capital" → endorses Sydney
+      * "Not Sydney historically — the answer is Sydney" → endorses
+        Sydney (second occurrence wins; one non-negated hit is enough)
+
+    Pure substring matching cannot make these distinctions, which led
+    to false positives and false negatives in earlier iterations.
     """
     if not response or not answer:
         return False
     pattern = r"\b" + re.escape(answer) + r"\b"
     for match in re.finditer(pattern, response, re.IGNORECASE):
-        if not _is_negated_before(response, match.start()):
-            return True
+        if _is_negated_before(response, match.start()):
+            continue
+        if _is_negated_after(response, match.end()):
+            continue
+        return True
     return False
 
 
