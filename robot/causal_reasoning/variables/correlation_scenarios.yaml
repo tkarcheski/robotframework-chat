@@ -1,0 +1,92 @@
+# Causal vs. correlation scenarios
+#
+# Each entry has:
+#   scenario:  background context describing an observed relationship
+#   claim:     the causal claim to evaluate
+#   verdict:   CAUSAL or NOT_CAUSAL (ground truth)
+#   rationale: human-readable explanation of the correct verdict
+
+CORRELATION_SCENARIOS:
+  # ── Spurious / confounded correlations (verdict: NOT_CAUSAL) ──────────────
+  - scenario: >
+      During summer months, both ice cream sales and drowning incidents rise sharply.
+      Statistical analysis shows a strong positive correlation between the two.
+    claim: Eating ice cream causes people to drown.
+    verdict: NOT_CAUSAL
+    rationale: >
+      Hot weather (a confounder) drives both ice cream consumption and swimming
+      frequency; there is no direct causal link between ice cream and drowning.
+
+  - scenario: >
+      Data from a national study shows that children with larger shoe sizes have
+      significantly larger vocabularies and better reading scores.
+    claim: Having larger feet causes children to read better.
+    verdict: NOT_CAUSAL
+    rationale: >
+      Age is the confounding variable — older children have both larger feet and
+      more developed language skills. Shoe size does not cause reading ability.
+
+  - scenario: >
+      Countries with a higher number of television sets per capita have longer
+      average life expectancies. A large dataset across 80 countries confirms this.
+    claim: Owning a television extends your lifespan.
+    verdict: NOT_CAUSAL
+    rationale: >
+      Wealth is the confounder: richer countries have better healthcare (driving
+      higher life expectancy) and more consumer electronics. TV ownership does not
+      cause longevity.
+
+  - scenario: >
+      A study found that firefighters are consistently present at the most
+      destructive fires. Buildings with more firefighters suffer greater damage.
+    claim: Sending more firefighters to a fire causes more damage.
+    verdict: NOT_CAUSAL
+    rationale: >
+      This is reverse causation combined with selection bias: more firefighters are
+      dispatched to larger, more destructive fires. The fire severity causes both
+      the deployment of more firefighters and the greater damage.
+
+  - scenario: >
+      Researchers observed that students who own more pencils tend to earn higher
+      grades across all subjects and grade levels.
+    claim: Owning more pencils causes students to achieve higher grades.
+    verdict: NOT_CAUSAL
+    rationale: >
+      Pencil ownership is a proxy for family wealth and study habits. More
+      organised, engaged students (who study more) also own more stationery.
+      The pencils themselves do not improve grades.
+
+  # ── Genuine causal relationships (verdict: CAUSAL) ────────────────────────
+  - scenario: >
+      Decades of randomised controlled trials and epidemiological studies
+      consistently show that long-term cigarette smoking substantially increases
+      the risk of lung cancer, even after controlling for all known confounders.
+    claim: Smoking cigarettes causes lung cancer.
+    verdict: CAUSAL
+    rationale: >
+      Smoking is an established direct cause of lung cancer. The carcinogens in
+      tobacco smoke damage DNA in lung cells, leading to malignant mutations.
+      This satisfies all criteria for causation including dose-response and
+      biological mechanism.
+
+  - scenario: >
+      Multiple randomised controlled trials demonstrate that regular aerobic
+      exercise reduces resting heart rate, lowers blood pressure, and decreases
+      the incidence of coronary artery disease over a 10-year follow-up period.
+    claim: Regular aerobic exercise reduces cardiovascular disease risk.
+    verdict: CAUSAL
+    rationale: >
+      Exercise has a well-established direct causal effect on cardiovascular health
+      through multiple biological mechanisms including improved lipid profiles,
+      reduced inflammation, and strengthened cardiac muscle.
+
+  - scenario: >
+      Controlled experiments and real-world safety data consistently show that
+      drivers wearing seat belts survive crashes that kill unbelted occupants,
+      with a reduction in fatality risk of approximately 45% in frontal collisions.
+    claim: Wearing a seat belt reduces the risk of dying in a car crash.
+    verdict: CAUSAL
+    rationale: >
+      Seat belts mechanically prevent occupants from being ejected or striking
+      hard surfaces during a crash. This is a direct physical causal mechanism
+      supported by extensive experimental and observational evidence.

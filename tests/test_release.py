@@ -152,9 +152,7 @@ class TestReadmeLinks:
         bad = [
             target
             for target in self._readme_links()
-            if not (
-                target.startswith(("http://", "https://", "mailto:", "#"))
-            )
+            if not (target.startswith(("http://", "https://", "mailto:", "#")))
         ]
         assert not bad, (
             "readme.md contains relative links that 404 on PyPI; convert "
