@@ -63,7 +63,9 @@ class TestExtractFirstInteger:
 
 class TestExtractLetter:
     def test_letter_a_at_start(self) -> None:
-        assert _extract_letter("A) The earliest event is the Battle of Waterloo.") == "A"
+        assert (
+            _extract_letter("A) The earliest event is the Battle of Waterloo.") == "A"
+        )
 
     def test_letter_b(self) -> None:
         assert _extract_letter("B\nBecause the telephone was invented in 1876.") == "B"

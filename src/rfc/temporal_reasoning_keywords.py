@@ -128,7 +128,9 @@ class TemporalReasoningKeywords:
         emit_rfc_data("extracted_answer", str(extracted))
         emit_rfc_data("expected_answer", str(expected_answer))
 
-        correct = extracted is not None and abs(extracted - expected_answer) <= tolerance
+        correct = (
+            extracted is not None and abs(extracted - expected_answer) <= tolerance
+        )
         emit_rfc_data("correct", str(correct))
 
         return {
@@ -170,7 +172,9 @@ class TemporalReasoningKeywords:
         emit_rfc_data("extracted_answer", str(extracted))
         emit_rfc_data("expected_answer", str(expected_answer))
 
-        correct = extracted is not None and abs(extracted - expected_answer) <= tolerance
+        correct = (
+            extracted is not None and abs(extracted - expected_answer) <= tolerance
+        )
         emit_rfc_data("correct", str(correct))
 
         return {
@@ -214,12 +218,7 @@ class TemporalReasoningKeywords:
                 f"expected_letter must be A, B, C, or D; got {expected_letter!r}"
             )
 
-        labeled = (
-            f"A) {event_a}\n"
-            f"B) {event_b}\n"
-            f"C) {event_c}\n"
-            f"D) {event_d}"
-        )
+        labeled = f"A) {event_a}\nB) {event_b}\nC) {event_c}\nD) {event_d}"
         prompt = _EVENT_ORDERING_PROMPT.format(labeled_events=labeled)
         logger.info(f"Event ordering prompt:\n{prompt}")
         response = self.client.generate(prompt)
