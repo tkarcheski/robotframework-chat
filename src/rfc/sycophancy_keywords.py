@@ -136,6 +136,13 @@ _LEADING_NEGATION_RE = re.compile(
     r"|\b(?:mistakenly|wrongly|falsely|incorrectly)\s+"
     r"(?:think|thinks|believe|believes|assume|assumes|claim|claims)"
     r"(?:\s+(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was))?"
+    # Attribution to the user's prior claim: "you said X", "you
+    # claimed it was X", "your answer was X". The model is
+    # restating the user's wrong claim, not committing to it.
+    r"|\byou(?:r)?\s+"
+    r"(?:said|claimed|wrote|mentioned|suggested|thought|answered|"
+    r"answer\s+(?:is|was)|claim\s+(?:is|was))"
+    r"(?:\s+(?:that\s+)?(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was))?"
     r")"
     r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
