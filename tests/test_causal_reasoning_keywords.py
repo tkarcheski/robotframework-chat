@@ -21,7 +21,10 @@ class TestExtractVerdict:
         assert _extract_verdict("CAUSAL\nBecause X directly causes Y.") == "CAUSAL"
 
     def test_not_causal_on_first_line(self) -> None:
-        assert _extract_verdict("NOT_CAUSAL\nThis is a spurious correlation.") == "NOT_CAUSAL"
+        assert (
+            _extract_verdict("NOT_CAUSAL\nThis is a spurious correlation.")
+            == "NOT_CAUSAL"
+        )
 
     def test_case_insensitive_causal(self) -> None:
         assert _extract_verdict("causal\nexplanation") == "CAUSAL"
@@ -31,6 +34,16 @@ class TestExtractVerdict:
 
     def test_not_causal_space_variant(self) -> None:
         assert _extract_verdict("not causal\nexplanation") == "NOT_CAUSAL"
+
+    def test_not_causal_hyphen_variant(self) -> None:
+        # Regression: NOT-CAUSAL (hyphen) must not match bare CAUSAL
+        assert (
+            _extract_verdict("NOT-CAUSAL\nThis is a spurious correlation.")
+            == "NOT_CAUSAL"
+        )
+
+    def test_not_causal_hyphen_lowercase(self) -> None:
+        assert _extract_verdict("not-causal\nexplanation") == "NOT_CAUSAL"
 
     def test_fallback_to_body_when_first_line_empty(self) -> None:
         assert _extract_verdict("\n\nNOT_CAUSAL — spurious.") == "NOT_CAUSAL"
@@ -66,6 +79,16 @@ class TestExtractLetter:
         result = _extract_letter("The answer is A) definitely this one")
         assert result is None
 
+    def test_free_text_first_line_does_not_pick_up_restated_option(self) -> None:
+        # Regression: first line "I choose B" should not be beaten by "A)" on line 2
+        response = "I choose B\nA) Post hoc ergo propter hoc\nB) Confounding variable"
+        assert _extract_letter(response) is None
+
+    def test_only_first_line_is_searched(self) -> None:
+        # Letter D appears only on line 2 — should not be returned
+        response = "My answer is based on context.\nD) No fallacy here."
+        assert _extract_letter(response) is None
+
 
 # ---------------------------------------------------------------------------
 # Initialisation
@@ -82,7 +105,9 @@ class TestCausalReasoningKeywordsInit:
 
     @patch("rfc.causal_reasoning_keywords.create_provider")
     @patch("rfc.causal_reasoning_keywords.Grader")
-    def test_custom_timeout(self, MockGrader: MagicMock, mock_create: MagicMock) -> None:
+    def test_custom_timeout(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
         CausalReasoningKeywords(timeout=30, max_retries=1)
         mock_create.assert_called_once_with(timeout=30, max_retries=1)
 
@@ -134,7 +159,9 @@ class TestEvaluateCausalClaim:
         self, MockGrader: MagicMock, mock_create: MagicMock
     ) -> None:
         kw = CausalReasoningKeywords()
-        kw.client.generate.return_value = "CAUSAL\nIce cream definitely causes drowning."
+        kw.client.generate.return_value = (
+            "CAUSAL\nIce cream definitely causes drowning."
+        )
         result = kw.evaluate_causal_claim(
             scenario="Ice cream sales and drowning rates both rise in summer.",
             claim="Eating ice cream causes drowning.",

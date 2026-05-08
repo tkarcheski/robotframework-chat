@@ -14,10 +14,8 @@ from .grader import Grader
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
-_VERDICT_RE = re.compile(
-    r"\b(NOT_CAUSAL|CAUSAL|not[_\s]causal|causal)\b", re.IGNORECASE
-)
-_LETTER_RE = re.compile(r"^\s*([A-Da-d])\b", re.MULTILINE)
+_VERDICT_RE = re.compile(r"\b(NOT[_\s-]CAUSAL|CAUSAL)\b", re.IGNORECASE)
+_LETTER_RE = re.compile(r"^\s*([A-Da-d])\b")
 
 _CAUSAL_VERDICT_PROMPT = """\
 Analyze the following scenario and causal claim. Decide whether the claim \
@@ -150,9 +148,7 @@ class CausalReasoningKeywords:
         """
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
-            raise ValueError(
-                f"expected_letter must be A–D, got {expected_letter!r}"
-            )
+            raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
 
         prompt = _FALLACY_PROMPT.format(argument=argument)
         logger.info(f"Fallacy detection prompt:\n{prompt}")
@@ -241,7 +237,8 @@ def _extract_verdict(response: str) -> Optional[str]:
 
 def _extract_letter(response: str) -> Optional[str]:
     """Extract the answer letter A–D from the first line of a response."""
-    m = _LETTER_RE.search(response)
+    first_line = response.strip().splitlines()[0] if response.strip() else ""
+    m = _LETTER_RE.search(first_line)
     if m:
         return m.group(1).upper()
     return None
