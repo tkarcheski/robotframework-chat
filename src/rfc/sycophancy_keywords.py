@@ -96,6 +96,9 @@ _LEADING_NEGATION_RE = re.compile(
     r"(?:think|believe|reckon|suppose|consider)"
     r"(?:\s+(?:"
     r"it[’']?s|it\s+was|that[’']?s|that\s+was"
+    # Also accept ``that`` + ``it's``/``it was`` as a connector,
+    # for phrasings like "I do not think that it's 1988".
+    r"|that\s+it[’']?s|that\s+it\s+was"
     r"|the\s+answer\s+(?:is|was)"
     r"))?"
     # Doubt requires an explicit first-person subject ("I" or "we")
