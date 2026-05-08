@@ -1,0 +1,533 @@
+# Causal Reasoning Test Scenarios
+#
+# Organized into five question types:
+#   cause_id              — identify the root cause in a scenario
+#   effect_pred           — predict the downstream effect of an intervention
+#   counterfactual        — reason about what would have happened otherwise
+#   correlation_vs_causation — distinguish causal from correlational relationships
+#   causal_chain          — trace a multi-hop A→B→C chain back to its initiating cause
+#
+# Domains: science, history, everyday, economics.
+# Each entry has: scenario, question, expected, threshold.
+
+# ---------------------------------------------------------------------------
+# Cause Identification
+# ---------------------------------------------------------------------------
+CAUSE_ID_SCENARIOS:
+  - id: ci_01_scurvy
+    scenario: >
+      In the 18th century, British sailors on long voyages frequently developed
+      scurvy — a disease causing bleeding gums, fatigue, and eventually death.
+      When citrus fruits were added to their diet, the disease disappeared.
+    question: >
+      What was the root cause of scurvy among sailors in this scenario?
+    expected: >
+      Vitamin C deficiency (lack of citrus fruit or fresh produce in the diet).
+      The disease was caused by the absence of vitamin C, not by the voyage itself,
+      the ship conditions, or infection.
+    threshold: 0.6
+
+  - id: ci_02_traffic_jam
+    scenario: >
+      A highway has four lanes. An accident occurred in lane 2 at 8:00 AM.
+      By 8:05 AM, drivers in all four lanes had slowed to look at the accident.
+      By 8:15 AM, a 10 km traffic jam had formed behind the accident site,
+      even though lanes 1, 3, and 4 were physically unobstructed.
+    question: >
+      What is the primary cause of the traffic jam in lanes 1, 3, and 4?
+    expected: >
+      Rubbernecking — drivers slowing to observe the accident in lane 2.
+      The physical blockage in lane 2 was not the cause for the other lanes;
+      voluntary speed reduction by curious drivers was.
+    threshold: 0.6
+
+  - id: ci_03_forest_fire
+    scenario: >
+      A forest fire broke out after a prolonged drought left the underbrush
+      extremely dry. A camper discarded a cigarette butt, which ignited the
+      dry underbrush. The fire spread rapidly due to strong winds.
+    question: >
+      Identify the proximate cause and the underlying enabling cause of the fire.
+    expected: >
+      Proximate (immediate) cause: the discarded cigarette butt.
+      Underlying enabling cause: the drought, which dried the underbrush
+      and made the forest susceptible to ignition. Without the drought,
+      the same cigarette might not have started the fire.
+    threshold: 0.6
+
+  - id: ci_04_bank_run
+    scenario: >
+      Rumours spread that a bank was insolvent. Depositors, fearing they would
+      lose their savings, rushed to withdraw cash simultaneously. The bank ran
+      out of liquid assets and had to close, even though its loans were
+      performing and its balance sheet was technically solvent before the run.
+    question: >
+      What caused the bank to fail in this scenario?
+    expected: >
+      A self-fulfilling bank run driven by collective fear and loss of confidence.
+      The bank did not fail because it was insolvent — it failed because
+      coordinated panic withdrawals depleted its liquid reserves.
+    threshold: 0.6
+
+  - id: ci_05_plant_wilting
+    scenario: >
+      A houseplant is placed in a room with good sunlight and watered every two
+      weeks. Its leaves begin to wilt and turn yellow. When the soil is tested,
+      it is found to be waterlogged. The pot has no drainage holes.
+    question: >
+      What is causing the plant to wilt and turn yellow?
+    expected: >
+      Overwatering / root rot caused by poor drainage. The pot has no drainage
+      holes, so water pools around the roots, depriving them of oxygen and
+      causing rot. The symptoms mimic drought but are caused by excess water.
+    threshold: 0.6
+
+  - id: ci_06_antibiotic_resistance
+    scenario: >
+      A patient is prescribed a 10-day antibiotic course for a bacterial infection.
+      They feel better after 5 days and stop taking the medication. Three months
+      later, the same infection returns and does not respond to the same antibiotic.
+    question: >
+      What caused the antibiotic resistance in this scenario?
+    expected: >
+      Incomplete antibiotic course. Stopping early leaves the hardiest bacteria
+      alive; these reproduce and pass on resistance. The incomplete treatment
+      selected for resistant strains rather than eliminating all bacteria.
+    threshold: 0.6
+
+  - id: ci_07_economic_inflation
+    scenario: >
+      A government facing a budget deficit printed large quantities of new money
+      to pay its obligations. Within 18 months, prices for goods and services
+      had risen by 300%.
+    question: >
+      What caused the hyperinflation in this scenario?
+    expected: >
+      Excessive money supply growth (monetary expansion). When too much money
+      chases the same quantity of goods, each unit of money buys less —
+      prices rise. The root cause was the decision to print money to cover
+      the deficit, not external trade factors.
+    threshold: 0.6
+
+# ---------------------------------------------------------------------------
+# Effect Prediction
+# ---------------------------------------------------------------------------
+EFFECT_PRED_SCENARIOS:
+  - id: ep_01_minimum_wage
+    scenario: >
+      An economist models a competitive labour market where the equilibrium wage
+      is $12/hour. The government imposes a minimum wage of $15/hour.
+    question: >
+      According to standard supply-and-demand economics, what is the predicted
+      effect on employment in this market?
+    expected: >
+      A surplus of labour (unemployment). At $15/hour, the quantity of labour
+      supplied exceeds the quantity demanded. Employers hire fewer workers,
+      creating involuntary unemployment among those willing to work at the
+      new minimum but unable to find jobs.
+    threshold: 0.6
+
+  - id: ep_02_deforestation
+    scenario: >
+      A large tropical rainforest region is clear-cut for agriculture.
+      The area has historically had high annual rainfall sustained by
+      the water cycle of the forest (trees releasing moisture through
+      evapotranspiration).
+    question: >
+      What is the predicted long-term effect on local rainfall patterns?
+    expected: >
+      Reduced rainfall / increased aridity. Fewer trees means less
+      evapotranspiration, which reduces atmospheric moisture and disrupts
+      the local water cycle. This creates a feedback loop: less rain → fewer
+      trees → even less rain → desertification risk.
+    threshold: 0.6
+
+  - id: ep_03_interest_rate_hike
+    scenario: >
+      A central bank raises its benchmark interest rate from 2% to 6%
+      over 12 months in response to rising inflation.
+    question: >
+      What are the two most predictable direct effects on the broader economy?
+    expected: >
+      1. Reduced borrowing and consumer spending — higher loan costs deter
+         mortgages, car loans, and credit card spending.
+      2. Reduced business investment — companies delay capital projects
+         because the cost of debt financing has risen.
+      Both together reduce aggregate demand, which is the mechanism intended
+      to cool inflation.
+    threshold: 0.6
+
+  - id: ep_04_invasive_species
+    scenario: >
+      A non-native predator fish is introduced into a lake ecosystem. The lake
+      currently has a stable food web: algae → small crustaceans → native fish →
+      osprey. The invasive fish competes directly with native fish for crustaceans.
+    question: >
+      Predict two downstream effects on the lake ecosystem.
+    expected: >
+      1. Native fish populations decline due to increased competition for food.
+      2. Osprey populations may decline as their primary food source (native fish)
+         becomes scarcer.
+      Additionally, crustacean populations may temporarily increase if native
+      fish decline faster than the invasive species consumes them, causing
+      algal blooms (too many crustaceans eating algae, or conversely, algae
+      blooms if crustaceans are over-predated).
+    threshold: 0.55
+
+  - id: ep_05_vaccination_campaign
+    scenario: >
+      A highly contagious disease has a basic reproduction number (R0) of 4,
+      meaning each infected person infects 4 others on average. A vaccine with
+      95% efficacy is rolled out and 80% of the population is vaccinated.
+    question: >
+      Will the disease reach herd immunity threshold? Explain the predicted effect.
+    expected: >
+      Yes. Herd immunity threshold ≈ 1 - 1/R0 = 1 - 0.25 = 75%.
+      Effective vaccination coverage = 80% × 95% = 76%, which exceeds 75%.
+      The predicted effect: community transmission breaks down and the disease
+      cannot sustain an outbreak even among unvaccinated individuals.
+    threshold: 0.55
+
+  - id: ep_06_sleep_deprivation
+    scenario: >
+      A healthy adult consistently sleeps only 4 hours per night for two weeks
+      instead of the recommended 7–9 hours.
+    question: >
+      What are the predicted cognitive and physiological effects after two weeks?
+    expected: >
+      Cognitive: impaired attention, working memory, and decision-making,
+      similar in magnitude to being legally drunk (0.1% BAC equivalent).
+      Physiological: elevated cortisol (stress hormone), impaired immune function,
+      disrupted glucose metabolism (increased diabetes risk), and elevated
+      blood pressure. Accumulated sleep debt does not fully self-correct
+      with one night of recovery sleep.
+    threshold: 0.6
+
+# ---------------------------------------------------------------------------
+# Counterfactual Reasoning
+# ---------------------------------------------------------------------------
+COUNTERFACTUAL_SCENARIOS:
+  - id: cf_01_match_fire
+    scenario: >
+      John struck a match, which caused a small fire. The fire spread because
+      there was dry grass nearby. The dry grass was dry because there had been
+      no rain for three months.
+    question: >
+      If John had not struck the match, would the fire have started?
+    expected: >
+      No. In this specific scenario, the match was the proximate trigger.
+      Without it, the fire would not have started — the dry grass is a
+      necessary enabling condition but not a sufficient cause on its own.
+      The counterfactual (no match) results in no fire, assuming no other
+      ignition source is present.
+    threshold: 0.6
+
+  - id: cf_02_penicillin
+    scenario: >
+      Alexander Fleming discovered penicillin in 1928 by noticing that a mold
+      contaminating his petri dish was killing nearby bacteria. He investigated
+      this observation, leading to the development of antibiotics.
+    question: >
+      If Fleming had immediately discarded the contaminated petri dish without
+      examining it, as was standard lab practice, what would most plausibly
+      have happened to antibiotic development?
+    expected: >
+      Antibiotics would likely still have been discovered, but probably later
+      and by someone else. Penicillin or a similar compound would eventually
+      have been isolated through systematic screening of natural compounds,
+      as was happening in other labs. The discovery might have been delayed
+      by years or decades, not prevented permanently. The key counterfactual
+      is delay, not permanent absence.
+    threshold: 0.55
+
+  - id: cf_03_bridge_weight
+    scenario: >
+      A bridge is rated to support 10 tonnes. A convoy of trucks weighing a total
+      of 15 tonnes crossed the bridge, and it collapsed.
+    question: >
+      If the convoy had weighed only 8 tonnes instead of 15 tonnes, would the
+      bridge have collapsed?
+    expected: >
+      No. 8 tonnes is below the 10-tonne rating, so the bridge would have
+      supported the load and not collapsed, assuming no other failure modes
+      (corrosion, pre-existing structural damage) are specified in the scenario.
+    threshold: 0.7
+
+  - id: cf_04_treaty_ww1
+    scenario: >
+      World War I began following a chain of events: the assassination of
+      Archduke Franz Ferdinand triggered Austrian mobilisation, which triggered
+      Russian mobilisation, which triggered German mobilisation under the
+      Schlieffen Plan. The interlocking alliance system drew in France and Britain.
+    question: >
+      If the Schlieffen Plan had not existed and Germany had not mobilised
+      immediately upon Russian mobilisation, is it plausible that the war would
+      have remained a localised Austro-Serbian conflict?
+    expected: >
+      Plausibly yes, as a localised conflict. Without German mobilisation,
+      France and Britain had no treaty obligation to intervene in an Austro-Serbian
+      war. The conflict might have resembled earlier Balkan Wars (1912–1913)
+      which remained regional. However, the deep pre-war tensions (arms race,
+      imperial rivalries) mean some form of major conflict remained probable
+      within a few years — the counterfactual reduces WWI's scope or timing,
+      not necessarily the long-run probability of major European conflict.
+    threshold: 0.5
+
+  - id: cf_05_seatbelt
+    scenario: >
+      A car travelling at 80 km/h hit a barrier. The driver was not wearing a
+      seatbelt and was thrown forward, striking the windscreen and sustaining
+      fatal injuries.
+    question: >
+      If the driver had been wearing a seatbelt, would the outcome most likely
+      have been different?
+    expected: >
+      Yes. At 80 km/h, a seatbelt would have restrained the driver, preventing
+      the forward ejection into the windscreen. Injuries would likely have been
+      severe but survivable in most cases — research shows seatbelts reduce
+      fatality risk by approximately 45–60% at this speed range.
+    threshold: 0.65
+
+  - id: cf_06_insulin_discovery
+    scenario: >
+      Before insulin was isolated in 1921, Type 1 diabetes was universally fatal
+      within months to years of diagnosis. Banting and Best extracted insulin
+      from dog pancreases, then purified it for human use.
+    question: >
+      If insulin had not been discovered until 1950 instead of 1921, what would
+      have been the most significant consequences for patients diagnosed with
+      Type 1 diabetes during that 29-year gap?
+    expected: >
+      Millions of patients diagnosed with Type 1 diabetes between 1921 and 1950
+      would have died who, in the actual timeline, survived with insulin therapy.
+      The counterfactual delay represents several hundred thousand to millions
+      of additional premature deaths. Children and young adults would have been
+      disproportionately affected, as Type 1 typically presents before age 30.
+    threshold: 0.6
+
+  - id: cf_07_thermostat
+    scenario: >
+      A room thermostat is set to 20°C. The actual room temperature is 18°C.
+      The thermostat turns on the heating. The room warms to 20°C. The thermostat
+      turns off the heating.
+    question: >
+      If the thermostat had been broken and unable to send the "turn on" signal,
+      would the room have reached 20°C?
+    expected: >
+      No. Without the thermostat signal, the heating system would not have
+      activated (assuming no manual override). The room would have remained
+      at or below 18°C (possibly cooling further if external temperature drops).
+      The thermostat signal was the necessary cause of the heating activation.
+    threshold: 0.7
+
+# ---------------------------------------------------------------------------
+# Correlation vs. Causation
+# ---------------------------------------------------------------------------
+CORR_VS_CAUSE_SCENARIOS:
+  - id: cv_01_ice_cream_drowning
+    scenario: >
+      A dataset shows that on days when ice cream sales are highest, the number
+      of drowning deaths is also highest. This correlation holds across multiple
+      years of data.
+    question: >
+      Does ice cream consumption cause drowning? Identify what is actually
+      driving both variables.
+    expected: >
+      No. Ice cream does not cause drowning. Both are caused by a confounding
+      variable: hot weather. Hot days increase ice cream consumption AND
+      increase the number of people swimming, which raises drowning risk.
+      This is a textbook example of a spurious correlation driven by a
+      common cause (confound).
+    threshold: 0.65
+
+  - id: cv_02_shoe_size_reading
+    scenario: >
+      A study finds that children with larger shoe sizes score higher on
+      reading tests. The correlation is statistically significant.
+    question: >
+      Does having bigger feet improve reading ability? Explain the actual
+      relationship.
+    expected: >
+      No. Both shoe size and reading ability are caused by age/developmental
+      stage. Older children have larger feet AND have had more years of
+      reading instruction. Age is the common cause (confound). The shoe
+      size–reading correlation disappears when age is controlled for.
+    threshold: 0.65
+
+  - id: cv_03_hospitals_deaths
+    scenario: >
+      Data shows that people who spend more time in hospitals have higher
+      mortality rates than people who rarely visit hospitals.
+    question: >
+      Does going to the hospital cause death? Explain the real relationship.
+    expected: >
+      No. This is reverse causation combined with selection bias. People who
+      are seriously ill (and therefore closer to death) are more likely to be
+      hospitalised. The severity of illness causes both hospitalisation and
+      death. Hospitals actually reduce mortality among those treated; the raw
+      correlation is misleading because the population is not random.
+    threshold: 0.65
+
+  - id: cv_04_firefighters_damage
+    scenario: >
+      Insurance data shows that fires attended by more firefighters cause
+      more property damage than fires attended by fewer firefighters.
+    question: >
+      Do firefighters cause property damage? What explains this correlation?
+    expected: >
+      No. Larger, more destructive fires require more firefighters. Fire severity
+      causes both the deployment of additional firefighters AND greater property
+      damage. Firefighters reduce damage relative to what it would have been —
+      the raw correlation is misleading because fire size is the underlying cause
+      of both variables.
+    threshold: 0.65
+
+  - id: cv_05_storks_babies
+    scenario: >
+      European data from the 1990s showed a positive correlation between the
+      number of nesting stork pairs in a country and the country's birth rate.
+    question: >
+      Do storks deliver babies? What actually explains the correlation?
+    expected: >
+      No. Both stork populations and birth rates are associated with rural,
+      less urbanised countries. Rural areas have more habitat for storks AND
+      historically higher birth rates. Urbanisation (or its absence) is the
+      confounding variable. This is a famous example of a coincidental
+      correlation with no causal mechanism.
+    threshold: 0.65
+
+# ---------------------------------------------------------------------------
+# Causal Chain Tracing
+# ---------------------------------------------------------------------------
+CAUSAL_CHAIN_SCENARIOS:
+  - id: cc_01_deforestation_flooding
+    scenario: >
+      Step 1: Logging companies clear a hillside forest.
+      Step 2: Without tree roots, topsoil erodes rapidly during rain.
+      Step 3: Eroded sediment flows into the river, raising the riverbed.
+      Step 4: A shallower river overflows its banks during the wet season.
+      Step 5: Downstream villages flood.
+    question: >
+      What is the single initiating cause that started this chain of events?
+    expected: >
+      Deforestation (clearing the hillside forest by logging companies).
+      All subsequent steps — erosion, river silting, reduced channel capacity,
+      flooding — trace back to this first action.
+    threshold: 0.7
+
+  - id: cc_02_fridge_food_spoilage
+    scenario: >
+      Step 1: A power cut occurred during a storm.
+      Step 2: The refrigerator lost power and stopped cooling.
+      Step 3: The internal temperature rose above 4°C.
+      Step 4: Bacteria multiplied rapidly in the food.
+      Step 5: The food spoiled and became unsafe to eat.
+    question: >
+      Trace the chain and identify both the initiating cause and the step
+      that made the food unsafe (the mechanism of spoilage).
+    expected: >
+      Initiating cause: the power cut (storm-induced).
+      Mechanism of spoilage (step that directly caused unsafety): bacterial
+      multiplication (Step 4), which was enabled by the temperature rising
+      above 4°C (Step 3). The full chain is:
+      power cut → refrigerator off → temperature rise → bacterial growth → spoilage.
+    threshold: 0.6
+
+  - id: cc_03_road_accident_chain
+    scenario: >
+      Step 1: A driver was distracted by their phone and failed to brake.
+      Step 2: The car ran a red light.
+      Step 3: A pedestrian stepped off the kerb on the green walk signal.
+      Step 4: The driver swerved and hit a parked vehicle.
+      Step 5: The parked vehicle was pushed onto the pavement, injuring a bystander.
+    question: >
+      What is the root cause of the bystander's injury?
+    expected: >
+      The driver's distracted driving (phone use). This caused the red light
+      violation, which caused the swerve, which caused the parked vehicle to
+      strike the bystander. All harm traces to the initial distraction.
+    threshold: 0.65
+
+  - id: cc_04_lung_cancer_chain
+    scenario: >
+      Step 1: A person smoked cigarettes for 30 years.
+      Step 2: Carcinogens in smoke caused repeated DNA mutations in lung cells.
+      Step 3: A mutation in a tumour-suppressor gene went unrepaired.
+      Step 4: Affected cells lost growth control and multiplied unchecked.
+      Step 5: A malignant tumour formed in the lung.
+    question: >
+      Name the initiating cause and the pivotal molecular step that converted
+      normal cells into cancer cells.
+    expected: >
+      Initiating cause: 30 years of cigarette smoking.
+      Pivotal molecular step: mutation in a tumour-suppressor gene (Step 3) —
+      this is when the normal cellular brakes on growth were lost, enabling
+      uncontrolled cell division. Prior mutations were steps toward this failure,
+      but the loss of tumour-suppressor function is the biological tipping point.
+    threshold: 0.6
+
+  - id: cc_05_inflation_wage_spiral
+    scenario: >
+      Step 1: Energy prices rise sharply due to a supply disruption.
+      Step 2: Production costs increase for manufacturers.
+      Step 3: Consumer prices rise (cost-push inflation).
+      Step 4: Workers demand higher wages to maintain purchasing power.
+      Step 5: Higher wages increase production costs further.
+      Step 6: Manufacturers raise prices again.
+      Step 7: A wage-price spiral takes hold.
+    question: >
+      What triggered the wage-price spiral, and what step transformed
+      a one-time cost shock into a self-sustaining inflationary cycle?
+    expected: >
+      Trigger: the energy supply disruption (Step 1).
+      Self-sustaining mechanism begins at Step 4: when workers secured higher
+      wages in response to price rises, this fed back into production costs
+      (Step 5), which caused a second round of price increases (Step 6),
+      creating a feedback loop. The spiral became self-sustaining once wages
+      and prices were each responding to the other.
+    threshold: 0.55
+
+  - id: cc_06_cascade_failure
+    scenario: >
+      Step 1: A small software bug caused a monitoring service to crash.
+      Step 2: The crashed monitor stopped sending health signals.
+      Step 3: An automated failover system misread the silence as a hardware
+              failure and promoted a secondary database to primary.
+      Step 4: Both the original and promoted databases now believed they were
+              primary (split-brain).
+      Step 5: Conflicting writes from both primaries corrupted the data.
+    question: >
+      Identify the root cause of the data corruption and the design flaw that
+      amplified a small bug into a major incident.
+    expected: >
+      Root cause: the software bug that crashed the monitoring service (Step 1).
+      Amplifying design flaw: the failover system's decision to act on
+      absence of signal (silence) without verifying the reason for silence
+      (Step 3). A more robust design would require positive confirmation of
+      failure before promoting a secondary, preventing split-brain. The lack
+      of fencing / STONITH (Shoot The Other Node In The Head) protection is
+      the architectural vulnerability.
+    threshold: 0.5
+
+# ---------------------------------------------------------------------------
+# Tier 1 Structured Output Scenarios (JSON cause/effect format)
+# ---------------------------------------------------------------------------
+STRUCTURED_CAUSAL_PROMPTS:
+  - id: struct_01
+    prompt: >
+      A car engine overheats because the coolant level is too low.
+      Identify the cause and effect.
+      Respond ONLY as JSON: {"cause": "...", "effect": "..."}
+
+  - id: struct_02
+    prompt: >
+      Increased atmospheric CO2 traps more heat in the atmosphere, raising
+      global average temperatures.
+      Identify the cause and effect.
+      Respond ONLY as JSON: {"cause": "...", "effect": "..."}
+
+  - id: struct_03
+    prompt: >
+      A patient skips meals and experiences low blood sugar, causing dizziness.
+      Identify the cause and effect.
+      Respond ONLY as JSON: {"cause": "...", "effect": "..."}

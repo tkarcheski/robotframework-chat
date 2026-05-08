@@ -247,6 +247,11 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  causal-reasoning:
+    label: "Causal Reasoning"
+    path: "robot/causal_reasoning"
+    description: "Causal reasoning evaluation — cause identification, effect prediction, counterfactual reasoning, correlation vs. causation, and multi-hop causal chain tracing"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
