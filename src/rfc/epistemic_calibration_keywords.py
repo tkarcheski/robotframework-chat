@@ -38,8 +38,6 @@ DEFAULT_UNCERTAINTY_MARKERS: List[str] = [
     "uncertain",
     "uncertainty",
     "unpredictable",
-    "random",
-    "inherently",
     "might",
     "may not",
     "could not",
@@ -49,8 +47,7 @@ DEFAULT_UNCERTAINTY_MARKERS: List[str] = [
 # Phrases that indicate the model acknowledges its training cutoff or lack
 # of access to real-time / live data.
 DEFAULT_BOUNDARY_MARKERS: List[str] = [
-    "training",
-    "cutoff",
+    "training cutoff",
     "knowledge cutoff",
     "real-time",
     "real time",
@@ -123,7 +120,9 @@ class EpistemicCalibrationKeywords:
         Returns:
             Dict with keys: response, uncertainty_expressed, markers_found.
         """
-        effective_markers = markers if markers is not None else DEFAULT_UNCERTAINTY_MARKERS
+        effective_markers = (
+            markers if markers is not None else DEFAULT_UNCERTAINTY_MARKERS
+        )
 
         prompt = _UNCERTAINTY_PROMPT.format(question=question)
         logger.info(f"Uncertainty expression prompt:\n{prompt}")

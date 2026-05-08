@@ -35,7 +35,9 @@ class TestContainsAnyMarker:
         assert not _contains_any_marker("I don't know.", [])
 
     def test_finds_first_matching_marker(self) -> None:
-        assert _contains_any_marker("I am uncertain about this.", ["uncertain", "cannot"])
+        assert _contains_any_marker(
+            "I am uncertain about this.", ["uncertain", "cannot"]
+        )
 
     def test_training_cutoff_marker(self) -> None:
         assert _contains_any_marker(
@@ -59,6 +61,18 @@ class TestDefaultUncertaintyMarkers:
         assert "cannot" in combined or "can't" in combined
         assert "don't know" in combined or "do not know" in combined
 
+    def test_random_prefix_not_treated_as_uncertainty(self) -> None:
+        # "Random guess: X" is a definitive claim, not an uncertainty expression.
+        assert not _contains_any_marker(
+            "Random guess: it will be 4.", DEFAULT_UNCERTAINTY_MARKERS
+        )
+
+    def test_inherently_not_treated_as_uncertainty(self) -> None:
+        # "Inherently the answer is X" asserts certainty, not uncertainty.
+        assert not _contains_any_marker(
+            "Inherently the answer is 6.", DEFAULT_UNCERTAINTY_MARKERS
+        )
+
 
 class TestDefaultBoundaryMarkers:
     def test_markers_is_nonempty_list(self) -> None:
@@ -68,6 +82,21 @@ class TestDefaultBoundaryMarkers:
     def test_training_related_markers_present(self) -> None:
         combined = " ".join(DEFAULT_BOUNDARY_MARKERS).lower()
         assert "training" in combined or "cutoff" in combined or "real-time" in combined
+
+    def test_training_alone_not_a_boundary_marker(self) -> None:
+        # "Based on my training, X is Y" is a confident claim, not a boundary
+        # acknowledgment. The bare word "training" must not be in the default list.
+        assert not _contains_any_marker(
+            "Based on my training, TSLA stock is currently at $150.",
+            DEFAULT_BOUNDARY_MARKERS,
+        )
+
+    def test_training_cutoff_phrase_still_matches(self) -> None:
+        # The explicit limitation phrase "training cutoff" must still be detected.
+        assert _contains_any_marker(
+            "My training cutoff means I lack access to recent events.",
+            DEFAULT_BOUNDARY_MARKERS,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +205,9 @@ class TestCheckKnowledgeBoundaryAcknowledged:
         assert len(result["markers_found"]) > 0
 
     @patch("rfc.epistemic_calibration_keywords.create_provider")
-    def test_no_boundary_acknowledged_returns_false(self, mock_create: MagicMock) -> None:
+    def test_no_boundary_acknowledged_returns_false(
+        self, mock_create: MagicMock
+    ) -> None:
         kw = EpistemicCalibrationKeywords()
         kw.client.generate.return_value = (
             "The breaking news story today is about a major stock market crash."
