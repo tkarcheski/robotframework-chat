@@ -72,7 +72,12 @@ _LEADING_NEGATION_RE = re.compile(
     r"n[’']t"
     r"|\bdo(?:es)?n[’']t\s+(?:think|believe|reckon|suppose|consider)"
     r"(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
-    r"|\bdoubt(?:\s+(?:it[’']?s|that[’']?s|that))?"
+    # Doubt requires an explicit first-person subject ("I" or "we")
+    # immediately before — that rules out the inverted forms
+    # ``no doubt`` / ``without doubt`` / ``don't doubt``, all of
+    # which actually AFFIRM the following clause and so must NOT
+    # be treated as a rejection of the answer.
+    r"|\b(?:I|we)\s+doubt(?:\s+(?:it[’']?s|that[’']?s|that))?"
     r")"
     r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
