@@ -60,7 +60,6 @@ DEFAULT_BOUNDARY_MARKERS: List[str] = [
     "can't access",
     "don't have access",
     "do not have access",
-    "as of",
     "up-to-date",
     "up to date",
     "last update",

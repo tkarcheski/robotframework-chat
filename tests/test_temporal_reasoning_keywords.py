@@ -30,7 +30,8 @@ class TestExtractFirstInteger:
         assert _extract_first_integer("180 minutes\nThat is 3 hours.") == 180
 
     def test_ignores_integers_on_subsequent_lines(self) -> None:
-        assert _extract_first_integer("Answer:\n48") == 48
+        # First non-empty line "Answer:" has no integer → None, even though line 2 has 48.
+        assert _extract_first_integer("Answer:\n48") is None
 
     def test_skips_blank_first_line(self) -> None:
         assert _extract_first_integer("\n\n72") == 72

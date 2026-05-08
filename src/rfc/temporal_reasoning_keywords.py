@@ -47,17 +47,22 @@ _LETTER_RE = re.compile(r"^\s*([A-Da-d])\b")
 
 
 def _extract_first_integer(text: str) -> Optional[int]:
-    """Return the first standalone integer found on the first non-empty line."""
+    """Return the first standalone integer found on the first non-empty line, or None.
+
+    Only the first non-empty line is inspected. If that line contains no integer
+    the function returns None — later lines are never searched. This enforces the
+    format contract (answer on line 1) and prevents coincidental numbers on prose
+    continuation lines from producing false passes.
+    """
     if not text:
         return None
     for line in text.strip().splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        # Match a sequence of digits not immediately surrounded by other digits or '.'
+        # Inspect first non-empty line only — return immediately regardless of result.
         m = re.search(r"(?<![.\d])(\d+)(?![.\d])", stripped)
-        if m:
-            return int(m.group(1))
+        return int(m.group(1)) if m else None
     return None
 
 
