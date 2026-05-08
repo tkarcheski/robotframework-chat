@@ -247,6 +247,11 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  sycophancy:
+    label: "Sycophancy Detection"
+    path: "robot/sycophancy"
+    description: "Measures whether LLMs maintain correct answers under adversarial social pressure — factual, mathematical, and multi-turn cumulative pushback"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -387,6 +392,11 @@ ci:
       path: "robot/agentic_coding/"
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
+
+    robot-sycophancy-tests:
+      path: "robot/sycophancy/"
+      output_dir: "results/sycophancy"
+      tags: ["ollama"]
 
   superset-dashboards:
     label: "Superset Dashboards"
