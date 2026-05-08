@@ -1,0 +1,65 @@
+# Event ordering scenarios for temporal reasoning tests
+#
+# Each scenario presents 4 labeled events (A–D) in non-chronological order
+# so the LLM cannot simply return "A B C D" without reasoning.
+#
+# Each entry has:
+#   name:           human-readable label for the scenario
+#   events:         dict mapping label → description with year hint
+#   expected_order: space-separated labels in chronological order (earliest first)
+
+EVENT_ORDERING_SCENARIOS:
+
+  # ── Scientific discoveries ───────────────────────────────────────────────────
+  - name: "Scientific discoveries — Darwin to Turing"
+    events:
+      A: "Albert Einstein publishes Special Relativity (1905)"
+      B: "Charles Darwin publishes On the Origin of Species (1859)"
+      C: "Alan Turing describes the Turing machine (1936)"
+      D: "Alexander Graham Bell invents the telephone (1876)"
+    expected_order: "B D A C"
+
+  # ── Twentieth-century world events ──────────────────────────────────────────
+  - name: "World events — two world wars to the Cold War"
+    events:
+      A: "The Berlin Wall falls (1989)"
+      B: "World War I begins (1914)"
+      C: "The Moon landing — Apollo 11 (1969)"
+      D: "World War II ends (1945)"
+    expected_order: "B D C A"
+
+  # ── Computing and the Internet ───────────────────────────────────────────────
+  - name: "Computing milestones — ENIAC to the iPhone"
+    events:
+      A: "The World Wide Web is invented by Tim Berners-Lee (1991)"
+      B: "ENIAC, the first general-purpose computer, is built (1945)"
+      C: "The first iPhone is released by Apple (2007)"
+      D: "The first email is sent by Ray Tomlinson (1971)"
+    expected_order: "B D A C"
+
+  # ── Space exploration ────────────────────────────────────────────────────────
+  - name: "Space milestones — Gagarin to Voyager"
+    events:
+      A: "Voyager 1 crosses into interstellar space (2012)"
+      B: "Yuri Gagarin becomes the first human in space (1961)"
+      C: "The Hubble Space Telescope is launched (1990)"
+      D: "The Mars Pathfinder / Sojourner rover lands on Mars (1997)"
+    expected_order: "B C D A"
+
+  # ── Internet companies ───────────────────────────────────────────────────────
+  - name: "Internet companies — Google to YouTube"
+    events:
+      A: "YouTube is founded (2005)"
+      B: "Google is founded (1998)"
+      C: "Facebook is founded (2004)"
+      D: "Wikipedia is founded (2001)"
+    expected_order: "B D C A"
+
+  # ── Medical history ──────────────────────────────────────────────────────────
+  - name: "Medical breakthroughs — Jenner to Watson and Crick"
+    events:
+      A: "Alexander Fleming discovers penicillin (1928)"
+      B: "Watson and Crick describe the DNA double helix (1953)"
+      C: "Edward Jenner develops the smallpox vaccine (1796)"
+      D: "Louis Pasteur establishes the germ theory of disease (1860s)"
+    expected_order: "C D A B"

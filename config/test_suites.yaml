@@ -256,6 +256,11 @@ test_suites:
     path: "robot/sycophancy"
     description: "Pressure-resistance testing — does the model maintain a correct or well-reasoned position when the user pushes back via factual contradiction, claimed expert authority, or appeal to consensus?"
 
+  temporal-reasoning:
+    label: "Temporal Reasoning"
+    path: "robot/temporal_reasoning"
+    description: "Temporal reasoning evaluation: historical event ordering (Tier 1), date/duration arithmetic (Tier 1), relative-time sequence resolution (Tier 1), and multi-event timeline analysis (Tier 2)"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"

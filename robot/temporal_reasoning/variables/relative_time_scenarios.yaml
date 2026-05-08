@@ -1,0 +1,87 @@
+# Relative time / sequence reasoning scenarios
+#
+# Multiple-choice questions requiring the model to compare relative time
+# expressions and identify the correct temporal relationship.
+#
+# Each entry has:
+#   name:            human-readable test label
+#   question:        the temporal question to pose
+#   choices:         list of lettered answer options
+#   expected_letter: the correct answer letter
+
+RELATIVE_TIME_SCENARIOS:
+
+  # ── Same-duration equivalence ─────────────────────────────────────────────────
+  - name: "Three weeks equals 21 days — same arrival"
+    question: >
+      Sarah's package is arriving in 3 weeks. John's package arrives in 21 days.
+      Whose package arrives SOONER (if both arrive on the same day, choose C)?
+    choices:
+      - "A) Sarah's package arrives sooner"
+      - "B) John's package arrives sooner"
+      - "C) Both packages arrive on the same day"
+    expected_letter: "C"
+
+  # ── Strict ordering ───────────────────────────────────────────────────────────
+  - name: "Two weeks vs 15 days — event A is earlier"
+    question: >
+      Event A is scheduled for exactly 2 weeks from today.
+      Event B is scheduled for exactly 15 days from today.
+      Which event occurs FIRST?
+    choices:
+      - "A) Event A occurs first"
+      - "B) Event B occurs first"
+      - "C) They occur on the same day"
+    expected_letter: "A"
+
+  # ── Derived sequence from relative offsets ────────────────────────────────────
+  - name: "Chain: X before Y before Z — correct order"
+    question: >
+      Event X happens 3 days before event Y.
+      Event Y happens 2 days before event Z.
+      Which lists the events in correct chronological order (earliest first)?
+    choices:
+      - "A) X, then Y, then Z"
+      - "B) Z, then Y, then X"
+      - "C) Y, then X, then Z"
+      - "D) Y, then Z, then X"
+    expected_letter: "A"
+
+  # ── Time arithmetic in a meeting context ──────────────────────────────────────
+  - name: "Meeting start 90 min before M ends — 10 AM + 2 h meeting"
+    question: >
+      Meeting M starts at 10:00 AM and runs for exactly 2 hours.
+      Meeting N starts exactly 90 minutes before Meeting M ends.
+      At what time does Meeting N start?
+    choices:
+      - "A) 10:30 AM"
+      - "B) 11:00 AM"
+      - "C) 11:30 AM"
+      - "D) 12:00 PM"
+    expected_letter: "A"
+
+  # ── Project timeline ──────────────────────────────────────────────────────────
+  - name: "Task chain: A finishes Day 10, B starts Day 12, takes 5 days"
+    question: >
+      Task A finishes on Day 10.
+      Task B starts 2 days after Task A finishes and takes exactly 5 days.
+      Task C starts immediately after Task B finishes.
+      On which day does Task C start?
+    choices:
+      - "A) Day 15"
+      - "B) Day 17"
+      - "C) Day 18"
+      - "D) Day 19"
+    expected_letter: "B"
+
+  # ── Duration comparison ───────────────────────────────────────────────────────
+  - name: "Project A 3 weeks vs Project B 25 days — B is longer"
+    question: >
+      Project A takes exactly 3 weeks to complete.
+      Project B takes exactly 25 days to complete.
+      Which project takes LONGER?
+    choices:
+      - "A) Project A takes longer"
+      - "B) Project B takes longer"
+      - "C) Both projects take the same amount of time"
+    expected_letter: "B"

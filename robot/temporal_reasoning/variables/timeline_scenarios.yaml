@@ -1,0 +1,78 @@
+# Timeline reasoning scenarios — Tier 2 (LLM-graded)
+#
+# Open-ended questions requiring the model to describe a sequence of events
+# in correct chronological order and draw reasonable inferences from the
+# overall timeline.  Graded by an LLM judge against expected_elements.
+#
+# Each entry has:
+#   name:              human-readable label
+#   scenario:          the sequence of events to analyse
+#   expected_elements: key ideas a correct analysis should mention
+#   min_score:         minimum passing score (0.0–1.0)
+
+TIMELINE_SCENARIOS:
+
+  # ── Startup growth trajectory ─────────────────────────────────────────────────
+  - name: "Startup: product first, then funding"
+    scenario: >
+      A software startup was founded in January.
+      In April it launched a public beta product.
+      By August it had reached 100,000 active users.
+      In November of the same year it closed its Series A funding round.
+    expected_elements: >
+      Product launched before fundraising, rapid user growth in summer,
+      growth-first strategy, Series A after proven traction, 10 months
+      from founding to major funding, beta-to-scale trajectory.
+    min_score: 0.4
+
+  # ── Medical treatment timeline ────────────────────────────────────────────────
+  - name: "Patient: treatment switch after complication"
+    scenario: >
+      A patient was diagnosed with a chronic condition in Year 1, Month 2,
+      and immediately began Treatment A.
+      In Year 2, Month 4, the patient was hospitalised due to a serious
+      adverse reaction to Treatment A.
+      After recovery, the patient switched to Treatment B in Year 2, Month 6.
+      By Year 3, Month 1, the condition was under control with no further
+      hospitalisations.
+    expected_elements: >
+      Initial diagnosis and treatment in Year 1, adverse reaction forcing
+      hospitalisation in Year 2, treatment switch following complication,
+      successful outcome by Year 3, approximately 2-year journey to stable
+      management, treatment adjustment driven by adverse event rather than
+      lack of efficacy.
+    min_score: 0.4
+
+  # ── Software project delay ────────────────────────────────────────────────────
+  - name: "Software project: 6-month delay due to bugs"
+    scenario: >
+      A software project kicked off in Q1 of Year 1.
+      Requirements were finalised in Q2 of Year 1.
+      Development began in Q3 of Year 1.
+      In Q4 of Year 1, the team discovered critical bugs that required
+      significant rework.
+      The original release date of Q1 Year 2 was missed.
+      The product shipped successfully in Q2 of Year 2.
+    expected_elements: >
+      Bugs discovered during development in Q4, original deadline missed,
+      approximately 6-month delay from planned to actual release, successful
+      eventual release, late-stage quality issues as cause of delay,
+      roughly 5 quarters from project start to ship.
+    min_score: 0.4
+
+  # ── Long-scale historical timeline ───────────────────────────────────────────
+  - name: "Roman state: Republic, Empire, split, fall"
+    scenario: >
+      The Roman Republic was founded around 509 BCE.
+      Julius Caesar was assassinated in 44 BCE, triggering civil war.
+      Augustus established the Roman Empire in 27 BCE.
+      The Empire split into Western and Eastern halves in 285 CE.
+      The Western Roman Empire fell in 476 CE.
+      The Eastern Roman Empire (Byzantine) continued until 1453 CE.
+    expected_elements: >
+      Republic lasted approximately 500 years (509–27 BCE), Western Empire
+      roughly 500 years (27 BCE–476 CE), Eastern Empire nearly 1,000 more
+      years (476–1453 CE), total Roman state span over 1,900 years,
+      Eastern Empire's geographic and cultural advantages explaining its
+      greater longevity, Caesar's assassination as a transition trigger.
+    min_score: 0.4

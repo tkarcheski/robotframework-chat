@@ -1,0 +1,62 @@
+# Duration arithmetic scenarios for temporal reasoning tests
+#
+# Each scenario poses a date/time arithmetic question with a single integer
+# answer.  The LLM is instructed to place the integer alone on the first
+# line of its response.
+#
+# Each entry has:
+#   question:       the arithmetic question (already contains the "first line
+#                   only" instruction for the LLM prompt)
+#   expected_days:  the correct integer answer
+#   description:    human-readable label used in Robot test documentation
+
+DURATION_SCENARIOS:
+
+  # ── Day counting ─────────────────────────────────────────────────────────────
+  - question: >
+      How many days are there between January 1 and March 1 in a non-leap year?
+      Write only the integer answer on your first line.
+    expected_days: 59
+    description: "Days from Jan 1 to Mar 1, non-leap year (Jan=31, Feb=28)"
+
+  - question: >
+      How many days are there in the months of April, May, and June combined?
+      Write only the integer answer on your first line.
+    expected_days: 91
+    description: "Total days in Q2 calendar months (30+31+30)"
+
+  - question: >
+      A lease starts on March 1 and ends on August 31 (inclusive) in the same
+      non-leap year. How many days does the lease cover?
+      Write only the integer answer on your first line.
+    expected_days: 184
+    description: "Mar 1 to Aug 31 inclusive (31+30+31+30+31+31)"
+
+  # ── Hour and week arithmetic ──────────────────────────────────────────────────
+  - question: >
+      How many hours are in exactly 3 days and 6 hours?
+      Write only the integer answer on your first line.
+    expected_days: 78
+    description: "3*24 + 6 = 78 hours"
+
+  - question: >
+      How many complete weeks are in exactly 91 days?
+      Write only the integer answer on your first line.
+    expected_days: 13
+    description: "91 / 7 = 13 weeks"
+
+  # ── Calendar arithmetic ───────────────────────────────────────────────────────
+  - question: >
+      A subscription renews every 3 months starting from March.
+      Counting March as renewal month 1, what is the number of the month
+      (1–12) in which the fourth renewal occurs?
+      Write only the integer answer on your first line.
+    expected_days: 12
+    description: "Mar(3), Jun(6), Sep(9), Dec(12) — 4th renewal is month 12"
+
+  - question: >
+      A contract is signed on February 1 in a non-leap year and expires exactly
+      30 days later. What day of the month is the expiry date?
+      Write only the integer answer on your first line.
+    expected_days: 3
+    description: "Feb 1 + 30 days: Feb has 28 days, so Mar 3 (day 3)"
