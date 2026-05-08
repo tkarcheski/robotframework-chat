@@ -88,7 +88,11 @@ class ExtractionKeywords:
         logger.info(f"LLM response:\n{response}")
 
         extracted = _strip_label(response)
-        correct = _contains_value(response, expected_value)
+        # Compare against the parsed extraction only, not the full response.
+        # Searching the full response body risks matching the expected token in
+        # explanatory prose (e.g. "The answer is Berlin — note that Paris is
+        # nearby") and inflating the pass rate.
+        correct = _contains_value(extracted, expected_value)
 
         emit_rfc_data("question", question[:200])
         emit_rfc_data("expected", expected_value)
@@ -126,7 +130,7 @@ class ExtractionKeywords:
         logger.info(f"LLM response:\n{response}")
 
         extracted = _strip_label(response)
-        correct = _contains_value(response, expected_value)
+        correct = _contains_value(extracted, expected_value)
 
         emit_rfc_data("attribute", attribute)
         emit_rfc_data("expected", expected_value)
@@ -163,7 +167,10 @@ class ExtractionKeywords:
         response = self.client.generate(prompt)
         logger.info(f"LLM response:\n{response}")
 
-        found = [v for v in expected_values if _contains_value(response, v)]
+        # Parse the response into individual list lines before checking membership.
+        # Full-text substring search would incorrectly match entities that appear
+        # only in negated or explanatory prose (e.g. "Rust is not used here").
+        found = [v for v in expected_values if _entity_in_lines(response, v)]
         missing = [v for v in expected_values if v not in found]
         correct = len(missing) == 0
 
@@ -187,6 +194,8 @@ class ExtractionKeywords:
 # ---------------------------------------------------------------------------
 
 _LABEL_RE = re.compile(r"^\s*\w[\w\s]*:\s*")
+_LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)")
+_NEGATION_RE = re.compile(r"\b(?:not|never|absent|without)\b")
 
 
 def _strip_label(text: str) -> str:
@@ -196,17 +205,48 @@ def _strip_label(text: str) -> str:
     return cleaned.strip() or first_line.strip()
 
 
-def _contains_value(response: str, expected: str) -> bool:
+def _contains_value(text: str, expected: str) -> bool:
     """Case-insensitive substring check with numeric comma-normalisation.
 
-    Both *response* and *expected* have commas stripped from digit sequences
+    Both *text* and *expected* have commas stripped from digit sequences
     before comparison so that "2,847" matches "2847" and vice versa.
     """
-    if not response or not expected:
+    if not text or not expected:
         return False
-    norm_response = _normalise_numbers(response).lower()
+    norm_text = _normalise_numbers(text).lower()
     norm_expected = _normalise_numbers(expected).lower()
-    return norm_expected in norm_response
+    return norm_expected in norm_text
+
+
+def _entity_in_lines(response: str, entity: str) -> bool:
+    """Check whether *entity* appears on any non-negated line of *response*.
+
+    The response is split into individual lines and each line is stripped of
+    common list markers (``1.``, ``-``, ``*``, ``•``).  A line is considered
+    a negation if it contains words like "not", "never", "absent", or "no"
+    immediately before the entity token; such lines are excluded to avoid
+    matching ``"Rust is not mentioned"`` as a positive hit for ``"Rust"``.
+
+    This is intentionally conservative — partial-sentence fragments or unusual
+    phrasing may still produce false positives, but the approach eliminates
+    the most common class of explanatory-prose false matches.
+    """
+    if not response or not entity:
+        return False
+    norm_entity = _normalise_numbers(entity).lower()
+    for raw_line in response.splitlines():
+        line = _LIST_MARKER_RE.sub("", raw_line).strip()
+        if not line:
+            continue
+        norm_line = _normalise_numbers(line).lower()
+        if norm_entity not in norm_line:
+            continue
+        # Exclude lines that contain a negation word anywhere alongside the entity.
+        # "Rust is not mentioned" and "Rust is absent" should not count as hits.
+        if _NEGATION_RE.search(norm_line):
+            continue
+        return True
+    return False
 
 
 def _normalise_numbers(text: str) -> str:

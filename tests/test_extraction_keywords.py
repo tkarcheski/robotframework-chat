@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from rfc.extraction_keywords import (
     ExtractionKeywords,
     _contains_value,
+    _entity_in_lines,
     _strip_label,
 )
 
@@ -68,6 +69,51 @@ class TestContainsValue:
     def test_partial_word_boundary_not_required(self) -> None:
         # "Go" should match when looking for "Go" in "Programming in Go."
         assert _contains_value("Programming in Go.", "Go") is True
+
+
+# ---------------------------------------------------------------------------
+# _entity_in_lines
+# ---------------------------------------------------------------------------
+
+
+class TestEntityInLines:
+    def test_entity_on_plain_line(self) -> None:
+        assert _entity_in_lines("Python\nGo\nRust", "Python") is True
+
+    def test_entity_with_list_marker_hyphen(self) -> None:
+        assert _entity_in_lines("- Python\n- Go\n- Rust", "Go") is True
+
+    def test_entity_with_numbered_marker(self) -> None:
+        assert _entity_in_lines("1. Python\n2. Go\n3. Rust", "Rust") is True
+
+    def test_negated_line_excluded(self) -> None:
+        # "Rust is not mentioned" must NOT count as a match for "Rust"
+        assert _entity_in_lines("Python\nGo\nRust is not mentioned", "Rust") is False
+
+    def test_negated_with_never(self) -> None:
+        assert _entity_in_lines("Python\nnever uses Rust", "Rust") is False
+
+    def test_absent_negation(self) -> None:
+        assert _entity_in_lines("Python\nRust is absent", "Rust") is False
+
+    def test_entity_not_in_response(self) -> None:
+        assert _entity_in_lines("Python\nGo", "Rust") is False
+
+    def test_empty_response_returns_false(self) -> None:
+        assert _entity_in_lines("", "Python") is False
+
+    def test_empty_entity_returns_false(self) -> None:
+        assert _entity_in_lines("Python\nGo", "") is False
+
+    def test_case_insensitive(self) -> None:
+        assert _entity_in_lines("python\ngo", "Python") is True
+
+    def test_blank_lines_skipped(self) -> None:
+        assert _entity_in_lines("\n\nRust\n\n", "Rust") is True
+
+    def test_entity_present_in_non_negated_line(self) -> None:
+        # "Rust" appears on one clean line AND one negated line — should still pass
+        assert _entity_in_lines("Rust\nRust is not popular here", "Rust") is True
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +198,26 @@ class TestExtractAndVerifyEntity:
         assert "response" in result
         assert "expected" in result
 
+    @patch("rfc.extraction_keywords.create_provider")
+    def test_regression_expected_in_prose_does_not_pass(
+        self, mock_create: MagicMock
+    ) -> None:
+        # Regression: "Berlin\nNote that Paris is the capital of France." should
+        # NOT be graded correct when the expected value is "Paris". The extracted
+        # answer is "Berlin"; the mention of "Paris" in explanatory prose must
+        # not inflate the pass rate.
+        kw = ExtractionKeywords()
+        kw.client.generate.return_value = (
+            "Berlin\nNote that Paris is the capital of France, not Berlin."
+        )
+        result = kw.extract_and_verify_entity(
+            text="What is the capital of Germany?",
+            question="Which city is the capital?",
+            expected_value="Paris",
+        )
+        assert result["extracted"] == "Berlin"
+        assert result["correct"] is False
+
 
 # ---------------------------------------------------------------------------
 # Extract Key Value And Verify
@@ -206,6 +272,23 @@ class TestExtractKeyValueAndVerify:
         assert "response" in result
         assert "expected" in result
 
+    @patch("rfc.extraction_keywords.create_provider")
+    def test_regression_value_in_prose_does_not_pass(
+        self, mock_create: MagicMock
+    ) -> None:
+        # Regression: "3.0.0\nNote: 2.3.0 was the previous release." should NOT
+        # pass when the expected value is "2.3.0". Only the extracted first line
+        # (3.0.0) should be checked, not the full response.
+        kw = ExtractionKeywords()
+        kw.client.generate.return_value = "3.0.0\nNote: 2.3.0 was the previous release."
+        result = kw.extract_key_value_and_verify(
+            text="PyTorch 2.3.0 was released this month.",
+            attribute="software version number",
+            expected_value="2.3.0",
+        )
+        assert result["extracted"] == "3.0.0"
+        assert result["correct"] is False
+
 
 # ---------------------------------------------------------------------------
 # Extract Multiple Entities And Verify
@@ -251,3 +334,20 @@ class TestExtractMultipleEntitiesAndVerify:
         assert "correct" in result
         assert "response" in result
         assert "expected" in result
+
+    @patch("rfc.extraction_keywords.create_provider")
+    def test_regression_negated_mention_not_counted(
+        self, mock_create: MagicMock
+    ) -> None:
+        # Regression: "Rust is not mentioned" must NOT be a positive hit for "Rust".
+        # Full-text substring matching would incorrectly pass this; line-based
+        # parsing with negation detection must exclude it.
+        kw = ExtractionKeywords()
+        kw.client.generate.return_value = "Python\nGo\nRust is not mentioned"
+        result = kw.extract_multiple_entities_and_verify(
+            text="The project uses Python, Go, and Rust.",
+            question="What programming languages are mentioned?",
+            expected_values=["Python", "Go", "Rust"],
+        )
+        assert result["correct"] is False
+        assert "Rust" in result["missing"]
