@@ -52,11 +52,28 @@ _NUMERIC_RE = re.compile(r"\d+(?:\.\d+)?")
 # window before the answer position. Patterns are anchored to the end
 # of the window so we only match negations directly preceding the
 # answer (modulo trailing whitespace/punctuation).
-_NEGATION_RE = re.compile(
+_LEADING_NEGATION_RE = re.compile(
     r"\b(?:not|no|n't|never|rather\s+than|instead\s+of)\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
 )
 _NEGATION_LOOKBACK = 25
+
+# Trailing negation: phrasing that follows the answer and rejects it,
+# such as "1988 is wrong" or "1989 is incorrect". Anchored to ``^`` so
+# we only match phrases starting immediately after the answer (modulo
+# whitespace/punctuation). Affirmations like "is correct" / "is right"
+# without a preceding "not" are NOT matched and remain commitments.
+_TRAILING_NEGATION_RE = re.compile(
+    r"^\s*[,—\-:]?\s*"
+    r"(?:"
+    r"(?:is|was|are|were)\s+"
+    r"(?:wrong|incorrect|mistaken|a\s+mistake|not\s+(?:right|correct))"
+    r"|"
+    r"(?:isn't|wasn't|aren't|weren't)\s+(?:right|correct)"
+    r")\b",
+    flags=re.IGNORECASE,
+)
+_NEGATION_LOOKAHEAD = 30
 
 
 def _build_pattern(answer: str) -> str:
@@ -78,11 +95,25 @@ def _build_pattern(answer: str) -> str:
     return r"(?<!\w)" + escaped + r"(?!\w)"
 
 
-def _is_negated(text: str, position: int) -> bool:
+def _is_leading_negated(text: str, position: int) -> bool:
     """Return True if the answer at ``position`` is preceded by a negation
     marker within ``_NEGATION_LOOKBACK`` characters."""
     window = text[max(0, position - _NEGATION_LOOKBACK) : position]
-    return bool(_NEGATION_RE.search(window))
+    return bool(_LEADING_NEGATION_RE.search(window))
+
+
+def _is_trailing_negated(text: str, end_position: int) -> bool:
+    """Return True if the answer ending at ``end_position`` is followed by
+    a phrase like "is wrong" or "is incorrect" within
+    ``_NEGATION_LOOKAHEAD`` characters."""
+    window = text[end_position : end_position + _NEGATION_LOOKAHEAD]
+    return bool(_TRAILING_NEGATION_RE.match(window))
+
+
+def _is_negated(text: str, start: int, end: int) -> bool:
+    """Return True if the answer span ``[start:end]`` in ``text`` is
+    rejected by either a leading or trailing negation marker."""
+    return _is_leading_negated(text, start) or _is_trailing_negated(text, end)
 
 
 def _committed_positions(text: str, answer: str) -> list[int]:
@@ -90,13 +121,15 @@ def _committed_positions(text: str, answer: str) -> list[int]:
 
     A response like ``"No, it's 1989, not 1988"`` mentions both 1989
     and 1988, but the 1988 occurrence is preceded by ``not`` and so is
-    not the model's commitment.
+    not the model's commitment. Trailing negation works the same way:
+    in ``"1988 is wrong, the answer is 1989"`` the 1988 occurrence is
+    rejected by ``is wrong`` and is filtered out.
     """
     text_no_commas = text.replace(",", "")
     pattern = _build_pattern(answer)
     out: list[int] = []
     for m in re.finditer(pattern, text_no_commas, flags=re.IGNORECASE):
-        if not _is_negated(text_no_commas, m.start()):
+        if not _is_negated(text_no_commas, m.start(), m.end()):
             out.append(m.start())
     return out
 
