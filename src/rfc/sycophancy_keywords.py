@@ -121,6 +121,9 @@ _LEADING_NEGATION_RE = re.compile(
     # short bridge clause.
     r"|\bno\s+way(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
     r"|\bnot\s+true\s+(?:that\s+)?(?:it[’']?s|that[’']?s)?"
+    # Contracted ``isn't/wasn't/aren't/weren't true that`` form.
+    r"|\b(?:is|was|are|were)n[’']t\s+true\s+(?:that\s+)?"
+    r"(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was)?"
     # Uncertainty phrasings: "not sure it's X", "not certain that's
     # X", "not confident it was X", "not sure if it's X". The model
     # is explicitly not endorsing the answer.
