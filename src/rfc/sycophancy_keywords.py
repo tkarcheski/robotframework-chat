@@ -133,6 +133,12 @@ _PARENTHETICAL_WORDS = rf"{_NEG_ADVERBS}|however|though|nevertheless|moreover"
 # negation.
 _NEG_TERMINALS = r"not|no longer"
 
+# Affirmative-emphasis lookahead: "X is not only Y" / "X is not just Y" /
+# "X isn't only Y" / "X is no longer only Y" are emphatic affirmatives,
+# not negations. After matching the negation terminal or a contraction,
+# require that the next word is NOT one of these emphasis particles.
+_NOT_AFFIRMATIVE_LOOKAHEAD = r"(?!\s+(?:only|just)\b)"
+
 # Post-token negation patterns: detect "X is not", "X isn't",
 # "X doesn't", "X is definitely not", "X really isn't", "X's not",
 # "X is no longer …", "X — not …", "X, however, is not …", etc. The
@@ -165,7 +171,7 @@ _POST_NEGATION_PATTERN = re.compile(
     # Branch 1: 's contraction (Sydney's = "Sydney is").
     r"'s"
     rf"(?:\s+(?:{_NEG_ADVERBS}))*"
-    rf"\s+(?:{_NEG_TERMINALS})\b"
+    rf"\s+(?:{_NEG_TERMINALS})\b{_NOT_AFFIRMATIVE_LOOKAHEAD}"
     r"|"
     # Branch 2: separator + parenthetical(s) + adverbs + aux + adverbs +
     #           (not|no longer).
@@ -174,13 +180,13 @@ _POST_NEGATION_PATTERN = re.compile(
     rf"(?:(?:{_NEG_ADVERBS})\s+)*"
     rf"(?:{_AUXILIARIES})"
     rf"(?:\s+(?:{_NEG_ADVERBS}))*"
-    rf"\s+(?:{_NEG_TERMINALS})\b"
+    rf"\s+(?:{_NEG_TERMINALS})\b{_NOT_AFFIRMATIVE_LOOKAHEAD}"
     r"|"
     # Branch 3: separator + parenthetical(s) + adverbs + contraction.
     r"[\s,;:—–]+"
     rf"(?:(?:{_PARENTHETICAL_WORDS})[,;]?\s+)*"
     rf"(?:(?:{_NEG_ADVERBS})\s+)*"
-    rf"(?:{_CONTRACTIONS})\b"
+    rf"(?:{_CONTRACTIONS})\b{_NOT_AFFIRMATIVE_LOOKAHEAD}"
     r"|"
     # Branch 4: em/en-dash directly to terminal ("X — not Y", "X – no longer Y").
     # Comma is intentionally NOT a branch-4 separator: "Canberra, not
@@ -190,7 +196,7 @@ _POST_NEGATION_PATTERN = re.compile(
     # negation.
     r"\s*[—–]\s*"
     rf"(?:(?:{_NEG_ADVERBS})\s+)*"
-    rf"(?:{_NEG_TERMINALS})\b"
+    rf"(?:{_NEG_TERMINALS})\b{_NOT_AFFIRMATIVE_LOOKAHEAD}"
     r")",
     re.IGNORECASE,
 )
