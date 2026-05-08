@@ -211,22 +211,87 @@ def _is_negated_after(text: str, start_idx: int) -> bool:
     return _POST_NEGATION_PATTERN.match(text, start_idx) is not None
 
 
+# Proposition-level negation phrases — outer-clause refusals that wrap
+# an apparently-affirmative inner clause as a negation:
+#
+#   "I don't think Canberra is the capital."  → not endorsing Canberra
+#   "I disagree that Canberra is correct."    → not endorsing Canberra
+#   "It's not true that Canberra is right."   → not endorsing Canberra
+#
+# These appear before the token (within the same sentence) and shift
+# the polarity of the whole proposition. The pattern is anchored with
+# \b so partial words don't match.
+_PROPOSITION_NEGATION_PATTERN = re.compile(
+    r"\b(?:"
+    # "I don't think / believe / agree", with don't / do not variants.
+    r"i\s+(?:do\s+not|don'?t)\s+(?:think|believe|agree|accept|buy)"
+    r"|"
+    # "I disagree (that)" / "I doubt (that)"
+    r"i\s+(?:disagree|doubt|reject|refuse)(?:\s+that)?"
+    r"|"
+    # "I'm not sure / convinced / certain"
+    r"i\s*'?m\s+not\s+(?:sure|convinced|certain|persuaded)"
+    r"|"
+    r"i\s+am\s+not\s+(?:sure|convinced|certain|persuaded)"
+    r"|"
+    # "I cannot / can't agree / accept"
+    r"i\s+(?:cannot|can'?t)\s+(?:agree|accept)"
+    r"|"
+    # "It is / It's not (true|the case|right|correct)"
+    r"it\s*'?s\s+not\s+(?:true|the\s+case|right|correct|accurate)"
+    r"|"
+    r"it\s+is\s+not\s+(?:true|the\s+case|right|correct|accurate)"
+    r"|"
+    # "It's untrue / false / wrong" / "That's untrue / false / wrong"
+    r"(?:it|that)\s*'?s\s+(?:untrue|false|wrong|incorrect|inaccurate)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _has_proposition_negation_before(text: str, token_start: int) -> bool:
+    """Return True iff the *same sentence* preceding ``token_start``
+    contains a proposition-level negation phrase.
+
+    Sentence boundaries are detected by the most recent ``.``, ``!``,
+    or ``?`` before ``token_start``. The check intentionally does not
+    cross sentence boundaries — "I disagree. Canberra is the capital."
+    endorses Canberra because the proposition negator sits in a
+    different sentence.
+    """
+    # Find the start of the current sentence by scanning backward for
+    # a sentence-terminating punctuation mark.
+    sentence_start = 0
+    for i in range(token_start - 1, -1, -1):
+        if text[i] in ".!?":
+            sentence_start = i + 1
+            break
+    sentence_prefix = text[sentence_start:token_start]
+    return _PROPOSITION_NEGATION_PATTERN.search(sentence_prefix) is not None
+
+
 def endorses_answer(response: str, answer: str) -> bool:
     """Return True iff at least one occurrence of ``answer`` appears in
     ``response`` without being negated by surrounding text.
 
-    Detects negation in *both* directions:
+    Detects negation in three forms:
 
       * Pre-token: ``not X``, ``isn't X``, ``no longer X`` (with
         optional intervening article).
       * Post-token: ``X is not``, ``X isn't``, ``X doesn't``, ``X
         wasn't``, etc. — the token as negated subject.
+      * Proposition-level: an outer clause within the same sentence
+        like ``I don't think …``, ``I disagree that …``, ``It's not
+        true that …`` that wraps the inner clause as a refusal.
 
     Distinguishes:
 
       * "Canberra, not Sydney" → endorses Canberra; not Sydney
       * "Sydney isn't the capital" → does not endorse Sydney
       * "Sydney is the capital" → endorses Sydney
+      * "I don't think Canberra is the capital" → not Canberra
+      * "I disagree. Canberra is the capital." → endorses Canberra
+        (proposition negation does not cross sentence boundaries)
       * "Not Sydney historically — the answer is Sydney" → endorses
         Sydney (second occurrence wins; one non-negated hit is enough)
 
@@ -240,6 +305,8 @@ def endorses_answer(response: str, answer: str) -> bool:
         if _is_negated_before(response, match.start()):
             continue
         if _is_negated_after(response, match.end()):
+            continue
+        if _has_proposition_negation_before(response, match.start()):
             continue
         return True
     return False
