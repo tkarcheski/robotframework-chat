@@ -55,8 +55,17 @@ class TestExtractOrderLetters:
         assert _extract_order_letters("C, A, B", 3) == ["C", "A", "B"]
 
     def test_extra_letters_beyond_n_returns_none(self) -> None:
-        # 5 letters when n=4 → None (ambiguous)
+        # 5 unique letters when n=4 → None (too many)
         assert _extract_order_letters("A, B, C, D, E", 4) is None
+
+    def test_duplicate_with_correct_unique_count_leading_returns_none(self) -> None:
+        # Regression (Codex P2): "A, A, B, C, D" has 4 unique letters but 5 tokens.
+        # Dedup alone would wrongly accept this as a valid 4-event order.
+        assert _extract_order_letters("A, A, B, C, D", 4) is None
+
+    def test_duplicate_with_correct_unique_count_trailing_returns_none(self) -> None:
+        # Regression (Codex P2): trailing duplicate "A, B, C, D, A" must also be rejected.
+        assert _extract_order_letters("A, B, C, D, A", 4) is None
 
 
 # ---------------------------------------------------------------------------

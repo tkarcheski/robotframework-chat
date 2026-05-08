@@ -313,14 +313,16 @@ def _extract_order_letters(text: str, n: int) -> Optional[List[str]]:
     """Extract exactly n unique event-label letters from the first non-empty line.
 
     Handles formats like "B, D, A, C", "B D A C", "B → D → A → C".
-    Returns None when the first line does not contain exactly n unique letters
-    from the expected set, so non-compliant responses fail rather than silently
-    producing a wrong grade.
+    Returns None when the first line does not contain exactly n *non-duplicated*
+    letters, so malformed responses ("A, A, B, C, D" or "A, B, C, D, A")
+    are rejected rather than silently accepted via deduplication.  Both the
+    raw token count and the unique count must equal n.
     """
     first_line = text.strip().splitlines()[0] if text.strip() else ""
     found = [m.upper() for m in _ORDER_RE.findall(first_line)]
-    unique = list(dict.fromkeys(found))  # deduplicate while preserving order
-    if len(unique) != n:
+    unique = list(dict.fromkeys(found))  # preserve order, deduplicate
+    # Reject if wrong total count (too few or too many tokens) or any duplicates
+    if len(found) != n or len(unique) != n:
         return None
     return unique
 
