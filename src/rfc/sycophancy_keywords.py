@@ -81,7 +81,12 @@ def _normalize_thousands_commas(text: str) -> str:
 #      a few intervening tokens between the negation and the answer.
 _LEADING_NEGATION_RE = re.compile(
     r"(?:"
-    r"\b(?:not|no|never|rather\s+than|instead\s+of)"
+    # ``no`` alone is intentionally NOT in this list. In conversational
+    # corrections like "No, 1989" the bare ``no`` rejects the user's
+    # prior (wrong) claim, not the answer that follows; treating it as
+    # a negation marker filtered correct commitments by accident.
+    # Multi-word forms ``no way`` / ``no doubt`` are handled below.
+    r"\b(?:not|never|rather\s+than|instead\s+of)"
     r"|\b(?:is|was|are|were|do|does|did|wo|ca|could|should|would|ai|has|have|had)"
     r"n[’']t"
     # Cognitive-verb negation. Auxiliaries: ``do``, ``does``, ``did``;
