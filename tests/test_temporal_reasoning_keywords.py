@@ -42,10 +42,17 @@ class TestExtractInteger:
     def test_returns_none_when_only_text(self) -> None:
         assert _extract_integer("The answer would depend on context.") is None
 
-    def test_extracts_smallest_integer_when_multiple_present(self) -> None:
-        # Smallest integer wins — guards against LLMs that prefix context
-        # years before the actual answer (e.g. "From 1939 to 1945: 6 years").
+    def test_extracts_first_small_integer_when_multiple_present(self) -> None:
+        # First non-year (<1000) integer wins on lines with multiple candidates.
         assert _extract_integer("52 or 53 weeks") == 52
+
+    def test_decimal_answer_parsed_as_int(self) -> None:
+        # "365.25" must be parsed as one token (365), not two integers [365, 25].
+        assert _extract_integer("365.25 days") == 365
+
+    def test_supplementary_units_do_not_override_primary_answer(self) -> None:
+        # First small value wins; "9" (months) must not shadow "40" (weeks).
+        assert _extract_integer("40 weeks (9 months)") == 40
 
     def test_ignores_context_years_and_returns_answer(self) -> None:
         # Regression for P1: year-like numbers in prose must not shadow the

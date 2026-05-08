@@ -17,9 +17,9 @@ from robot.api.deco import keyword
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
-# Extract the first non-negative integer from a line of text.
-# Handles:  "67", "67 days", "Answer: 67", "67.", "The answer is 67".
-_INTEGER_RE = re.compile(r"\b(\d+)\b")
+# Match numbers including decimals as complete tokens so "365.25" is one
+# match (not two integers "365" and "25").  Used by _extract_integer.
+_NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 
 # Extract individual letters A–D from a line (used for event ordering).
 _LETTER_SEQ_RE = re.compile(r"\b([A-Da-d])\b")
@@ -217,19 +217,27 @@ class TemporalReasoningKeywords:
 def _extract_integer(response: str) -> Optional[int]:
     """Extract the most-likely answer integer from the first non-empty line.
 
-    Uses the smallest integer found on the line rather than the first.
-    This prevents context years (e.g. "From 1939 to 1945, it lasted 6 years"
-    → 6, not 1939) from being mistaken for the answer, since duration and
-    date-arithmetic answers are always much smaller than 4-digit year values.
+    Strategy (handles three failure modes):
+    1. Decimals like ``"365.25 days"`` are tokenised as one number (365),
+       not two integers [365, 25].
+    2. Context years like ``"From 1939 to 1945, it lasted 6 years"`` are
+       deprioritised: if any value < 1000 exists the first such value is
+       returned; context-year values (≥ 1000) are only used when they are
+       the sole candidates.
+    3. Supplementary units like ``"40 weeks (9 months)"`` are handled by
+       taking the *first* sub-1000 value, not the smallest — so 40 is
+       returned rather than 9.
 
-    Returns ``None`` if no integer is found, which callers treat as a
-    grading failure.
+    Returns ``None`` if no number is found, which callers treat as a grading
+    failure.
     """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
-    matches = _INTEGER_RE.findall(first_line)
-    if matches:
-        return min(int(m) for m in matches)
-    return None
+    matches = _NUMBER_RE.findall(first_line)
+    if not matches:
+        return None
+    values = [round(float(m)) for m in matches]
+    small = [v for v in values if v < 1000]
+    return small[0] if small else values[0]
 
 
 def _extract_letter_sequence(response: str) -> List[str]:
