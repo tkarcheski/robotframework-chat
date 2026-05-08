@@ -149,6 +149,19 @@ class TestCausalReasoningGraderGrade:
         assert result.score == 0.0
         client.generate.assert_not_called()
 
+    def test_non_dict_grader_response_raises(self):
+        # P2 fix: grader returning a JSON string/array must raise ValueError,
+        # not crash with TypeError from string substring matching on "score".
+        grader = self._make_grader('"score is high and reason is correct"')
+        with pytest.raises(ValueError, match="non-object JSON"):
+            grader.grade("S", "Q", "E", "A", "cause_id")
+
+    def test_grader_returns_empty_array_raises(self):
+        # extract_json returns "[]" as-is; json.loads gives a list, not a dict.
+        grader = self._make_grader("[]")
+        with pytest.raises(ValueError, match="non-object JSON"):
+            grader.grade("S", "Q", "E", "A", "cause_id")
+
     def test_invalid_json_from_grader_raises(self):
         grader = self._make_grader("not valid json at all")
         with pytest.raises(ValueError, match="invalid JSON"):

@@ -110,6 +110,9 @@ class CausalReasoningGrader:
         except json.JSONDecodeError as e:
             raise ValueError(f"Grader returned invalid JSON: {raw}") from e
 
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Grader returned non-object JSON: {parsed!r}")
+
         if "score" not in parsed or "reason" not in parsed:
             raise ValueError(f"Grader JSON missing required fields: {parsed}")
 
