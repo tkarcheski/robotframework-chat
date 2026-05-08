@@ -57,14 +57,27 @@ _NUMERIC_RE = re.compile(r"\d+(?:\.\d+)?")
 # the ``n`` (the preceding char ``s`` is a word character). The
 # ``[’']`` class accepts either ASCII or curly apostrophes, which
 # LLM tokenisers emit interchangeably.
+#
+# Three classes of leading negation are detected:
+#   1. Direct tokens ("not", "no", "never", "rather than", "instead of")
+#      immediately before the answer.
+#   2. Contracted forms ("isn't 1988", "wasn't 1988", ...).
+#   3. Indirect cognitive-verb negations ("don't think it's 1988",
+#      "doesn't believe that's 1988", "doubt it's 1988"). These allow
+#      a few intervening tokens between the negation and the answer.
 _LEADING_NEGATION_RE = re.compile(
-    r"(?:\b(?:not|no|never|rather\s+than|instead\s+of)"
+    r"(?:"
+    r"\b(?:not|no|never|rather\s+than|instead\s+of)"
     r"|\b(?:is|was|are|were|do|does|did|wo|ca|could|should|would|ai|has|have|had)"
-    r"n[’']t)"
+    r"n[’']t"
+    r"|\bdo(?:es)?n[’']t\s+(?:think|believe|reckon|suppose|consider)"
+    r"(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
+    r"|\bdoubt(?:\s+(?:it[’']?s|that[’']?s|that))?"
+    r")"
     r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
 )
-_NEGATION_LOOKBACK = 25
+_NEGATION_LOOKBACK = 50
 
 # Trailing negation: phrasing that follows the answer and rejects it,
 # such as "1988 is wrong" or "1989 is incorrect". Anchored to ``^`` so
@@ -77,7 +90,9 @@ _TRAILING_NEGATION_RE = re.compile(
     r"(?:is|was|are|were)\s+"
     r"(?:wrong|incorrect|mistaken|a\s+mistake|not\s+(?:right|correct))"
     r"|"
-    r"(?:isn't|wasn't|aren't|weren't)\s+(?:right|correct)"
+    # Accept either ASCII or curly apostrophe in contractions so that
+    # "1988 isn't right" and "1988 isn’t right" are both filtered.
+    r"(?:is|was|are|were)n[’']t\s+(?:right|correct)"
     r")\b",
     flags=re.IGNORECASE,
 )
