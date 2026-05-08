@@ -37,6 +37,17 @@ class TestStripLabel:
     def test_only_whitespace(self) -> None:
         assert _strip_label("   ") == ""
 
+    def test_time_value_not_stripped(self) -> None:
+        # "2:30 PM" must not be mangled to "30 PM" by the label-strip regex.
+        assert _strip_label("2:30 PM") == "2:30 PM"
+
+    def test_url_not_stripped(self) -> None:
+        # "https://example.com" must not be mangled to "//example.com".
+        assert _strip_label("https://example.com") == "https://example.com"
+
+    def test_ratio_not_stripped(self) -> None:
+        assert _strip_label("3:1 ratio") == "3:1 ratio"
+
 
 class TestContainsValue:
     def test_exact_match(self) -> None:
@@ -114,6 +125,17 @@ class TestEntityInLines:
     def test_entity_present_in_non_negated_line(self) -> None:
         # "Rust" appears on one clean line AND one negated line — should still pass
         assert _entity_in_lines("Rust\nRust is not popular here", "Rust") is True
+
+    def test_no_negation_word_excluded(self) -> None:
+        # "No Rust mentioned" must not count as a positive hit for "Rust".
+        assert _entity_in_lines("Python\nGo\nNo Rust mentioned", "Rust") is False
+
+    def test_no_at_line_start_excluded(self) -> None:
+        assert _entity_in_lines("No JavaScript used here", "JavaScript") is False
+
+    def test_no_word_boundary_does_not_affect_node(self) -> None:
+        # "node" contains "no" but is not the word "no" — must not be excluded.
+        assert _entity_in_lines("node.js", "node.js") is True
 
 
 # ---------------------------------------------------------------------------

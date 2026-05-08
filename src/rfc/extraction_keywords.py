@@ -193,9 +193,16 @@ class ExtractionKeywords:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_LABEL_RE = re.compile(r"^\s*\w[\w\s]*:\s*")
+# Label prefix: alphabetic words only (no digits/underscores) followed by a
+# colon and at least one space.  Using [A-Za-z] instead of \w prevents
+# digit-bearing strings like "2:30 PM" from being stripped, and requiring
+# \s+ (not \s*) prevents URL schemes like "https://…" from matching because
+# the colon there is immediately followed by "//", not whitespace.
+_LABEL_RE = re.compile(r"^\s*[A-Za-z][A-Za-z ]*:\s+")
 _LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)")
-_NEGATION_RE = re.compile(r"\b(?:not|never|absent|without)\b")
+# "no" is included with word-boundary anchoring so "No Rust mentioned" is
+# excluded while "node", "normal", and "know" are not affected.
+_NEGATION_RE = re.compile(r"\b(?:no|not|never|absent|without)\b")
 
 
 def _strip_label(text: str) -> str:
