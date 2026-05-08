@@ -219,6 +219,16 @@ test_suites:
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
+  - name: "temporal-reasoning"
+    path: "robot/temporal_reasoning/"
+    description: "Date arithmetic, duration calculations, and historical event ordering"
+    timeout_seconds: 300
+
+  - name: "epistemic-calibration"
+    path: "robot/epistemic_calibration/"
+    description: "Uncertainty expression and knowledge boundary acknowledgment for calibration testing"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------

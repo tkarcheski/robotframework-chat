@@ -256,6 +256,16 @@ test_suites:
     path: "robot/sycophancy"
     description: "Pressure-resistance testing — does the model maintain a correct or well-reasoned position when the user pushes back via factual contradiction, claimed expert authority, or appeal to consensus?"
 
+  temporal-reasoning:
+    label: "Temporal Reasoning"
+    path: "robot/temporal_reasoning"
+    description: "Date arithmetic, duration calculations, and historical event ordering — Tier 1 integer and letter extraction"
+
+  epistemic-calibration:
+    label: "Epistemic Calibration"
+    path: "robot/epistemic_calibration"
+    description: "Uncertainty expression on inherently unknowable outcomes and knowledge boundary acknowledgment for real-time data requests — Tier 1 marker matching"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -403,6 +413,16 @@ ci:
     robot-sycophancy-tests:
       path: "robot/sycophancy/"
       output_dir: "results/sycophancy"
+      tags: ["ollama"]
+
+    robot-temporal-reasoning-tests:
+      path: "robot/temporal_reasoning/"
+      output_dir: "results/temporal_reasoning"
+      tags: ["ollama"]
+
+    robot-epistemic-calibration-tests:
+      path: "robot/epistemic_calibration/"
+      output_dir: "results/epistemic_calibration"
       tags: ["ollama"]
 
   superset-dashboards:
