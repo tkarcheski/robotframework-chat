@@ -99,6 +99,11 @@ _LEADING_NEGATION_RE = re.compile(
     # which actually AFFIRM the following clause and so must NOT
     # be treated as a rejection of the answer.
     r"|\b(?:I|we)\s+doubt(?:\s+(?:it[’']?s|that[’']?s|that))?"
+    # Multi-word negation phrasings: "no way it's", "not true that
+    # it's", etc. The negator and the answer are separated by a
+    # short bridge clause.
+    r"|\bno\s+way(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
+    r"|\bnot\s+true\s+(?:that\s+)?(?:it[’']?s|that[’']?s)?"
     r")"
     r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
@@ -114,6 +119,11 @@ _TRAILING_NEGATION_RE = re.compile(
     r"^\s*[,—\-:]?\s*"
     r"(?:"
     r"(?:is|was|are|were)\s+"
+    # Optional adverbial intensifiers between "is" and the rejection
+    # word: "is definitely wrong", "is clearly not correct", etc.
+    r"(?:(?:definitely|clearly|absolutely|certainly|obviously|"
+    r"really|actually|completely|totally|utterly|plainly|"
+    r"simply|just)\s+){0,3}"
     r"(?:wrong|incorrect|mistaken|a\s+mistake|not\s+(?:right|correct))"
     r"|"
     # Accept either ASCII or curly apostrophe in contractions so that
