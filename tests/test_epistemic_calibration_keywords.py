@@ -98,6 +98,14 @@ class TestDefaultBoundaryMarkers:
             DEFAULT_BOUNDARY_MARKERS,
         )
 
+    def test_up_to_date_claim_not_a_boundary_marker(self) -> None:
+        # "I have up-to-date data" asserts live access — the opposite of a
+        # limitation acknowledgment. Must not score as boundary acknowledgment.
+        assert not _contains_any_marker(
+            "I have up-to-date data; TSLA is currently at $185.",
+            DEFAULT_BOUNDARY_MARKERS,
+        )
+
 
 # ---------------------------------------------------------------------------
 # EpistemicCalibrationKeywords — initialisation

@@ -61,8 +61,11 @@ def _extract_first_integer(text: str) -> Optional[int]:
         if not stripped:
             continue
         # Inspect first non-empty line only — return immediately regardless of result.
-        m = re.search(r"(?<![.\d])(\d+)(?![.\d])", stripped)
-        return int(m.group(1)) if m else None
+        # Try comma-grouped format (e.g. 1,440 / 3,600) before falling back to
+        # plain digits so four-digit answers written with thousands separators
+        # are not truncated to their leading digit group.
+        m = re.search(r"(?<![.\d])(\d{1,3}(?:,\d{3})+|\d+)(?![.\d])", stripped)
+        return int(m.group(1).replace(",", "")) if m else None
     return None
 
 

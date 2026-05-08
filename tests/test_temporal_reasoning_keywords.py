@@ -55,6 +55,14 @@ class TestExtractFirstInteger:
     def test_zero(self) -> None:
         assert _extract_first_integer("0") == 0
 
+    def test_comma_grouped_four_digit_integer(self) -> None:
+        # A valid answer formatted as "1,440" should parse as 1440, not 1.
+        assert _extract_first_integer("1,440\nMinutes in a day.") == 1440
+
+    def test_comma_grouped_large_integer(self) -> None:
+        # "3,600" should parse as 3600, not 3.
+        assert _extract_first_integer("3,600") == 3600
+
 
 # ---------------------------------------------------------------------------
 # _extract_letter
