@@ -45,7 +45,8 @@ class TestExtractVerdict:
     def test_not_causal_hyphen_lowercase(self) -> None:
         assert _extract_verdict("not-causal\nexplanation") == "NOT_CAUSAL"
 
-    def test_fallback_to_body_when_first_line_empty(self) -> None:
+    def test_leading_blank_lines_stripped_before_first_line_search(self) -> None:
+        # strip() removes leading newlines, so the verdict on the first real line is found
         assert _extract_verdict("\n\nNOT_CAUSAL — spurious.") == "NOT_CAUSAL"
 
     def test_returns_none_when_no_verdict(self) -> None:
@@ -53,6 +54,21 @@ class TestExtractVerdict:
 
     def test_empty_response_returns_none(self) -> None:
         assert _extract_verdict("") is None
+
+    def test_body_only_verdict_returns_none(self) -> None:
+        # Regression: explanatory prose like "there is no causal link" in the body
+        # must NOT be treated as a structured verdict — first line has no verdict token.
+        assert (
+            _extract_verdict("Let me explain my reasoning.\nThere is no causal link.")
+            is None
+        )
+
+    def test_causal_adjective_in_first_line_prose_returns_none(self) -> None:
+        # "causal" used as an adjective mid-sentence should not produce a CAUSAL verdict
+        assert (
+            _extract_verdict("There is no causal relationship between these variables.")
+            is None
+        )
 
 
 class TestExtractLetter:

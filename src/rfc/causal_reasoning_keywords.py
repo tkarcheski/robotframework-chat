@@ -14,7 +14,10 @@ from .grader import Grader
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
-_VERDICT_RE = re.compile(r"\b(NOT[_\s-]CAUSAL|CAUSAL)\b", re.IGNORECASE)
+# Anchored to the start of the first line; an optional single-word label
+# (e.g. "Verdict:") is allowed before the token.  This prevents "causal"
+# used as an adjective mid-sentence from being mistaken for a verdict.
+_VERDICT_RE = re.compile(r"^\s*(?:\w+:\s*)?(NOT[_\s-]CAUSAL|CAUSAL)\b", re.IGNORECASE)
 _LETTER_RE = re.compile(r"^\s*([A-Da-d])\b")
 
 _CAUSAL_VERDICT_PROMPT = """\
@@ -221,14 +224,16 @@ class CausalReasoningKeywords:
 
 
 def _extract_verdict(response: str) -> Optional[str]:
-    """Extract CAUSAL or NOT_CAUSAL from the first line of a response."""
+    """Extract CAUSAL or NOT_CAUSAL from the first non-empty line only.
+
+    The prompt instructs the model to place the verdict on the first line.
+    Searching the full body risks matching the word "causal" in explanatory
+    prose (e.g. "there is no causal link"), which would silently convert a
+    non-compliant response into a false verdict.  Non-compliant responses
+    return ``None``; callers should treat that as a test failure.
+    """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
     m = _VERDICT_RE.search(first_line)
-    if m:
-        raw = m.group(1).upper().replace(" ", "_")
-        return "NOT_CAUSAL" if "NOT" in raw else "CAUSAL"
-    # Fallback: scan the full response
-    m = _VERDICT_RE.search(response)
     if m:
         raw = m.group(1).upper().replace(" ", "_")
         return "NOT_CAUSAL" if "NOT" in raw else "CAUSAL"
