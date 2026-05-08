@@ -48,6 +48,13 @@ class TestStripLabel:
     def test_ratio_not_stripped(self) -> None:
         assert _strip_label("3:1 ratio") == "3:1 ratio"
 
+    def test_multiword_title_not_stripped(self) -> None:
+        # "Star Wars: Episode IV" must not be mangled to "Episode IV".
+        assert _strip_label("Star Wars: Episode IV") == "Star Wars: Episode IV"
+
+    def test_chapter_title_not_stripped(self) -> None:
+        assert _strip_label("Chapter One: Arrival") == "Chapter One: Arrival"
+
 
 class TestContainsValue:
     def test_exact_match(self) -> None:

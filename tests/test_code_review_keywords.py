@@ -45,6 +45,16 @@ class TestExtractLetter:
     def test_empty_response_returns_none(self) -> None:
         assert _extract_letter("") is None
 
+    def test_prose_start_with_a_not_extracted(self) -> None:
+        # "A bug occurs..." must not be parsed as option A — requires explicit delimiter.
+        assert _extract_letter("A bug occurs because the argument is shared.") is None
+
+    def test_bare_letter_extracted(self) -> None:
+        assert _extract_letter("A") == "A"
+
+    def test_letter_with_dot_format_extracted(self) -> None:
+        assert _extract_letter("A. The code uses eval() unsafely.") == "A"
+
 
 # ---------------------------------------------------------------------------
 # Initialisation

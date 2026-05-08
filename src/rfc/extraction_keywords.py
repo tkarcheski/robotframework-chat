@@ -193,12 +193,12 @@ class ExtractionKeywords:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-# Label prefix: alphabetic words only (no digits/underscores) followed by a
-# colon and at least one space.  Using [A-Za-z] instead of \w prevents
-# digit-bearing strings like "2:30 PM" from being stripped, and requiring
-# \s+ (not \s*) prevents URL schemes like "https://…" from matching because
-# the colon there is immediately followed by "//", not whitespace.
-_LABEL_RE = re.compile(r"^\s*[A-Za-z][A-Za-z ]*:\s+")
+# Label prefix: a single alphabetic word (no spaces, no digits) followed by a
+# colon and at least one space.  Restricting to single words prevents
+# multi-word titles like "Star Wars: Episode IV" or "Chapter One: Arrival"
+# from being corrupted.  The digit exclusion prevents "2:30 PM" from being
+# stripped, and \s+ (not \s*) prevents "https://…" from matching.
+_LABEL_RE = re.compile(r"^\s*[A-Za-z]+:\s+")
 _LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)")
 # "no" is included with word-boundary anchoring so "No Rust mentioned" is
 # excluded while "node", "normal", and "know" are not affected.

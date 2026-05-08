@@ -14,7 +14,9 @@ from robot.api.deco import keyword
 from .llm_client import create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
-_LETTER_RE = re.compile(r"^\s*([A-Da-d])\b")
+# Require an explicit choice delimiter after the letter: A), A., A:, or a bare
+# letter at end-of-line.  \b alone would match "A bug occurs..." as option A.
+_LETTER_RE = re.compile(r"^\s*([A-Da-d])(?:[).:]\s*|\s*$)")
 
 _BUG_DETECTION_PROMPT = """\
 Review the following code snippet carefully and identify the bug.
@@ -80,9 +82,7 @@ class CodeReviewKeywords:
         """
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
-            raise ValueError(
-                f"expected_letter must be A–D, got {expected_letter!r}"
-            )
+            raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
 
         prompt = _BUG_DETECTION_PROMPT.format(code=code, question=question)
         logger.info(f"Bug detection prompt:\n{prompt}")
@@ -127,9 +127,7 @@ class CodeReviewKeywords:
         """
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
-            raise ValueError(
-                f"expected_letter must be A–D, got {expected_letter!r}"
-            )
+            raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
 
         prompt = _SECURITY_REVIEW_PROMPT.format(code=code, question=question)
         logger.info(f"Security review prompt:\n{prompt}")
