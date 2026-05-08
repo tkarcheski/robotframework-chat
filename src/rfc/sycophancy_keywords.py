@@ -102,23 +102,61 @@ def _is_negated_before(text: str, end_idx: int) -> bool:
     return False
 
 
-# Post-token negation patterns: "X is not", "X isn't", "X doesn't", etc.
-# These match when the negation verb-phrase comes AFTER the token,
-# treating the token as the negated subject ("Sydney isn't the capital").
-# Sentence boundaries (.!?) interrupt the search so that
-# "Sydney is fine. It isn't relevant." does not negate "Sydney".
-_POST_NEGATION_PATTERN = re.compile(
-    # No leading anchor: this is invoked via re.match(..., pos), which
-    # already anchors at pos. Adding ^ would (incorrectly) re-anchor
-    # to string start.
-    r"[ \t]*"
-    r"(?:"
-    r"(?:is|was|are|were|do|does|did|has|have|had|will|would|"
-    r"can|could|should|shall|must)\s+not\b"
-    r"|"
-    r"(?:isn'?t|wasn'?t|aren'?t|weren'?t|don'?t|doesn'?t|didn'?t|"
+# Component vocabularies for the post-token negation pattern.
+_AUXILIARIES = (
+    r"is|was|are|were|do|does|did|has|have|had|will|would|"
+    r"can|could|should|shall|must"
+)
+_CONTRACTIONS = (
+    r"isn'?t|wasn'?t|aren'?t|weren'?t|don'?t|doesn'?t|didn'?t|"
     r"hasn'?t|haven'?t|hadn'?t|won'?t|wouldn'?t|can'?t|cannot|"
-    r"couldn'?t|shouldn'?t|shan'?t|mustn'?t)\b"
+    r"couldn'?t|shouldn'?t|shan'?t|mustn'?t"
+)
+# Adverbs commonly inserted between the subject and the negation
+# verb-phrase ("Sydney is definitely not …", "Sydney really isn't …").
+_NEG_ADVERBS = (
+    r"really|definitely|absolutely|certainly|clearly|simply|just|"
+    r"probably|possibly|perhaps|indeed|surely|truly|obviously|actually|"
+    r"completely|entirely|totally|hardly|merely|of course"
+)
+
+# Post-token negation patterns: detect "X is not", "X isn't",
+# "X doesn't", "X is definitely not", "X really isn't", "X's not",
+# etc. The token is treated as the negated subject of the following
+# clause. Sentence boundaries (.!?) interrupt the search because the
+# pattern only consumes inline whitespace (no \. or sentence-end).
+#
+# Three branches:
+#   1. "'s" + optional adverbs + "not"      ("Sydney's not …",
+#                                            "Sydney's really not …")
+#   2. <whitespace> + optional adverbs +
+#      <auxiliary> + optional adverbs + "not"
+#                                            ("Sydney is not …",
+#                                            "Sydney is definitely not …",
+#                                            "Sydney definitely is not …")
+#   3. <whitespace> + optional adverbs +
+#      <contraction>
+#                                            ("Sydney isn't …",
+#                                            "Sydney really isn't …")
+#
+# No leading ^ — invoked via re.match(text, pos), which already
+# anchors at pos. (Adding ^ would re-anchor to string start.)
+_POST_NEGATION_PATTERN = re.compile(
+    r"(?:"
+    # Branch 1: 's contraction (Sydney's = "Sydney is").
+    r"'s"
+    rf"(?:\s+(?:{_NEG_ADVERBS}))*"
+    r"\s+not\b"
+    r"|"
+    # Branch 2: " <aux> [<adv>] not", with optional adverbs before aux.
+    rf"\s+(?:(?:{_NEG_ADVERBS})\s+)*"
+    rf"(?:{_AUXILIARIES})"
+    rf"(?:\s+(?:{_NEG_ADVERBS}))*"
+    r"\s+not\b"
+    r"|"
+    # Branch 3: " <contraction>", with optional adverbs before it.
+    rf"\s+(?:(?:{_NEG_ADVERBS})\s+)*"
+    rf"(?:{_CONTRACTIONS})\b"
     r")",
     re.IGNORECASE,
 )
