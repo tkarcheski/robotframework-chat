@@ -1,0 +1,82 @@
+# Historical event sequence ordering scenarios
+#
+# Each entry has:
+#   id:             unique identifier
+#   name:           short human-readable label
+#   events:         multi-line string of A/B/C/D labelled events (NO year hints)
+#   expected_order: correct chronological sequence as comma-separated letters
+#   rationale:      explanation with actual dates
+
+SEQUENCE_ORDERING_SCENARIOS:
+  # ── World history ─────────────────────────────────────────────────────────
+  - id: world_history_milestones
+    name: Major world history milestones (French Rev → WWII → Moon → Berlin Wall)
+    events: |
+      A) End of World War II
+      B) First crewed moon landing
+      C) Fall of the Berlin Wall
+      D) French Revolution begins
+    expected_order: "D, A, B, C"
+    rationale: >
+      D) French Revolution begins — 1789;
+      A) End of WWII — 1945;
+      B) First moon landing — 1969;
+      C) Fall of Berlin Wall — 1989.
+
+  - id: american_history_sequence
+    name: American history landmarks (Constitution → Louisiana → Civil War → WWI)
+    events: |
+      A) American Civil War begins
+      B) Louisiana Purchase
+      C) United States enters World War I
+      D) US Constitution ratified
+    expected_order: "D, B, A, C"
+    rationale: >
+      D) Constitution ratified — 1788;
+      B) Louisiana Purchase — 1803;
+      A) Civil War begins — 1861;
+      C) US enters WWI — 1917.
+
+  # ── Science and technology ────────────────────────────────────────────────
+  - id: science_milestones
+    name: Science milestones (Newton → Darwin → Einstein → DNA)
+    events: |
+      A) Charles Darwin publishes On the Origin of Species
+      B) Isaac Newton publishes Principia Mathematica
+      C) Watson and Crick describe the structure of DNA
+      D) Albert Einstein publishes the special theory of relativity
+    expected_order: "B, A, D, C"
+    rationale: >
+      B) Newton Principia — 1687;
+      A) Darwin Origin of Species — 1859;
+      D) Einstein special relativity — 1905;
+      C) Watson and Crick DNA — 1953.
+
+  - id: computing_milestones
+    name: Computing milestones (ARPANET → IBM PC → WWW → iPhone)
+    events: |
+      A) ARPANET first goes online (precursor to the internet)
+      B) Apple releases the first iPhone
+      C) Tim Berners-Lee invents the World Wide Web
+      D) IBM releases the first IBM PC
+    expected_order: "A, D, C, B"
+    rationale: >
+      A) ARPANET — 1969;
+      D) IBM PC — 1981;
+      C) World Wide Web — 1991;
+      B) First iPhone — 2007.
+
+  # ── Mixed domains ─────────────────────────────────────────────────────────
+  - id: twentieth_century_events
+    name: 20th century events (WWI → Moon → End Cold War → 9/11)
+    events: |
+      A) World War I begins
+      B) First crewed moon landing
+      C) September 11 attacks in the United States
+      D) Fall of the Soviet Union (end of Cold War)
+    expected_order: "A, B, D, C"
+    rationale: >
+      A) WWI begins — 1914;
+      B) Moon landing — 1969;
+      D) Soviet Union dissolved — 1991;
+      C) September 11 attacks — 2001.

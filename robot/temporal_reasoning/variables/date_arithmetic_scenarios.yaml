@@ -1,0 +1,116 @@
+# Date arithmetic scenarios
+#
+# Each entry has:
+#   id:        unique identifier
+#   name:      short human-readable label
+#   question:  the question posed to the LLM
+#   expected:  correct integer answer
+#   tolerance: acceptable deviation (0 for exact, N for ±N)
+#   rationale: explanation of the correct answer
+
+DATE_ARITHMETIC_SCENARIOS:
+  # ── Calendar fundamentals ─────────────────────────────────────────────────
+  - id: non_leap_jan_to_mar
+    name: Days from Jan 1 to Mar 1 in a non-leap year
+    question: >
+      How many days are there between January 1 and March 1 in a non-leap year
+      like 2023? Count the days from January 1 up to (but not including)
+      March 1. Answer with a single integer.
+    expected: 59
+    tolerance: 0
+    rationale: January has 31 days and February has 28 days in a non-leap year.
+      31 + 28 = 59 days.
+
+  - id: leap_jan_to_mar
+    name: Days from Jan 1 to Mar 1 in a leap year
+    question: >
+      How many days are there between January 1 and March 1 in a leap year
+      like 2024? Count the days from January 1 up to (but not including)
+      March 1. Answer with a single integer.
+    expected: 60
+    tolerance: 0
+    rationale: January has 31 days and February has 29 days in a leap year.
+      31 + 29 = 60 days.
+
+  - id: days_in_regular_year
+    name: Days in a non-leap year
+    question: >
+      How many days are there in a standard non-leap year?
+      Answer with a single integer.
+    expected: 365
+    tolerance: 0
+    rationale: A non-leap year has 365 days.
+
+  - id: days_in_leap_year
+    name: Days in a leap year
+    question: >
+      How many days are there in a leap year like 2024?
+      Answer with a single integer.
+    expected: 366
+    tolerance: 0
+    rationale: A leap year has 366 days because February has 29 days.
+
+  - id: complete_weeks_in_year
+    name: Complete weeks in a year
+    question: >
+      How many complete (whole) 7-day weeks fit into a standard 365-day year?
+      Answer with a single integer.
+    expected: 52
+    tolerance: 0
+    rationale: 365 / 7 = 52.14..., so there are 52 complete weeks (with 1 day
+      left over).
+
+  # ── Specific date ranges ──────────────────────────────────────────────────
+  - id: march_to_june_2024
+    name: Days between March 15 and June 15 in 2024
+    question: >
+      How many days are there between March 15 and June 15, 2024?
+      Count the days from March 15 up to (but not including) June 15.
+      Answer with a single integer.
+    expected: 92
+    tolerance: 0
+    rationale: March 15 to March 31 = 16 days; April = 30 days;
+      May = 31 days; June 1 to June 14 = 14 days. Total = 16 + 30 + 31 + 15 = 92.
+      Actually: from March 15 to June 15 is exactly 3 months in 2024. March has 31
+      days so March 15 to April 15 = 31 days; April 15 to May 15 = 30 days;
+      May 15 to June 15 = 31 days. Total = 31 + 30 + 31 = 92 days.
+
+  - id: christmas_to_new_year
+    name: Days from Christmas to New Year
+    question: >
+      How many days are there between December 25 and January 1 of the
+      following year? Count from December 25 up to (but not including)
+      January 1. Answer with a single integer.
+    expected: 7
+    tolerance: 0
+    rationale: December 25 to January 1 spans Dec 25, 26, 27, 28, 29, 30, 31
+      = 7 days.
+
+  - id: age_calculation
+    name: Age on a specific date
+    question: >
+      A person was born on January 1, 1990. How many complete years old were
+      they on January 1, 2025? Answer with a single integer.
+    expected: 35
+    tolerance: 0
+    rationale: 2025 - 1990 = 35. Since the birthday falls on January 1 and we
+      are asking about January 1, 2025, they have just turned 35.
+
+  - id: months_in_year
+    name: Months in a year
+    question: >
+      How many months are there in a calendar year?
+      Answer with a single integer.
+    expected: 12
+    tolerance: 0
+    rationale: A year has exactly 12 months.
+
+  - id: days_in_february_leap
+    name: Days in February during a leap year
+    question: >
+      How many days does February have in a leap year?
+      Answer with a single integer.
+    expected: 29
+    tolerance: 0
+    rationale: February has 29 days in a leap year (divisible by 4, with
+      century-year exceptions).

@@ -1,0 +1,105 @@
+# Duration estimation scenarios
+#
+# Each entry has:
+#   id:        unique identifier
+#   name:      short human-readable label
+#   question:  the question about a well-known duration
+#   expected:  correct integer answer
+#   tolerance: acceptable deviation (N for ±N)
+#   unit:      the unit of the answer (years, months, days, etc.)
+#   rationale: explanation of the correct answer
+
+DURATION_SCENARIOS:
+  # ── Historical periods ────────────────────────────────────────────────────
+  - id: world_war_ii_years
+    name: Duration of World War II in years
+    question: >
+      How many years did World War II last, from its start in September 1939
+      to its end in September 1945? Answer with a single integer (whole years).
+    expected: 6
+    tolerance: 1
+    unit: years
+    rationale: WWII lasted from September 1939 to September 1945 — exactly 6
+      years. Tolerance of 1 allows for 5 (rounding down) or 7 (including
+      earlier conflicts).
+
+  - id: world_war_i_years
+    name: Duration of World War I in years
+    question: >
+      How many years did World War I last, from its start in 1914 to its end
+      in 1918? Answer with a single integer (whole years).
+    expected: 4
+    tolerance: 1
+    unit: years
+    rationale: WWI lasted from July 1914 to November 1918 — approximately 4
+      years.
+
+  - id: cold_war_years
+    name: Duration of the Cold War in decades (approximate)
+    question: >
+      The Cold War began around 1947 and ended in 1991. Approximately how
+      many years did it last? Answer with a single integer.
+    expected: 44
+    tolerance: 3
+    unit: years
+    rationale: From 1947 to 1991 is 44 years. Tolerance of 3 accounts for
+      different start/end date conventions (1945–1991 = 46 years, etc.).
+
+  # ── Biology and nature ────────────────────────────────────────────────────
+  - id: human_pregnancy_months
+    name: Duration of a typical human pregnancy in months
+    question: >
+      How many months does a typical human pregnancy last?
+      Answer with a single integer.
+    expected: 9
+    tolerance: 0
+    unit: months
+    rationale: A typical human pregnancy lasts approximately 9 months (about
+      40 weeks or 280 days).
+
+  - id: human_pregnancy_weeks
+    name: Duration of a typical human pregnancy in weeks
+    question: >
+      How many weeks does a typical full-term human pregnancy last?
+      Answer with a single integer.
+    expected: 40
+    tolerance: 2
+    unit: weeks
+    rationale: A full-term human pregnancy is 40 weeks (280 days) from the
+      last menstrual period. Tolerance of 2 allows for 38–42 weeks, which
+      is the clinical range for full-term births.
+
+  - id: dog_pregnancy_days
+    name: Duration of a typical dog pregnancy in days
+    question: >
+      How many days does a typical dog pregnancy (gestation period) last?
+      Answer with a single integer.
+    expected: 63
+    tolerance: 3
+    unit: days
+    rationale: Dogs have a gestation period of approximately 58–68 days,
+      with 63 days being the typical midpoint.
+
+  # ── Space and science ─────────────────────────────────────────────────────
+  - id: moon_orbit_days
+    name: Days for the Moon to orbit Earth
+    question: >
+      Approximately how many days does it take for the Moon to complete one
+      full orbit around the Earth? Answer with a single integer.
+    expected: 27
+    tolerance: 2
+    unit: days
+    rationale: The Moon's sidereal orbital period is approximately 27.3 days.
+      Tolerance of 2 accounts for the synodic period (~29.5 days, which is
+      the lunar cycle for phases) being the more commonly known figure.
+
+  - id: earth_orbit_days
+    name: Days for Earth to orbit the Sun
+    question: >
+      Approximately how many days does it take for the Earth to complete one
+      full orbit around the Sun? Answer with a single integer.
+    expected: 365
+    tolerance: 1
+    unit: days
+    rationale: Earth's orbital period is 365.25 days. Tolerance of 1 allows
+      for either 365 or 366.
