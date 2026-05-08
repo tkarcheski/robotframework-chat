@@ -106,7 +106,14 @@ _LEADING_NEGATION_RE = re.compile(
     # ``no doubt`` / ``without doubt`` / ``don't doubt``, all of
     # which actually AFFIRM the following clause and so must NOT
     # be treated as a rejection of the answer.
-    r"|\b(?:I|we)\s+doubt(?:\s+(?:it[’']?s|that[’']?s|that))?"
+    r"|\b(?:I|we)\s+doubt"
+    r"(?:\s+(?:"
+    r"it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was"
+    r"|that\s+it[’']?s|that\s+it\s+is|that\s+it\s+was|that"
+    r"))?"
+    # "Don't know if/whether" — uncertainty hedging.
+    r"|\bdo(?:es)?n[’']t\s+know\s+(?:if|whether)"
+    r"(?:\s+(?:that\s+)?(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was))?"
     # Multi-word negation phrasings: "no way it's", "not true that
     # it's", etc. The negator and the answer are separated by a
     # short bridge clause.
