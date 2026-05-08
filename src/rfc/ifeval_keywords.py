@@ -25,6 +25,13 @@ _BULLET_PATTERN = re.compile(r"^\s*[-*\u2022]\s+")
 # Regex for detecting numbered-list lines like "1." or "1)".
 _NUMBERED_PATTERN = re.compile(r"^\s*(\d+)[.)]\s+")
 
+# Characters that LLMs commonly wrap around words for emphasis or quoting:
+# markdown bold/italic (* _), parentheses, brackets, ASCII and curly quotes.
+# Stripped from the edges of a token before a literal-word comparison so
+# that a semantically compliant response (e.g. "**END**") is not graded as
+# a failure for cosmetic formatting.
+_WORD_WRAPPER_CHARS = "*_`~()[]{}\"'\u2018\u2019\u201c\u201d"
+
 
 class IFEvalKeywords:
     """Robot Framework keyword library for instruction-following evaluation.
@@ -279,7 +286,8 @@ class IFEvalKeywords:
             return False, "Empty response"
         sentences = [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
         for i, sentence in enumerate(sentences, 1):
-            if not sentence.startswith(word):
+            unwrapped = sentence.lstrip(_WORD_WRAPPER_CHARS)
+            if not unwrapped.startswith(word):
                 return False, (
                     f"Sentence {i} starts with {sentence.split()[0]!r}, "
                     f"expected {word!r}"
@@ -292,10 +300,11 @@ class IFEvalKeywords:
         text = response.strip().rstrip(".,;:!?")
         if not text:
             return False, "Empty response"
-        last_word = text.split()[-1]
+        last_token = text.split()[-1]
+        last_word = last_token.strip(_WORD_WRAPPER_CHARS)
         if last_word == word:
             return True, f"Response ends with {word!r} as expected"
-        return False, f"Response ends with {last_word!r}, expected {word!r}"
+        return False, f"Response ends with {last_token!r}, expected {word!r}"
 
     @staticmethod
     def check_all_lowercase(response: str) -> Tuple[bool, str]:
