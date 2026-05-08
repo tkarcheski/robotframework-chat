@@ -169,7 +169,10 @@ class CausalReasoningKeywords:
 
         emit_rfc_data("actual_answer", clean_answer)
 
-        check_result = self.grader.check_causal_json_structure(clean_answer)
+        # Pass raw_response, not clean_answer: extract_json handles thinking tags
+        # internally, while parse_thinking(strip_unclosed=True) would erase the
+        # JSON payload when a reasoning model emits an unclosed <think> block.
+        check_result = self.grader.check_causal_json_structure(raw_response)
 
         emit_rfc_data("causal_json_valid", str(check_result["is_valid"]))
         if check_result["cause"]:

@@ -188,6 +188,9 @@ Format:
         except (json.JSONDecodeError, ValueError):
             return result
 
+        if not isinstance(parsed, dict):
+            return result
+
         cause = parsed.get("cause", "")
         effect = parsed.get("effect", "")
 

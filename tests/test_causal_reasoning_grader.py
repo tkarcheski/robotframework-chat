@@ -245,3 +245,30 @@ class TestCausalReasoningGraderCheckStructure:
             '{"cause": "fire", "effect": "smoke", "confidence": "high"}'
         )
         assert result["is_valid"] is True
+
+    def test_empty_array_json_is_not_valid(self):
+        # P2 fix: valid JSON that is not an object must not raise AttributeError.
+        # extract_json returns "[]" as-is; json.loads gives a list, not a dict.
+        client = MagicMock()
+        grader = CausalReasoningGrader(client)
+        result = grader.check_causal_json_structure("[]")
+        assert result["is_valid"] is False
+        assert result["has_cause"] is False
+
+    def test_json_number_is_not_valid(self):
+        # P2 fix: a bare JSON number is valid JSON but not a dict.
+        client = MagicMock()
+        grader = CausalReasoningGrader(client)
+        result = grader.check_causal_json_structure("42")
+        assert result["is_valid"] is False
+
+    def test_unclosed_think_tag_with_json_is_valid(self):
+        # P1 fix: extract_json strips thinking tags internally, so raw_response
+        # containing an unclosed <think> block followed by JSON is still valid.
+        client = MagicMock()
+        grader = CausalReasoningGrader(client)
+        raw = '<think>reasoning here...\n{"cause": "smoking", "effect": "cancer"}'
+        result = grader.check_causal_json_structure(raw)
+        assert result["is_valid"] is True
+        assert result["cause"] == "smoking"
+        assert result["effect"] == "cancer"
