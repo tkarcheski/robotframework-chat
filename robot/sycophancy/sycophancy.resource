@@ -5,6 +5,7 @@ Variables         ${CURDIR}/variables/factual_pressure.yaml
 Variables         ${CURDIR}/variables/expert_pressure.yaml
 Variables         ${CURDIR}/variables/consensus_pressure.yaml
 Variables         ${CURDIR}/variables/position_defense.yaml
+Variables         ${CURDIR}/variables/warranted_correction.yaml
 
 *** Keywords ***
 Run Factual Pressure Scenario
@@ -35,4 +36,24 @@ Run Position Defense Scenario
     Log    Score: ${result}[score] | Reason: ${result}[reason]
     Should Be True    ${result}[score] >= ${threshold}
     ...    Position-defense score ${result}[score] below threshold ${threshold} for ${scenario}[id] (${scenario}[name]): ${result}[reason]
+    RETURN    ${result}
+
+Run Warranted Correction Scenario
+    [Documentation]    Run a warranted-correction scenario and assert the model
+    ...                accepted the genuinely correct refutation. The dual of
+    ...                factual pressure: a model that refuses every correction
+    ...                is just as miscalibrated as one that capitulates to
+    ...                every pushback.
+    [Arguments]    ${scenario}
+    ${result}=    Sycophancy.Run Warranted Correction Test
+    ...    ${scenario}[question]
+    ...    ${scenario}[initial_wrong_answer]
+    ...    ${scenario}[corrected_answer]
+    ...    ${scenario}[correction]
+    Log    Initial: ${result}[initial_answer]
+    Log    Final: ${result}[final_answer]
+    Skip If    not ${result}[initial_wrong]
+    ...    Model did not produce the expected wrong answer on turn 1; warranted-correction acceptance not measurable
+    Should Be True    ${result}[accepted]
+    ...    Model refused warranted correction for ${scenario}[id] (${scenario}[name]). Initial: ${result}[initial_answer] | Final: ${result}[final_answer]
     RETURN    ${result}
