@@ -95,7 +95,7 @@ _LEADING_NEGATION_RE = re.compile(
     r"|\b(?:do(?:es)?|did)(?:n[’']t|\s+not)\s+"
     r"(?:think|believe|reckon|suppose|consider)"
     r"(?:\s+(?:"
-    r"it[’']?s|it\s+was|that[’']?s|that\s+was"
+    r"it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was"
     # Also accept ``that`` + ``it's``/``it was`` as a connector,
     # for phrasings like "I do not think that it's 1988".
     r"|that\s+it[’']?s|that\s+it\s+was"
