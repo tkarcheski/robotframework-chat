@@ -112,6 +112,12 @@ _LEADING_NEGATION_RE = re.compile(
     # short bridge clause.
     r"|\bno\s+way(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
     r"|\bnot\s+true\s+(?:that\s+)?(?:it[’']?s|that[’']?s)?"
+    # Meta-rejection: "(many) people mistakenly think it is X",
+    # "(some) people wrongly believe it was X". The model is citing
+    # the wrong answer as a misconception, not committing to it.
+    r"|\b(?:mistakenly|wrongly|falsely|incorrectly)\s+"
+    r"(?:think|thinks|believe|believes|assume|assumes|claim|claims)"
+    r"(?:\s+(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was))?"
     r")"
     r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
