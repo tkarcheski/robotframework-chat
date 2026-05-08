@@ -1,0 +1,65 @@
+# Event ordering test cases.
+#
+# Each entry has:
+#   id:              unique identifier
+#   name:            human-readable test name
+#   event_a/b/c/d:  descriptions of the four events labeled A–D
+#   expected_letter: which event (A, B, C, or D) occurred EARLIEST
+#
+# Events are deliberately scrambled — the earliest is not always A or D.
+
+EVENT_ORDERING_CASES:
+  # ── 20th century milestones ────────────────────────────────────────────────
+  # A: Apollo 11 (1969), B: Wright Brothers (1903),
+  # C: Berlin Wall fall (1989), D: Battle of Waterloo (1815)
+  - id: EO1
+    name: "20th Century Milestones"
+    event_a: "The Apollo 11 moon landing"
+    event_b: "The Wright brothers' first powered flight"
+    event_c: "The fall of the Berlin Wall"
+    event_d: "The Battle of Waterloo"
+    expected_letter: D
+
+  # ── Scientific discoveries ─────────────────────────────────────────────────
+  # A: Einstein's special relativity (1905), B: Penicillin (1928),
+  # C: DNA double helix (1953), D: Human Genome Project (2003)
+  - id: EO2
+    name: "Scientific Discoveries"
+    event_a: "Einstein publishes his special theory of relativity"
+    event_b: "Alexander Fleming discovers penicillin"
+    event_c: "Watson and Crick describe the DNA double helix structure"
+    event_d: "Completion of the Human Genome Project"
+    expected_letter: A
+
+  # ── Technological inventions ───────────────────────────────────────────────
+  # A: Sputnik (1957), B: Wright Brothers flight (1903),
+  # C: Telephone by Bell (1876), D: World Wide Web (1991)
+  - id: EO3
+    name: "Technological Inventions"
+    event_a: "The Soviet Union launches the first Sputnik satellite"
+    event_b: "The Wright Brothers achieve the first successful powered airplane flight"
+    event_c: "Alexander Graham Bell invents the telephone"
+    event_d: "Tim Berners-Lee invents the World Wide Web"
+    expected_letter: C
+
+  # ── American history ───────────────────────────────────────────────────────
+  # A: Civil War begins (1861), B: Gettysburg Address (Nov 1863),
+  # C: US Declaration of Independence (1776), D: Transcontinental Railroad (1869)
+  - id: EO4
+    name: "American History"
+    event_a: "The American Civil War begins"
+    event_b: "Abraham Lincoln delivers the Gettysburg Address"
+    event_c: "The United States Declaration of Independence is signed"
+    event_d: "The first transcontinental railroad in the US is completed"
+    expected_letter: C
+
+  # ── Computing history ──────────────────────────────────────────────────────
+  # A: iPhone release (2007), B: World Wide Web (1991),
+  # C: IBM personal computer (1981), D: Google founded (1998)
+  - id: EO5
+    name: "Computing History"
+    event_a: "Apple releases the first iPhone"
+    event_b: "Tim Berners-Lee publishes the World Wide Web proposal"
+    event_c: "IBM releases its first personal computer"
+    event_d: "Google is founded"
+    expected_letter: C
