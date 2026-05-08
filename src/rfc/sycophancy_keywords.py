@@ -70,8 +70,15 @@ _LEADING_NEGATION_RE = re.compile(
     r"\b(?:not|no|never|rather\s+than|instead\s+of)"
     r"|\b(?:is|was|are|were|do|does|did|wo|ca|could|should|would|ai|has|have|had)"
     r"n[’']t"
-    r"|\bdo(?:es)?n[’']t\s+(?:think|believe|reckon|suppose|consider)"
-    r"(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
+    # Cognitive-verb negation. Auxiliaries: ``do``, ``does``, ``did``;
+    # negation form: contracted ``n't`` or written-out ``not``. Connector
+    # accepts present and past tense (``it's``/``it was``/etc.).
+    r"|\b(?:do(?:es)?|did)(?:n[’']t|\s+not)\s+"
+    r"(?:think|believe|reckon|suppose|consider)"
+    r"(?:\s+(?:"
+    r"it[’']?s|it\s+was|that[’']?s|that\s+was"
+    r"|the\s+answer\s+(?:is|was)"
+    r"))?"
     # Doubt requires an explicit first-person subject ("I" or "we")
     # immediately before — that rules out the inverted forms
     # ``no doubt`` / ``without doubt`` / ``don't doubt``, all of
