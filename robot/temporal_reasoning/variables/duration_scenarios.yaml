@@ -87,11 +87,13 @@ DURATION_SCENARIOS:
       Approximately how many days does it take for the Moon to complete one
       full orbit around the Earth? Answer with a single integer.
     expected: 27
-    tolerance: 2
+    tolerance: 3
     unit: days
     rationale: The Moon's sidereal orbital period is approximately 27.3 days.
-      Tolerance of 2 accounts for the synodic period (~29.5 days, which is
-      the lunar cycle for phases) being the more commonly known figure.
+      Tolerance of 3 accepts both the sidereal period (27–28) and the synodic
+      period (~29.5 days, commonly cited as "about 29–30 days" for the lunar
+      month), since both are valid answers depending on which cycle the model
+      recalls.
 
   - id: earth_orbit_days
     name: Days for Earth to orbit the Sun

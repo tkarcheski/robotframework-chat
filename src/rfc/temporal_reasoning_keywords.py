@@ -215,15 +215,20 @@ class TemporalReasoningKeywords:
 
 
 def _extract_integer(response: str) -> Optional[int]:
-    """Extract the first integer from the first non-empty line of a response.
+    """Extract the most-likely answer integer from the first non-empty line.
+
+    Uses the smallest integer found on the line rather than the first.
+    This prevents context years (e.g. "From 1939 to 1945, it lasted 6 years"
+    → 6, not 1939) from being mistaken for the answer, since duration and
+    date-arithmetic answers are always much smaller than 4-digit year values.
 
     Returns ``None`` if no integer is found, which callers treat as a
     grading failure.
     """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
-    m = _INTEGER_RE.search(first_line)
-    if m:
-        return int(m.group(1))
+    matches = _INTEGER_RE.findall(first_line)
+    if matches:
+        return min(int(m) for m in matches)
     return None
 
 

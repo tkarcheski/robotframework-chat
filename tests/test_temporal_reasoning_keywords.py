@@ -42,9 +42,19 @@ class TestExtractInteger:
     def test_returns_none_when_only_text(self) -> None:
         assert _extract_integer("The answer would depend on context.") is None
 
-    def test_extracts_first_integer_when_multiple_present(self) -> None:
-        # First integer wins — prompt instructs single-integer first line.
+    def test_extracts_smallest_integer_when_multiple_present(self) -> None:
+        # Smallest integer wins — guards against LLMs that prefix context
+        # years before the actual answer (e.g. "From 1939 to 1945: 6 years").
         assert _extract_integer("52 or 53 weeks") == 52
+
+    def test_ignores_context_years_and_returns_answer(self) -> None:
+        # Regression for P1: year-like numbers in prose must not shadow the
+        # actual answer.  "From 1939 to 1945, it lasted 6 years" → 6.
+        assert _extract_integer("From 1939 to 1945, it lasted 6 years") == 6
+
+    def test_context_years_ignored_cold_war(self) -> None:
+        # "The Cold War ran from 1947 to 1991, a span of 44 years." → 44.
+        assert _extract_integer("From 1947 to 1991, a span of 44 years.") == 44
 
     def test_ignores_integers_on_subsequent_lines(self) -> None:
         # Only the first line is searched.

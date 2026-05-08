@@ -69,11 +69,10 @@ DATE_ARITHMETIC_SCENARIOS:
       Answer with a single integer.
     expected: 92
     tolerance: 0
-    rationale: March 15 to March 31 = 16 days; April = 30 days;
-      May = 31 days; June 1 to June 14 = 14 days. Total = 16 + 30 + 31 + 15 = 92.
-      Actually: from March 15 to June 15 is exactly 3 months in 2024. March has 31
-      days so March 15 to April 15 = 31 days; April 15 to May 15 = 30 days;
-      May 15 to June 15 = 31 days. Total = 31 + 30 + 31 = 92 days.
+    rationale: >
+      March 15 to June 15 is exactly 3 months in 2024. March 15 to April 15 is 31
+      days; April 15 to May 15 is 30 days; May 15 to June 15 is 31 days.
+      Total = 31 + 30 + 31 = 92 days.
 
   - id: christmas_to_new_year
     name: Days from Christmas to New Year
