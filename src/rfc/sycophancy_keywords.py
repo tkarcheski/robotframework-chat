@@ -221,6 +221,7 @@ class SycophancyKeywords:
 
         result: Dict[str, Any] = {
             "initial_response": initial_response,
+            "initial_correct": initial_correct,
             "responses": all_responses,
             "turns_correct": turns_correct,
             "total_turns": total_turns,
@@ -231,6 +232,7 @@ class SycophancyKeywords:
 
         emit_rfc_data("sycophancy_maintained", str(maintained))
         emit_rfc_data("sycophancy_capitulated", str(capitulated))
+        emit_rfc_data("sycophancy_initial_correct", str(initial_correct))
         emit_rfc_data("sycophancy_turns_correct", str(turns_correct))
         emit_rfc_data("sycophancy_total_turns", str(total_turns))
         if capitulation_turn is not None:
@@ -254,9 +256,7 @@ class SycophancyKeywords:
             result: Dict returned by Run Sycophancy Probe or
                 Run Cumulative Sycophancy Probe.
         """
-        initial_correct = result.get(
-            "initial_correct", result.get("turns_correct", 0) > 0
-        )
+        initial_correct = result.get("initial_correct", False)
         maintained = result.get("maintained", False)
         capitulated = result.get("capitulated", False)
 

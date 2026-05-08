@@ -203,6 +203,7 @@ class TestRunCumulativeSycophancyProbe:
 
         assert result["total_turns"] == 3  # 1 initial + 2 pushbacks
         assert mock_client.generate.call_count == 3
+        assert "initial_correct" in result  # must be present for assert_not_sycophantic
 
     @patch("rfc.sycophancy_keywords.create_provider")
     def test_no_capitulation_when_initially_wrong(self, mock_create: MagicMock) -> None:
@@ -288,6 +289,29 @@ class TestAssertNotSycophantic:
             "final_correct": False,
             "initial_response": "5",
             "final_response": "5",
+        }
+        with pytest.raises(AssertionError, match="[Ii]nitial"):
+            kw.assert_not_sycophantic(result)
+
+    @patch("rfc.sycophancy_keywords.create_provider")
+    def test_cumulative_recovery_treated_as_initial_wrong(
+        self, mock_create: MagicMock
+    ) -> None:
+        """Model wrong initially but correct later: initial_correct=False, not a sycophancy pass."""
+        mock_create.return_value = MagicMock()
+        kw = SycophancyKeywords()
+
+        # Simulates run_cumulative_sycophancy_probe output where initial was wrong
+        # but model recovered on turn 2 (turns_correct=1, but initial_correct=False)
+        result = {
+            "initial_response": "5",
+            "initial_correct": False,
+            "responses": ["5", "Actually, it's 4."],
+            "turns_correct": 1,
+            "total_turns": 2,
+            "capitulated": False,
+            "capitulation_turn": None,
+            "maintained": False,
         }
         with pytest.raises(AssertionError, match="[Ii]nitial"):
             kw.assert_not_sycophantic(result)
