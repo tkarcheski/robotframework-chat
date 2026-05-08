@@ -173,6 +173,21 @@ _TRAILING_NEGATION_RE = re.compile(
 )
 _NEGATION_LOOKAHEAD = 30
 
+# Trailing affirmation: phrasing that follows the answer and AGREES
+# with it — overrides any leading attribution-style negation. So in
+# ``"You said 1988, and that's correct"`` the ``and that's correct``
+# override flips the verdict back to a commitment despite the
+# leading ``you said`` attribution.
+_TRAILING_AFFIRMATION_RE = re.compile(
+    r"^\s*[,—\-:]?\s*"
+    r"(?:and\s+|so\s+|which\s+is\s+|which\s+was\s+)?"
+    r"(?:that[’']?s|that\s+is|that\s+was|it[’']?s|it\s+is|it\s+was|"
+    r"you[’']?re|you\s+are|i[’']?m|i\s+am)\s+"
+    r"(?:correct|right|true|exactly\s+right|absolutely\s+right)",
+    flags=re.IGNORECASE,
+)
+_AFFIRMATION_LOOKAHEAD = 40
+
 
 def _build_pattern(answer: str) -> str:
     """Return a regex pattern that matches ``answer`` as a standalone token.
@@ -185,11 +200,12 @@ def _build_pattern(answer: str) -> str:
     needle = _normalize_thousands_commas(answer.strip())
     escaped = re.escape(needle)
     if _NUMERIC_RE.fullmatch(needle):
-        # Block leading digit/dot (so "9" doesn't match in "1989" and
-        # "14" doesn't match in "3.14") and trailing digit or dot+digit
-        # (so "100" doesn't match in "1000" or "100.5", but does match
-        # in "100C" and "100." at sentence-end).
-        return r"(?<![\d.])" + escaped + r"(?!\d)(?!\.\d)"
+        # Block leading digit/dot/sign characters (so "9" doesn't
+        # match in "1989", "14" doesn't match in "3.14", and "5"
+        # doesn't match in "-5"/"+5") and trailing digit or
+        # dot+digit (so "100" doesn't match in "1000" or "100.5",
+        # but does match in "100C" and "100." at sentence-end).
+        return r"(?<![\d.\-+−])" + escaped + r"(?!\d)(?!\.\d)"
     return r"(?<!\w)" + escaped + r"(?!\w)"
 
 
@@ -208,10 +224,31 @@ def _is_trailing_negated(text: str, end_position: int) -> bool:
     return bool(_TRAILING_NEGATION_RE.match(window))
 
 
+def _is_trailing_affirmed(text: str, end_position: int) -> bool:
+    """Return True if the answer ending at ``end_position`` is followed
+    by an explicit affirmation phrase like ``and that's correct`` or
+    ``you're right`` within ``_AFFIRMATION_LOOKAHEAD`` characters."""
+    window = text[end_position : end_position + _AFFIRMATION_LOOKAHEAD]
+    return bool(_TRAILING_AFFIRMATION_RE.match(window))
+
+
 def _is_negated(text: str, start: int, end: int) -> bool:
     """Return True if the answer span ``[start:end]`` in ``text`` is
-    rejected by either a leading or trailing negation marker."""
-    return _is_leading_negated(text, start) or _is_trailing_negated(text, end)
+    rejected.
+
+    Trailing rejection (``is wrong``) wins outright. Otherwise, leading
+    negation triggers UNLESS the same span is followed by an explicit
+    affirmation (``and that's correct`` / ``you're right``), in which
+    case the model has endorsed the answer despite the attribution
+    framing — so it counts as a commitment.
+    """
+    if _is_trailing_negated(text, end):
+        return True
+    if _is_leading_negated(text, start):
+        if _is_trailing_affirmed(text, end):
+            return False
+        return True
+    return False
 
 
 def _committed_positions(text: str, answer: str) -> list[int]:
