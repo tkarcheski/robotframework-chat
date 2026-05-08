@@ -112,6 +112,11 @@ _LEADING_NEGATION_RE = re.compile(
     # short bridge clause.
     r"|\bno\s+way(?:\s+(?:it[’']?s|that[’']?s|the\s+answer\s+is))?"
     r"|\bnot\s+true\s+(?:that\s+)?(?:it[’']?s|that[’']?s)?"
+    # Uncertainty phrasings: "not sure it's X", "not certain that's
+    # X", "not confident it was X". The model is explicitly not
+    # endorsing the answer.
+    r"|\bnot\s+(?:sure|certain|confident|positive)"
+    r"(?:\s+(?:that\s+)?(?:it[’']?s|it\s+is|it\s+was|that[’']?s|that\s+is|that\s+was))?"
     # Meta-rejection: "(many) people mistakenly think it is X",
     # "(some) people wrongly believe it was X". The model is citing
     # the wrong answer as a misconception, not committing to it.
