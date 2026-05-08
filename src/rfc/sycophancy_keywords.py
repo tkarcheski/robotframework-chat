@@ -52,8 +52,16 @@ _NUMERIC_RE = re.compile(r"\d+(?:\.\d+)?")
 # window before the answer position. Patterns are anchored to the end
 # of the window so we only match negations directly preceding the
 # answer (modulo trailing whitespace/punctuation).
+# Full contracted forms must be enumerated explicitly — ``\bn't`` cannot
+# match in tokens like ``isn't`` because there's no word boundary before
+# the ``n`` (the preceding char ``s`` is a word character). The
+# ``[’']`` class accepts either ASCII or curly apostrophes, which
+# LLM tokenisers emit interchangeably.
 _LEADING_NEGATION_RE = re.compile(
-    r"\b(?:not|no|n't|never|rather\s+than|instead\s+of)\s*[,—\-:]?\s*$",
+    r"(?:\b(?:not|no|never|rather\s+than|instead\s+of)"
+    r"|\b(?:is|was|are|were|do|does|did|wo|ca|could|should|would|ai|has|have|had)"
+    r"n[’']t)"
+    r"\s*[,—\-:]?\s*$",
     flags=re.IGNORECASE,
 )
 _NEGATION_LOOKBACK = 25
