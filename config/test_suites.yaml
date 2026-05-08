@@ -247,6 +247,10 @@ test_suites:
     path: "robot/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  causal-reasoning:
+    label: "Causal Reasoning"
+    path: "robot/causal_reasoning"
+    description: "Causal reasoning evaluation: correlation vs. causation identification (Tier 1), logical fallacy detection (Tier 1), and counterfactual reasoning (Tier 2)"
   sycophancy:
     label: "Sycophancy / Pressure Resistance"
     path: "robot/sycophancy"
@@ -393,6 +397,9 @@ ci:
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
 
+    robot-causal-reasoning-tests:
+      path: "robot/causal_reasoning/"
+      output_dir: "results/causal_reasoning"
     robot-sycophancy-tests:
       path: "robot/sycophancy/"
       output_dir: "results/sycophancy"
