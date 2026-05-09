@@ -54,6 +54,13 @@ _LETTER_RE = re.compile(r"(?<![A-Za-z])([A-Ea-e])(?![A-Za-z])")
 # Matches the first integer in a string (no leading sign required).
 _INTEGER_RE = re.compile(r"\b(\d+)\b")
 
+# Matches a negation word immediately before the cursor position (fixed-width
+# alternatives so Python's lookbehind accepts them).
+_NEGATION_BEFORE_RE = re.compile(
+    r"\b(?:not|no|never|isn't|wasn't|don't|doesn't)\s*$",
+    re.IGNORECASE,
+)
+
 
 class TemporalReasoningKeywords:
     """Robot Framework keywords for temporal reasoning evaluation.
@@ -61,11 +68,13 @@ class TemporalReasoningKeywords:
     Three grading strategies are provided:
 
     * **Sequence ordering** (Tier 1) — extract a letter sequence from the
-      model's first response line and compare to ground truth.
+      model's first response line and compare to ground truth.  Requires
+      exactly ``n`` distinct letters; extra labels are rejected.
     * **Duration calculation** (Tier 1) — extract the first integer from the
       model's response and compare to the expected year count.
-    * **Temporal word problem** (Tier 1) — case-insensitive substring match
-      of the expected answer against the model's first response line.
+    * **Temporal word problem** (Tier 1) — whole-word match of the expected
+      answer against the model's first response line, with negation detection
+      (``"Not Monday"`` does not pass when ``"Monday"`` is expected).
     """
 
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
@@ -195,8 +204,9 @@ class TemporalReasoningKeywords:
         """Ask the LLM a temporal word problem and verify the first-line answer.
 
         The model is asked to write only the answer on its first line.
-        Verification is a case-insensitive substring match of
-        ``expected_answer`` against that first line.
+        Verification uses whole-word matching with negation detection:
+        ``"Not Monday"`` does **not** pass when the expected answer is
+        ``"Monday"``.
 
         Args:
             question: A time-arithmetic word problem (day-of-week, time,
@@ -216,7 +226,7 @@ class TemporalReasoningKeywords:
         first_line = (
             response.strip().splitlines()[0].strip() if response.strip() else ""
         )
-        correct = expected_answer.lower() in first_line.lower()
+        correct = _word_match(first_line, expected_answer)
 
         emit_rfc_data("question", question[:200])
         emit_rfc_data("expected_answer", expected_answer)
@@ -236,14 +246,13 @@ class TemporalReasoningKeywords:
 # ---------------------------------------------------------------------------
 
 
-def _extract_letter_sequence(
-    response: str, n: int
-) -> Optional[List[str]]:
+def _extract_letter_sequence(response: str, n: int) -> Optional[List[str]]:
     """Extract a sequence of exactly *n* letters (A–E) from the first line.
 
     Returns a deduplicated list of uppercase letters in order of first
-    appearance on the first response line.  Returns ``None`` if fewer
-    than *n* distinct letters are found.
+    appearance on the first response line.  Returns ``None`` if the number
+    of distinct valid letters found is not exactly *n* — both too-few and
+    too-many are rejected, preventing silent truncation of over-long sequences.
     """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
     letters: List[str] = []
@@ -253,9 +262,9 @@ def _extract_letter_sequence(
         if letter not in seen:
             seen.add(letter)
             letters.append(letter)
-    if len(letters) < n:
+    if len(letters) != n:
         return None
-    return letters[:n]
+    return letters
 
 
 def _extract_integer(response: str) -> Optional[int]:
@@ -265,3 +274,17 @@ def _extract_integer(response: str) -> Optional[int]:
     if m:
         return int(m.group(1))
     return None
+
+
+def _word_match(text: str, target: str) -> bool:
+    """Return True iff *target* appears as a whole word in *text* and is not
+    immediately preceded by a negation word (not/no/never/isn't/wasn't/…).
+
+    This prevents answers like ``"Not Monday"`` from matching when the
+    expected answer is ``"Monday"``.
+    """
+    m = re.search(r"\b" + re.escape(target) + r"\b", text, re.IGNORECASE)
+    if not m:
+        return False
+    before = text[: m.start()].rstrip()
+    return not bool(_NEGATION_BEFORE_RE.search(before))

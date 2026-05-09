@@ -6,6 +6,7 @@ from rfc.temporal_reasoning_keywords import (
     TemporalReasoningKeywords,
     _extract_integer,
     _extract_letter_sequence,
+    _word_match,
 )
 
 
@@ -68,6 +69,64 @@ class TestExtractLetterSequence:
         # F is outside A-E range and must not be returned.
         result = _extract_letter_sequence("A, B, C, D, F", 4)
         assert result == ["A", "B", "C", "D"]
+
+    def test_too_many_letters_returns_none(self) -> None:
+        # 4-event scenario but model gives 5 labels — must not truncate.
+        assert _extract_letter_sequence("B, A, D, C, E", 4) is None
+
+    def test_exact_five_letters_accepted(self) -> None:
+        # 5-event scenario with exactly 5 labels — accepted.
+        assert _extract_letter_sequence("B, D, A, C, E", 5) == ["B", "D", "A", "C", "E"]
+
+    def test_extra_letters_not_masked_by_f_filter(self) -> None:
+        # Even though F is filtered, 5 valid A-E labels for n=4 still rejects.
+        assert _extract_letter_sequence("A, B, C, D, E", 4) is None
+
+
+# ---------------------------------------------------------------------------
+# _word_match
+# ---------------------------------------------------------------------------
+
+
+class TestWordMatch:
+    def test_exact_match(self) -> None:
+        assert _word_match("Monday", "Monday") is True
+
+    def test_case_insensitive(self) -> None:
+        assert _word_match("monday", "Monday") is True
+
+    def test_embedded_in_sentence(self) -> None:
+        assert _word_match("The answer is Monday.", "Monday") is True
+
+    def test_not_before_answer_fails(self) -> None:
+        assert _word_match("Not Monday", "Monday") is False
+
+    def test_no_before_answer_fails(self) -> None:
+        # "No Tuesday" (no punctuation separator) is a clear negation.
+        assert _word_match("No Tuesday", "Tuesday") is False
+
+    def test_never_before_answer_fails(self) -> None:
+        assert _word_match("never Wednesday", "Wednesday") is False
+
+    def test_isnt_before_answer_fails(self) -> None:
+        assert _word_match("isn't Thursday", "Thursday") is False
+
+    def test_wasnt_before_answer_fails(self) -> None:
+        assert _word_match("wasn't Friday", "Friday") is False
+
+    def test_answer_absent_returns_false(self) -> None:
+        assert _word_match("The package arrives on Sunday.", "Monday") is False
+
+    def test_empty_text_returns_false(self) -> None:
+        assert _word_match("", "Monday") is False
+
+    def test_answer_as_part_of_word_rejected(self) -> None:
+        # "Mondays" should not match "Monday" as a whole word
+        assert _word_match("Mondays are busy.", "Monday") is False
+
+    def test_negation_in_different_clause_still_passes(self) -> None:
+        # "Not sure but Monday" — negation does not immediately precede the answer
+        assert _word_match("Not sure but Monday", "Monday") is True
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +280,26 @@ class TestEvaluateSequenceOrder:
         )
         assert result["correct"] is True
         assert result["expected_order"] == ["B", "A", "D", "C"]
+
+    @patch("rfc.temporal_reasoning_keywords.create_provider")
+    @patch("rfc.temporal_reasoning_keywords.Grader")
+    def test_extra_label_in_response_rejected(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        # 4-event scenario but model outputs 5 labels — must not truncate to 4.
+        kw = TemporalReasoningKeywords()
+        kw.client.generate.return_value = "B, A, D, C, E"
+        result = kw.evaluate_sequence_order(
+            events=[
+                "Watson-Crick DNA helix (1953)",
+                "Fleming discovers penicillin (1928)",
+                "CRISPR developed (2012)",
+                "PCR invented (1983)",
+            ],
+            expected_order=["B", "A", "D", "C"],
+        )
+        assert result["correct"] is False
+        assert result["extracted_order"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -411,3 +490,31 @@ class TestEvaluateTemporalWordProblem:
         )
         assert result["correct"] is False
         assert result["first_line"] == "I need to calculate this."
+
+    @patch("rfc.temporal_reasoning_keywords.create_provider")
+    @patch("rfc.temporal_reasoning_keywords.Grader")
+    def test_negated_answer_fails(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        # "Not Monday" must not pass when "Monday" is expected.
+        kw = TemporalReasoningKeywords()
+        kw.client.generate.return_value = "Not Monday"
+        result = kw.evaluate_temporal_word_problem(
+            question="Ship Friday, arrives 3 days later?",
+            expected_answer="Monday",
+        )
+        assert result["correct"] is False
+
+    @patch("rfc.temporal_reasoning_keywords.create_provider")
+    @patch("rfc.temporal_reasoning_keywords.Grader")
+    def test_no_before_answer_fails(
+        self, MockGrader: MagicMock, mock_create: MagicMock
+    ) -> None:
+        # "No Monday" (space only, no punctuation) is a clear negation.
+        kw = TemporalReasoningKeywords()
+        kw.client.generate.return_value = "No Monday"
+        result = kw.evaluate_temporal_word_problem(
+            question="Package arrives Tuesday?",
+            expected_answer="Monday",
+        )
+        assert result["correct"] is False
