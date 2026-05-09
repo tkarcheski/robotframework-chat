@@ -1,0 +1,77 @@
+# Chronological sequence ordering scenarios
+#
+# Each entry has:
+#   question:      Prompt providing items to order chronologically.
+#   anchor_first:  Item that must appear first (lowest position) in the output.
+#   anchor_last:   Item that must appear last (highest position) in the output.
+#   rationale:     Explanation of the correct ordering.
+
+SEQUENCE_SCENARIOS:
+  # ── Calendar month ordering ────────────────────────────────────────────────
+  - question: >
+      Order these months of the year chronologically (earliest to latest):
+      July, February, November, April, September.
+    anchor_first: February
+    anchor_last: November
+    rationale: >
+      Month numbers: Feb(2) < Apr(4) < Jul(7) < Sep(9) < Nov(11).
+      February must be first and November must be last.
+
+  # ── Days of the week ordering ──────────────────────────────────────────────
+  - question: >
+      Order these days of the week chronologically from Monday to Sunday:
+      Thursday, Monday, Saturday, Tuesday, Friday.
+    anchor_first: Monday
+    anchor_last: Saturday
+    rationale: >
+      Standard week: Mon(1) < Tue(2) < Thu(4) < Fri(5) < Sat(6).
+      Monday must be first and Saturday must be last.
+
+  # ── Explicit dated milestones (all dates given, no external knowledge needed)
+  - question: >
+      Order these project milestones chronologically, earliest first:
+      - Feature A released: August 14
+      - Project started: March 3
+      - Beta testing began: June 20
+      - Final review: November 28
+      - Planning completed: April 10
+    anchor_first: March
+    anchor_last: November
+    rationale: >
+      Dates in order: March 3 < April 10 < June 20 < August 14 < November 28.
+      March must appear before November in the output.
+
+  # ── Historical events (general knowledge, widely agreed order) ────────────
+  - question: >
+      Order these historical inventions chronologically from oldest to most recent:
+      the printing press (~1440), the steam engine (~1712),
+      the telephone (~1876), the internet (~1969).
+    anchor_first: printing
+    anchor_last: internet
+    rationale: >
+      1440 < 1712 < 1876 < 1969. The printing press is oldest and the
+      internet is most recent among these four.
+
+  # ── Seasons ordering ──────────────────────────────────────────────────────
+  - question: >
+      Order these seasons chronologically as they appear in a calendar year
+      starting from the first season:
+      Autumn, Winter, Spring, Summer.
+    anchor_first: Spring
+    anchor_last: Winter
+    rationale: >
+      Calendar year order: Spring(Mar-May) < Summer(Jun-Aug) < Autumn(Sep-Nov)
+      < Winter(Dec-Feb). Spring is first and Winter is last.
+
+  # ── Timeline with explicit years ────────────────────────────────────────────
+  - question: >
+      Order these events from earliest to most recent:
+      - Moon landing (1969)
+      - French Revolution (1789)
+      - World War I began (1914)
+      - Berlin Wall fell (1989)
+    anchor_first: French
+    anchor_last: Berlin
+    rationale: >
+      1789 < 1914 < 1969 < 1989. French Revolution is earliest and
+      Berlin Wall is most recent.

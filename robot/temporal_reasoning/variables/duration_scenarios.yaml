@@ -1,0 +1,66 @@
+# Duration calculation scenarios
+#
+# Each entry has:
+#   question:        Prompt asking the LLM to compute a duration.
+#   expected_count:  Expected integer answer.
+#   rationale:       Explanation of the correct calculation.
+
+DURATION_SCENARIOS:
+  # ── Day-count questions ────────────────────────────────────────────────────
+  - question: >
+      How many days pass between January 1st and March 1st of the same
+      non-leap year (not counting January 1st itself, but counting March 1st)?
+      Give only the number.
+    expected_count: 59
+    rationale: >
+      January has 31 days; 31 - 1 = 30 remaining days in January after Jan 1.
+      February has 28 days (non-leap). 30 + 28 + 1 (March 1) = 59 days.
+
+  - question: >
+      How many days are there from December 25th to January 1st of the
+      following year? Count every day that passes, including December 26
+      through January 1. Give only the number.
+    expected_count: 7
+    rationale: >
+      Dec 26, 27, 28, 29, 30, 31, Jan 1 = 7 days.
+
+  - question: >
+      From April 1st to June 30th is exactly 91 days total.
+      How many complete weeks is that? Give only the number.
+    expected_count: 13
+    rationale: >
+      91 ÷ 7 = 13 complete weeks exactly.
+
+  # ── Leap-year fact ─────────────────────────────────────────────────────────
+  - question: >
+      How many days are in February during a leap year?
+      Give only the number.
+    expected_count: 29
+    rationale: >
+      Leap years add one extra day to February, making it 29 days instead of 28.
+
+  # ── Month-count questions ──────────────────────────────────────────────────
+  - question: >
+      How many months pass from March 2020 to November 2020 (counting the
+      full months from March up to but not including November)?
+      Give only the number.
+    expected_count: 8
+    rationale: >
+      March, April, May, June, July, August, September, October = 8 months
+      before reaching November.
+
+  # ── Week-count question ────────────────────────────────────────────────────
+  - question: >
+      A project runs for exactly 4 weeks. How many days is that?
+      Give only the number.
+    expected_count: 28
+    rationale: >
+      4 × 7 = 28 days.
+
+  # ── Half-year day count ────────────────────────────────────────────────────
+  - question: >
+      How many days are there from January 1st through June 30th inclusive
+      in a non-leap year? Give only the number.
+    expected_count: 181
+    rationale: >
+      Jan(31) + Feb(28) + Mar(31) + Apr(30) + May(31) + Jun(30) = 181 days.

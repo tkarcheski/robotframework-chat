@@ -1,0 +1,75 @@
+# Calendar arithmetic scenarios
+#
+# Each entry has:
+#   question:        Prompt asking the LLM to compute a date offset.
+#   expected_month:  Month name that must appear in the answer.
+#   expected_day:    Day number (as string) that must appear in the answer.
+#   rationale:       Explanation of the correct calculation.
+
+CALENDAR_SCENARIOS:
+  # ── Simple within-month offsets ────────────────────────────────────────────
+  - question: >
+      Starting from March 1st, what date falls exactly 30 days later?
+      Reply with just the month name and day number.
+    expected_month: March
+    expected_day: "31"
+    rationale: >
+      March has 31 days. March 1 + 30 = March 31.
+
+  - question: >
+      What date is 14 days after January 20th?
+      Reply with the month name and day number only.
+    expected_month: February
+    expected_day: "3"
+    rationale: >
+      January has 31 days. January 20 + 14 = January 34, which wraps to
+      February 3 (11 remaining days exhaust January 20-31, then 3 into February).
+
+  # ── Cross-month offsets ─────────────────────────────────────────────────────
+  - question: >
+      What date is 45 days after November 1st?
+      Reply with just the month name and day number.
+    expected_month: December
+    expected_day: "16"
+    rationale: >
+      November has 30 days. Nov 1 + 29 remaining November days = Nov 30.
+      45 - 29 = 16 days into December, so December 16.
+
+  - question: >
+      What date is 7 weeks (49 days) after February 1st, in a non-leap year?
+      Reply with just the month name and day number.
+    expected_month: March
+    expected_day: "22"
+    rationale: >
+      February has 28 days in a non-leap year. Feb 1 + 27 remaining days = Feb 28.
+      49 - 27 = 22 days into March, so March 22.
+
+  # ── Backwards offsets ──────────────────────────────────────────────────────
+  - question: >
+      What date is exactly 2 weeks (14 days) before March 15th?
+      Reply with just the month name and day number.
+    expected_month: March
+    expected_day: "1"
+    rationale: >
+      March 15 minus 14 days = March 1.
+
+  - question: >
+      What date falls 10 days before April 10th?
+      Reply with just the month name and day number.
+    expected_month: March
+    expected_day: "31"
+    rationale: >
+      April 10 minus 10 days = March 31
+      (April 10 - 10 days: cross back into March, April 1 is day 1,
+      so 9 days back lands on March 31 and going back 10 lands on March 31).
+      April 10 - 10 = April 0 = March 31.
+
+  # ── Month-unit offsets ─────────────────────────────────────────────────────
+  - question: >
+      What month and day falls exactly 6 months after August 1st?
+      Reply with just the month name and day number.
+    expected_month: February
+    expected_day: "1"
+    rationale: >
+      August is month 8. 8 + 6 = 14, which wraps to month 2 (February) of
+      the following year. The day stays the same: February 1.
