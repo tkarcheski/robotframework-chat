@@ -169,6 +169,9 @@ def _extract_choice_letter(response: str) -> Optional[str]:
     """
     if not response:
         return None
-    first_line = response.strip().splitlines()[0]
+    stripped = response.strip()
+    if not stripped:
+        return None
+    first_line = stripped.splitlines()[0]
     m = _AB_CHOICE_RE.search(first_line)
     return m.group(1).upper() if m else None

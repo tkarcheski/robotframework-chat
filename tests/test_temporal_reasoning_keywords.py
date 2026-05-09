@@ -75,6 +75,13 @@ class TestExtractChoiceLetter:
     def test_returns_none_on_empty(self) -> None:
         assert _extract_choice_letter("") is None
 
+    def test_returns_none_on_whitespace_only(self) -> None:
+        # Regression: "\n\n".strip().splitlines() returns [] causing IndexError
+        assert _extract_choice_letter("\n\n") is None
+
+    def test_returns_none_on_spaces_only(self) -> None:
+        assert _extract_choice_letter("   ") is None
+
     def test_returns_none_when_no_ab(self) -> None:
         assert _extract_choice_letter("The answer is somewhere here.") is None
 
