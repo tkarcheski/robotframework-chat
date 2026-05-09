@@ -205,7 +205,12 @@ class TestEvaluateTemporalArithmetic:
             question="Hours in a week?",
             expected_value=168,
         )
-        assert set(result.keys()) == {"extracted_value", "correct", "response", "expected"}
+        assert set(result.keys()) == {
+            "extracted_value",
+            "correct",
+            "response",
+            "expected",
+        }
 
 
 # ---------------------------------------------------------------------------
