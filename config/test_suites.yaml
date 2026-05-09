@@ -256,6 +256,16 @@ test_suites:
     path: "robot/sycophancy"
     description: "Pressure-resistance testing — does the model maintain a correct or well-reasoned position when the user pushes back via factual contradiction, claimed expert authority, or appeal to consensus?"
 
+  extraction:
+    label: "Structured Information Extraction"
+    path: "robot/extraction"
+    description: "Named entity and key-value extraction from unstructured text — person, place, date, number, and attribute extraction verified with deterministic Python matching"
+
+  code-review:
+    label: "Code Review / Bug Detection"
+    path: "robot/code_review"
+    description: "Bug detection and security vulnerability identification in Python code snippets via multiple-choice questions graded by letter extraction"
+
 # Special "run all" entry
 run_all:
   label: "Run All Test Suites"
@@ -403,6 +413,16 @@ ci:
     robot-sycophancy-tests:
       path: "robot/sycophancy/"
       output_dir: "results/sycophancy"
+      tags: ["ollama"]
+
+    robot-extraction-tests:
+      path: "robot/extraction/"
+      output_dir: "results/extraction"
+      tags: ["ollama"]
+
+    robot-code-review-tests:
+      path: "robot/code_review/"
+      output_dir: "results/code_review"
       tags: ["ollama"]
 
   superset-dashboards:

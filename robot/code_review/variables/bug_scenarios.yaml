@@ -1,0 +1,101 @@
+# Bug detection scenarios — multiple-choice format (A–D).
+#
+# Each entry has:
+#   id:              unique identifier
+#   name:            human-readable test name
+#   code:            Python snippet containing exactly one bug
+#   question:        multiple-choice question with four options (A–D)
+#   expected_letter: the correct answer (A, B, C, or D)
+#   rationale:       explanation of the correct answer
+
+BUG_SCENARIOS:
+  - id: B1
+    name: "Mutable Default Argument"
+    code: |
+      def add_item(value, collection=[]):
+          collection.append(value)
+          return collection
+    question: |
+      Which option correctly identifies the bug?
+      A) The function should use `extend()` instead of `append()` for correctness
+      B) The mutable default argument `collection=[]` is shared across all calls, so state leaks between invocations
+      C) The function should return a copy of the list with `return list(collection)`
+      D) There is no bug — Python creates a fresh empty list for each function call
+    expected_letter: B
+    rationale: >
+      Python evaluates default arguments once at function definition time.
+      The same list object is reused on every call that omits `collection`,
+      so values accumulate across calls instead of starting fresh each time.
+
+  - id: B2
+    name: "Off-By-One Index Error"
+    code: |
+      def get_last_item(data):
+          return data[len(data)]
+    question: |
+      Which option correctly identifies the bug?
+      A) The function name `get_last_item` is misleading and should be renamed
+      B) `data[len(data)]` raises an IndexError; the last valid index is `len(data) - 1`
+      C) The function should use a for loop to iterate to the last element
+      D) There is no bug — `data[len(data)]` correctly accesses the last element
+    expected_letter: B
+    rationale: >
+      Python list indices are zero-based.  If `data` has N elements, valid
+      indices are 0 through N-1.  `data[len(data)]` therefore always raises
+      IndexError.  The fix is `data[len(data) - 1]` or simply `data[-1]`.
+
+  - id: B3
+    name: "List Mutation During Iteration"
+    code: |
+      def remove_negatives(numbers):
+          for num in numbers:
+              if num < 0:
+                  numbers.remove(num)
+          return numbers
+    question: |
+      Which option correctly identifies the bug?
+      A) `list.remove()` is O(n) and should be replaced with `list.pop()` for efficiency
+      B) The function should build a new list with a list comprehension instead
+      C) Modifying `numbers` while iterating over it can silently skip elements, producing an incorrect result
+      D) There is no bug — Python's for-loop correctly adjusts its position when the list is modified
+    expected_letter: C
+    rationale: >
+      When an element is removed from a list during iteration, the iterator's
+      internal index advances past the next element without visiting it.  For
+      consecutive negative numbers this causes some values to be skipped.
+      The safe approach is to build a new list: `[n for n in numbers if n >= 0]`.
+
+  - id: B4
+    name: "Missing Parentheses on Method Call"
+    code: |
+      def count_words(text):
+          words = text.split
+          return len(words)
+    question: |
+      Which option correctly identifies the bug?
+      A) `text.split` is missing parentheses — without them `words` holds the bound method object, not a list of words
+      B) `len()` cannot be used to count words; use `text.count(' ')` instead
+      C) The function should use `re.split(r'\s+', text)` for robust whitespace handling
+      D) There is no bug — Python lazily evaluates `text.split` when `len()` is called
+    expected_letter: A
+    rationale: >
+      `text.split` without parentheses is a reference to the bound method, not a
+      call to it.  `words` therefore holds a built-in method object and `len(words)`
+      raises `TypeError`.  The fix is `text.split()` (with parentheses).
+
+  - id: B5
+    name: "Division by Zero on Empty Input"
+    code: |
+      def average(numbers):
+          return sum(numbers) / len(numbers)
+    question: |
+      Which option correctly identifies the bug?
+      A) `sum()` and `len()` return integers, causing integer-division truncation in Python 3
+      B) The function raises `ZeroDivisionError` when `numbers` is an empty list; no guard exists
+      C) The function should use `statistics.mean()` from the standard library
+      D) There is no bug — Python automatically returns `float('nan')` for division by zero
+    expected_letter: B
+    rationale: >
+      When `numbers` is `[]`, `len([])` is 0 and the division raises `ZeroDivisionError`.
+      In Python 3, dividing two integers produces a float, so option A is wrong.
+      Python does not silently return NaN for integer division by zero.

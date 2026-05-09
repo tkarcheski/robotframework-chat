@@ -219,6 +219,16 @@ test_suites:
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
+  - name: "extraction"
+    path: "robot/extraction/"
+    description: "Named entity and key-value extraction from unstructured text with deterministic Python matching"
+    timeout_seconds: 300
+
+  - name: "code-review"
+    path: "robot/code_review/"
+    description: "Bug detection and security vulnerability identification via multiple-choice questions"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
