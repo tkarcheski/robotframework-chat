@@ -1,0 +1,83 @@
+# Temporal ordering scenarios: BEFORE / AFTER
+#
+# Each entry describes two historical events and asserts which came first.
+# Dates are embedded in the event descriptions to give the model a hint
+# and to make the ground truth unambiguous.
+#
+# verdict: BEFORE → Event A occurred before Event B
+# verdict: AFTER  → Event A occurred after Event B
+
+ORDERING_SCENARIOS:
+
+  # ── BEFORE: A clearly precedes B ──────────────────────────────────────────
+
+  - id: wwi_before_wwii
+    name: "WWI end before WWII start"
+    event_a: >
+      The Armistice of 11 November 1918 ended World War I.
+    event_b: >
+      Germany invaded Poland on 1 September 1939, beginning World War II.
+    verdict: BEFORE
+
+  - id: moon_landing_before_berlin_wall
+    name: "Apollo 11 moon landing before the fall of the Berlin Wall"
+    event_a: >
+      Apollo 11 astronauts Neil Armstrong and Buzz Aldrin landed on the Moon
+      on 20 July 1969.
+    event_b: >
+      The Berlin Wall fell on 9 November 1989, symbolising the end of the
+      Cold War.
+    verdict: BEFORE
+
+  - id: python_before_java
+    name: "Python language created before Java"
+    event_a: >
+      Guido van Rossum released Python 1.0 in January 1994 (the language
+      was designed from 1989).
+    event_b: >
+      Sun Microsystems publicly released Java 1.0 in January 1996.
+    verdict: BEFORE
+
+  - id: darwin_before_einstein
+    name: "On the Origin of Species published before Special Relativity"
+    event_a: >
+      Charles Darwin published On the Origin of Species in November 1859.
+    event_b: >
+      Albert Einstein published his Special Theory of Relativity in 1905.
+    verdict: BEFORE
+
+  - id: linux_before_git
+    name: "Linux kernel released before Git was created"
+    event_a: >
+      Linus Torvalds released the Linux kernel version 0.01 in September 1991.
+    event_b: >
+      Linus Torvalds created Git in April 2005 to manage Linux kernel development.
+    verdict: BEFORE
+
+  # ── AFTER: A followed B ───────────────────────────────────────────────────
+
+  - id: iphone_after_twitter
+    name: "First iPhone released after Twitter was founded"
+    event_a: >
+      Apple released the first iPhone on 29 June 2007.
+    event_b: >
+      Jack Dorsey published the first tweet and Twitter was founded in
+      March 2006.
+    verdict: AFTER
+
+  - id: facebook_after_google
+    name: "Facebook launched after Google was founded"
+    event_a: >
+      Mark Zuckerberg launched Facebook (then 'TheFacebook') in February 2004.
+    event_b: >
+      Larry Page and Sergey Brin founded Google in September 1998.
+    verdict: AFTER
+
+  - id: chatgpt_after_smartphone
+    name: "ChatGPT launched after the first commercial smartphone"
+    event_a: >
+      OpenAI launched ChatGPT on 30 November 2022.
+    event_b: >
+      IBM Simon — widely considered the first smartphone — was released to
+      consumers in August 1994.
+    verdict: AFTER

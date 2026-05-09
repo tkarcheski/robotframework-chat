@@ -219,6 +219,11 @@ test_suites:
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
+  - name: "temporal-reasoning"
+    path: "robot/temporal_reasoning/"
+    description: "Temporal reasoning: chronological ordering, date arithmetic, and event sequencing"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------

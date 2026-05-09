@@ -1,0 +1,74 @@
+# Event sequence scenarios
+#
+# Each entry lists three historical events and the correct chronological order
+# from earliest to latest.  Dates are provided in the event descriptions to
+# anchor the ground truth.
+#
+# event_a / event_b / event_c:  descriptions (include approximate dates)
+# expected_sequence:            correct order, e.g. "A, B, C"
+
+SEQUENCE_SCENARIOS:
+
+  - id: wright_sputnik_apollo
+    name: "Wright Brothers → Sputnik → Apollo 11"
+    event_a: >
+      The Wright Brothers made the first powered airplane flight at
+      Kitty Hawk, North Carolina (December 1903).
+    event_b: >
+      The Soviet Union launched Sputnik 1, the first artificial satellite
+      to orbit Earth (October 1957).
+    event_c: >
+      NASA's Apollo 11 mission carried the first humans to land on the Moon
+      (July 1969).
+    expected_sequence: "A, B, C"
+
+  - id: french_revolution_civil_war_wwii
+    name: "French Revolution → American Civil War → World War II"
+    event_a: >
+      The French Revolution began with the storming of the Bastille
+      (July 1789).
+    event_b: >
+      The American Civil War was fought between the Union and Confederate
+      states (April 1861 – April 1865).
+    event_c: >
+      World War II engulfed Europe and the Pacific, beginning in September
+      1939 and ending in 1945.
+    expected_sequence: "A, B, C"
+
+  - id: telephone_radio_television
+    name: "Telephone patent → Radio → Television"
+    event_a: >
+      Alexander Graham Bell received his patent for the telephone
+      (March 1876).
+    event_b: >
+      Guglielmo Marconi demonstrated the first successful long-distance
+      wireless radio transmission (1901).
+    event_c: >
+      John Logie Baird gave the first public demonstration of a working
+      television system (January 1926).
+    expected_sequence: "A, B, C"
+
+  - id: linux_google_facebook
+    name: "Linux kernel → Google founded → Facebook launched"
+    event_a: >
+      Linus Torvalds released the first Linux kernel (version 0.01) in
+      September 1991.
+    event_b: >
+      Larry Page and Sergey Brin founded Google Inc. in September 1998.
+    event_c: >
+      Mark Zuckerberg launched Facebook (originally 'TheFacebook') in
+      February 2004.
+    expected_sequence: "A, B, C"
+
+  - id: penicillin_dna_pcr
+    name: "Penicillin discovery → DNA double helix → PCR invention"
+    event_a: >
+      Alexander Fleming discovered penicillin, the world's first antibiotic,
+      in September 1928.
+    event_b: >
+      Watson and Crick published the double-helix structure of DNA in
+      Nature (April 1953).
+    event_c: >
+      Kary Mullis invented the polymerase chain reaction (PCR) technique,
+      published in 1985.
+    expected_sequence: "A, B, C"

@@ -1,0 +1,45 @@
+# Date arithmetic scenarios
+#
+# Each entry contains a question with a single unambiguous integer answer.
+# The model must write the integer on the first line of its response.
+#
+# question:        the natural-language date/time arithmetic question
+# expected_answer: the correct integer result (integer)
+
+DATE_ARITHMETIC_SCENARIOS:
+
+  - id: february_2024_days
+    name: "Days in February 2024 (leap year)"
+    question: >
+      How many days does February 2024 have?
+    expected_answer: 29
+
+  - id: hours_in_three_days
+    name: "Hours in 3 days"
+    question: >
+      How many hours are there in exactly 3 days?
+    expected_answer: 72
+
+  - id: years_1969_to_2024
+    name: "Years between 1969 and 2024"
+    question: >
+      How many full years passed between 1969 and 2024?
+    expected_answer: 55
+
+  - id: age_born_1990
+    name: "Age of person born January 1 1990 on January 1 2024"
+    question: >
+      A person was born on 1 January 1990. How old are they on 1 January 2024?
+    expected_answer: 34
+
+  - id: days_non_leap_year
+    name: "Days in a non-leap year"
+    question: >
+      How many days are there in the year 2023?
+    expected_answer: 365
+
+  - id: minutes_in_two_hours
+    name: "Minutes in two hours"
+    question: >
+      How many minutes are there in exactly 2 hours?
+    expected_answer: 120
