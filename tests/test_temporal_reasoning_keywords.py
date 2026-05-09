@@ -37,6 +37,17 @@ class TestContainsNumber:
     def test_zero(self) -> None:
         assert _contains_number("Zero: 0 days.", 0) is True
 
+    # P1 fix: zero-padded outputs must match the bare integer
+    def test_zero_padded_single_digit_day_matches(self) -> None:
+        assert _contains_number("March 01.", 1) is True
+
+    def test_zero_padded_day_three_matches(self) -> None:
+        assert _contains_number("February 03", 3) is True
+
+    def test_zero_padded_does_not_cause_embedded_false_positive(self) -> None:
+        # "0107" — the 7 has a digit before it even with the leading zero
+        assert _contains_number("day 0107 not found", 7) is False
+
 
 class TestContainsWord:
     def test_exact_match(self) -> None:
@@ -69,6 +80,14 @@ class TestPositionOf:
 
     def test_case_insensitive(self) -> None:
         assert _position_of("the month is march.", "March") >= 0
+
+    # P2 fix: last occurrence is used so echoed prompts don't produce false negatives
+    def test_returns_last_occurrence_not_first(self) -> None:
+        # "Winter" appears twice; last occurrence should be returned
+        text = "Unsorted: Winter, Spring. Sorted: Spring, Winter."
+        pos_winter = _position_of(text, "Winter")
+        # Last "Winter" is in the "Sorted:" section, well past the first one
+        assert pos_winter > text.index("Sorted")
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +248,22 @@ class TestCheckSequenceOrder:
         mock_client.generate.return_value = "February, November."
         result = keywords.check_sequence_order("Q?", "February", "November")
         assert result["response"] == "February, November."
+
+    # P2 fix: correct order must still pass when model echoes the unsorted prompt first
+    def test_correct_order_survives_prompt_echo(
+        self, keywords: TemporalReasoningKeywords, mock_client: MagicMock
+    ) -> None:
+        # The echo lists "Winter" before "Spring"; the actual answer is correct.
+        mock_client.generate.return_value = (
+            "You asked to order: Autumn, Winter, Spring, Summer.\n\n"
+            "Correct chronological order: Spring, Summer, Autumn, Winter."
+        )
+        result = keywords.check_sequence_order(
+            "Order seasons.",
+            anchor_first="Spring",
+            anchor_last="Winter",
+        )
+        assert result["correct"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -23,9 +23,11 @@ from .rfc_data import emit_rfc_data
 def _contains_number(response: str, number: int) -> bool:
     """Return True if *response* contains *number* as a standalone integer.
 
-    Uses word-boundary matching so "142" does not satisfy a search for "42".
+    Matches both bare digits and zero-padded variants (e.g. ``"03"`` satisfies
+    a search for ``3``), while still rejecting embedded occurrences such as
+    ``"142"`` for ``42``.  Digit-boundary look-around prevents false positives.
     """
-    pattern = r"(?<!\d)" + re.escape(str(number)) + r"(?!\d)"
+    pattern = r"(?<!\d)0?" + re.escape(str(number)) + r"(?!\d)"
     return bool(re.search(pattern, response))
 
 
@@ -38,10 +40,17 @@ def _contains_word(response: str, word: str) -> bool:
 
 
 def _position_of(response: str, word: str) -> int:
-    """Return the character position of the first case-insensitive occurrence
-    of *word* in *response*, or -1 if not found."""
-    m = re.search(re.escape(word), response, re.IGNORECASE)
-    return m.start() if m else -1
+    """Return the character position of the LAST case-insensitive occurrence
+    of *word* in *response*, or -1 if not found.
+
+    Using the last occurrence (rather than the first) avoids false negatives
+    when a model echoes the unsorted input before giving the sorted answer —
+    the last mention of each anchor will be in the actual response, not the
+    echo of the question.
+    """
+    lower = response.lower()
+    pos = lower.rfind(word.lower())
+    return pos
 
 
 # ---------------------------------------------------------------------------
