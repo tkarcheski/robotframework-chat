@@ -4,10 +4,17 @@
 # from earliest to latest.  Dates are provided in the event descriptions to
 # anchor the ground truth.
 #
+# IMPORTANT: events are deliberately presented in non-chronological order for
+# several scenarios so that a model cannot pass by always answering "A, B, C".
+# The expected_sequence reflects the true chronological order of the labelled
+# events, not the order they appear in this file.
+#
 # event_a / event_b / event_c:  descriptions (include approximate dates)
-# expected_sequence:            correct order, e.g. "A, B, C"
+# expected_sequence:            correct earliest-to-latest order, e.g. "B, C, A"
 
 SEQUENCE_SCENARIOS:
+
+  # ── expected: A, B, C (events already in chronological order) ─────────────
 
   - id: wright_sputnik_apollo
     name: "Wright Brothers → Sputnik → Apollo 11"
@@ -22,31 +29,35 @@ SEQUENCE_SCENARIOS:
       (July 1969).
     expected_sequence: "A, B, C"
 
-  - id: french_revolution_civil_war_wwii
-    name: "French Revolution → American Civil War → World War II"
+  # ── expected: B, C, A (events deliberately scrambled) ────────────────────
+
+  - id: wwii_french_revolution_civil_war
+    name: "WWII, French Revolution, Civil War — events presented out of order"
     event_a: >
-      The French Revolution began with the storming of the Bastille
-      (July 1789).
+      World War II engulfed Europe and the Pacific, beginning with Germany's
+      invasion of Poland in September 1939 and ending in 1945.
     event_b: >
+      The French Revolution began with the storming of the Bastille
+      (July 1789) and fundamentally transformed French society.
+    event_c: >
       The American Civil War was fought between the Union and Confederate
       states (April 1861 – April 1865).
-    event_c: >
-      World War II engulfed Europe and the Pacific, beginning in September
-      1939 and ending in 1945.
-    expected_sequence: "A, B, C"
+    expected_sequence: "B, C, A"
 
-  - id: telephone_radio_television
-    name: "Telephone patent → Radio → Television"
+  - id: television_telephone_radio
+    name: "Television, Telephone, Radio — events presented out of order"
     event_a: >
-      Alexander Graham Bell received his patent for the telephone
-      (March 1876).
-    event_b: >
-      Guglielmo Marconi demonstrated the first successful long-distance
-      wireless radio transmission (1901).
-    event_c: >
       John Logie Baird gave the first public demonstration of a working
       television system (January 1926).
-    expected_sequence: "A, B, C"
+    event_b: >
+      Alexander Graham Bell received his patent for the telephone
+      (March 1876).
+    event_c: >
+      Guglielmo Marconi demonstrated the first successful long-distance
+      wireless radio transmission (1901).
+    expected_sequence: "B, C, A"
+
+  # ── expected: A, B, C (events already in chronological order) ─────────────
 
   - id: linux_google_facebook
     name: "Linux kernel → Google founded → Facebook launched"
@@ -60,15 +71,17 @@ SEQUENCE_SCENARIOS:
       February 2004.
     expected_sequence: "A, B, C"
 
-  - id: penicillin_dna_pcr
-    name: "Penicillin discovery → DNA double helix → PCR invention"
+  # ── expected: C, A, B (events deliberately scrambled) ────────────────────
+
+  - id: dna_pcr_penicillin
+    name: "DNA double helix, PCR, Penicillin — events presented out of order"
     event_a: >
-      Alexander Fleming discovered penicillin, the world's first antibiotic,
-      in September 1928.
-    event_b: >
       Watson and Crick published the double-helix structure of DNA in
       Nature (April 1953).
-    event_c: >
+    event_b: >
       Kary Mullis invented the polymerase chain reaction (PCR) technique,
       published in 1985.
-    expected_sequence: "A, B, C"
+    event_c: >
+      Alexander Fleming discovered penicillin, the world's first antibiotic,
+      in September 1928.
+    expected_sequence: "C, A, B"
