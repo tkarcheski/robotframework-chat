@@ -1,0 +1,48 @@
+# Time arithmetic scenarios.
+#
+# Each scenario asks the LLM to compute a duration in a single unit
+# (seconds, minutes, or hours). The expected_value is an exact integer;
+# grading is deterministic (Tier 1 / verify:python).
+
+TIME_ARITHMETIC_SCENARIOS:
+  - id: T1
+    name: "Seconds in One Hour"
+    question: "How many seconds are in one hour? Give a single integer."
+    expected_value: 3600
+
+  - id: T2
+    name: "Minutes in One Day"
+    question: "How many minutes are in one full day (24 hours)? Give a single integer."
+    expected_value: 1440
+
+  - id: T3
+    name: "Hours in One Week"
+    question: "How many hours are in exactly one week? Give a single integer."
+    expected_value: 168
+
+  - id: T4
+    name: "Two Hours Forty-Five Minutes to Minutes"
+    question: "Two hours and 45 minutes equals how many minutes in total? Give a single integer."
+    expected_value: 165
+
+  - id: T5
+    name: "Eight Hours Thirty Minutes to Minutes"
+    question: "Eight hours and 30 minutes equals how many minutes in total? Give a single integer."
+    expected_value: 510
+
+  - id: T6
+    name: "Seconds in Ninety Minutes"
+    question: "How many seconds are in 90 minutes? Give a single integer."
+    expected_value: 5400
+
+  - id: T7
+    name: "Flight Duration in Minutes"
+    question: >-
+      A flight takes 6 hours and 40 minutes.
+      How many minutes is the total flight time? Give a single integer.
+    expected_value: 400
+
+  - id: T8
+    name: "Four-Day Work Week in Hours"
+    question: "4 working days of 8 hours each: how many total hours? Give a single integer."
+    expected_value: 32

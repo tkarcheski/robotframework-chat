@@ -1,0 +1,65 @@
+# Calendar arithmetic scenarios.
+#
+# Each scenario asks the LLM about Gregorian calendar facts: days in months,
+# leap-year rules, and day-of-year offsets. The expected_value is an exact
+# integer; grading is deterministic (Tier 1 / verify:python).
+
+CALENDAR_ARITHMETIC_SCENARIOS:
+  - id: C1
+    name: "Days in February Common Year"
+    question: >-
+      How many days are in the month of February in a common (non-leap) year?
+      Give a single integer.
+    expected_value: 28
+
+  - id: C2
+    name: "Days in February Leap Year"
+    question: "How many days are in the month of February in a leap year? Give a single integer."
+    expected_value: 29
+
+  - id: C3
+    name: "Combined Days in January and February"
+    question: >-
+      January has 31 days and February has 28 days in a common year.
+      Combined, how many days are in January and February?
+      Give a single integer.
+    expected_value: 59
+
+  - id: C4
+    name: "Days in Q1 Common Year"
+    question: >-
+      In a common (non-leap) year, January has 31 days, February 28, and March 31.
+      How many days are in Q1 (January plus February plus March) in total?
+      Give a single integer.
+    expected_value: 90
+
+  - id: C5
+    name: "Days in April"
+    question: "How many days are in the month of April? Give a single integer."
+    expected_value: 30
+
+  - id: C6
+    name: "Day Number of March 1 in Common Year"
+    question: >-
+      In a common year with January 1 counted as day 1:
+      January has 31 days and February has 28 days.
+      What day number is March 1?
+      Give a single integer.
+    expected_value: 60
+
+  - id: C7
+    name: "Day Number of July 1 in Common Year"
+    question: >-
+      In a common (non-leap) year with January 1 as day 1:
+      January has 31 days, February 28, March 31, April 30, May 31, June 30.
+      What day number is July 1?
+      Give a single integer.
+    expected_value: 182
+
+  - id: C8
+    name: "Days in Q2 Common Year"
+    question: >-
+      In a common (non-leap) year, Q2 covers April (30 days), May (31 days),
+      and June (30 days). How many days are in Q2 in total?
+      Give a single integer.
+    expected_value: 91

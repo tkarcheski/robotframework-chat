@@ -1,0 +1,62 @@
+# Historical event chronology scenarios.
+#
+# Each scenario presents two well-known events with their year in parentheses
+# and asks which came first (A or B). The expected_letter is the correct
+# choice; grading is deterministic (Tier 1 / verify:python).
+#
+# Balanced: 3 scenarios where A is correct, 3 where B is correct.
+
+EVENT_CHRONOLOGY_SCENARIOS:
+  - id: E1
+    name: "WWI vs WWII"
+    question: >-
+      Which event occurred first?
+      A) World War I begins (1914)
+      B) World War II begins (1939)
+      Answer with just the letter A or B.
+    expected_letter: "A"
+
+  - id: E2
+    name: "French Revolution vs American Revolution"
+    question: >-
+      Which event occurred first?
+      A) French Revolution begins (1789)
+      B) American Declaration of Independence (1776)
+      Answer with just the letter A or B.
+    expected_letter: "B"
+
+  - id: E3
+    name: "Moon Landing vs Berlin Wall Fall"
+    question: >-
+      Which event occurred first?
+      A) First Moon Landing (1969)
+      B) Fall of the Berlin Wall (1989)
+      Answer with just the letter A or B.
+    expected_letter: "A"
+
+  - id: E4
+    name: "Columbus vs Gutenberg"
+    question: >-
+      Which event occurred first?
+      A) Columbus reaches the Americas (1492)
+      B) Gutenberg's printing press (circa 1440)
+      Answer with just the letter A or B.
+    expected_letter: "B"
+
+  - id: E5
+    name: "WWI vs Wright Brothers"
+    question: >-
+      Which event occurred first?
+      A) World War I begins (1914)
+      B) Wright brothers' first powered flight (1903)
+      Answer with just the letter A or B.
+    expected_letter: "B"
+
+  - id: E6
+    name: "September 11 Attacks vs Human Genome Project"
+    question: >-
+      Which event occurred first?
+      A) September 11 attacks (2001)
+      B) Human Genome Project completed (2003)
+      Answer with just the letter A or B.
+    expected_letter: "A"
