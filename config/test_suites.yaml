@@ -265,6 +265,15 @@ test_suites:
     label: "Epistemic Calibration"
     path: "robot/epistemic_calibration"
     description: "Uncertainty expression on inherently unknowable outcomes and knowledge boundary acknowledgment for real-time data requests — Tier 1 marker matching"
+  extraction:
+    label: "Structured Information Extraction"
+    path: "robot/extraction"
+    description: "Named entity and key-value extraction from unstructured text — person, place, date, number, and attribute extraction verified with deterministic Python matching"
+
+  code-review:
+    label: "Code Review / Bug Detection"
+    path: "robot/code_review"
+    description: "Bug detection and security vulnerability identification in Python code snippets via multiple-choice questions graded by letter extraction"
 
 # Special "run all" entry
 run_all:
@@ -423,6 +432,14 @@ ci:
     robot-epistemic-calibration-tests:
       path: "robot/epistemic_calibration/"
       output_dir: "results/epistemic_calibration"
+    robot-extraction-tests:
+      path: "robot/extraction/"
+      output_dir: "results/extraction"
+      tags: ["ollama"]
+
+    robot-code-review-tests:
+      path: "robot/code_review/"
+      output_dir: "results/code_review"
       tags: ["ollama"]
 
   superset-dashboards:
