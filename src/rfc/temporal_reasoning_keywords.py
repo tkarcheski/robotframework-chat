@@ -19,8 +19,10 @@ from .rfc_data import emit_rfc_data
 _INTEGER_RE = re.compile(r"\b(\d[\d,]*\d|\d)\b")
 
 # Matches "A" or "B" anchored to the start of the first non-empty line.
-# Word boundary prevents matching "Be careful" or "About" as a choice letter.
-_AB_CHOICE_RE = re.compile(r"^\s*([ABab])\b")
+# Optional "Answer:" prefix handles models that echo the prompt's label
+# (e.g. "Answer: A\nExplanation").  Word boundary prevents "Be careful"
+# or "About" from matching as a choice letter.
+_AB_CHOICE_RE = re.compile(r"^\s*(?:Answer:\s*)?([ABab])\b", re.IGNORECASE)
 
 _ARITHMETIC_PROMPT = """\
 {question}

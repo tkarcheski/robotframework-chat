@@ -109,6 +109,26 @@ class TestExtractChoiceLetter:
     def test_letter_a_with_period(self) -> None:
         assert _extract_choice_letter("A. The printing press came first.") == "A"
 
+    def test_answer_prefix_uppercase(self) -> None:
+        # Model echoes the prompt's "Answer:" label on the same line
+        assert _extract_choice_letter("Answer: A\nWWI began in 1914.") == "A"
+
+    def test_answer_prefix_choice_b(self) -> None:
+        assert (
+            _extract_choice_letter("Answer: B\nThe American Revolution was earlier.")
+            == "B"
+        )
+
+    def test_answer_prefix_lowercase(self) -> None:
+        assert _extract_choice_letter("answer: a\nexplanation") == "A"
+
+    def test_answer_prefix_no_space(self) -> None:
+        assert _extract_choice_letter("Answer:B\nExplanation here.") == "B"
+
+    def test_answer_prefix_with_prose_word_does_not_match(self) -> None:
+        # "Answer: Be careful" — "Be" starts with B but no word boundary after B
+        assert _extract_choice_letter("Answer: Be careful about this.") is None
+
 
 # ---------------------------------------------------------------------------
 # Initialisation
