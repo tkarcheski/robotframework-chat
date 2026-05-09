@@ -6,6 +6,7 @@ import pytest
 
 from rfc.temporal_reasoning_keywords import (
     TemporalReasoningKeywords,
+    _any_before,
     _contains_number,
     _contains_word,
     _position_of,
@@ -48,6 +49,13 @@ class TestContainsNumber:
         # "0107" — the 7 has a digit before it even with the leading zero
         assert _contains_number("day 0107 not found", 7) is False
 
+    # P1 (decimal) fix: a decimal like 0.59 must not match expected 59
+    def test_decimal_does_not_match_integer(self) -> None:
+        assert _contains_number("The probability is 0.59.", 59) is False
+
+    def test_decimal_suffix_does_not_match(self) -> None:
+        assert _contains_number("Score: 59.0 out of 100", 59) is False
+
 
 class TestContainsWord:
     def test_exact_match(self) -> None:
@@ -81,13 +89,41 @@ class TestPositionOf:
     def test_case_insensitive(self) -> None:
         assert _position_of("the month is march.", "March") >= 0
 
-    # P2 fix: last occurrence is used so echoed prompts don't produce false negatives
     def test_returns_last_occurrence_not_first(self) -> None:
         # "Winter" appears twice; last occurrence should be returned
         text = "Unsorted: Winter, Spring. Sorted: Spring, Winter."
         pos_winter = _position_of(text, "Winter")
         # Last "Winter" is in the "Sorted:" section, well past the first one
         assert pos_winter > text.index("Sorted")
+
+
+class TestAnyBefore:
+    """Tests for the _any_before helper used by check_sequence_order."""
+
+    def test_a_before_b_passes(self) -> None:
+        assert _any_before("Spring, Summer, Autumn, Winter", "Spring", "Winter") is True
+
+    def test_b_before_a_only_fails(self) -> None:
+        assert _any_before("Winter, Spring", "Spring", "Winter") is False
+
+    def test_leading_echo_a_before_b_in_echo_but_correct_in_answer(self) -> None:
+        # Echo has B before A; answer has A before B — should pass
+        text = "Unsorted: Winter, Spring.\nSorted: Spring, Winter."
+        assert _any_before(text, "Spring", "Winter") is True
+
+    def test_trailing_echo_correct_answer_first_then_unsorted_echo(self) -> None:
+        # Answer is correct (A before B); trailing echo has B before A — should pass
+        text = "Sorted: Spring, Winter.\nYou asked: Winter, Spring."
+        assert _any_before(text, "Spring", "Winter") is True
+
+    def test_missing_a_fails(self) -> None:
+        assert _any_before("Just Winter here.", "Spring", "Winter") is False
+
+    def test_missing_b_fails(self) -> None:
+        assert _any_before("Just Spring here.", "Spring", "Winter") is False
+
+    def test_case_insensitive(self) -> None:
+        assert _any_before("spring, summer, winter", "Spring", "Winter") is True
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +293,23 @@ class TestCheckSequenceOrder:
         mock_client.generate.return_value = (
             "You asked to order: Autumn, Winter, Spring, Summer.\n\n"
             "Correct chronological order: Spring, Summer, Autumn, Winter."
+        )
+        result = keywords.check_sequence_order(
+            "Order seasons.",
+            anchor_first="Spring",
+            anchor_last="Winter",
+        )
+        assert result["correct"] is True
+
+    def test_correct_order_survives_trailing_prompt_echo(
+        self, keywords: TemporalReasoningKeywords, mock_client: MagicMock
+    ) -> None:
+        # Model gives correct answer first, then echoes the unsorted prompt.
+        # The trailing echo has Winter before Spring; rfind would pick those up
+        # and falsely fail — _any_before must handle this.
+        mock_client.generate.return_value = (
+            "Correct order: Spring, Summer, Autumn, Winter.\n\n"
+            "You asked to order: Autumn, Winter, Spring, Summer."
         )
         result = keywords.check_sequence_order(
             "Order seasons.",

@@ -24,10 +24,15 @@ def _contains_number(response: str, number: int) -> bool:
     """Return True if *response* contains *number* as a standalone integer.
 
     Matches both bare digits and zero-padded variants (e.g. ``"03"`` satisfies
-    a search for ``3``), while still rejecting embedded occurrences such as
-    ``"142"`` for ``42``.  Digit-boundary look-around prevents false positives.
+    a search for ``3``).  Rejects:
+
+    - Embedded occurrences: ``"142"`` does not satisfy ``42`` (digit look-around).
+    - Decimal prefix: ``"0.59"`` does not satisfy ``59`` (``(?<![.\\d])``).
+    - Decimal suffix: ``"59.0"`` does not satisfy ``59`` (``(?!\\d)(?!\\.\\d)``).
+    - Zero-padded with trailing period: ``"01."`` still satisfies ``1`` because
+      the period is a sentence terminator, not a decimal point (no digit follows).
     """
-    pattern = r"(?<!\d)0?" + re.escape(str(number)) + r"(?!\d)"
+    pattern = r"(?<![.\d])0?" + re.escape(str(number)) + r"(?!\d)(?!\.\d)"
     return bool(re.search(pattern, response))
 
 
@@ -43,14 +48,33 @@ def _position_of(response: str, word: str) -> int:
     """Return the character position of the LAST case-insensitive occurrence
     of *word* in *response*, or -1 if not found.
 
-    Using the last occurrence (rather than the first) avoids false negatives
-    when a model echoes the unsorted input before giving the sorted answer —
-    the last mention of each anchor will be in the actual response, not the
-    echo of the question.
+    Kept for utility and testing; ``check_sequence_order`` uses
+    :func:`_any_before` instead of calling this directly.
     """
     lower = response.lower()
-    pos = lower.rfind(word.lower())
-    return pos
+    return lower.rfind(word.lower())
+
+
+def _any_before(response: str, word_a: str, word_b: str) -> bool:
+    """Return True if any occurrence of *word_a* precedes any occurrence of
+    *word_b* in *response* (case-insensitive).
+
+    Equivalent to ``min(positions_a) < max(positions_b)``.  This strategy is
+    robust to both leading and trailing prompt echoes: if a model echoes the
+    unsorted input *before* the answer, the earliest occurrence of *word_a*
+    is still in the correct sorted section; if it echoes *after* the answer,
+    the latest occurrence of *word_b* is still in the correct section.
+    """
+    lower = response.lower()
+    lower_a = word_a.lower()
+    lower_b = word_b.lower()
+
+    positions_a = [m.start() for m in re.finditer(re.escape(lower_a), lower)]
+    positions_b = [m.start() for m in re.finditer(re.escape(lower_b), lower)]
+
+    if not positions_a or not positions_b:
+        return False
+    return min(positions_a) < max(positions_b)
 
 
 # ---------------------------------------------------------------------------
@@ -212,16 +236,11 @@ class TemporalReasoningKeywords:
         response = self.client.generate(prompt)
         logger.info(f"LLM response:\n{response}")
 
-        pos_first = _position_of(response, anchor_first)
-        pos_last = _position_of(response, anchor_last)
-
-        correct = pos_first != -1 and pos_last != -1 and pos_first < pos_last
+        correct = _any_before(response, anchor_first, anchor_last)
 
         emit_rfc_data("question", question[:200])
         emit_rfc_data("anchor_first", anchor_first)
         emit_rfc_data("anchor_last", anchor_last)
-        emit_rfc_data("pos_first", str(pos_first))
-        emit_rfc_data("pos_last", str(pos_last))
         emit_rfc_data("correct", str(correct))
 
         return {
