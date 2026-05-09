@@ -42,10 +42,13 @@ class TestExtractLetterSequence:
     def test_returns_none_on_empty_response(self) -> None:
         assert _extract_letter_sequence("", 4) is None
 
-    def test_deduplicates_repeated_letters(self) -> None:
-        # A appears twice — only first occurrence counts.
-        result = _extract_letter_sequence("A, B, A, C, D", 4)
-        assert result == ["A", "B", "C", "D"]
+    def test_repeated_letter_same_total_rejected(self) -> None:
+        # "B, A, D, C, C" has 5 raw tokens for n=4 — rejected.
+        assert _extract_letter_sequence("B, A, D, C, C", 4) is None
+
+    def test_repeated_letter_exact_count_rejected(self) -> None:
+        # "B, A, B, C" has 4 raw tokens but only 3 unique — rejected.
+        assert _extract_letter_sequence("B, A, B, C", 4) is None
 
     def test_ignores_letters_inside_words(self) -> None:
         # "Before" starts with B but that B is inside a word.
@@ -127,6 +130,14 @@ class TestWordMatch:
     def test_negation_in_different_clause_still_passes(self) -> None:
         # "Not sure but Monday" — negation does not immediately precede the answer
         assert _word_match("Not sure but Monday", "Monday") is True
+
+    def test_smart_quote_isnt_fails(self) -> None:
+        # U+2019 RIGHT SINGLE QUOTATION MARK — common LLM output
+        assert _word_match("isn’t Monday", "Monday") is False
+
+    def test_smart_quote_wasnt_fails(self) -> None:
+        # U+2018 LEFT SINGLE QUOTATION MARK variant
+        assert _word_match("wasn‘t Tuesday", "Tuesday") is False
 
 
 # ---------------------------------------------------------------------------

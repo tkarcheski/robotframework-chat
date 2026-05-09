@@ -54,11 +54,24 @@ _LETTER_RE = re.compile(r"(?<![A-Za-z])([A-Ea-e])(?![A-Za-z])")
 # Matches the first integer in a string (no leading sign required).
 _INTEGER_RE = re.compile(r"\b(\d+)\b")
 
-# Matches a negation word immediately before the cursor position (fixed-width
-# alternatives so Python's lookbehind accepts them).
+# Matches a negation word immediately before the cursor position.
+# Input is normalised before matching (typographic apostrophes → ASCII),
+# so only ASCII apostrophes are needed here.
 _NEGATION_BEFORE_RE = re.compile(
     r"\b(?:not|no|never|isn't|wasn't|don't|doesn't)\s*$",
     re.IGNORECASE,
+)
+
+# Maps typographic apostrophe variants to the ASCII apostrophe so that
+# _NEGATION_BEFORE_RE can use a single simple pattern.
+_SMART_APOSTROPHES = str.maketrans(
+    {
+        0x2018: 0x0027,  # LEFT single quotation mark  ‘
+        0x2019: 0x0027,  # RIGHT single quotation mark ‘
+        0x02BC: 0x0027,  # modifier letter apostrophe  ʼ
+        0x0060: 0x0027,  # grave accent                `
+        0x00B4: 0x0027,  # acute accent                ´
+    }
 )
 
 
@@ -247,24 +260,18 @@ class TemporalReasoningKeywords:
 
 
 def _extract_letter_sequence(response: str, n: int) -> Optional[List[str]]:
-    """Extract a sequence of exactly *n* letters (A–E) from the first line.
+    """Extract a sequence of exactly *n* distinct letters (A–E) from the first line.
 
-    Returns a deduplicated list of uppercase letters in order of first
-    appearance on the first response line.  Returns ``None`` if the number
-    of distinct valid letters found is not exactly *n* — both too-few and
-    too-many are rejected, preventing silent truncation of over-long sequences.
+    Requires **exactly** *n* label tokens with no duplicates.  Returns ``None``
+    when the raw token count differs from *n* (too few, too many, or a repeated
+    label that deduplication would otherwise mask — e.g. ``"B, A, D, C, C"``
+    is rejected for a 4-event case even though it deduplicates to 4 items).
     """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
-    letters: List[str] = []
-    seen: set = set()
-    for m in _LETTER_RE.finditer(first_line):
-        letter = m.group(1).upper()
-        if letter not in seen:
-            seen.add(letter)
-            letters.append(letter)
-    if len(letters) != n:
+    all_tokens = [m.group(1).upper() for m in _LETTER_RE.finditer(first_line)]
+    if len(all_tokens) != n or len(set(all_tokens)) != n:
         return None
-    return letters
+    return all_tokens
 
 
 def _extract_integer(response: str) -> Optional[int]:
@@ -280,11 +287,14 @@ def _word_match(text: str, target: str) -> bool:
     """Return True iff *target* appears as a whole word in *text* and is not
     immediately preceded by a negation word (not/no/never/isn't/wasn't/…).
 
-    This prevents answers like ``"Not Monday"`` from matching when the
-    expected answer is ``"Monday"``.
+    Typographic apostrophes (U+2019 etc.) are normalised to ASCII ``'`` before
+    matching so that LLM contractions like ``isn't`` are detected reliably.
+    This prevents answers like ``"Not Monday"`` or ``"isn't Monday"`` from
+    matching when the expected answer is ``"Monday"``.
     """
-    m = re.search(r"\b" + re.escape(target) + r"\b", text, re.IGNORECASE)
+    normalised = text.translate(_SMART_APOSTROPHES)
+    m = re.search(r"\b" + re.escape(target) + r"\b", normalised, re.IGNORECASE)
     if not m:
         return False
-    before = text[: m.start()].rstrip()
+    before = normalised[: m.start()].rstrip()
     return not bool(_NEGATION_BEFORE_RE.search(before))
