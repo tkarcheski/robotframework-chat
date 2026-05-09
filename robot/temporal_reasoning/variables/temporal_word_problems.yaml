@@ -1,0 +1,52 @@
+# Temporal word problems
+#
+# Each scenario poses a concrete day-of-week or date arithmetic problem.
+# All answers are unambiguously derivable from the given information alone.
+#
+# Fields:
+#   question:        the exact question sent to the LLM
+#   expected_answer: the expected answer string (case-insensitive substring match)
+#   rationale:       arithmetic verification
+
+TEMPORAL_WORD_PROBLEMS:
+  - question: >
+      If today is Tuesday and the project deadline is exactly 14 days
+      from today, what day of the week is the deadline?
+      Write only the day of the week on the first line.
+    expected_answer: "Tuesday"
+    rationale: "14 days = 2 complete weeks; same day of week. Tuesday + 14 = Tuesday."
+
+  - question: >
+      A package is shipped on Friday. It arrives exactly 3 days later.
+      What day of the week does the package arrive?
+      Write only the day of the week on the first line.
+    expected_answer: "Monday"
+    rationale: "Friday + 1 = Saturday, + 2 = Sunday, + 3 = Monday."
+
+  - question: >
+      A software licence starts on Thursday. It expires exactly 90 days
+      later. What day of the week does the licence expire?
+      Write only the day of the week on the first line.
+    expected_answer: "Wednesday"
+    rationale: >
+      90 mod 7 = 6 (since 7 * 12 = 84, 90 - 84 = 6).
+      Thursday + 6 days = Wednesday.
+
+  - question: >
+      A conference begins on Wednesday and runs for exactly 9 days
+      (counting the opening day as day 1).
+      What day of the week is the final day of the conference?
+      Write only the day of the week on the first line.
+    expected_answer: "Thursday"
+    rationale: >
+      Day 1 = Wednesday. The final day is day 9, which is 8 days after Wednesday.
+      8 mod 7 = 1. Wednesday + 1 = Thursday.
+
+  - question: >
+      A project starts on Monday. The deadline is exactly 10 days after
+      the start date (not counting the start date itself).
+      What day of the week is the deadline?
+      Write only the day of the week on the first line.
+    expected_answer: "Thursday"
+    rationale: >
+      10 mod 7 = 3. Monday + 3 days = Thursday.

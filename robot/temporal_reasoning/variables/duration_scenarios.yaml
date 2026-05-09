@@ -1,0 +1,57 @@
+# Temporal duration calculation scenarios
+#
+# Each scenario asks the LLM to compute the number of complete years that
+# elapsed between two precisely dated historical events.  All expected
+# answers are simple subtraction: later_year - earlier_year.
+#
+# Fields:
+#   question:       the exact question sent to the LLM
+#   expected_years: integer ground-truth answer
+#   rationale:      arithmetic verification
+
+DURATION_SCENARIOS:
+  - question: >
+      How many complete years elapsed between the Wright Brothers' first
+      successful powered flight in 1903 and the Apollo 11 Moon landing in 1969?
+      Write only the integer answer on the first line.
+    expected_years: 66
+    rationale: "1969 - 1903 = 66"
+
+  - question: >
+      How many complete years elapsed between the signing of Magna Carta
+      in 1215 and the signing of the American Declaration of Independence
+      in 1776?
+      Write only the integer answer on the first line.
+    expected_years: 561
+    rationale: "1776 - 1215 = 561"
+
+  - question: >
+      How many complete years elapsed between Alexander Graham Bell's
+      invention of the telephone in 1876 and the release of the first
+      iPhone in 2007?
+      Write only the integer answer on the first line.
+    expected_years: 131
+    rationale: "2007 - 1876 = 131"
+
+  - question: >
+      How many complete years elapsed between the end of World War II
+      in 1945 and the fall of the Berlin Wall in 1989?
+      Write only the integer answer on the first line.
+    expected_years: 44
+    rationale: "1989 - 1945 = 44"
+
+  - question: >
+      How many complete years elapsed between Charles Darwin's publication
+      of On the Origin of Species in 1859 and the discovery of the
+      DNA double-helix structure in 1953?
+      Write only the integer answer on the first line.
+    expected_years: 94
+    rationale: "1953 - 1859 = 94"
+
+  - question: >
+      How many complete years elapsed between Galileo Galilei's first
+      astronomical use of the telescope in 1609 and the Apollo 11
+      Moon landing in 1969?
+      Write only the integer answer on the first line.
+    expected_years: 360
+    rationale: "1969 - 1609 = 360"

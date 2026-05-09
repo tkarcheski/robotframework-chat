@@ -1,0 +1,79 @@
+# Temporal sequence ordering scenarios
+#
+# Each scenario presents a set of labelled historical events that the LLM
+# must order chronologically. Events are deliberately sometimes presented
+# out of order to test whether the model reasons from knowledge, not label
+# position.
+#
+# Fields:
+#   name:           human-readable scenario title
+#   events:         list of event descriptions (label A = events[0], B = events[1], ...)
+#   expected_order: list of uppercase letters in correct chronological order
+#   rationale:      explanation of the ground-truth ordering
+
+SEQUENCE_SCENARIOS:
+  # ── Space exploration milestones (in chronological label order) ───────────
+  - name: Space Exploration Milestones
+    events:
+      - "Sputnik 1 becomes the first artificial satellite in orbit"
+      - "Yuri Gagarin becomes the first human to travel to space"
+      - "Neil Armstrong walks on the Moon during Apollo 11"
+      - "Voyager 1 launched on its journey toward interstellar space"
+      - "Hubble Space Telescope launched into low Earth orbit"
+    expected_order: ["A", "B", "C", "D", "E"]
+    rationale: >
+      Sputnik (1957) < Gagarin (1961) < Apollo 11 (1969) < Voyager 1 (1977)
+      < Hubble (1990).  Labels are already in chronological order.
+
+  # ── Computing milestones (in chronological label order) ──────────────────
+  - name: Computing Milestones
+    events:
+      - "ENIAC, the first general-purpose electronic computer, becomes operational"
+      - "UNIX operating system created at Bell Labs"
+      - "IBM PC introduced to the consumer market"
+      - "World Wide Web invented by Tim Berners-Lee"
+      - "Apple releases the first iPhone"
+    expected_order: ["A", "B", "C", "D", "E"]
+    rationale: >
+      ENIAC (1945) < UNIX (1969) < IBM PC (1981) < WWW (1991) < iPhone (2007).
+      Labels are already in chronological order.
+
+  # ── Biomedical discoveries (events intentionally scrambled) ──────────────
+  - name: Biomedical Discoveries
+    events:
+      - "Watson and Crick publish the double-helix structure of DNA"
+      - "Alexander Fleming discovers penicillin"
+      - "CRISPR-Cas9 gene-editing tool developed and demonstrated"
+      - "Kary Mullis invents the polymerase chain reaction (PCR)"
+    expected_order: ["B", "A", "D", "C"]
+    rationale: >
+      Fleming/penicillin (1928) < Watson-Crick/DNA (1953) < PCR (1983)
+      < CRISPR (2012).  A is 1953, B is 1928, C is 2012, D is 1983,
+      so chronological order is B, A, D, C.
+
+  # ── Western civilisation milestones (events intentionally scrambled) ──────
+  - name: Western Civilisation Milestones
+    events:
+      - "Christopher Columbus reaches the Americas"
+      - "Western Roman Empire collapses"
+      - "French Revolution begins in Paris"
+      - "Black Death plague peaks across Europe"
+    expected_order: ["B", "D", "A", "C"]
+    rationale: >
+      Fall of Western Rome (476) < Black Death peak (1347) < Columbus (1492)
+      < French Revolution (1789).  A is 1492, B is 476, C is 1789, D is 1347,
+      so chronological order is B, D, A, C.
+
+  # ── Digital communication milestones (events intentionally scrambled) ─────
+  - name: Digital Communication Milestones
+    events:
+      - "Google Search engine publicly launched"
+      - "First email sent between two computers on ARPANET"
+      - "Facebook opens to the general public"
+      - "First widely available graphical web browser (Mosaic) released"
+      - "ChatGPT launched and becomes the fastest-growing consumer app"
+    expected_order: ["B", "D", "A", "C", "E"]
+    rationale: >
+      First email (1971) < Mosaic browser (1993) < Google founded/launched (1998)
+      < Facebook public (2004) < ChatGPT (2022).  A is 1998, B is 1971,
+      C is 2004, D is 1993, E is 2022, so chronological order is B, D, A, C, E.
