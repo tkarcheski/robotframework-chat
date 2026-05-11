@@ -27,7 +27,9 @@ class AgenticHarness:
     branch: str = ""
     ended_at: str = ""
     outcome: str = ""  # "" while running; 'success' | 'partial' | 'failed' when ended
-    replay_of_recording_id: str = ""  # nullable; points at dialog_recordings.id (Phase 2)
+    replay_of_recording_id: str = (
+        ""  # nullable; points at dialog_recordings.id (Phase 2)
+    )
 
 
 @dataclass
