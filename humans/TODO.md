@@ -166,6 +166,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
   - Scrape model leaderboards from external sites
   - Automated Superset/Grafana dashboard validation
 - [ ] **Robot Framework Tasks (not tests).** Explore RF's `*** Tasks ***` syntax for non-test automation (RPA-style). Could be used for: model metadata collection, dashboard provisioning, node health checks, report generation.
+- [ ] **Browser Library env setup is incomplete on dev machines.** `make robot-dryrun` reports 12 failures (missing keywords: `New Browser`, `New Page`, `Click`, `Fill Text`, `Wait For Load State`) because `rfbrowser init` (Playwright + Node deps) hasn't been run. Either: (a) document `rfbrowser init` as a required setup step in `ai/dev.md`, (b) add an installer task to `make install`, or (c) split the affected suites behind an env-gated dryrun target so a missing browser stack doesn't block the standard verification suite. Surfaced 2026-05-09 during Issue #350 (Agentic Stack Tracker foundation) session startup.
 
 ---
 
