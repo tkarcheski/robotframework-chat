@@ -57,8 +57,12 @@ CREATE TABLE IF NOT EXISTS test_runs (
     git_commit VARCHAR(255),
     git_branch VARCHAR(255),
     hostname VARCHAR(255),
-    rfc_version VARCHAR(50)
+    rfc_version VARCHAR(50),
+    session_id TEXT
 );
+
+-- Issue #350: ensure session_id is present on upgrading databases.
+ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id TEXT;
 
 -- Drop columns that moved to the archive table on upgrading databases.
 ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_gz;
@@ -182,6 +186,7 @@ SELECT
     r.git_branch,
     r.hostname,
     r.rfc_version,
+    r.session_id,
     ra.output_xml_source,
     rsa.question,
     rsa.expected_answer,

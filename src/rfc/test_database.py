@@ -70,6 +70,7 @@ class TestRun:
     git_branch: str = ""
     hostname: str = ""
     rfc_version: str = ""
+    session_id: str = ""
     id: int = -1
 
 
@@ -202,6 +203,7 @@ SELECT
     r.git_branch,
     r.hostname,
     r.rfc_version,
+    r.session_id,
     ra.output_xml_source,
     rsa.question,
     rsa.expected_answer,
@@ -282,7 +284,8 @@ class _SQLiteBackend(_Backend):
         git_commit TEXT,
         git_branch TEXT,
         hostname TEXT,
-        rfc_version TEXT
+        rfc_version TEXT,
+        session_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -369,6 +372,8 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_results DROP COLUMN tokens_per_second",
         "ALTER TABLE test_results DROP COLUMN token_retry_count",
         "ALTER TABLE test_results DROP COLUMN token_retry_max_tokens",
+        # Issue #350: link test_runs to the active agentic harness session.
+        "ALTER TABLE test_runs ADD COLUMN session_id TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -391,8 +396,8 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_runs
                 (timestamp, model_name, test_suite, total_tests, passed,
                  failed, skipped, duration_seconds, git_commit, git_branch,
-                 hostname, rfc_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hostname, rfc_version, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -407,6 +412,7 @@ class _SQLiteBackend(_Backend):
                     run.git_branch,
                     run.hostname,
                     run.rfc_version,
+                    run.session_id or None,
                 ),
             )
             run_id = cursor.lastrowid
@@ -698,6 +704,8 @@ class _SQLAlchemyBackend(_Backend):
         )""",
         # Migrate score column from INTEGER to REAL (float).
         "ALTER TABLE test_results ALTER COLUMN score TYPE REAL USING score::real",
+        # Issue #350: link test_runs to the active agentic harness session.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id TEXT",
         # Joined view for Superset — lean columns + archive LEFT JOIN.
         f"CREATE VIEW test_results_full AS {TEST_RESULTS_FULL_VIEW_BODY}",
     ]
@@ -731,6 +739,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("git_branch", Text),
             Column("hostname", Text),
             Column("rfc_version", Text),
+            Column("session_id", String, nullable=True),
             Index("idx_test_runs_model", "model_name"),
             Index("idx_test_runs_timestamp", "timestamp"),
             Index("idx_test_runs_suite", "test_suite"),
@@ -823,6 +832,7 @@ class _SQLAlchemyBackend(_Backend):
                     git_branch=run.git_branch,
                     hostname=run.hostname,
                     rfc_version=run.rfc_version,
+                    session_id=run.session_id or None,
                 )
             )
             pk = result.inserted_primary_key
