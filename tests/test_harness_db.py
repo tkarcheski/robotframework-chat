@@ -7,7 +7,7 @@ import sqlite3
 
 import pytest
 
-from rfc.harness_db import HarnessDatabase
+from rfc.harness_db import HAS_SQLALCHEMY, HarnessDatabase, _SQLiteHarnessBackend
 from rfc.harness_models import (
     AgenticHarness,
     AgenticMetric,
@@ -18,11 +18,19 @@ from rfc.harness_models import (
 NOW = "2026-05-09T00:00:00Z"
 
 
-@pytest.fixture
-def harness_db(tmp_path):
-    """SQLite-backed HarnessDatabase. Task 3 will parametrise this."""
+@pytest.fixture(params=["file_path", "sqlite_url"])
+def harness_db(request, tmp_path):
+    """Parametrised: SQLite via file_path AND via sqlite:/// URL.
+
+    file_path -> _SQLiteHarnessBackend.
+    sqlite:/// URL -> _SQLAlchemyHarnessBackend (skipped if sqlalchemy missing).
+    """
     db_file = tmp_path / "harness.db"
-    return HarnessDatabase(db_path=str(db_file))
+    if request.param == "file_path":
+        return HarnessDatabase(db_path=str(db_file))
+    if not HAS_SQLALCHEMY:
+        pytest.skip("sqlalchemy not installed (install with: uv sync --extra superset)")
+    return HarnessDatabase(database_url=f"sqlite:///{db_file}")
 
 
 class TestSchema:
@@ -65,8 +73,11 @@ class TestSchema:
 class TestHarnessLifecycle:
     def test_save_and_get(self, harness_db):
         h = AgenticHarness(
-            session_id="s1", tool_name="claude-code", started_at=NOW,
-            tool_version="4.7", model_id="claude-opus-4-7",
+            session_id="s1",
+            tool_name="claude-code",
+            started_at=NOW,
+            tool_version="4.7",
+            model_id="claude-opus-4-7",
         )
         sid = harness_db.save_harness(h)
         assert sid == "s1"
@@ -95,20 +106,32 @@ class TestHarnessLifecycle:
 
     def test_list_harnesses_reverse_chronological(self, harness_db):
         harness_db.save_harness(
-            AgenticHarness(session_id="s1", tool_name="claude-code", started_at="2026-05-09T00:00:00Z")
+            AgenticHarness(
+                session_id="s1",
+                tool_name="claude-code",
+                started_at="2026-05-09T00:00:00Z",
+            )
         )
         harness_db.save_harness(
-            AgenticHarness(session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z")
+            AgenticHarness(
+                session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z"
+            )
         )
         rows = harness_db.list_harnesses()
         assert [r.session_id for r in rows] == ["s2", "s1"]
 
     def test_list_harnesses_filter_by_tool(self, harness_db):
         harness_db.save_harness(
-            AgenticHarness(session_id="s1", tool_name="claude-code", started_at="2026-05-09T00:00:00Z")
+            AgenticHarness(
+                session_id="s1",
+                tool_name="claude-code",
+                started_at="2026-05-09T00:00:00Z",
+            )
         )
         harness_db.save_harness(
-            AgenticHarness(session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z")
+            AgenticHarness(
+                session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z"
+            )
         )
         rows = harness_db.list_harnesses(tool_name="codex")
         assert [r.session_id for r in rows] == ["s2"]
@@ -117,7 +140,8 @@ class TestHarnessLifecycle:
         for i in range(5):
             harness_db.save_harness(
                 AgenticHarness(
-                    session_id=f"s{i}", tool_name="claude-code",
+                    session_id=f"s{i}",
+                    tool_name="claude-code",
                     started_at=f"2026-05-09T0{i}:00:00Z",
                 )
             )
@@ -135,9 +159,14 @@ class TestSnapshots:
     def test_save_plugins_assigns_uuid_when_id_blank(self, harness_db):
         ids = harness_db.save_plugins(
             [
-                AgenticPlugin(session_id="s1", plugin_name="robotframework-browser",
-                              recorded_at=NOW),
-                AgenticPlugin(session_id="s1", plugin_name="anthropic", recorded_at=NOW),
+                AgenticPlugin(
+                    session_id="s1",
+                    plugin_name="robotframework-browser",
+                    recorded_at=NOW,
+                ),
+                AgenticPlugin(
+                    session_id="s1", plugin_name="anthropic", recorded_at=NOW
+                ),
             ]
         )
         assert all(len(i) == 32 for i in ids)  # uuid4().hex
@@ -146,8 +175,12 @@ class TestSnapshots:
     def test_save_plugins_preserves_explicit_id(self, harness_db):
         ids = harness_db.save_plugins(
             [
-                AgenticPlugin(session_id="s1", plugin_name="robotframework-browser",
-                              recorded_at=NOW, id="explicit-id-1"),
+                AgenticPlugin(
+                    session_id="s1",
+                    plugin_name="robotframework-browser",
+                    recorded_at=NOW,
+                    id="explicit-id-1",
+                ),
             ]
         )
         assert ids == ["explicit-id-1"]
@@ -155,12 +188,24 @@ class TestSnapshots:
     def test_save_plugins_idempotent_on_session_plus_name(self, harness_db):
         # Insert twice with same (session_id, plugin_name) -> second wins via OR REPLACE.
         harness_db.save_plugins(
-            [AgenticPlugin(session_id="s1", plugin_name="anthropic",
-                           recorded_at=NOW, semver="0.40.0")]
+            [
+                AgenticPlugin(
+                    session_id="s1",
+                    plugin_name="anthropic",
+                    recorded_at=NOW,
+                    semver="0.40.0",
+                )
+            ]
         )
         harness_db.save_plugins(
-            [AgenticPlugin(session_id="s1", plugin_name="anthropic",
-                           recorded_at=NOW, semver="0.41.0")]
+            [
+                AgenticPlugin(
+                    session_id="s1",
+                    plugin_name="anthropic",
+                    recorded_at=NOW,
+                    semver="0.41.0",
+                )
+            ]
         )
         plugins = harness_db.get_plugins("s1")
         assert len(plugins) == 1
@@ -172,12 +217,21 @@ class TestSnapshots:
     def test_save_skills_returns_ids_in_input_order(self, harness_db):
         ids = harness_db.save_skills(
             [
-                AgenticSkill(session_id="s1", skill_path="robot/safety/safety.resource",
-                             recorded_at=NOW),
-                AgenticSkill(session_id="s1", skill_path="robot/math/math.resource",
-                             recorded_at=NOW),
-                AgenticSkill(session_id="s1", skill_path="robot/docker/bash/bash.resource",
-                             recorded_at=NOW),
+                AgenticSkill(
+                    session_id="s1",
+                    skill_path="robot/safety/safety.resource",
+                    recorded_at=NOW,
+                ),
+                AgenticSkill(
+                    session_id="s1",
+                    skill_path="robot/math/math.resource",
+                    recorded_at=NOW,
+                ),
+                AgenticSkill(
+                    session_id="s1",
+                    skill_path="robot/docker/bash/bash.resource",
+                    recorded_at=NOW,
+                ),
             ]
         )
         assert len(ids) == 3
@@ -198,21 +252,30 @@ class TestMetrics:
 
     def test_save_metric_session_only(self, harness_db):
         mid = harness_db.save_metric(
-            AgenticMetric(session_id="s1", metric_key="tokens_in",
-                          recorded_at=NOW, metric_value=1234.0)
+            AgenticMetric(
+                session_id="s1",
+                metric_key="tokens_in",
+                recorded_at=NOW,
+                metric_value=1234.0,
+            )
         )
         assert len(mid) == 32  # uuid4().hex
         metrics = harness_db.get_metrics("s1")
         assert len(metrics) == 1
         assert metrics[0].metric_key == "tokens_in"
         assert metrics[0].metric_value == 1234.0
-        assert metrics[0].test_run_id == -1   # NULL -> sentinel
+        assert metrics[0].test_run_id == -1  # NULL -> sentinel
         assert metrics[0].test_result_id == -1
 
     def test_save_metric_with_test_run_id(self, harness_db):
         harness_db.save_metric(
-            AgenticMetric(session_id="s1", metric_key="latency_ms",
-                          recorded_at=NOW, metric_value=42.5, test_run_id=7)
+            AgenticMetric(
+                session_id="s1",
+                metric_key="latency_ms",
+                recorded_at=NOW,
+                metric_value=42.5,
+                test_run_id=7,
+            )
         )
         m = harness_db.get_metrics("s1")[0]
         assert m.test_run_id == 7
@@ -221,10 +284,18 @@ class TestMetrics:
     def test_save_metrics_bulk_returns_ids_in_order(self, harness_db):
         ids = harness_db.save_metrics(
             [
-                AgenticMetric(session_id="s1", metric_key="tokens_in",
-                              recorded_at=NOW, metric_value=100.0),
-                AgenticMetric(session_id="s1", metric_key="tokens_out",
-                              recorded_at=NOW, metric_value=50.0),
+                AgenticMetric(
+                    session_id="s1",
+                    metric_key="tokens_in",
+                    recorded_at=NOW,
+                    metric_value=100.0,
+                ),
+                AgenticMetric(
+                    session_id="s1",
+                    metric_key="tokens_out",
+                    recorded_at=NOW,
+                    metric_value=50.0,
+                ),
             ]
         )
         assert len(ids) == 2
@@ -233,12 +304,24 @@ class TestMetrics:
     def test_get_metrics_filtered_by_key(self, harness_db):
         harness_db.save_metrics(
             [
-                AgenticMetric(session_id="s1", metric_key="tokens_in",
-                              recorded_at=NOW, metric_value=100.0),
-                AgenticMetric(session_id="s1", metric_key="tokens_out",
-                              recorded_at=NOW, metric_value=50.0),
-                AgenticMetric(session_id="s1", metric_key="tokens_in",
-                              recorded_at=NOW, metric_value=200.0),
+                AgenticMetric(
+                    session_id="s1",
+                    metric_key="tokens_in",
+                    recorded_at=NOW,
+                    metric_value=100.0,
+                ),
+                AgenticMetric(
+                    session_id="s1",
+                    metric_key="tokens_out",
+                    recorded_at=NOW,
+                    metric_value=50.0,
+                ),
+                AgenticMetric(
+                    session_id="s1",
+                    metric_key="tokens_in",
+                    recorded_at=NOW,
+                    metric_value=200.0,
+                ),
             ]
         )
         in_only = harness_db.get_metrics("s1", metric_key="tokens_in")
@@ -248,6 +331,9 @@ class TestMetrics:
 
 class TestCascades:
     def test_delete_harness_cascades_to_children(self, harness_db, tmp_path):
+        backend = harness_db._backend  # type: ignore[attr-defined]
+        if not isinstance(backend, _SQLiteHarnessBackend):
+            pytest.skip("cascade test reaches into SQLite backend internals")
         harness_db.save_harness(
             AgenticHarness(session_id="s1", tool_name="claude-code", started_at=NOW)
         )
@@ -255,16 +341,23 @@ class TestCascades:
             [AgenticPlugin(session_id="s1", plugin_name="anthropic", recorded_at=NOW)]
         )
         harness_db.save_skills(
-            [AgenticSkill(session_id="s1", skill_path="robot/safety/safety.resource",
-                          recorded_at=NOW)]
+            [
+                AgenticSkill(
+                    session_id="s1",
+                    skill_path="robot/safety/safety.resource",
+                    recorded_at=NOW,
+                )
+            ]
         )
         harness_db.save_metric(
-            AgenticMetric(session_id="s1", metric_key="tokens_in",
-                          recorded_at=NOW, metric_value=100.0)
+            AgenticMetric(
+                session_id="s1",
+                metric_key="tokens_in",
+                recorded_at=NOW,
+                metric_value=100.0,
+            )
         )
         # Delete via direct SQL (no public delete API).
-        # Reach into the SQLite backend to get the path.
-        backend = harness_db._backend  # type: ignore[attr-defined]
         with sqlite3.connect(backend.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("DELETE FROM agentic_harnesses WHERE session_id = ?", ("s1",))
@@ -274,9 +367,12 @@ class TestCascades:
 
 
 class TestIntrospection:
-    def test_get_version_returns_sqlite_version(self, harness_db):
+    def test_get_version_returns_something(self, harness_db):
         v = harness_db.get_version()
-        assert v.count(".") >= 2  # e.g., '3.45.1'
+        # SQLite backend returns sqlite version (e.g., '3.45.1');
+        # SQLAlchemy backend returns dialect name (e.g., 'sqlite' or
+        # 'postgresql'). Both backends must return a non-empty string.
+        assert v
 
     def test_get_table_row_count(self, harness_db):
         assert harness_db.get_table_row_count("agentic_harnesses") == 0

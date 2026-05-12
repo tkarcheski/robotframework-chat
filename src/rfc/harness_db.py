@@ -424,6 +424,357 @@ class _SQLiteHarnessBackend(_HarnessBackend):
 
 
 # ---------------------------------------------------------------------------
+# SQLAlchemy backend
+# ---------------------------------------------------------------------------
+
+
+class _SQLAlchemyHarnessBackend(_HarnessBackend):
+    """SQLAlchemy backend supporting both PostgreSQL and sqlite:/// URLs.
+
+    Imports SQLAlchemy types lazily inside the constructor so that this
+    module can be imported in environments without the superset extra.
+    Tests exercise this backend via sqlite:/// URLs (HarnessDatabase
+    routes those through SQLAlchemy when available); production callers
+    using postgresql:// URLs land here too.
+    """
+
+    _PG_MIGRATIONS: list[str] = []  # placeholder for future column adds
+
+    def __init__(self, database_url: str) -> None:
+        if not HAS_SQLALCHEMY:
+            raise RuntimeError(
+                "SQLAlchemy is required for the SQLAlchemy backend. "
+                "Install with: uv sync --extra superset"
+            )
+        from sqlalchemy import (  # type: ignore[import-not-found]
+            Column,
+            Float,
+            Integer,
+            MetaData,
+            String,
+            Table,
+            UniqueConstraint,
+            create_engine,
+            func,
+            select,
+            text,
+        )
+
+        # Stash the imports as instance attrs so other methods can reuse them
+        # without re-importing.
+        self._text = text
+        self._func = func
+        self._select = select
+        self._database_url = database_url
+        self.engine = create_engine(database_url)
+        self.metadata = MetaData()
+        self._harnesses = Table(
+            "agentic_harnesses",
+            self.metadata,
+            Column("session_id", String, primary_key=True),
+            Column("tool_name", String, nullable=False),
+            Column("tool_version", String),
+            Column("model_id", String),
+            Column("rfc_version", String),
+            Column("branch", String),
+            Column("started_at", String, nullable=False),
+            Column("ended_at", String),
+            Column("outcome", String),
+            Column("replay_of_recording_id", String),
+        )
+        self._plugins = Table(
+            "agentic_plugins",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column("session_id", String, nullable=False),
+            Column("plugin_name", String, nullable=False),
+            Column("semver", String),
+            Column("source", String),
+            Column("recorded_at", String, nullable=False),
+            UniqueConstraint(
+                "session_id", "plugin_name", name="uq_plugins_session_name"
+            ),
+        )
+        self._skills = Table(
+            "agentic_skills",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column("session_id", String, nullable=False),
+            Column("skill_path", String, nullable=False),
+            Column("git_sha", String),
+            Column("skill_name", String),
+            Column("recorded_at", String, nullable=False),
+            UniqueConstraint("session_id", "skill_path", name="uq_skills_session_path"),
+        )
+        self._metrics = Table(
+            "agentic_metrics",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column("session_id", String, nullable=False),
+            Column("test_run_id", Integer),
+            Column("test_result_id", Integer),
+            Column("metric_key", String, nullable=False),
+            Column("metric_value", Float),
+            Column("recorded_at", String, nullable=False),
+        )
+        try:
+            self.metadata.create_all(self.engine)
+        except Exception:
+            logger.warning("create_all() failed; running migrations anyway")
+        self._run_migrations()
+
+    def _run_migrations(self) -> None:
+        with self.engine.begin() as conn:
+            for sql in self._PG_MIGRATIONS:
+                try:
+                    conn.execute(self._text(sql))
+                except Exception as exc:  # idempotent
+                    logger.debug("migration skipped: %s (%s)", sql, exc)
+
+    # CRUD ---------------------------------------------------------------------
+
+    def save_harness(self, harness: AgenticHarness) -> str:
+        with self.engine.begin() as conn:
+            conn.execute(
+                self._harnesses.insert(),
+                {
+                    "session_id": harness.session_id,
+                    "tool_name": harness.tool_name,
+                    "tool_version": harness.tool_version or None,
+                    "model_id": harness.model_id or None,
+                    "rfc_version": harness.rfc_version or None,
+                    "branch": harness.branch or None,
+                    "started_at": harness.started_at,
+                    "ended_at": harness.ended_at or None,
+                    "outcome": harness.outcome or None,
+                    "replay_of_recording_id": harness.replay_of_recording_id or None,
+                },
+            )
+        return harness.session_id
+
+    def end_harness(self, session_id: str, outcome: str, ended_at: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                self._harnesses.update()
+                .where(self._harnesses.c.session_id == session_id)
+                .values(outcome=outcome, ended_at=ended_at)
+            )
+            if result.rowcount == 0:
+                raise LookupError(f"no harness with session_id={session_id!r}")
+
+    def get_harness(self, session_id: str) -> Optional[AgenticHarness]:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                self._harnesses.select().where(
+                    self._harnesses.c.session_id == session_id
+                )
+            ).fetchone()
+        if row is None:
+            return None
+        return AgenticHarness(
+            session_id=row.session_id,
+            tool_name=row.tool_name,
+            tool_version=row.tool_version or "",
+            model_id=row.model_id or "",
+            rfc_version=row.rfc_version or "",
+            branch=row.branch or "",
+            started_at=row.started_at,
+            ended_at=row.ended_at or "",
+            outcome=row.outcome or "",
+            replay_of_recording_id=row.replay_of_recording_id or "",
+        )
+
+    def list_harnesses(
+        self, *, tool_name: str = "", limit: int = 50
+    ) -> list[AgenticHarness]:
+        stmt = self._harnesses.select()
+        if tool_name:
+            stmt = stmt.where(self._harnesses.c.tool_name == tool_name)
+        stmt = stmt.order_by(self._harnesses.c.started_at.desc()).limit(limit)
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        return [
+            AgenticHarness(
+                session_id=r.session_id,
+                tool_name=r.tool_name,
+                tool_version=r.tool_version or "",
+                model_id=r.model_id or "",
+                rfc_version=r.rfc_version or "",
+                branch=r.branch or "",
+                started_at=r.started_at,
+                ended_at=r.ended_at or "",
+                outcome=r.outcome or "",
+                replay_of_recording_id=r.replay_of_recording_id or "",
+            )
+            for r in rows
+        ]
+
+    def save_plugins(self, plugins: list[AgenticPlugin]) -> list[str]:
+        ids: list[str] = []
+        # SQLAlchemy doesn't expose INSERT OR REPLACE portably; emulate with
+        # delete-then-insert per row keyed on the UNIQUE pair.
+        with self.engine.begin() as conn:
+            for p in plugins:
+                row_id = p.id or uuid.uuid4().hex
+                conn.execute(
+                    self._plugins.delete().where(
+                        (self._plugins.c.session_id == p.session_id)
+                        & (self._plugins.c.plugin_name == p.plugin_name)
+                    )
+                )
+                conn.execute(
+                    self._plugins.insert(),
+                    {
+                        "id": row_id,
+                        "session_id": p.session_id,
+                        "plugin_name": p.plugin_name,
+                        "semver": p.semver or None,
+                        "source": p.source or None,
+                        "recorded_at": p.recorded_at,
+                    },
+                )
+                ids.append(row_id)
+        return ids
+
+    def save_skills(self, skills: list[AgenticSkill]) -> list[str]:
+        ids: list[str] = []
+        with self.engine.begin() as conn:
+            for s in skills:
+                row_id = s.id or uuid.uuid4().hex
+                conn.execute(
+                    self._skills.delete().where(
+                        (self._skills.c.session_id == s.session_id)
+                        & (self._skills.c.skill_path == s.skill_path)
+                    )
+                )
+                conn.execute(
+                    self._skills.insert(),
+                    {
+                        "id": row_id,
+                        "session_id": s.session_id,
+                        "skill_path": s.skill_path,
+                        "git_sha": s.git_sha or None,
+                        "skill_name": s.skill_name or None,
+                        "recorded_at": s.recorded_at,
+                    },
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_plugins(self, session_id: str) -> list[AgenticPlugin]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                self._plugins.select()
+                .where(self._plugins.c.session_id == session_id)
+                .order_by(self._plugins.c.plugin_name)
+            ).fetchall()
+        return [
+            AgenticPlugin(
+                session_id=r.session_id,
+                plugin_name=r.plugin_name,
+                recorded_at=r.recorded_at,
+                semver=r.semver or "",
+                source=r.source or "",
+                id=r.id,
+            )
+            for r in rows
+        ]
+
+    def get_skills(self, session_id: str) -> list[AgenticSkill]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                self._skills.select()
+                .where(self._skills.c.session_id == session_id)
+                .order_by(self._skills.c.skill_path)
+            ).fetchall()
+        return [
+            AgenticSkill(
+                session_id=r.session_id,
+                skill_path=r.skill_path,
+                recorded_at=r.recorded_at,
+                git_sha=r.git_sha or "",
+                skill_name=r.skill_name or "",
+                id=r.id,
+            )
+            for r in rows
+        ]
+
+    def save_metric(self, metric: AgenticMetric) -> str:
+        return self.save_metrics([metric])[0]
+
+    def save_metrics(self, metrics: list[AgenticMetric]) -> list[str]:
+        ids: list[str] = []
+        with self.engine.begin() as conn:
+            for m in metrics:
+                row_id = m.id or uuid.uuid4().hex
+                conn.execute(
+                    self._metrics.insert(),
+                    {
+                        "id": row_id,
+                        "session_id": m.session_id,
+                        "test_run_id": m.test_run_id if m.test_run_id != -1 else None,
+                        "test_result_id": (
+                            m.test_result_id if m.test_result_id != -1 else None
+                        ),
+                        "metric_key": m.metric_key,
+                        "metric_value": m.metric_value,
+                        "recorded_at": m.recorded_at,
+                    },
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_metrics(
+        self, session_id: str, *, metric_key: str = ""
+    ) -> list[AgenticMetric]:
+        stmt = self._metrics.select().where(self._metrics.c.session_id == session_id)
+        if metric_key:
+            stmt = stmt.where(self._metrics.c.metric_key == metric_key)
+        stmt = stmt.order_by(self._metrics.c.recorded_at, self._metrics.c.id)
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        return [
+            AgenticMetric(
+                session_id=r.session_id,
+                metric_key=r.metric_key,
+                recorded_at=r.recorded_at,
+                metric_value=float(r.metric_value)
+                if r.metric_value is not None
+                else 0.0,
+                test_run_id=r.test_run_id if r.test_run_id is not None else -1,
+                test_result_id=r.test_result_id if r.test_result_id is not None else -1,
+                id=r.id,
+            )
+            for r in rows
+        ]
+
+    def get_version(self) -> str:
+        return self.engine.dialect.name
+
+    def get_table_row_count(self, table_name: str) -> int:
+        if table_name not in {
+            "agentic_harnesses",
+            "agentic_plugins",
+            "agentic_skills",
+            "agentic_metrics",
+        }:
+            raise ValueError(f"unknown harness table: {table_name}")
+        table_map = {
+            "agentic_harnesses": self._harnesses,
+            "agentic_plugins": self._plugins,
+            "agentic_skills": self._skills,
+            "agentic_metrics": self._metrics,
+        }
+        with self.engine.connect() as conn:
+            return int(
+                conn.execute(
+                    self._select(self._func.count()).select_from(table_map[table_name])
+                ).scalar()
+                or 0
+            )
+
+
+# ---------------------------------------------------------------------------
 # Facade
 # ---------------------------------------------------------------------------
 
@@ -443,16 +794,20 @@ class HarnessDatabase:
         database_url: Optional[str] = None,
     ) -> None:
         if db_path:
+            # File path always uses the native sqlite3 backend (legacy fast path).
             self._backend: _HarnessBackend = _SQLiteHarnessBackend(db_path)
         elif database_url:
-            if database_url.startswith("sqlite:///"):
+            # Deliberate divergence from TestDatabase: HarnessDatabase routes
+            # ALL database URLs (including sqlite:///) through SQLAlchemy when
+            # available, so the test suite can exercise the SQLAlchemy code
+            # path against an in-tmpdir SQLite file without needing a live
+            # Postgres. Falls back to native sqlite3 only when SQLAlchemy is
+            # missing AND the URL is sqlite:///.
+            if HAS_SQLALCHEMY:
+                self._backend = _SQLAlchemyHarnessBackend(database_url)
+            elif database_url.startswith("sqlite:///"):
                 sqlite_path = database_url.replace("sqlite:///", "")
                 self._backend = _SQLiteHarnessBackend(sqlite_path)
-            elif HAS_SQLALCHEMY:
-                # _SQLAlchemyHarnessBackend added in Task 3.
-                raise NotImplementedError(
-                    "SQLAlchemy backend lands in Task 3 of the foundation plan"
-                )
             else:
                 raise RuntimeError(
                     "SQLAlchemy is required for non-sqlite database URLs. "
