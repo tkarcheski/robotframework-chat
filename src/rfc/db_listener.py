@@ -231,8 +231,12 @@ class DbListener(BaseListener):
         # Prefer the Robot variable (set via --variable DEFAULT_MODEL:<model>)
         # over env-var / CI metadata.
         robot_model: Optional[str] = None
+        session_id_var: Optional[str] = None
+        model_harness_var: Optional[str] = None
         try:
             robot_model = BuiltIn().get_variable_value("${DEFAULT_MODEL}")
+            session_id_var = BuiltIn().get_variable_value("${SESSION_ID}")
+            model_harness_var = BuiltIn().get_variable_value("${MODEL_HARNESS}")
         except Exception:
             pass  # Not running inside Robot context (e.g. unit tests)
 
@@ -263,6 +267,8 @@ class DbListener(BaseListener):
             git_branch=self._ci_info.get("Branch", ""),
             hostname=hostname,
             rfc_version=__version__,
+            session_id=session_id_var or "",
+            model_harness=model_harness_var or "",
         )
 
         try:
