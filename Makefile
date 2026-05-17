@@ -154,6 +154,11 @@ retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfaile
 		suite_name=$$(echo "$$xml" | awk -F/ '{print $$(NF-3)}'); \
 		src_dir="robot/$$suite_name/tests"; \
 		[ -d "$$src_dir" ] || src_dir="robot/$$suite_name"; \
+		[ -d "$$src_dir" ] || src_dir="robot/docker/$$suite_name"; \
+		if [ ! -d "$$src_dir" ]; then \
+			echo "WARNING: cannot resolve source tree for suite '$$suite_name' (xml=$$xml); skipping retry" >&2; \
+			continue; \
+		fi; \
 		echo "==> Retrying failed tests from $$xml (source: $$src_dir)"; \
 		$(ROBOT) -d $$out_dir \
 			--rerunfailed $$xml \
@@ -167,6 +172,11 @@ retry-skipped: ## Re-run skipped tests from results/$(VERSION)/
 		suite_name=$$(echo "$$xml" | awk -F/ '{print $$(NF-3)}'); \
 		src_dir="robot/$$suite_name/tests"; \
 		[ -d "$$src_dir" ] || src_dir="robot/$$suite_name"; \
+		[ -d "$$src_dir" ] || src_dir="robot/docker/$$suite_name"; \
+		if [ ! -d "$$src_dir" ]; then \
+			echo "WARNING: cannot resolve source tree for suite '$$suite_name' (xml=$$xml); skipping retry" >&2; \
+			continue; \
+		fi; \
 		test_args=$$(uv run python -m rfc.rerun_skipped -0 "$$xml"); \
 		if [ -n "$$test_args" ]; then \
 			echo "==> Retrying skipped tests from $$xml (source: $$src_dir)"; \
