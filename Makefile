@@ -162,6 +162,7 @@ retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfaile
 		echo "==> Retrying failed tests from $$xml (source: $$src_dir)"; \
 		$(ROBOT) -d $$out_dir \
 			--rerunfailed $$xml \
+			$(AGENT_VARS) \
 			$(LISTENER) \
 			$$src_dir || true; \
 	done
@@ -182,6 +183,7 @@ retry-skipped: ## Re-run skipped tests from results/$(VERSION)/
 			echo "==> Retrying skipped tests from $$xml (source: $$src_dir)"; \
 			printf '%s' "$$test_args" | xargs -0 \
 				$(ROBOT) -d $$out_dir \
+				$(AGENT_VARS) \
 				$(LISTENER) \
 				$$src_dir || true; \
 		fi; \
