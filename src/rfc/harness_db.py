@@ -449,12 +449,14 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         from sqlalchemy import (  # type: ignore[import-not-found]
             Column,
             Float,
+            ForeignKey,
             Integer,
             MetaData,
             String,
             Table,
             UniqueConstraint,
             create_engine,
+            event,
             func,
             select,
             text,
@@ -486,7 +488,12 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_plugins",
             self.metadata,
             Column("id", String, primary_key=True),
-            Column("session_id", String, nullable=False),
+            Column(
+                "session_id",
+                String,
+                ForeignKey("agentic_harnesses.session_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
             Column("plugin_name", String, nullable=False),
             Column("semver", String),
             Column("source", String),
@@ -499,7 +506,12 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_skills",
             self.metadata,
             Column("id", String, primary_key=True),
-            Column("session_id", String, nullable=False),
+            Column(
+                "session_id",
+                String,
+                ForeignKey("agentic_harnesses.session_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
             Column("skill_path", String, nullable=False),
             Column("git_sha", String),
             Column("skill_name", String),
@@ -510,13 +522,28 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_metrics",
             self.metadata,
             Column("id", String, primary_key=True),
-            Column("session_id", String, nullable=False),
+            Column(
+                "session_id",
+                String,
+                ForeignKey("agentic_harnesses.session_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
             Column("test_run_id", Integer),
             Column("test_result_id", Integer),
             Column("metric_key", String, nullable=False),
             Column("metric_value", Float),
             Column("recorded_at", String, nullable=False),
         )
+        # SQLite ignores FK constraints unless PRAGMA foreign_keys=ON is set
+        # on every connection. Postgres enforces FKs unconditionally.
+        if self.engine.dialect.name == "sqlite":
+
+            @event.listens_for(self.engine, "connect")
+            def _enable_sqlite_fk(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
         try:
             self.metadata.create_all(self.engine)
         except Exception:

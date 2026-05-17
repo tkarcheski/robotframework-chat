@@ -331,9 +331,6 @@ class TestMetrics:
 
 class TestCascades:
     def test_delete_harness_cascades_to_children(self, harness_db, tmp_path):
-        backend = harness_db._backend  # type: ignore[attr-defined]
-        if not isinstance(backend, _SQLiteHarnessBackend):
-            pytest.skip("cascade test reaches into SQLite backend internals")
         harness_db.save_harness(
             AgenticHarness(session_id="s1", tool_name="claude-code", started_at=NOW)
         )
@@ -357,13 +354,58 @@ class TestCascades:
                 metric_value=100.0,
             )
         )
-        # Delete via direct SQL (no public delete API).
-        with sqlite3.connect(backend.db_path) as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("DELETE FROM agentic_harnesses WHERE session_id = ?", ("s1",))
+        # Delete via direct SQL (no public delete API). Both backends route
+        # through their own DB primitives so the FK + cascade is exercised
+        # under the same enforcement rules the public API uses.
+        backend = harness_db._backend  # type: ignore[attr-defined]
+        if isinstance(backend, _SQLiteHarnessBackend):
+            with sqlite3.connect(backend.db_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.execute(
+                    "DELETE FROM agentic_harnesses WHERE session_id = ?", ("s1",)
+                )
+        else:
+            with backend.engine.begin() as conn:
+                conn.execute(
+                    backend._harnesses.delete().where(
+                        backend._harnesses.c.session_id == "s1"
+                    )
+                )
         assert harness_db.get_plugins("s1") == []
         assert harness_db.get_skills("s1") == []
         assert harness_db.get_metrics("s1") == []
+
+    def test_orphan_child_insert_rejected(self, harness_db):
+        """Inserting a plugin/skill/metric for an unknown session_id must fail."""
+        with pytest.raises(Exception):
+            harness_db.save_plugins(
+                [
+                    AgenticPlugin(
+                        session_id="no-such-session",
+                        plugin_name="anthropic",
+                        recorded_at=NOW,
+                    )
+                ]
+            )
+        with pytest.raises(Exception):
+            harness_db.save_skills(
+                [
+                    AgenticSkill(
+                        session_id="no-such-session",
+                        skill_path="robot/safety/safety.resource",
+                        recorded_at=NOW,
+                    )
+                ]
+            )
+        with pytest.raises(Exception):
+            harness_db.save_metric(
+                AgenticMetric(
+                    session_id="no-such-session",
+                    metric_key="tokens_in",
+                    recorded_at=NOW,
+                    metric_value=100.0,
+                )
+            )
 
 
 class TestIntrospection:
