@@ -36,11 +36,13 @@ venv.bak/
 *.swo
 *~
 
-# Robot Framework results
-results/
+# Robot Framework results — keep output.xml as the canonical artifact in git
+# so PRs include real data; ignore heavy HTML / logs (regenerate with rebot).
+results/**/log.html
+results/**/report.html
+results/**/*.log
 *.log
 log.html
-output.xml
 report.html
 ci_metadata.json
 ollama_timestamps.json

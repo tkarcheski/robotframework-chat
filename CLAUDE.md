@@ -267,6 +267,67 @@ patterns in step 1.
 
 ---
 
+## Reviewing PRs (`/review` workflow)
+
+When the user invokes `/review` (with or without a PR number), follow these
+rules. They're not in the slash-command body itself — they're the lessons from
+real review sessions on this repo.
+
+### Pick the right scope
+
+- **No PR number provided + active branch with unpushed commits:** review the
+  whole branch as it would land, not just the remote diff. That means three
+  views combined:
+  1. `git log --oneline origin/<base>..HEAD` — commits on the branch
+  2. `git diff origin/<base>...HEAD` — what reviewers will see after push
+  3. `git diff` / `git status --short` — uncommitted working-tree changes
+- **Remote-only review (PR already pushed and matches HEAD):** `gh pr diff <N>`
+  is authoritative. Call out remote vs local divergence so the user knows what
+  reviewers see *today* vs what will land after the next push.
+- **Stale PR body:** if the remote PR description doesn't match the current
+  commit set, flag it explicitly — the body will need a force-push update too.
+
+### Tooling caveats
+
+- `gh pr diff <N> -- <file>` is **not supported** ("accepts at most 1 arg(s)").
+  Save the full diff once: `gh pr diff <N> > /tmp/pr-diff.txt`. Then use `grep
+  -nE "^diff --git"` to locate file boundaries and `Read` with `offset`/`limit`
+  to inspect specific files. Don't try to filter via `gh` flags.
+- For large PRs, prefer `--stat` first (`git diff origin/<base>...HEAD --stat`)
+  to triage which files are mechanical vs. substantive before reading line
+  diffs.
+
+### Verify before recommending
+
+- Never recommend a code change based on memory of the codebase. Open the file
+  (or the diff) and confirm the line still says what you think before
+  proposing an edit. Memory rots faster than the code.
+- If the diff suggests a function exists, `grep -n "def <name>"` the file
+  (or the diff) before referencing it. Phantom function references are a
+  common review-time bug.
+
+### What to actually report
+
+Lead with the *overview* in 1-3 sentences: what the PR does and the rough
+shape (commits, files, additions/deletions). Then sections in this order:
+
+1. **Code quality and style** — what's good, then small nits.
+2. **Specific suggestions for improvements** — numbered, each with file/line.
+3. **Potential issues / risks** — a short severity-tagged table works well
+   when there are 3+ items.
+4. **Test coverage** — concrete numbers (e.g., "2767 passed, 4 new tests"),
+   not vague claims.
+5. **Security considerations** — name the threat model (path traversal, shell
+   injection, SQL injection, secrets leakage) and say *why* this PR is safe
+   from each, not just "no concerns."
+6. **Verdict** — one sentence: ready to push, needs follow-ups (list them),
+   or blocked.
+
+Keep it concise. A review the user can read in under a minute and act on
+beats a thorough one that gets skimmed.
+
+---
+
 ## Refactoring
 
 Refactoring is part of the workflow, not a separate activity. Apply it at
@@ -308,6 +369,65 @@ c) Add a TODO to revisit later
   metric) with a clear log message and continue, rather than aborting the whole
   run. Hard-fail only when the work cannot meaningfully proceed (e.g., primary
   DB URL is unset). Always surface a final summary of what was skipped and why.
+
+---
+
+## Real results: running Robot suites yourself (Issue #350)
+
+Every Robot run is keyed by a **5-tuple watermark** stamped into both
+`output.xml` (`--metadata`) and the `test_runs` table:
+
+| Slot           | Source                                              | Path component |
+|----------------|-----------------------------------------------------|----------------|
+| `rfc_version`  | `from rfc import __version__`                       | 1              |
+| `default_model` (LLM suites) **or** `model_harness` (agent suites) | `.env` `DEFAULT_MODEL` / shell `MODEL_HARNESS` | 2 |
+| `test_suite`   | Make target                                         | 3              |
+| `hostname`     | `$(shell hostname)`                                 | 4              |
+| `session_id`   | Fresh UUID per `make` invocation                    | 5              |
+
+Output goes to `results/<rfc_version>/<model_or_harness>/<test_suite>/<hostname>/<session_id>/`.
+
+### When to run real tests
+
+**You are running from a terminal (Claude Code CLI):** you have shell access,
+so for agent suites (`robot-agentic-coding`, `robot-agentic-injection`) **you
+are the harness**. After making changes that touch agent behaviour:
+
+1. Identify your own model id (it appears in the session system prompt — e.g.
+   `claude-opus-4-7[1m]`).
+2. Run the agent suite with `MODEL_HARNESS` set, so the path and DB row record
+   that you drove the test:
+
+   ```bash
+   MODEL_HARNESS='claude-opus-4-7[1m]' make robot-agentic-coding
+   ```
+
+3. Verify the output landed under
+   `results/$(VERSION)/<sanitized-harness>/agentic_coding/<host>/<session>/`
+   and commit the `output.xml` (HTML stays gitignored).
+
+For LLM suites (`robot-math`, `robot-safety`, etc.) the model under test is
+the LLM at `OLLAMA_ENDPOINT`, not you. Run with `DEFAULT_MODEL` already in
+`.env`:
+
+```bash
+make robot-math
+```
+
+**You are running from the web (claude.ai):** you have no shell access. Don't
+attempt to run robot suites — just produce the code changes and ask the user
+to run them locally. State this constraint in your PR description so the
+reviewer knows the run is deferred.
+
+### Wiring (already in place)
+
+- `Makefile` exports `SESSION_ID`, `MODEL_HARNESS`, `HOSTNAME` and passes
+  `--metadata` + `--variable` flags to every robot run.
+- `rfc.db_listener.DbListener` reads `${SESSION_ID}` and `${MODEL_HARNESS}`
+  Robot variables and writes them to `test_runs.session_id` /
+  `test_runs.model_harness`.
+- `tests/test_test_database_migration.py` covers fresh + pre-migration
+  upgrades for both columns.
 
 ---
 

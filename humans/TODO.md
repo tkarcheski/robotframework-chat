@@ -122,6 +122,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 - [ ] **Capture Ollama response metadata now.** In `ollama.py:generate()`, the response JSON already contains `eval_count`, `eval_duration`, `prompt_eval_count`, etc. Start returning or logging these alongside the text response. Low effort, high value.
 - [ ] **Add quantization to model name parsing.** Parse tags like `llama3:8b-q4_K_M` to extract base model, size, and quantization. Use this in database records immediately.
 - [ ] **Add `RETURN` keyword audit.** CLAUDE.md says "Use `RETURN` (not `[Return]`)" — verify all `.robot` files comply.
+- [ ] **Fix `make robot-dryrun` failures (12 tests).** Pre-existing on `claude-code-staging`. `robot/github/repo_review.robot` and the Superset suites reference Browser-library keywords (`New Browser`, `New Page`, `Wait For Load State`, `Fill Text`, `Click`, `Close Browser`) but the Browser library isn't imported during dryrun. Also `robot/hallucination/test_numerical_accuracy.robot:10` imports `../variables/numerical_facts.yaml` which doesn't exist. Either import Browser/rfBrowser in the affected suites, gate those tests behind a tag the dryrun excludes, or add the missing variables file.
 
 ---
 
@@ -166,6 +167,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
   - Scrape model leaderboards from external sites
   - Automated Superset/Grafana dashboard validation
 - [ ] **Robot Framework Tasks (not tests).** Explore RF's `*** Tasks ***` syntax for non-test automation (RPA-style). Could be used for: model metadata collection, dashboard provisioning, node health checks, report generation.
+- [ ] **Browser Library env setup is incomplete on dev machines.** `make robot-dryrun` reports 12 failures (missing keywords: `New Browser`, `New Page`, `Click`, `Fill Text`, `Wait For Load State`) because `rfbrowser init` (Playwright + Node deps) hasn't been run. Either: (a) document `rfbrowser init` as a required setup step in `ai/dev.md`, (b) add an installer task to `make install`, or (c) split the affected suites behind an env-gated dryrun target so a missing browser stack doesn't block the standard verification suite. Surfaced 2026-05-09 during Issue #350 (Agentic Stack Tracker foundation) session startup.
 
 ---
 

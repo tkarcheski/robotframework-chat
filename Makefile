@@ -19,6 +19,26 @@ DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 -include .env
 export
 
+# Watermark inputs for the results path + output.xml --metadata flags (Issue #350).
+# SESSION_ID is fresh per `make` invocation; all suites chained in one invocation share it.
+HOSTNAME           := $(shell hostname)
+SESSION_ID         := $(shell uv run python -c "import uuid; print(uuid.uuid4().hex)")
+DEFAULT_MODEL_SLUG := $(shell printf '%s' '$(or $(DEFAULT_MODEL),unknown-model)' | tr -c 'A-Za-z0-9._-' '_')
+MODEL_HARNESS_SLUG := $(shell printf '%s' '$(or $(MODEL_HARNESS),unknown-harness)' | tr -c 'A-Za-z0-9._-' '_')
+
+# Path layout: results/<rfc_version>/<model_or_harness>/<test_suite>/<hostname>/<session_id>/
+# LLM_* macros take a single arg ($1) — the test suite slug.
+LLM_RUN_DIR   = results/$(VERSION)/$(DEFAULT_MODEL_SLUG)/$(1)/$(HOSTNAME)/$(SESSION_ID)
+AGENT_RUN_DIR = results/$(VERSION)/$(MODEL_HARNESS_SLUG)/$(1)/$(HOSTNAME)/$(SESSION_ID)
+
+META_BASE   = --metadata rfc_version:$(VERSION) --metadata hostname:$(HOSTNAME) --metadata session_id:$(SESSION_ID)
+LLM_META    = $(META_BASE) --metadata model_name:$(or $(DEFAULT_MODEL),unknown-model) --metadata test_suite:$(1)
+AGENT_META  = $(META_BASE) --metadata model_harness:$(or $(MODEL_HARNESS),unknown-harness) --metadata test_suite:$(1)
+
+VAR_BASE    = --variable SESSION_ID:$(SESSION_ID)
+LLM_VARS    = $(VAR_BASE)
+AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown-harness)
+
 .PHONY: help install update \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review \
@@ -77,41 +97,44 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
 robot-math: ## Run math tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/math $(LISTENER) $(ARGS) robot/math/
+	$(ROBOT) -d $(call LLM_RUN_DIR,math) $(call LLM_META,math) $(LLM_VARS) $(LISTENER) $(ARGS) robot/math/
 
 robot-accounting: ## Run accounting tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/accounting $(LISTENER) $(ARGS) robot/accounting/
+	$(ROBOT) -d $(call LLM_RUN_DIR,accounting) $(call LLM_META,accounting) $(LLM_VARS) $(LISTENER) $(ARGS) robot/accounting/
 
 robot-docker: ## Run Docker tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/docker $(LISTENER) $(ARGS) robot/docker/
+	$(ROBOT) -d $(call LLM_RUN_DIR,docker) $(call LLM_META,docker) $(LLM_VARS) $(LISTENER) $(ARGS) robot/docker/
 
 robot-safety: ## Run safety tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/safety $(LISTENER) $(ARGS) robot/safety/
+	$(ROBOT) -d $(call LLM_RUN_DIR,safety) $(call LLM_META,safety) $(LLM_VARS) $(LISTENER) $(ARGS) robot/safety/
 
 robot-agentic-injection: ## Run agentic prompt injection resistance tests
-	$(ROBOT) -d results/$(VERSION)/agentic_injection $(LISTENER) $(ARGS) robot/agentic_injection/
+	$(ROBOT) -d $(call AGENT_RUN_DIR,agentic_injection) $(call AGENT_META,agentic_injection) $(AGENT_VARS) $(LISTENER) $(ARGS) robot/agentic_injection/
 
-robot-agent: robot-agentic-injection ## Master agent test suite (currently agentic injection)
+robot-agentic-coding: ## Run agentic coding behaviour tests
+	$(ROBOT) -d $(call AGENT_RUN_DIR,agentic_coding) $(call AGENT_META,agentic_coding) $(AGENT_VARS) $(LISTENER) $(ARGS) robot/agentic_coding/
+
+robot-agent: robot-agentic-injection robot-agentic-coding ## Master agent test suite (agentic injection + coding)
 
 robot-bash: ## Run bash scripting tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/bash $(LISTENER) $(ARGS) robot/docker/bash/
+	$(ROBOT) -d $(call LLM_RUN_DIR,bash) $(call LLM_META,bash) $(LLM_VARS) $(LISTENER) $(ARGS) robot/docker/bash/
 
 robot-c: ## Run C programming tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/c $(LISTENER) $(ARGS) robot/docker/c/
+	$(ROBOT) -d $(call LLM_RUN_DIR,c) $(call LLM_META,c) $(LLM_VARS) $(LISTENER) $(ARGS) robot/docker/c/
 
 robot-rust: ## Run Rust programming tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/rust $(LISTENER) $(ARGS) robot/docker/rust/
+	$(ROBOT) -d $(call LLM_RUN_DIR,rust) $(call LLM_META,rust) $(LLM_VARS) $(LISTENER) $(ARGS) robot/docker/rust/
 
 robot-computer-skills: robot-bash robot-c robot-rust ## Run all computer skills tests
 
 robot-superset: ## Test PostgreSQL connection and push host info to database
-	$(ROBOT) -d results/$(VERSION)/superset $(LISTENER) $(ARGS) robot/superset/
+	$(ROBOT) -d $(call LLM_RUN_DIR,superset) $(call LLM_META,superset) $(LLM_VARS) $(LISTENER) $(ARGS) robot/superset/
 
 robot-multilingual: ## Run multilingual instruction-following tests (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/multilingual $(LISTENER) $(ARGS) robot/multilingual/
+	$(ROBOT) -d $(call LLM_RUN_DIR,multilingual) $(call LLM_META,multilingual) $(LLM_VARS) $(LISTENER) $(ARGS) robot/multilingual/
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
-	$(ROBOT) -d results/$(VERSION)/swebench $(LISTENER) $(ARGS) robot/swebench/
+	$(ROBOT) -d $(call LLM_RUN_DIR,swebench) $(call LLM_META,swebench) $(LLM_VARS) $(LISTENER) $(ARGS) robot/swebench/
 
 swebench-discover: ## List available SWE-bench instances
 	uv run python scripts/run_swebench.py --discover
@@ -127,26 +150,40 @@ send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* e
 
 retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfailed
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
-		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
-		src_dir="robot/$$suite_dir/tests"; \
-		[ -d "$$src_dir" ] || src_dir="robot/$$suite_dir"; \
+		out_dir=$$(dirname "$$xml"); \
+		suite_name=$$(echo "$$xml" | awk -F/ '{print $$(NF-3)}'); \
+		src_dir="robot/$$suite_name/tests"; \
+		[ -d "$$src_dir" ] || src_dir="robot/$$suite_name"; \
+		[ -d "$$src_dir" ] || src_dir="robot/docker/$$suite_name"; \
+		if [ ! -d "$$src_dir" ]; then \
+			echo "WARNING: cannot resolve source tree for suite '$$suite_name' (xml=$$xml); skipping retry" >&2; \
+			continue; \
+		fi; \
 		echo "==> Retrying failed tests from $$xml (source: $$src_dir)"; \
-		$(ROBOT) -d results/$(VERSION)/$$suite_dir \
+		$(ROBOT) -d $$out_dir \
 			--rerunfailed $$xml \
+			$(AGENT_VARS) \
 			$(LISTENER) \
 			$$src_dir || true; \
 	done
 
 retry-skipped: ## Re-run skipped tests from results/$(VERSION)/
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
-		suite_dir=$$(dirname "$$xml" | sed "s|results/$(VERSION)/||"); \
-		src_dir="robot/$$suite_dir/tests"; \
-		[ -d "$$src_dir" ] || src_dir="robot/$$suite_dir"; \
+		out_dir=$$(dirname "$$xml"); \
+		suite_name=$$(echo "$$xml" | awk -F/ '{print $$(NF-3)}'); \
+		src_dir="robot/$$suite_name/tests"; \
+		[ -d "$$src_dir" ] || src_dir="robot/$$suite_name"; \
+		[ -d "$$src_dir" ] || src_dir="robot/docker/$$suite_name"; \
+		if [ ! -d "$$src_dir" ]; then \
+			echo "WARNING: cannot resolve source tree for suite '$$suite_name' (xml=$$xml); skipping retry" >&2; \
+			continue; \
+		fi; \
 		test_args=$$(uv run python -m rfc.rerun_skipped -0 "$$xml"); \
 		if [ -n "$$test_args" ]; then \
 			echo "==> Retrying skipped tests from $$xml (source: $$src_dir)"; \
 			printf '%s' "$$test_args" | xargs -0 \
-				$(ROBOT) -d results/$(VERSION)/$$suite_dir \
+				$(ROBOT) -d $$out_dir \
+				$(AGENT_VARS) \
 				$(LISTENER) \
 				$$src_dir || true; \
 		fi; \
