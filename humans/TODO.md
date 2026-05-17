@@ -122,6 +122,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 - [ ] **Capture Ollama response metadata now.** In `ollama.py:generate()`, the response JSON already contains `eval_count`, `eval_duration`, `prompt_eval_count`, etc. Start returning or logging these alongside the text response. Low effort, high value.
 - [ ] **Add quantization to model name parsing.** Parse tags like `llama3:8b-q4_K_M` to extract base model, size, and quantization. Use this in database records immediately.
 - [ ] **Add `RETURN` keyword audit.** CLAUDE.md says "Use `RETURN` (not `[Return]`)" — verify all `.robot` files comply.
+- [ ] **Fix `make robot-dryrun` failures (12 tests).** Pre-existing on `claude-code-staging`. `robot/github/repo_review.robot` and the Superset suites reference Browser-library keywords (`New Browser`, `New Page`, `Wait For Load State`, `Fill Text`, `Click`, `Close Browser`) but the Browser library isn't imported during dryrun. Also `robot/hallucination/test_numerical_accuracy.robot:10` imports `../variables/numerical_facts.yaml` which doesn't exist. Either import Browser/rfBrowser in the affected suites, gate those tests behind a tag the dryrun excludes, or add the missing variables file.
 
 ---
 
