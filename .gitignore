@@ -36,11 +36,9 @@ venv.bak/
 *.swo
 *~
 
-# Robot Framework results — keep output.xml as the canonical artifact in git
-# so PRs include real data; ignore heavy HTML / logs (regenerate with rebot).
-results/**/log.html
-results/**/report.html
-results/**/*.log
+# Robot Framework results live in the `results/` submodule
+# (github.com/tkarcheski/robotframework-chat-results). output.xml is LFS-tracked
+# there; heavy HTML / logs are ignored by the submodule's own .gitignore.
 *.log
 log.html
 report.html
