@@ -229,6 +229,11 @@ test_suites:
     description: "Bug detection and security vulnerability identification via multiple-choice questions"
     timeout_seconds: 300
 
+  - name: "win-win-win"
+    path: "robot/win_win_win/"
+    description: "Behavioral tests for the win-win-win-interview AgentSkill (LLM-as-judge)"
+    timeout_seconds: 600
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
