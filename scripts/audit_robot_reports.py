@@ -430,7 +430,11 @@ def commit_audit(
         #    so a version-scoped pathspec would silently drop the new output.xml.
         add = _run_git(["add", "-A"], results_root)
         if add.returncode != 0:
+            # Staging failed (index lock, permissions, ...). Bail before
+            # committing anything so we never publish an audit report whose
+            # backing results were never staged.
             print(f"  [audit] submodule add failed: {add.stderr.strip()}")
+            return
         committed = _run_git(["commit", "-m", msg], results_root)
         if committed.returncode == 0:
             push = _run_git(["push"], results_root)

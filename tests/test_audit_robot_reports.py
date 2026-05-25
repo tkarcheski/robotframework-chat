@@ -451,3 +451,19 @@ def test_commit_audit_commits_superproject_when_submodule_unchanged(
         a for (a, cwd) in calls if cwd == tmp_path / "results" and a[0] == "push"
     ]
     assert [a for (a, cwd) in calls if cwd == tmp_path and a[0] == "commit"]
+
+
+def test_commit_audit_skips_when_submodule_add_fails(tmp_path: Path) -> None:
+    # If staging the submodule fails (index lock, permissions), bail before
+    # committing the report — otherwise the audit snapshot would omit results
+    # that were never staged, exactly the non-reproducible state we're avoiding.
+    def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+        return _fail("index.lock exists") if args[:2] == ["add", "-A"] else _ok()
+
+    calls = _commit_audit_calls(tmp_path, run_git)
+
+    results_root = tmp_path / "results"
+    # Only the failed add ran in the submodule — no commit/push followed.
+    assert [a for (a, cwd) in calls if cwd == results_root] == [("add", "-A")]
+    # And the superproject was left untouched (no pointer bump, no report commit).
+    assert [a for (a, cwd) in calls if cwd == tmp_path] == []
