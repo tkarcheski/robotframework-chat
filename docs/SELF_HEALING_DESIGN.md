@@ -100,6 +100,35 @@ The decorator handles **active healing** (modify and retry). The listener
 handles **passive observation** (record what happened for the nightly batch).
 Both are required when the LLM is "listening" (learning from failures).
 
+#### Decorator invocation styles
+
+The decorator supports two equivalent forms:
+
+```python
+# Structured config — explicit knobs.
+@self_healing(config=SelfHealingConfig(fallback_models=["qwen2.5:32b"]))
+
+# Prose form — natural language with @skill-name tokens.
+@self_healing("@timeout-skill retry with longer timeout, adjust other variables")
+@self_healing("@modify-skill retry with agent-x's suggestions")
+```
+
+Prose directives are parsed into two parts: ``@skill-name`` tokens that select
+preset config overrides (see ``SKILL_CONFIG_OVERRIDES`` in
+``src/rfc/self_healing.py``), and the remaining prose, which becomes
+**guidance** handed to the LLM during prompt rewriting. The two forms can be
+combined — skill overrides layer on top of an explicit ``config``.
+
+Initial registered skills:
+
+| Skill | Effect on `SelfHealingConfig` |
+|-------|-------------------------------|
+| `@timeout-skill` | `max_prompt_retries=0`, `max_param_retries=5` — bias toward parameter/timeout retries. |
+| `@modify-skill`  | `max_prompt_retries=4`, `max_param_retries=0` — bias toward LLM-driven prompt rewrites. |
+
+Unknown skill tokens are ignored with a warning so adding new skills is
+backwards-compatible.
+
 ### 3.2 Strategy Chain
 
 Strategies are applied in escalation order. Each strategy is attempted before

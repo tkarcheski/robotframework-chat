@@ -6,8 +6,11 @@ from unittest.mock import MagicMock, patch
 from rfc.models import GradeResult
 from rfc.self_healing import (
     HealingAttempt,
+    ParsedDirective,
+    SKILL_CONFIG_OVERRIDES,
     SelfHealingConfig,
     self_healing,
+    _apply_skills,
     _extract_prompt_arg,
     _replace_prompt_arg,
     _capture_params,
@@ -15,6 +18,8 @@ from rfc.self_healing import (
     _is_passing,
     _extract_grade_result,
     _extract_expected_arg,
+    _parse_directive,
+    _rewrite_prompt,
 )
 
 
@@ -368,3 +373,136 @@ class TestSelfHealingDecorator:
         instance = self._make_instance()
         result = my_keyword(instance, "prompt", "answer")
         assert result.score == 1.0
+
+
+class TestParseDirective:
+    def test_empty_string(self):
+        parsed = _parse_directive("")
+        assert parsed.skills == []
+        assert parsed.guidance == ""
+
+    def test_skills_only(self):
+        parsed = _parse_directive("@timeout-skill @modify-skill")
+        assert parsed.skills == ["timeout-skill", "modify-skill"]
+        assert parsed.guidance == ""
+
+    def test_skills_with_prose(self):
+        parsed = _parse_directive(
+            "@timeout-skill retry with longer timeout, adjust other variables"
+        )
+        assert parsed.skills == ["timeout-skill"]
+        assert "retry with longer timeout" in parsed.guidance
+        assert "@timeout-skill" not in parsed.guidance
+
+    def test_prose_only(self):
+        parsed = _parse_directive("just rewrite the prompt please")
+        assert parsed.skills == []
+        assert parsed.guidance == "just rewrite the prompt please"
+
+    def test_collapses_internal_whitespace(self):
+        parsed = _parse_directive("@modify-skill   follow   agent-x's   plan")
+        assert parsed.skills == ["modify-skill"]
+        assert parsed.guidance == "follow agent-x's plan"
+
+
+class TestApplySkills:
+    def test_timeout_skill_biases_to_params(self):
+        cfg = _apply_skills(SelfHealingConfig(), ["timeout-skill"])
+        assert cfg.max_prompt_retries == 0
+        assert cfg.max_param_retries == 5
+
+    def test_modify_skill_biases_to_prompts(self):
+        cfg = _apply_skills(SelfHealingConfig(), ["modify-skill"])
+        assert cfg.max_prompt_retries == 4
+        assert cfg.max_param_retries == 0
+
+    def test_unknown_skill_is_ignored(self):
+        base = SelfHealingConfig(max_prompt_retries=7, max_param_retries=9)
+        cfg = _apply_skills(base, ["does-not-exist"])
+        assert cfg.max_prompt_retries == 7
+        assert cfg.max_param_retries == 9
+
+    def test_preserves_unrelated_fields(self):
+        base = SelfHealingConfig(fallback_models=["m1"], score_threshold=0.5)
+        cfg = _apply_skills(base, ["timeout-skill"])
+        assert cfg.fallback_models == ["m1"]
+        assert cfg.score_threshold == 0.5
+
+
+class TestProseDecoratorAPI:
+    def _make_instance(self):
+        instance = MagicMock()
+        instance.client = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 100
+        instance.client.seed = 42
+        instance.client.model = "test-model"
+        return instance
+
+    @patch("rfc.self_healing.emit_rfc_data")
+    def test_prose_with_skill_token(self, mock_emit):
+        """Prose form with a known skill token decorates and runs."""
+
+        @self_healing("@timeout-skill keep timeouts reasonable")
+        def my_keyword(self, prompt, expected):
+            return GradeResult(score=1.0, reason="ok")
+
+        instance = self._make_instance()
+        assert my_keyword(instance, "p", "a").score == 1.0
+
+    @patch("rfc.self_healing.emit_rfc_data")
+    def test_prose_combined_with_config(self, mock_emit):
+        """Prose skill overrides layer on top of an explicit config."""
+
+        @self_healing(
+            "@modify-skill follow agent-x",
+            config=SelfHealingConfig(fallback_models=["m1"], score_threshold=0.7),
+        )
+        def my_keyword(self, prompt, expected):
+            return GradeResult(score=0.8, reason="ok")
+
+        instance = self._make_instance()
+        assert my_keyword(instance, "p", "a").score == 0.8
+
+    def test_guidance_flows_to_rewrite_prompt(self):
+        """Guidance prose is injected into the LLM rewrite request."""
+        instance = MagicMock()
+        instance.client.generate.return_value = "rewritten"
+        _rewrite_prompt(
+            instance,
+            original_prompt="orig",
+            expected="exp",
+            actual="act",
+            failure_reason="why",
+            guidance="follow agent-x's plan",
+        )
+        sent = instance.client.generate.call_args[0][0]
+        assert "Caller guidance" in sent
+        assert "follow agent-x's plan" in sent
+
+    def test_no_guidance_omits_block(self):
+        """When no guidance is provided, the caller-guidance block is absent."""
+        instance = MagicMock()
+        instance.client.generate.return_value = "rewritten"
+        _rewrite_prompt(
+            instance,
+            original_prompt="orig",
+            expected="exp",
+            actual="act",
+            failure_reason="why",
+        )
+        sent = instance.client.generate.call_args[0][0]
+        assert "Caller guidance" not in sent
+
+
+def test_skill_registry_has_documented_entries():
+    """The two skills referenced in the design doc are registered."""
+    assert "timeout-skill" in SKILL_CONFIG_OVERRIDES
+    assert "modify-skill" in SKILL_CONFIG_OVERRIDES
+
+
+def test_parsed_directive_dataclass_defaults():
+    """ParsedDirective has empty defaults."""
+    parsed = ParsedDirective()
+    assert parsed.skills == []
+    assert parsed.guidance == ""
