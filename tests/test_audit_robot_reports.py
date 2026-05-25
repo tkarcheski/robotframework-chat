@@ -350,3 +350,43 @@ def test_commit_audit_stages_all_submodule_results(tmp_path: Path) -> None:
 
     submodule_adds = [a for (a, cwd) in calls if cwd == results_root and a[0] == "add"]
     assert submodule_adds == [("add", "-A")]
+
+
+def test_commit_audit_skips_superproject_when_push_fails(tmp_path: Path) -> None:
+    # If the submodule commits but the push fails, bumping the superproject
+    # pointer would reference a SHA the remote lacks, breaking `git submodule
+    # update` for every other clone. So the parent commit must be skipped.
+    def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+        return _fail("network down") if args[0] == "push" else _ok()
+
+    calls = _commit_audit_calls(tmp_path, run_git)
+
+    superproject_ops = [a for (a, cwd) in calls if cwd == tmp_path]
+    assert superproject_ops == []
+
+
+def test_commit_audit_commits_superproject_when_push_succeeds(tmp_path: Path) -> None:
+    # The happy path must still bump the pointer + commit the report.
+    calls = _commit_audit_calls(tmp_path, lambda args: _ok())
+
+    superproject_commits = [
+        a for (a, cwd) in calls if cwd == tmp_path and a[0] == "commit"
+    ]
+    assert superproject_commits == [("commit", "-m", "chore: audit robot coverage for v1.11.0")]
+
+
+def test_commit_audit_commits_superproject_when_submodule_unchanged(
+    tmp_path: Path,
+) -> None:
+    # Nothing new in the submodule (commit returns non-zero) means its HEAD is
+    # unchanged and the existing pointer is valid — the report is safe to commit.
+    def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args[0] == "commit":
+            return _fail("nothing to commit")
+        return _ok()
+
+    calls = _commit_audit_calls(tmp_path, run_git)
+
+    # No push attempted (nothing committed), but the superproject still commits.
+    assert not [a for (a, cwd) in calls if cwd == tmp_path / "results" and a[0] == "push"]
+    assert [a for (a, cwd) in calls if cwd == tmp_path and a[0] == "commit"]

@@ -444,8 +444,19 @@ def commit_audit(
         if committed.returncode == 0:
             push = _run_git(["push"], results_root)
             if push.returncode != 0:
+                # The new submodule commit lives only locally. Bumping the
+                # superproject pointer to it would reference a SHA the remote
+                # lacks, breaking `git submodule update` for every other clone,
+                # so leave the parent untouched until the push is resolved.
                 print(f"  [audit] submodule push failed: {push.stderr.strip()}")
+                print(
+                    "  [audit] skipping superproject commit so its pointer "
+                    "doesn't reference an unpushed submodule SHA."
+                )
+                return
         else:
+            # Nothing new in the submodule — HEAD is unchanged, so the existing
+            # pointer is still valid and the report is safe to commit.
             print(f"  [audit] nothing to commit in submodule ({committed.stdout.strip()})")
         # 2. Superproject: stage the pointer bump + the report.
         _run_git(["add", str(results_root.name)], project_root)
