@@ -269,9 +269,7 @@ class CoverageReport:
 
     def fully_covered_models(self) -> list[str]:
         """Observed models that have run every configured suite at least once."""
-        return [
-            m for m in self.models if self.model_suite_count(m) == len(self.suites)
-        ]
+        return [m for m in self.models if self.model_suite_count(m) == len(self.suites)]
 
     def missing_fleet_models(self) -> list[str]:
         """Fleet (master) models with no runs at all for this version."""
@@ -286,10 +284,7 @@ class CoverageReport:
     @property
     def covered_cells(self) -> int:
         return sum(
-            1
-            for m in self.models
-            for s in self.suites
-            if self.status(m, s) == COVERED
+            1 for m in self.models for s in self.suites if self.status(m, s) == COVERED
         )
 
     @property
@@ -306,9 +301,7 @@ def build_report(
     """Assemble the coverage matrix for ``version`` from parsed runs."""
     cells = select_latest(runs, version)
     observed = sorted({model for (model, _suite) in cells})
-    hosts = sorted(
-        {run.hostname for run in runs if run.rfc_version == version}
-    )
+    hosts = sorted({run.hostname for run in runs if run.rfc_version == version})
     return CoverageReport(
         version=version,
         suites=suites,
@@ -403,9 +396,7 @@ def render_markdown(report: CoverageReport) -> str:
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], cwd=str(cwd), capture_output=True, text=True
-    )
+    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
 
 
 def _is_submodule(results_root: Path) -> bool:
@@ -457,7 +448,9 @@ def commit_audit(
         else:
             # Nothing new in the submodule — HEAD is unchanged, so the existing
             # pointer is still valid and the report is safe to commit.
-            print(f"  [audit] nothing to commit in submodule ({committed.stdout.strip()})")
+            print(
+                f"  [audit] nothing to commit in submodule ({committed.stdout.strip()})"
+            )
         # 2. Superproject: stage the pointer bump + the report.
         _run_git(["add", str(results_root.name)], project_root)
     else:
@@ -469,7 +462,9 @@ def commit_audit(
     if parent_commit.returncode == 0:
         print(f"  [audit] committed: {msg}")
     else:
-        print(f"  [audit] nothing to commit in superproject ({parent_commit.stdout.strip()})")
+        print(
+            f"  [audit] nothing to commit in superproject ({parent_commit.stdout.strip()})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -491,9 +486,7 @@ def run_audit(
         print("No watermarked run-local-models results found; nothing to audit.")
         return None
 
-    report = build_report(
-        runs, target, load_suites(), load_master_models()
-    )
+    report = build_report(runs, target, load_suites(), load_master_models())
     audit_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report_path = audit_dir / f"{today}-v{target}-coverage.md"

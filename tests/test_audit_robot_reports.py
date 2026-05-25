@@ -125,8 +125,7 @@ def test_parse_returns_none_without_watermark(tmp_path: Path) -> None:
 def test_parse_returns_none_for_lfs_pointer(tmp_path: Path) -> None:
     pointer = tmp_path / "output.xml"
     pointer.write_text(
-        "version https://git-lfs.github.com/spec/v1\n"
-        "oid sha256:deadbeef\nsize 1234\n"
+        "version https://git-lfs.github.com/spec/v1\noid sha256:deadbeef\nsize 1234\n"
     )
     assert parse_output_xml(pointer) is None
 
@@ -169,13 +168,25 @@ def test_cell_status_thresholds() -> None:
 
 def test_select_latest_picks_most_recent_across_hosts(tmp_path: Path) -> None:
     _write_output_xml(
-        tmp_path, version="1.10.7", model="llama3", suite="math",
-        host="ai1", session="old", passed=1, failed=1,
+        tmp_path,
+        version="1.10.7",
+        model="llama3",
+        suite="math",
+        host="ai1",
+        session="old",
+        passed=1,
+        failed=1,
         end_time="2026-05-19T00:00:00Z",
     )
     _write_output_xml(
-        tmp_path, version="1.10.7", model="llama3", suite="math",
-        host="ai2", session="new", passed=4, failed=0,
+        tmp_path,
+        version="1.10.7",
+        model="llama3",
+        suite="math",
+        host="ai2",
+        session="new",
+        passed=4,
+        failed=0,
         end_time="2026-05-20T00:00:00Z",
     )
     from scripts.audit_robot_reports import find_runs
@@ -196,16 +207,34 @@ def test_latest_version_ignores_non_pep440(tmp_path: Path) -> None:
     from scripts.audit_robot_reports import find_runs
 
     _write_output_xml(
-        tmp_path, version="1.10.6", model="m", suite="math",
-        host="h", session="a", passed=1, failed=0,
+        tmp_path,
+        version="1.10.6",
+        model="m",
+        suite="math",
+        host="h",
+        session="a",
+        passed=1,
+        failed=0,
     )
     _write_output_xml(
-        tmp_path, version="1.10.10", model="m", suite="math",
-        host="h", session="b", passed=1, failed=0,
+        tmp_path,
+        version="1.10.10",
+        model="m",
+        suite="math",
+        host="h",
+        session="b",
+        passed=1,
+        failed=0,
     )
     _write_output_xml(
-        tmp_path, version="legacy", model="m", suite="math",
-        host="h", session="c", passed=1, failed=0,
+        tmp_path,
+        version="legacy",
+        model="m",
+        suite="math",
+        host="h",
+        session="c",
+        passed=1,
+        failed=0,
     )
     runs = find_runs(tmp_path)
     # 1.10.10 > 1.10.6 numerically (not lexically); "legacy" ignored.
@@ -240,21 +269,45 @@ def sample_report(tmp_path: Path):
 
     # llama3 runs both suites; mistral only one.
     _write_output_xml(
-        tmp_path, version="1.10.7", model="llama3", suite="math",
-        host="ai1", session="a", passed=4, failed=0,
+        tmp_path,
+        version="1.10.7",
+        model="llama3",
+        suite="math",
+        host="ai1",
+        session="a",
+        passed=4,
+        failed=0,
     )
     _write_output_xml(
-        tmp_path, version="1.10.7", model="llama3", suite="safety",
-        host="ai1", session="b", passed=1, failed=3,
+        tmp_path,
+        version="1.10.7",
+        model="llama3",
+        suite="safety",
+        host="ai1",
+        session="b",
+        passed=1,
+        failed=3,
     )
     _write_output_xml(
-        tmp_path, version="1.10.7", model="mistral", suite="math",
-        host="ai1", session="c", passed=0, failed=0,
+        tmp_path,
+        version="1.10.7",
+        model="mistral",
+        suite="math",
+        host="ai1",
+        session="c",
+        passed=0,
+        failed=0,
     )
     # An older version's run must not leak into the latest-version report.
     _write_output_xml(
-        tmp_path, version="1.9.0", model="oldmodel", suite="math",
-        host="ai1", session="d", passed=1, failed=0,
+        tmp_path,
+        version="1.9.0",
+        model="oldmodel",
+        suite="math",
+        host="ai1",
+        session="d",
+        passed=1,
+        failed=0,
     )
     runs = find_runs(tmp_path)
     return build_report(
@@ -310,11 +363,15 @@ def test_render_markdown_structure(sample_report) -> None:
 
 
 def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=["git"], returncode=0, stdout=stdout, stderr="")
+    return subprocess.CompletedProcess(
+        args=["git"], returncode=0, stdout=stdout, stderr=""
+    )
 
 
 def _fail(stderr: str = "boom") -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=["git"], returncode=1, stdout="", stderr=stderr)
+    return subprocess.CompletedProcess(
+        args=["git"], returncode=1, stdout="", stderr=stderr
+    )
 
 
 def _commit_audit_calls(
@@ -372,7 +429,9 @@ def test_commit_audit_commits_superproject_when_push_succeeds(tmp_path: Path) ->
     superproject_commits = [
         a for (a, cwd) in calls if cwd == tmp_path and a[0] == "commit"
     ]
-    assert superproject_commits == [("commit", "-m", "chore: audit robot coverage for v1.11.0")]
+    assert superproject_commits == [
+        ("commit", "-m", "chore: audit robot coverage for v1.11.0")
+    ]
 
 
 def test_commit_audit_commits_superproject_when_submodule_unchanged(
@@ -388,5 +447,7 @@ def test_commit_audit_commits_superproject_when_submodule_unchanged(
     calls = _commit_audit_calls(tmp_path, run_git)
 
     # No push attempted (nothing committed), but the superproject still commits.
-    assert not [a for (a, cwd) in calls if cwd == tmp_path / "results" and a[0] == "push"]
+    assert not [
+        a for (a, cwd) in calls if cwd == tmp_path / "results" and a[0] == "push"
+    ]
     assert [a for (a, cwd) in calls if cwd == tmp_path and a[0] == "commit"]
