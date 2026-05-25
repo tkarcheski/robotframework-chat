@@ -11,6 +11,7 @@ import yaml
 from scripts.run_local_models import (
     RunResult,
     _build_robot_command,
+    _maybe_audit,
     _sanitize_name,
     discover_local_models,
     load_local_config,
@@ -18,6 +19,34 @@ from scripts.run_local_models import (
     run_model_suites,
     verify_db_results,
 )
+
+
+class TestMaybeAudit:
+    """The post-run coverage audit hook must be optional and non-fatal."""
+
+    def test_skips_on_dry_run(self) -> None:
+        with patch("scripts.audit_robot_reports.run_audit") as run_audit:
+            _maybe_audit(dry_run=True, audit=True)
+        run_audit.assert_not_called()
+
+    def test_skips_when_disabled(self) -> None:
+        with patch("scripts.audit_robot_reports.run_audit") as run_audit:
+            _maybe_audit(dry_run=False, audit=False)
+        run_audit.assert_not_called()
+
+    def test_runs_and_commits_when_enabled(self) -> None:
+        with patch("scripts.audit_robot_reports.run_audit") as run_audit:
+            _maybe_audit(dry_run=False, audit=True)
+        run_audit.assert_called_once()
+        assert run_audit.call_args.kwargs["commit"] is True
+
+    def test_swallows_audit_errors(self) -> None:
+        # A failing audit must never propagate and kill a multi-hour run.
+        with patch(
+            "scripts.audit_robot_reports.run_audit",
+            side_effect=RuntimeError("boom"),
+        ):
+            _maybe_audit(dry_run=False, audit=True)  # must not raise
 
 
 class TestLoadLocalConfig:

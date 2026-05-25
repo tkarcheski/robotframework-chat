@@ -498,11 +498,46 @@ def verify_db_results(
         return False
 
 
+def _maybe_audit(*, dry_run: bool, audit: bool) -> None:
+    """Generate (and commit) the coverage report after the first iteration.
+
+    Runs once per invocation — the first full pass is what establishes whether
+    every model has been measured against every suite, which is the coverage
+    question the report answers. Later iterations in a forever run only add
+    repeat data, so re-auditing each pass would just churn the report and the
+    git history.
+
+    The audit is a post-processing convenience, never a gate: a multi-hour test
+    run must not die because the report failed to render or commit. So any error
+    here is logged and swallowed, mirroring CLAUDE.md's skip-and-log rule for
+    optional steps.
+    """
+    if dry_run or not audit:
+        return
+    try:
+        from scripts.audit_robot_reports import (
+            DEFAULT_AUDIT_DIR,
+            DEFAULT_RESULTS_ROOT,
+            run_audit,
+        )
+
+        print(f"\n{'#' * 70}\n  Coverage audit (first iteration)\n{'#' * 70}\n")
+        run_audit(
+            results_root=DEFAULT_RESULTS_ROOT,
+            version=None,
+            audit_dir=DEFAULT_AUDIT_DIR,
+            commit=True,
+        )
+    except Exception as e:  # noqa: BLE001 - audit must never abort the run
+        print(f"  [audit] skipped due to error: {e}")
+
+
 def run_iteration_loop(
     config: dict[str, Any],
     *,
     iterations: int = 1,
     dry_run: bool = False,
+    audit: bool = True,
 ) -> bool:
     """Run the full discover → test → summary cycle, optionally repeating.
 
@@ -514,6 +549,8 @@ def run_iteration_loop(
             *  0  — run until a test failure occurs ("stop-on-error").
             * -1  — run forever (until ``KeyboardInterrupt``).
         dry_run: If True, print commands without executing.
+        audit: If True (default), generate + commit the coverage report after
+            the first iteration. See :func:`_maybe_audit`.
 
     Returns:
         True if any pass had a test failure, False otherwise.
@@ -579,6 +616,10 @@ def run_iteration_loop(
             pass_had_failure = any(r.returncode != 0 for r in results)
             if pass_had_failure:
                 had_failure = True
+
+            # Audit coverage once, after the first full pass.
+            if iteration == 1:
+                _maybe_audit(dry_run=dry_run, audit=audit)
 
             # iterations=0: stop on first failure
             if iterations == 0 and pass_had_failure:
@@ -654,6 +695,11 @@ def main() -> None:
             "0 = repeat until a test failure (stop-on-error)"
         ),
     )
+    parser.add_argument(
+        "--no-audit",
+        action="store_true",
+        help="Skip the coverage audit + commit after the first iteration",
+    )
     args = parser.parse_args()
 
     config = load_local_config(Path(args.config))
@@ -685,7 +731,10 @@ def main() -> None:
 
     # Run the iteration loop
     had_failure = run_iteration_loop(
-        config, iterations=args.iterations, dry_run=args.dry_run
+        config,
+        iterations=args.iterations,
+        dry_run=args.dry_run,
+        audit=not args.no_audit,
     )
 
     if had_failure:
