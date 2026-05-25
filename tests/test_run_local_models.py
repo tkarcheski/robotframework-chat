@@ -588,6 +588,56 @@ class TestRunIterationLoop:
         run_iteration_loop(_ITER_CONFIG, iterations=3)
         assert mock_discover.call_count == 3
 
+    @patch("scripts.run_local_models._maybe_audit")
+    @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
+    @patch(
+        "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
+    )
+    @patch("scripts.run_local_models.discover_local_models")
+    @patch("scripts.run_local_models._load_node_list", return_value=_ITER_NODES)
+    def test_audit_runs_after_first_executed_pass_not_iteration_one(
+        self,
+        mock_nodes: MagicMock,
+        mock_discover: MagicMock,
+        mock_run: MagicMock,
+        mock_verify_db: MagicMock,
+        mock_summary: MagicMock,
+        mock_audit: MagicMock,
+    ) -> None:
+        """When the first iteration discovers no models it `continue`s early, so
+        gating the audit on iteration == 1 would skip it forever. The audit must
+        fire on the first iteration that actually runs tests."""
+        # Iteration 1: no models (total_runs == 0 → continue). Iteration 2: runs.
+        mock_discover.side_effect = [[], _ITER_DISCOVERED]
+        run_iteration_loop(_ITER_CONFIG, iterations=2)
+        assert mock_run.call_count == 1  # only the 2nd iteration ran tests
+        mock_audit.assert_called_once()
+
+    @patch("scripts.run_local_models._maybe_audit")
+    @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
+    @patch(
+        "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
+    )
+    @patch(
+        "scripts.run_local_models.discover_local_models", return_value=_ITER_DISCOVERED
+    )
+    @patch("scripts.run_local_models._load_node_list", return_value=_ITER_NODES)
+    def test_audit_runs_once_across_multiple_passes(
+        self,
+        mock_nodes: MagicMock,
+        mock_discover: MagicMock,
+        mock_run: MagicMock,
+        mock_verify_db: MagicMock,
+        mock_summary: MagicMock,
+        mock_audit: MagicMock,
+    ) -> None:
+        """The audit fires once per invocation, not once per pass."""
+        run_iteration_loop(_ITER_CONFIG, iterations=3)
+        assert mock_run.call_count == 3
+        mock_audit.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # verify_db_results

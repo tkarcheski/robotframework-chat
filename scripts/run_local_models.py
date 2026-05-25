@@ -499,7 +499,7 @@ def verify_db_results(
 
 
 def _maybe_audit(*, dry_run: bool, audit: bool) -> None:
-    """Generate (and commit) the coverage report after the first iteration.
+    """Generate (and commit) the coverage report after the first executed pass.
 
     Runs once per invocation — the first full pass is what establishes whether
     every model has been measured against every suite, which is the coverage
@@ -521,7 +521,7 @@ def _maybe_audit(*, dry_run: bool, audit: bool) -> None:
             run_audit,
         )
 
-        print(f"\n{'#' * 70}\n  Coverage audit (first iteration)\n{'#' * 70}\n")
+        print(f"\n{'#' * 70}\n  Coverage audit (first executed pass)\n{'#' * 70}\n")
         run_audit(
             results_root=DEFAULT_RESULTS_ROOT,
             version=None,
@@ -550,7 +550,7 @@ def run_iteration_loop(
             * -1  — run forever (until ``KeyboardInterrupt``).
         dry_run: If True, print commands without executing.
         audit: If True (default), generate + commit the coverage report after
-            the first iteration. See :func:`_maybe_audit`.
+            the first pass that runs tests. See :func:`_maybe_audit`.
 
     Returns:
         True if any pass had a test failure, False otherwise.
@@ -558,6 +558,7 @@ def run_iteration_loop(
     discovery_cfg = config.get("discovery", {})
     had_failure = False
     iteration = 0
+    audited = False
 
     try:
         while True:
@@ -617,9 +618,12 @@ def run_iteration_loop(
             if pass_had_failure:
                 had_failure = True
 
-            # Audit coverage once, after the first full pass.
-            if iteration == 1:
+            # Audit coverage once, after the first pass that actually ran tests.
+            # Gating on iteration == 1 would skip the audit entirely whenever the
+            # early iterations discover no models and `continue` before this point.
+            if not audited:
                 _maybe_audit(dry_run=dry_run, audit=audit)
+                audited = True
 
             # iterations=0: stop on first failure
             if iterations == 0 and pass_had_failure:
@@ -698,7 +702,7 @@ def main() -> None:
     parser.add_argument(
         "--no-audit",
         action="store_true",
-        help="Skip the coverage audit + commit after the first iteration",
+        help="Skip the coverage audit + commit after the first executed pass",
     )
     args = parser.parse_args()
 
