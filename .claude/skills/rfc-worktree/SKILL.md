@@ -28,7 +28,7 @@ git -C "$PWD" rev-parse --show-toplevel
 ```
 
 The top-level should end in `/rfc` (the user keeps it at
-`/home/tyler/AI/github/rfc`). If it doesn't, ask the user where they want the
+`~/AI/github/rfc`). If it doesn't, ask the user where they want the
 worktree rooted before continuing — this skill's path defaults assume the rfc
 layout and will produce confusing paths elsewhere.
 
@@ -83,8 +83,8 @@ If `git worktree add` fails because the path already exists as a worktree, run
 in-progress work without confirmation.
 
 The path `../AI/rfc/worktree/<branch>` resolves relative to the rfc repo root,
-so from `/home/tyler/AI/github/rfc` it lands at
-`/home/tyler/AI/github/AI/rfc/worktree/<branch>`. That's the layout the user
+so from `~/AI/github/rfc` it lands at
+`~/AI/github/AI/rfc/worktree/<branch>`. That's the layout the user
 has chosen; don't second-guess it.
 
 ## Step 4 — Wire up the new checkout
