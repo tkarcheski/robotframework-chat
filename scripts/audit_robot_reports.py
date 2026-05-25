@@ -434,8 +434,10 @@ def commit_audit(
     msg = f"chore: audit robot coverage for v{version}"
 
     if _is_submodule(results_root):
-        # 1. Submodule: stage this version's results, commit, push.
-        add = _run_git(["add", version], results_root)
+        # 1. Submodule: stage *all* fresh results, commit, push. run-local-models
+        #    writes under results/local/<node>/<model>, not results/<version>/,
+        #    so a version-scoped pathspec would silently drop the new output.xml.
+        add = _run_git(["add", "-A"], results_root)
         if add.returncode != 0:
             print(f"  [audit] submodule add failed: {add.stderr.strip()}")
         committed = _run_git(["commit", "-m", msg], results_root)

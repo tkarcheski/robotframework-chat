@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +15,7 @@ from scripts.audit_robot_reports import (
     PARTIAL,
     build_report,
     cell_status,
+    commit_audit,
     latest_version,
     load_master_models,
     load_suites,
@@ -299,3 +302,51 @@ def test_render_markdown_structure(sample_report) -> None:
     assert "- [ ] mistral" in md
     # gaps surface the never-run fleet model
     assert "qwen3" in md
+
+
+# ---------------------------------------------------------------------------
+# commit_audit (submodule-aware two-repo commit)
+# ---------------------------------------------------------------------------
+
+
+def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=["git"], returncode=0, stdout=stdout, stderr="")
+
+
+def _fail(stderr: str = "boom") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=["git"], returncode=1, stdout="", stderr=stderr)
+
+
+def _commit_audit_calls(
+    tmp_path: Path, run_git: "callable", *, is_submodule: bool = True
+) -> list[tuple[tuple[str, ...], Path]]:
+    """Drive commit_audit with a fake git and return the (args, cwd) it issued."""
+    report = tmp_path / ".claude" / "audits" / "r.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("report")
+    results_root = tmp_path / "results"
+    results_root.mkdir()
+
+    calls: list[tuple[tuple[str, ...], Path]] = []
+
+    def fake_run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append((tuple(args), Path(cwd)))
+        return run_git(args)
+
+    with (
+        patch("scripts.audit_robot_reports._is_submodule", return_value=is_submodule),
+        patch("scripts.audit_robot_reports._run_git", side_effect=fake_run_git),
+    ):
+        commit_audit(report, results_root, "1.11.0", project_root=tmp_path)
+    return calls
+
+
+def test_commit_audit_stages_all_submodule_results(tmp_path: Path) -> None:
+    # run-local-models writes under results/local/<node>/<model>, not
+    # results/<version>/, so the submodule must stage everything (git add -A) —
+    # a version-scoped pathspec would silently drop the fresh output.xml.
+    results_root = tmp_path / "results"
+    calls = _commit_audit_calls(tmp_path, lambda args: _ok())
+
+    submodule_adds = [a for (a, cwd) in calls if cwd == results_root and a[0] == "add"]
+    assert submodule_adds == [("add", "-A")]
