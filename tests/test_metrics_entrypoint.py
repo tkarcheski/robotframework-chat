@@ -19,6 +19,60 @@ def test_relative_path_handles_results_root() -> None:
     assert proc.stdout.strip() == "."
 
 
+def _fake_robotmetrics(bin_dir: Path) -> None:
+    """Drop a stub `robotmetrics` that mimics robotframework-metrics 3.3.3.
+
+    Two verified facts about the real CLI are encoded here:
+      * it has no `--metrics-report-path` flag (argparse exits non-zero), and
+      * it writes its report to the path given by `--metrics-report-name`.
+    """
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    fake = bin_dir / "robotmetrics"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "if '--metrics-report-path' in args:\n"
+        "    sys.stderr.write('robotmetrics: error: unrecognized arguments: "
+        "--metrics-report-path\\n')\n"
+        "    sys.exit(2)\n"
+        "name = None\n"
+        "for i, a in enumerate(args):\n"
+        "    if a in ('-M', '--metrics-report-name'):\n"
+        "        name = args[i + 1]\n"
+        "if not name:\n"
+        "    sys.exit(3)\n"
+        "open(name, 'w').write('<html>dashboard</html>')\n"
+    )
+    fake.chmod(0o755)
+
+
+def test_generate_metrics_uses_supported_flags_and_writes_dashboard(
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "results"
+    suite = results_dir / "local" / "host" / "model"
+    suite.mkdir(parents=True)
+    (suite / "output.xml").write_text("<robot/>")
+    output_dir = tmp_path / "metrics"
+    output_dir.mkdir()
+    bin_dir = tmp_path / "bin"
+    _fake_robotmetrics(bin_dir)
+
+    proc = run_bash(
+        f"export PATH='{bin_dir}':\"$PATH\" "
+        f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}'; "
+        f"source '{SCRIPT}'; generate_metrics"
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    dashboard = output_dir / "local" / "host" / "model" / "dashboard.html"
+    assert dashboard.is_file(), (
+        f"dashboard not generated; stdout={proc.stdout} stderr={proc.stderr}"
+    )
+    assert "Generated metrics for 1 suite" in proc.stdout
+
+
 def test_generate_index_lists_root_and_nested_dashboards(tmp_path: Path) -> None:
     output_dir = tmp_path / "metrics"
     output_dir.mkdir()
