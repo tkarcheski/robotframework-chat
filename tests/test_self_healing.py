@@ -10,16 +10,18 @@ from rfc.self_healing import (
     SKILL_CONFIG_OVERRIDES,
     SelfHealingConfig,
     self_healing,
+    _apply_params,
     _apply_skills,
-    _extract_actual_answer,
-    _extract_prompt_arg,
-    _replace_prompt_arg,
     _capture_params,
-    _param_variations,
-    _is_passing,
-    _extract_grade_result,
+    _extract_actual_answer,
     _extract_expected_arg,
+    _extract_grade_result,
+    _extract_prompt_arg,
+    _is_passing,
+    _param_variations,
     _parse_directive,
+    _replace_prompt_arg,
+    _restore_params,
     _rewrite_prompt,
 )
 
@@ -116,7 +118,24 @@ class TestCaptureParams:
         assert params["max_tokens"] == 256
         assert params["seed"] == 42
         assert params["model"] == "test-model"
-        assert "top_p" not in params  # None values excluded
+
+    def test_none_values_are_preserved(self):
+        """None-valued attrs are part of the state and must be in the snapshot.
+
+        Otherwise a variation that sets a concrete value can't be restored —
+        the client would keep the variation's value, leaking across tests.
+        """
+        instance = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 256
+        instance.client.seed = None
+        instance.client.top_p = None
+        instance.client.top_k = None
+        instance.client.model = "m"
+        params = _capture_params(instance)
+        assert "seed" in params and params["seed"] is None
+        assert "top_p" in params and params["top_p"] is None
+        assert "top_k" in params and params["top_k"] is None
 
     def test_no_client(self):
         instance = MagicMock(spec=[])
@@ -575,3 +594,51 @@ class TestPromptRewriteReceivesActualAnswer:
         assert "I think it is 5" in sent
         # The grading reason must NOT be mislabelled as the actual answer.
         assert "Actual (wrong) answer:\nScore below threshold" not in sent
+
+
+class TestParamRestoration:
+    """Regression tests: None-valued params must round-trip through restore."""
+
+    def test_round_trip_preserves_none_seed(self):
+        instance = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 256
+        instance.client.seed = None
+        instance.client.top_p = None
+        instance.client.top_k = None
+        instance.client.model = "m"
+
+        snapshot = _capture_params(instance)
+        # Simulate a variation that sets a concrete seed.
+        _apply_params(instance, {**snapshot, "seed": 42})
+        assert instance.client.seed == 42
+        # Restoration must put seed back to None, not leak 42.
+        _restore_params(instance, snapshot)
+        assert instance.client.seed is None
+
+    @patch("rfc.self_healing.emit_rfc_data")
+    def test_decorator_does_not_leak_seed_across_calls(self, mock_emit):
+        """End-to-end: a failing call triggers param variations on a client
+        whose initial seed is None; after the call returns, client.seed
+        must still be None."""
+        instance = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 256
+        instance.client.seed = None
+        instance.client.top_p = None
+        instance.client.top_k = None
+        instance.client.model = "m"
+
+        cfg = SelfHealingConfig(
+            max_prompt_retries=0,
+            max_param_retries=2,
+            fallback_models=[],
+            escalate_to_github=False,
+        )
+
+        @self_healing(config=cfg)
+        def always_fail(self, prompt, expected):
+            return (0.0, "wrong", "x")
+
+        always_fail(instance, "p", "a")
+        assert instance.client.seed is None

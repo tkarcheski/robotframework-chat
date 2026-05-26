@@ -101,15 +101,26 @@ def _replace_prompt_arg(
     return tuple(new_args), kwargs
 
 
+_PARAM_SENTINEL = object()
+
+
 def _capture_params(instance: Any) -> Dict[str, Any]:
-    """Snapshot the current LLM parameters from the keyword library."""
+    """Snapshot the current LLM parameters from the keyword library.
+
+    The snapshot must include attributes that are present but valued
+    ``None`` — otherwise ``_restore_params`` cannot put the client back the
+    way it found it. For example, a client that begins with ``seed=None``
+    gets a concrete seed during ``_param_variations``; if the snapshot
+    silently drops the original ``None``, the new seed leaks into all
+    subsequent calls.
+    """
     params: Dict[str, Any] = {}
     client = getattr(instance, "client", None)
     if client is None:
         return params
     for attr in ("temperature", "max_tokens", "seed", "top_p", "top_k", "model"):
-        val = getattr(client, attr, None)
-        if val is not None:
+        val = getattr(client, attr, _PARAM_SENTINEL)
+        if val is not _PARAM_SENTINEL:
             params[attr] = val
     return params
 
