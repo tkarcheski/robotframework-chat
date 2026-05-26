@@ -11,6 +11,7 @@ from rfc.self_healing import (
     SelfHealingConfig,
     self_healing,
     _apply_skills,
+    _extract_actual_answer,
     _extract_prompt_arg,
     _replace_prompt_arg,
     _capture_params,
@@ -506,3 +507,71 @@ def test_parsed_directive_dataclass_defaults():
     parsed = ParsedDirective()
     assert parsed.skills == []
     assert parsed.guidance == ""
+
+
+class TestExtractActualAnswer:
+    def test_three_tuple_returns_answer_slot(self):
+        # (score, reason, answer) — the shape of Ask And Grade With Retry.
+        assert _extract_actual_answer((0.0, "wrong", "model said 5")) == "model said 5"
+
+    def test_two_tuple_has_no_answer(self):
+        assert _extract_actual_answer((0.0, "wrong")) == ""
+
+    def test_grade_result_has_no_answer(self):
+        assert _extract_actual_answer(GradeResult(score=0.0, reason="wrong")) == ""
+
+    def test_non_string_answer_is_stringified(self):
+        assert _extract_actual_answer((0.0, "wrong", 42)) == "42"
+
+
+class TestPromptRewriteReceivesActualAnswer:
+    """Regression test: the rewrite step gets the model's answer, not the grading reason."""
+
+    def _make_instance_for_decorator(self):
+        instance = MagicMock()
+        instance.client = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 100
+        instance.client.seed = 42
+        instance.client.model = "test-model"
+        # The rewrite uses client.generate to ask for a clarified prompt.
+        instance.client.generate.return_value = "rewritten prompt"
+        return instance
+
+    @patch("rfc.self_healing.emit_rfc_data")
+    def test_three_tuple_answer_flows_into_rewrite_request(self, mock_emit):
+        """When the wrapped keyword returns (score, reason, answer), the
+        answer (not the grading reason) appears in the Actual block of the
+        rewrite request."""
+        call_log = []
+
+        def fake_keyword(self, prompt, expected):
+            # First call fails with a 3-tuple carrying a distinctive answer.
+            # Second call passes so the loop terminates.
+            if not call_log:
+                call_log.append(prompt)
+                return (
+                    0.0,
+                    "Score below threshold: arithmetic error",
+                    "I think it is 5",
+                )
+            call_log.append(prompt)
+            return (1.0, "ok", "4")
+
+        decorated = self_healing(
+            config=SelfHealingConfig(
+                max_prompt_retries=1,
+                max_param_retries=0,
+                fallback_models=[],
+                escalate_to_github=False,
+            )
+        )(fake_keyword)
+
+        instance = self._make_instance_for_decorator()
+        decorated(instance, "What is 2+2?", "4")
+
+        sent = instance.client.generate.call_args[0][0]
+        # The model's actual wrong answer must appear in the rewrite request.
+        assert "I think it is 5" in sent
+        # The grading reason must NOT be mislabelled as the actual answer.
+        assert "Actual (wrong) answer:\nScore below threshold" not in sent

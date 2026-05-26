@@ -305,6 +305,21 @@ def _extract_grade_result(result: Any) -> Optional[GradeResult]:
     return None
 
 
+def _extract_actual_answer(result: Any) -> str:
+    """Extract the model's raw answer from a graded keyword's return value.
+
+    Grading keywords like ``Ask And Grade With Retry`` return
+    ``(score, reason, answer)``. The third slot carries the model's actual
+    output, which the prompt-rewrite strategy needs as ``Actual (wrong)
+    answer``. ``GradeResult`` and 2-tuple returns carry no answer, so this
+    falls back to an empty string and the rewrite request uses the failure
+    reason alone.
+    """
+    if isinstance(result, tuple) and len(result) >= 3:
+        return str(result[2])
+    return ""
+
+
 def _extract_expected_arg(args: tuple, kwargs: dict) -> str:
     """Extract the expected answer from keyword arguments."""
     if "expected" in kwargs:
@@ -443,10 +458,9 @@ def self_healing(
 
             # --- Strategy 1: Prompt modification ---
             last_error = attempt.error
+            actual_answer = _extract_actual_answer(result)
             for i in range(cfg.max_prompt_retries):
-                actual = ""
-                if attempt.result:
-                    actual = attempt.error
+                actual = actual_answer
                 modified_prompt = _rewrite_prompt(
                     self_instance,
                     prompt,
@@ -478,6 +492,7 @@ def self_healing(
                         return result
                     last_error = grade.reason if grade else "Score below threshold"
                     attempt.error = last_error
+                    actual_answer = _extract_actual_answer(result)
                 except Exception as exc:
                     attempt.error = str(exc)
                     last_error = str(exc)
