@@ -18,6 +18,49 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """Extract the first balanced top-level JSON object from a string.
+
+    Scans for the first ``{``, then walks forward tracking brace depth.
+    String contents (including escaped quotes) are skipped so braces inside
+    strings don't confuse the count. Returns the substring covering the
+    balanced object, or ``None`` if no balanced object is found.
+
+    A balanced-brace scan is required (rather than ``re.search(r"\\{[^}]+\\}")``)
+    because LLM responses commonly nest objects — e.g.
+    ``{"suggested_params": {"temperature": 0.0}}`` — and a non-greedy regex
+    that excludes ``}`` truncates at the first inner brace, producing
+    invalid JSON.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 @dataclass
 class FailureRecord:
     """A single test failure for analysis."""
@@ -137,21 +180,17 @@ class AnalyzerAgent:
         try:
             parsed = json.loads(raw_response)
         except json.JSONDecodeError:
-            # Try extracting JSON from markdown or thinking tags
-            import re
-
-            json_match = re.search(r"\{[^}]+\}", raw_response, re.DOTALL)
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group())
-                except json.JSONDecodeError:
-                    return Recommendation(
-                        recommendation_type="escalate",
-                        test_name=failure.test_name,
-                        details=f"Could not parse analysis: {raw_response[:200]}",
-                        confidence=0.0,
-                    )
-            else:
+            extracted = _extract_first_json_object(raw_response)
+            if extracted is None:
+                return Recommendation(
+                    recommendation_type="escalate",
+                    test_name=failure.test_name,
+                    details=f"Could not parse analysis: {raw_response[:200]}",
+                    confidence=0.0,
+                )
+            try:
+                parsed = json.loads(extracted)
+            except json.JSONDecodeError:
                 return Recommendation(
                     recommendation_type="escalate",
                     test_name=failure.test_name,

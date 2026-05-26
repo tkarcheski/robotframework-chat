@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from rfc.analyzer_agent import AnalyzerAgent, FailureRecord, Recommendation
+from rfc.analyzer_agent import (
+    AnalyzerAgent,
+    FailureRecord,
+    Recommendation,
+    _extract_first_json_object,
+)
 
 
 class TestFailureRecord:
@@ -286,3 +291,76 @@ class TestCreateTrainingPairs:
         agent = AnalyzerAgent(client)
         pairs = agent.create_training_pairs([])
         assert pairs == []
+
+
+class TestExtractFirstJsonObject:
+    def test_flat_object(self):
+        assert _extract_first_json_object('{"a": 1}') == '{"a": 1}'
+
+    def test_nested_object_round_trips(self):
+        text = '{"recommendation_type": "params", "suggested_params": {"temperature": 0.0, "seed": 42}}'
+        extracted = _extract_first_json_object(text)
+        assert extracted == text
+        # The whole point — json.loads must succeed.
+        parsed = json.loads(extracted)
+        assert parsed["suggested_params"]["temperature"] == 0.0
+
+    def test_object_inside_markdown_fence(self):
+        text = 'Here is my analysis:\n```json\n{"recommendation_type": "prompt", "details": {"why": "unclear"}}\n```\nDone.'
+        extracted = _extract_first_json_object(text)
+        assert extracted is not None
+        parsed = json.loads(extracted)
+        assert parsed["recommendation_type"] == "prompt"
+        assert parsed["details"]["why"] == "unclear"
+
+    def test_braces_inside_strings_dont_unbalance(self):
+        # The opening "{" inside the string must not increase depth.
+        text = '{"snippet": "if (x) { return y; }", "type": "code"}'
+        extracted = _extract_first_json_object(text)
+        assert extracted == text
+        assert json.loads(extracted)["type"] == "code"
+
+    def test_escaped_quote_in_string(self):
+        text = '{"q": "she said \\"hi\\" then left", "ok": true}'
+        extracted = _extract_first_json_object(text)
+        assert extracted == text
+        assert json.loads(extracted)["ok"] is True
+
+    def test_returns_none_when_no_brace(self):
+        assert _extract_first_json_object("no json here, sorry") is None
+
+    def test_returns_none_when_unbalanced(self):
+        # Open brace but never closes.
+        assert _extract_first_json_object('{"a": "no close') is None
+
+
+class TestParseRecommendationNestedJson:
+    """Regression test for the nested-JSON parsing fix."""
+
+    def _failure(self) -> FailureRecord:
+        return FailureRecord(
+            test_name="t",
+            test_suite="s",
+            model_name="m",
+            question="q",
+            expected_answer="e",
+            actual_answer="a",
+            grading_reason="g",
+            score=0.0,
+        )
+
+    def test_nested_suggested_params_survives_markdown_wrap(self):
+        client = MagicMock()
+        client.generate.return_value = (
+            "Sure, here is the analysis:\n```json\n"
+            '{"recommendation_type": "params", '
+            '"suggested_params": {"temperature": 0.0, "seed": 42}, '
+            '"confidence": 0.8, "details": "lower temperature"}\n```'
+        )
+        agent = AnalyzerAgent(client)
+        recs = agent.analyze_failures([self._failure()])
+        assert len(recs) == 1
+        rec = recs[0]
+        assert rec.recommendation_type == "params"
+        assert rec.suggested_params == {"temperature": 0.0, "seed": 42}
+        assert rec.confidence == 0.8
