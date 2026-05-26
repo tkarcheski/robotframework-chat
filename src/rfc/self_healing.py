@@ -442,6 +442,7 @@ def self_healing(
                 parameters=dict(original_params),
                 model_used=original_params.get("model", ""),
             )
+            caught_exc: Optional[BaseException] = None
             try:
                 result = fn(self_instance, *args, **kwargs)
                 grade = _extract_grade_result(result)
@@ -455,6 +456,7 @@ def self_healing(
             except Exception as exc:
                 attempt.error = str(exc)
                 result = None
+                caught_exc = exc
             attempts.append(attempt)
 
             if prompt is None:
@@ -465,7 +467,9 @@ def self_healing(
                 _emit_healing_data(attempts, False, time.monotonic() - start_time)
                 if result is not None:
                     return result
-                raise  # noqa: PLE0704  — re-raise the caught exception
+                if caught_exc is not None:
+                    raise caught_exc
+                return None
 
             # --- Strategy 1: Prompt modification ---
             last_error = attempt.error

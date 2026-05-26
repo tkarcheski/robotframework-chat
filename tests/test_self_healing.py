@@ -642,3 +642,36 @@ class TestParamRestoration:
 
         always_fail(instance, "p", "a")
         assert instance.client.seed is None
+
+
+class TestBareRaiseFix:
+    """Regression test for the bare-raise outside-except bug."""
+
+    @patch("rfc.self_healing.emit_rfc_data")
+    def test_exception_propagates_when_no_prompt(self, mock_emit):
+        """When the wrapped keyword raises and no prompt is in the args,
+        the original exception must propagate (not be replaced by
+        RuntimeError: No active exception to reraise)."""
+        instance = MagicMock()
+        instance.client.temperature = 0.0
+        instance.client.max_tokens = 256
+        instance.client.seed = None
+        instance.client.top_p = None
+        instance.client.top_k = None
+        instance.client.model = "m"
+
+        class CustomError(RuntimeError):
+            pass
+
+        @self_healing(config=SelfHealingConfig())
+        def boom(self, *args, **kwargs):
+            raise CustomError("boom")
+
+        # No string args = no prompt detected; healing is skipped and the
+        # original exception is re-raised.
+        try:
+            boom(instance, 42, 3.14)
+        except CustomError as exc:
+            assert str(exc) == "boom"
+        else:
+            raise AssertionError("CustomError was not propagated")
