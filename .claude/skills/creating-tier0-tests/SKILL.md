@@ -1,4 +1,18 @@
-# Skill: Create a Tier:0 Robot Framework Test
+---
+name: creating-tier0-tests
+description: >-
+  Creates a pure Robot Framework (tier:0, verify:robot) test that verifies
+  behaviour using only deterministic RF built-in assertions — no LLM calls and
+  no Python-backed keywords. Covers good tier:0 candidates, required tags, the
+  allowed built-in keywords, shared resources, and registering the suite in
+  config/test_suites.yaml and config/local_models.yaml.
+when_to_use: >-
+  Trigger when the user wants a new deterministic Robot test (connectivity,
+  config validation, data-format or computation checks) that needs no LLM and no
+  custom Python, or asks how to write a tier:0 test.
+---
+
+# Creating a tier:0 Robot Framework test
 
 ## When to Use
 
