@@ -269,14 +269,36 @@ sync-metrics: ## Trigger immediate RF Metrics dashboard regeneration from output
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py
 
-superset-export: ## Export Superset dashboards to backups/ directory
+superset-export: ## Export Superset dashboards + DB dump to the backups/ submodule, then commit + push to main
 	@mkdir -p backups
 	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
 	$(COMPOSE) exec superset superset export-dashboards \
 		-f "/tmp/superset_export_$${TIMESTAMP}.zip" && \
 	$(COMPOSE) cp "superset:/tmp/superset_export_$${TIMESTAMP}.zip" \
 		"./backups/superset_export_$${TIMESTAMP}.zip" && \
-	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
+	echo "Exported dashboards to backups/superset_export_$${TIMESTAMP}.zip"; \
+	echo "Dumping PostgreSQL ($(or $(POSTGRES_DB),rfc)) to backups/db_$${TIMESTAMP}.sql.gz..."; \
+	if $(COMPOSE) exec -T postgres pg_dump -U "$(or $(POSTGRES_USER),rfc)" "$(or $(POSTGRES_DB),rfc)" \
+		| gzip > "backups/db_$${TIMESTAMP}.sql.gz"; then \
+		echo "Dumped DB to backups/db_$${TIMESTAMP}.sql.gz"; \
+	else \
+		echo "WARNING: pg_dump failed — skipping DB dump"; \
+		rm -f "backups/db_$${TIMESTAMP}.sql.gz"; \
+	fi; \
+	if [ -e backups/.git ]; then \
+		git -C backups add -A; \
+		if git -C backups commit -m "chore: backup $${TIMESTAMP}" >/dev/null 2>&1; then \
+			git -C backups push origin HEAD:main \
+				&& echo "Pushed backups to main" \
+				|| echo "WARNING: backups push failed — commit is local only"; \
+		else \
+			echo "No new backup artifacts to commit"; \
+		fi; \
+	else \
+		echo "WARNING: backups/ is not an initialized submodule — skipping commit/push."; \
+		echo "  One-time setup (needs the robotframework-chat-backups remote):"; \
+		echo "    git submodule update --init backups"; \
+	fi
 
 superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py
