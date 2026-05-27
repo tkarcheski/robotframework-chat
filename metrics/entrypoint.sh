@@ -166,11 +166,14 @@ generate_metrics() {
         mkdir -p "$dest"
         echo "  Generating metrics for '${label}' from ${xml}..."
 
-        # robotmetrics writes report into --metrics-report-path
+        # robotframework-metrics has no output-directory flag: it writes the
+        # report to the path given by --metrics-report-name (it opens that
+        # value verbatim). Pass the full destination path so the report lands
+        # in OUTPUT_DIR without needing to cd (RESULTS_DIR is mounted ro).
         if robotmetrics \
             --inputpath "$suite_dir" \
             --output "output.xml" \
-            --metrics-report-path "$dest/" 2>&1; then
+            --metrics-report-name "$dest/dashboard.html" 2>&1; then
             count=$((count + 1))
         else
             echo "  WARNING: metrics generation failed for '${label}' (non-fatal)"
