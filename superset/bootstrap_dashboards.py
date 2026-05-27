@@ -68,6 +68,10 @@ ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id TEXT;
 -- Issue #350: ensure model_harness is present on upgrading databases.
 ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS model_harness TEXT;
 
+-- Databases predating the watermark 5-tuple lack a hostname column. The
+-- test_results_full view below selects r.hostname, so add it on upgrade.
+ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname VARCHAR(255);
+
 -- Drop columns that moved to the archive table on upgrading databases.
 ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_gz;
 ALTER TABLE test_runs DROP COLUMN IF EXISTS output_xml_url;

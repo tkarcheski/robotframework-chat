@@ -379,6 +379,9 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN session_id TEXT",
         # Issue #350: record the harness driving the test (e.g. claude-opus-4-7[1m]).
         "ALTER TABLE test_runs ADD COLUMN model_harness TEXT",
+        # Databases predating the watermark 5-tuple lack hostname; the
+        # test_results_full view selects r.hostname, so add it on upgrade.
+        "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
     ]
 
     def __init__(self, db_path: str):
