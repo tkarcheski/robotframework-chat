@@ -1,0 +1,46 @@
+name: Auto-assign PR
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  assign:
+    name: Assign owner & request Codex review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign author and trigger Codex
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const issue_number = pr.number;
+            const author = pr.user.login;
+            const me = 'tkarcheski';
+
+            // Always assign the repo owner so the PR lands on their plate.
+            await github.rest.issues.addAssignees({
+              owner, repo, issue_number, assignees: [me],
+            });
+
+            // Request the owner as a reviewer too. GitHub rejects requesting the
+            // PR's own author as a reviewer (422), so skip that case silently.
+            if (author !== me) {
+              try {
+                await github.rest.pulls.requestReviewers({
+                  owner, repo, pull_number: issue_number, reviewers: [me],
+                });
+              } catch (err) {
+                core.warning(`Could not request ${me} as reviewer: ${err.message}`);
+              }
+            }
+
+            // Codex review is driven by a PR comment, not a reviewer request.
+            await github.rest.issues.createComment({
+              owner, repo, issue_number, body: '@codex review',
+            });
