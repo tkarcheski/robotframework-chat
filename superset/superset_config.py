@@ -52,3 +52,40 @@ WTF_CSRF_ENABLED = False
 # Allow embedding in iframes
 SESSION_COOKIE_SAMESITE = "Lax"
 ENABLE_CORS = True
+
+# ── Theme (Superset 6.0+ Ant Design v5 theming) ─────────────────────
+# Goal: dark loads by default for everyone, but a light theme stays
+# reachable via the in-app toggle. Superset uses THEME_DEFAULT as the
+# initial theme and THEME_DARK as the alternate, so we *reverse* the usual
+# assignment — dark is the default, light is the toggle target.
+#
+# Caveat: when both are set, Superset also enables OS prefers-color-scheme
+# auto-switching, which this reversal inverts (an OS-dark client lands on
+# the light alternate). That is acceptable here since dark-by-default is the
+# intent. Set THEME_DARK = None to force dark with no toggle at all.
+#
+# The dark palette uses the project's TRON look: cyan primary and orange
+# accent over a near-black background.
+THEME_DEFAULT = {
+    "algorithm": "dark",
+    "token": {
+        "colorPrimary": "#00dffc",
+        "colorInfo": "#00dffc",
+        "colorWarning": "#ff8c42",
+        "colorBgBase": "#0a0a0f",
+        "colorBgContainer": "#0d1117",
+        "colorBgLayout": "#0a0a0f",
+        "colorTextBase": "#e6f7ff",
+        "fontFamily": "'Share Tech Mono', 'Courier New', monospace",
+    },
+}
+
+THEME_DARK = {
+    "algorithm": "default",
+    "token": {
+        "colorPrimary": "#00dffc",
+    },
+}
+
+# Let admins manage system-wide themes from the Superset UI.
+ENABLE_UI_THEME_ADMINISTRATION = True
