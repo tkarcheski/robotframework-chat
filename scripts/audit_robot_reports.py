@@ -417,17 +417,20 @@ def commit_audit(
     """Commit the latest results and the audit report.
 
     When ``results_root`` is a submodule, this does the two-repo dance: commit
-    and push the new ``output.xml`` inside the submodule first, then commit the
-    pointer bump plus the report in the superproject. Pushing the submodule
-    before bumping the pointer avoids a parent commit that references a SHA the
-    remote doesn't have yet.
+    and push the new ``output.xml`` inside the submodule to ``main`` first, then
+    commit the pointer bump plus the report in the superproject. Pushing the
+    submodule before bumping the pointer avoids a parent commit that references a
+    SHA the remote doesn't have yet. The push targets ``main`` explicitly
+    (``HEAD:main``) so unattended ``run-local-models`` runs publish there
+    regardless of the submodule's locally checked-out branch (often detached).
     """
     msg = f"chore: audit robot coverage for v{version}"
 
     if _is_submodule(results_root):
-        # 1. Submodule: stage *all* fresh results, commit, push. run-local-models
-        #    writes under results/local/<node>/<model>, not results/<version>/,
-        #    so a version-scoped pathspec would silently drop the new output.xml.
+        # 1. Submodule: stage *all* fresh results, commit, push to main.
+        #    run-local-models writes under results/local/<node>/<model>, not
+        #    results/<version>/, so a version-scoped pathspec would silently
+        #    drop the new output.xml.
         add = _run_git(["add", "-A"], results_root)
         if add.returncode != 0:
             # Staging failed (index lock, permissions, ...). Bail before
@@ -437,7 +440,7 @@ def commit_audit(
             return
         committed = _run_git(["commit", "-m", msg], results_root)
         if committed.returncode == 0:
-            push = _run_git(["push"], results_root)
+            push = _run_git(["push", "origin", "HEAD:main"], results_root)
             if push.returncode != 0:
                 # The new submodule commit lives only locally. Bumping the
                 # superproject pointer to it would reference a SHA the remote
