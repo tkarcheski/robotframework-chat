@@ -1,4 +1,8 @@
-# Skill: Import Test Data from Hugging Face
+# Reference: Importing Hugging Face test data
+
+Full playbook for the `importing-huggingface-data` skill. See `SKILL.md` for the
+overview and decision guidance; this file holds the complete conversion script,
+keyword library, Python tests, and Robot examples.
 
 ## When to Use
 

@@ -1,16 +1,18 @@
 ---
 name: audit-robot-reports
 description: >-
-  Use when auditing Robot Framework coverage from `make run-local-models` in the
-  rfc repo (robotframework-chat) — i.e. answering "which models have been tested
-  against which suites?". Builds a model × test-suite coverage matrix for the
-  latest rfc version, writes a markdown report to `.claude/audits/`, and commits
-  the latest results (the `results/` submodule is LFS-tracked). Also the entry
-  point for launching the multi-hour `make run-local-models` run detached and
-  doing status check-ins. Trigger whenever the user says "audit the robot
-  reports", "check model/suite coverage", "run the local models and audit",
-  "what models have we tested", "regenerate the coverage report", or points at
-  run-local-models output — even if they don't say the word "audit".
+  Audits Robot Framework coverage from `make run-local-models` in the rfc repo
+  (robotframework-chat) — i.e. answers "which models have been tested against
+  which suites?". Builds a model × test-suite coverage matrix for the latest rfc
+  version, writes a markdown report to `.claude/audits/`, and commits the latest
+  results (the `results/` submodule is LFS-tracked). Also the entry point for
+  launching the multi-hour `make run-local-models` run detached and doing status
+  check-ins.
+when_to_use: >-
+  Trigger when the user says "audit the robot reports", "check model/suite
+  coverage", "run the local models and audit", "what models have we tested",
+  "regenerate the coverage report", or points at run-local-models output — even
+  if they don't say the word "audit".
 ---
 
 # audit-robot-reports
