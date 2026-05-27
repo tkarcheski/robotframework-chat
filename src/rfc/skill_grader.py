@@ -42,6 +42,32 @@ def _parse_judge_json(raw: str) -> Any:
     return json.loads(extract_json(raw))
 
 
+_TRUTHY_STRINGS = frozenset({"true", "1", "yes"})
+_FALSY_STRINGS = frozenset({"false", "0", "no"})
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    """Coerce a JSON-decoded judge value to ``bool`` without truthy-string traps.
+
+    ``bool("false")`` is ``True`` in Python, so a judge returning the *string*
+    ``"false"`` for a boolean field would otherwise be misread as ``True``.
+    Accept real JSON booleans, numeric 0/1, and the common string spellings of
+    true/false; anything unrecognized (including ``None`` for a missing key)
+    falls back to *default*.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _TRUTHY_STRINGS:
+            return True
+        if normalized in _FALSY_STRINGS:
+            return False
+    return default
+
+
 @dataclass
 class BehaviorResult:
     """Outcome of grading a single behavioral assertion."""
@@ -200,7 +226,7 @@ Format:
 
         try:
             parsed = _parse_judge_json(raw)
-            violated = bool(parsed.get("violated", False))
+            violated = _coerce_bool(parsed.get("violated"), default=False)
             reason = str(parsed.get("reason", ""))
         except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
             # Conservative fallback: treat malformed judge output as a
@@ -290,7 +316,7 @@ A behavior is "passed" when its score is at least 0.7."""
             except (TypeError, ValueError):
                 score = 0.0
             score = max(0.0, min(1.0, score))
-            passed = bool(entry.get("passed", score >= 0.7))
+            passed = _coerce_bool(entry.get("passed"), default=score >= 0.7)
             reason = str(entry.get("reason", ""))
             out.append(
                 BehaviorResult(
