@@ -175,3 +175,55 @@ class TestAssertSkillGradePassed:
         assert "must_not violations" in msg
         assert "lectures the user" in msg
         assert "response was a lecture" in msg
+
+
+# ---------------------------------------------------------------------------
+# Skill-availability gating (skip-and-log when SKILL_PATH is absent)
+# ---------------------------------------------------------------------------
+
+
+class TestSkillAvailability:
+    def test_available_dir_with_skill_md(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        skill_dir = tmp_path / "skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("x")
+        assert keywords._skill_available(str(skill_dir)) is True
+
+    def test_unavailable_dir_without_skill_md(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        skill_dir = tmp_path / "skill"
+        skill_dir.mkdir()
+        assert keywords._skill_available(str(skill_dir)) is False
+
+    def test_available_direct_file(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("x")
+        assert keywords._skill_available(str(skill_file)) is True
+
+    def test_unavailable_missing_path(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        assert keywords._skill_available(str(tmp_path / "nope")) is False
+
+    def test_skip_unless_available_is_silent_when_present(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        skill_dir = tmp_path / "skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("x")
+        with patch("rfc.skill_keywords.BuiltIn") as fake_builtin:
+            keywords.skip_unless_skill_available(str(skill_dir))
+        fake_builtin.return_value.skip.assert_not_called()
+
+    def test_skip_unless_available_skips_when_missing(
+        self, keywords: SkillKeywords, tmp_path: Path
+    ) -> None:
+        missing = tmp_path / "nope"
+        with patch("rfc.skill_keywords.BuiltIn") as fake_builtin:
+            keywords.skip_unless_skill_available(str(missing))
+        fake_builtin.return_value.skip.assert_called_once()

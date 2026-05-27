@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
+from robot.libraries.BuiltIn import BuiltIn
 
 from .llm_client import create_provider, resolve_timeout
 from .skill_grader import SkillGradeResult, SkillGrader
@@ -68,8 +69,33 @@ class SkillKeywords:
         return content
 
     @staticmethod
+    def _skill_available(skill_path: str) -> bool:
+        """Return True when *skill_path* resolves to a usable SKILL.md."""
+        path = Path(skill_path).expanduser()
+        if path.is_dir():
+            return (path / "SKILL.md").is_file()
+        return path.is_file()
+
+    @staticmethod
     def _build_skill_prompt(skill_content: str, user_prompt: str) -> str:
         return f"[SKILL CONTEXT]\n{skill_content}\n[/SKILL CONTEXT]\n\n{user_prompt}"
+
+    @keyword("Skip Unless Skill Available")
+    def skip_unless_skill_available(self, skill_path: str) -> None:
+        """Skip the suite when no skill is present at *skill_path*.
+
+        Lets a suite be registered in the local-model runner without
+        deterministically hard-failing: when the skill has not been checked
+        out, the suite is skipped with a clear message instead of every test
+        raising FileNotFoundError.
+        """
+        if self._skill_available(skill_path):
+            logger.info(f"Skill available at {skill_path}")
+            return
+        BuiltIn().skip(
+            f"Skill not found at '{skill_path}'. Set the SKILL_PATH environment "
+            f"variable to a checkout of the skill to run this suite."
+        )
 
     @keyword("Load Skill")
     def load_skill(self, skill_path: str) -> str:
