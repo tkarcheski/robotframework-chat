@@ -3,7 +3,12 @@
 import sqlite3
 from datetime import datetime
 
-from rfc.test_database import TestDatabase, TestResult, TestRun
+from rfc.test_database import (
+    TestDatabase,
+    TestResult,
+    TestRun,
+    _SQLAlchemyBackend,
+)
 
 
 _PRE_MIGRATION_TEST_RUNS_DDL = """
@@ -148,6 +153,22 @@ class TestHostnameColumn:
                 "SELECT hostname FROM test_results_full WHERE test_name = 't1'"
             ).fetchone()
         assert row[0] == "ai1"
+
+    def test_pg_migrations_add_hostname_before_view(self):
+        # The PostgreSQL view selects r.hostname, so the upgrade migration
+        # that adds the column must run before the view is (re)created.
+        migrations = _SQLAlchemyBackend._PG_MIGRATIONS
+        add_idx = next(
+            i
+            for i, sql in enumerate(migrations)
+            if "ADD COLUMN IF NOT EXISTS hostname" in sql
+        )
+        view_idx = next(
+            i
+            for i, sql in enumerate(migrations)
+            if "CREATE VIEW test_results_full" in sql
+        )
+        assert add_idx < view_idx
 
 
 class TestTestRunDataclass:
