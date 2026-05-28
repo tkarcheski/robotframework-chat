@@ -7,6 +7,8 @@ Library           rfc.browser_keywords.BrowserKeywords    WITH NAME    Page
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           String
 
+Test Tags         browser
+
 Suite Setup       Import Browser Or Skip
 Suite Teardown    Run Keyword And Ignore Error    Close Browser
 
