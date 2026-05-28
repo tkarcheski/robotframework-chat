@@ -1,6 +1,3 @@
 [submodule "results"]
 	path = results
 	url = git@github.com:tkarcheski/robotframework-chat-results.git
-[submodule "backups"]
-	path = backups
-	url = git@github.com:tkarcheski/robotframework-chat-backups.git
