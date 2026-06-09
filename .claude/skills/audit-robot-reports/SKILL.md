@@ -119,9 +119,13 @@ and its `output.xml` files are **LFS-tracked**. `--commit` therefore does a
 two-repo commit, in this order (so the parent never points at a SHA the remote
 lacks):
 
-1. In `results/`: `git add <version>` → commit → **push** the submodule.
+1. In `results/`: `git add -A` → commit → **push to `main`** (`git push origin
+   HEAD:main`). The explicit `HEAD:main` refspec means unattended runs publish
+   to `main` regardless of the submodule's locally checked-out (often detached)
+   branch.
 2. In the superproject: stage the submodule pointer bump + the new report, then
-   commit `chore: audit robot coverage for v<version>`.
+   commit `chore: audit robot coverage for v<version>`. (This parent commit is
+   left local — push it via the normal PR flow.)
 
 `scripts/audit_robot_reports.py::commit_audit` handles this and falls back to a
 plain `git add results` commit if `results/` ever stops being a submodule.
@@ -135,10 +139,11 @@ plain `git add results` commit if `results/` ever stops being a submodule.
   If coverage is mysteriously empty, run `git -C results lfs pull` first.
 - **Don't block on the run.** It's hours long. Launch detached (option a) and
   return; never hold the session open polling.
-- **`make run-local-models` auto-commits** (after iteration 1) to whatever
-  branch is checked out, pushing the submodule. That's intended for unattended
-  runs — but tell the user if they're on a branch they didn't expect to commit
-  to. Use `AUDIT=0` to suppress it.
+- **`make run-local-models` auto-commits** (after iteration 1) and pushes the
+  `results/` submodule to `main` (`HEAD:main`), regardless of its locally
+  checked-out branch. That's intended for unattended runs. The *superproject*
+  commit (pointer bump + report) is left local — push it via the normal PR
+  flow. Use `AUDIT=0` to suppress the auto-commit entirely.
 - **Latest version may have no data.** The audit targets the highest PEP 440
   version *with watermarked results*. dryrun outputs carry no watermark and are
   correctly ignored — so right after a version bump the matrix can be empty

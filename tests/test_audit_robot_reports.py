@@ -434,6 +434,19 @@ def test_commit_audit_commits_superproject_when_push_succeeds(tmp_path: Path) ->
     ]
 
 
+def test_commit_audit_pushes_submodule_to_main(tmp_path: Path) -> None:
+    # Unattended run-local-models runs must publish to the submodule's main
+    # branch regardless of its locally checked-out (often detached) HEAD, so the
+    # push uses an explicit HEAD:main refspec rather than a bare `git push`.
+    results_root = tmp_path / "results"
+    calls = _commit_audit_calls(tmp_path, lambda args: _ok())
+
+    submodule_pushes = [
+        a for (a, cwd) in calls if cwd == results_root and a[0] == "push"
+    ]
+    assert submodule_pushes == [("push", "origin", "HEAD:main")]
+
+
 def test_commit_audit_commits_superproject_when_submodule_unchanged(
     tmp_path: Path,
 ) -> None:

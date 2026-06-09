@@ -269,14 +269,24 @@ sync-metrics: ## Trigger immediate RF Metrics dashboard regeneration from output
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py
 
-superset-export: ## Export Superset dashboards to backups/ directory
+superset-export: ## Export Superset dashboards + DB dump to backups/, then commit + push to the backups repo (main)
 	@mkdir -p backups
 	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
 	$(COMPOSE) exec superset superset export-dashboards \
 		-f "/tmp/superset_export_$${TIMESTAMP}.zip" && \
 	$(COMPOSE) cp "superset:/tmp/superset_export_$${TIMESTAMP}.zip" \
 		"./backups/superset_export_$${TIMESTAMP}.zip" && \
-	echo "Exported to backups/superset_export_$${TIMESTAMP}.zip"
+	echo "Exported dashboards to backups/superset_export_$${TIMESTAMP}.zip"; \
+	echo "Dumping PostgreSQL ($(or $(POSTGRES_DB),rfc)) to backups/db_$${TIMESTAMP}.sql.gz..."; \
+	if $(COMPOSE) exec -T postgres pg_dump -U "$(or $(POSTGRES_USER),rfc)" "$(or $(POSTGRES_DB),rfc)" \
+		> "backups/db_$${TIMESTAMP}.sql"; then \
+		gzip -f "backups/db_$${TIMESTAMP}.sql" \
+			&& echo "Dumped DB to backups/db_$${TIMESTAMP}.sql.gz"; \
+	else \
+		echo "WARNING: pg_dump failed — skipping DB dump"; \
+		rm -f "backups/db_$${TIMESTAMP}.sql" "backups/db_$${TIMESTAMP}.sql.gz"; \
+	fi; \
+	bash ci/backup_push.sh "chore: backup $${TIMESTAMP}"
 
 superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py
