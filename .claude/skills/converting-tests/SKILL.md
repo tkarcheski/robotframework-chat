@@ -1,4 +1,18 @@
-# Skill: Convert Existing Tests to RFC Framework
+---
+name: converting-tests
+description: >-
+  Migrates tests from other frameworks (pytest-only, unittest, shell scripts,
+  ad-hoc scripts) into the robotframework-chat tiered test system. Covers the
+  tier decision tree, mapping assertions to Robot Framework keywords, extracting
+  Python logic into keyword libraries, parameterized tests, fixtures, tagging,
+  and suite registration.
+when_to_use: >-
+  Trigger when the user wants to convert, migrate, or port an existing test into
+  the rfc framework, asks "which tier should this test be?", or is moving a
+  pytest/unittest/shell test into robot/.
+---
+
+# Converting tests to the RFC framework
 
 ## When to Use
 
@@ -11,8 +25,8 @@ shell scripts, ad-hoc scripts) into the robotframework-chat tiered test system.
 Does the test need an LLM to generate a response?
 ├── NO
 │   ├── Can it be verified with RF built-in keywords only?
-│   │   ├── YES → Tier 0 (verify:robot) — see create-tier0-test.md
-│   │   └── NO  → Tier 1 (verify:python) — see create-tier1-test.md
+│   │   ├── YES → Tier 0 (verify:robot) — see the creating-tier0-tests skill
+│   │   └── NO  → Tier 1 (verify:python) — see the creating-tier1-tests skill
 │   └── Does it need Docker execution?
 │       └── YES → Tier 1 with Docker keywords
 ├── YES

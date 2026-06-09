@@ -1,6 +1,18 @@
 ---
 name: rfc-worktree
-description: Use when starting new work in the rfc repo (robotframework-chat) that should live on its own branch in an isolated worktree. Creates a worktree at ../AI/rfc/worktree/<branch>, branches from a base of the user's choice (defaults to origin/claude-code-staging), copies .env, runs `uv sync`, and runs the CLAUDE.md baseline checks. Trigger whenever the user says "set up a worktree", "make a worktree", "start a new feature/branch in rfc", "give me a fresh rfc branch", or similar — including when they don't say the word "worktree" but are clearly opening a new rfc session that should not pollute the current checkout. Prefer this over the generic using-git-worktrees skill when the working directory is rfc.
+description: >-
+  Sets up new rfc (robotframework-chat) work on its own branch in an isolated
+  git worktree at ../AI/rfc/worktree/<branch>. Branches from a base of the
+  user's choice (defaults to origin/claude-code-staging), copies .env, runs
+  `uv sync`, and runs the CLAUDE.md baseline checks so you land on a green,
+  isolated checkout. Prefer this over the generic using-git-worktrees skill when
+  the working directory is rfc.
+when_to_use: >-
+  Trigger when the user says "set up a worktree", "make a worktree", "start a
+  new feature/branch in rfc", "give me a fresh rfc branch", or similar —
+  including when they don't say the word "worktree" but are clearly opening a
+  new rfc session that should not pollute the current checkout.
+disable-model-invocation: true
 ---
 
 # rfc-worktree

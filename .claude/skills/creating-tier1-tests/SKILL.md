@@ -1,4 +1,17 @@
-# Skill: Create a Tier:1 Robot + Python Test
+---
+name: creating-tier1-tests
+description: >-
+  Creates a tier:1 (verify:python) test that pairs a Robot Framework suite with
+  a Python keyword library in src/rfc/ and a pytest in tests/. Covers writing
+  the failing pytest first (TDD), implementing the typed keyword library, the
+  Robot test that calls it, shared resources, and suite registration.
+when_to_use: >-
+  Trigger when the user wants a Robot test that needs Python-backed logic
+  (parsing, computation, Docker exec, DB queries, structured safety checks) too
+  complex for RF built-ins, or asks how to write a tier:1 test.
+---
+
+# Creating a tier:1 Robot + Python test
 
 ## When to Use
 
@@ -154,8 +167,8 @@ Validate <Domain> Result
 
 ### 5. Register the Suite
 
-Add to **both** config files (see `create-tier0-test.md` § Register the Suite
-for the exact YAML format).
+Add to **both** config files (see the creating-tier0-tests skill § Register the
+Suite for the exact YAML format).
 
 ### 6. Verify Everything
 
