@@ -1,3 +1,6 @@
 [submodule "results"]
 	path = results
 	url = git@github.com:tkarcheski/robotframework-chat-results.git
+[submodule ".claude/skills/elons-algorithm"]
+	path = .claude/skills/elons-algorithm
+	url = git@github.com:tkarcheski/elons-algorithm.git
