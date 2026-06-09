@@ -1,0 +1,80 @@
+name: Claude Review Checkpoints
+
+# Layer 2 of the issue/PR monitoring system. On every issue/PR event this
+# raises a lightweight "checkpoint": it applies the `needs-review` label, which
+# the always-on heartbeat agent (Layer 1) monitors and prioritises. It is
+# deliberately QUIET — it posts no comments — so newly opened items aren't
+# spammed. The label is the signal; the heartbeat does the substantive triage
+# and engagement per the `triage-issues-prs` skill.
+#
+# Uses pull_request_target (like auto-assign.yml) so GITHUB_TOKEN keeps write
+# scope on fork-origin PRs. This workflow never checks out or runs head code.
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+# One checkpoint per item at a time; newer events supersede in-flight runs.
+concurrency:
+  group: checkpoint-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checkpoint:
+    name: Raise review checkpoint
+    runs-on: ubuntu-latest
+    # Never react to our own automation (prevents comment/label loops).
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    steps:
+      - name: Apply needs-review label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number =
+              context.payload.issue?.number ?? context.payload.pull_request?.number;
+            if (!issue_number) {
+              core.info('No issue/PR number on this event; nothing to do.');
+              return;
+            }
+
+            // On issue_comment, skip our own marker comments outright.
+            const body = context.payload.comment?.body ?? '';
+            if (body.includes('<!-- rfc-monitor')) {
+              core.info('Comment is from the monitor itself; skipping.');
+              return;
+            }
+
+            // Idempotent: addLabels is a no-op if the label is already present.
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number, labels: ['needs-review'],
+            });
+
+            const kind = context.payload.pull_request ? 'PR' : 'issue';
+            await core.summary
+              .addHeading('Review checkpoint raised', 3)
+              .addRaw(`Labelled ${kind} #${issue_number} \`needs-review\` for the heartbeat agent.`)
+              .write();
+
+      # ----------------------------------------------------------------------
+      # OPTIONAL: instant inline review by Claude in CI.
+      # Enable by adding an `ANTHROPIC_API_KEY` repo secret, then uncommenting.
+      # Without the secret, the label above is the checkpoint and the cloud
+      # heartbeat does the review — no secret required for this workflow to work.
+      # ----------------------------------------------------------------------
+      # - name: Inline Claude review
+      #   uses: anthropics/claude-code-action@v1
+      #   with:
+      #     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      #     prompt: |
+      #       Use the triage-issues-prs skill to triage and engage with this
+      #       ${{ github.event_name }} event, obeying its safety rails and
+      #       per-sweep action cap.
