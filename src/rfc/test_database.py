@@ -379,6 +379,9 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN session_id TEXT",
         # Issue #350: record the harness driving the test (e.g. claude-opus-4-7[1m]).
         "ALTER TABLE test_runs ADD COLUMN model_harness TEXT",
+        # Databases predating the watermark 5-tuple lack hostname; the
+        # test_results_full view selects r.hostname, so add it on upgrade.
+        "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
     ]
 
     def __init__(self, db_path: str):
@@ -714,6 +717,9 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS session_id TEXT",
         # Issue #350: record the harness driving the test (e.g. claude-opus-4-7[1m]).
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS model_harness TEXT",
+        # Databases predating the watermark 5-tuple lack hostname; the
+        # test_results_full view selects r.hostname, so add it on upgrade.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname TEXT",
         # Joined view for Superset — lean columns + archive LEFT JOIN.
         f"CREATE VIEW test_results_full AS {TEST_RESULTS_FULL_VIEW_BODY}",
     ]
