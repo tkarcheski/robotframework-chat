@@ -16,17 +16,20 @@ _JSON_SCHEMA_TYPE_NAMES = frozenset(
 
 
 def _is_strict_json_value(value: object) -> bool:
-    """True iff `value` is round-trip-serialisable to strict JSON.
+    """True iff `value` round-trips through strict JSON unchanged.
 
-    `json.dumps` accepts NaN/Infinity by default, so we pass `allow_nan=False`
-    to reject them at any depth. This also catches non-JSON Python types
-    (custom objects, tuples, sets) nested inside containers.
+    `json.dumps` accepts NaN/Infinity by default and silently coerces tuples
+    to arrays and non-string dict keys to strings. Round-tripping with
+    `allow_nan=False` and comparing for structural equality catches all of
+    these — NaN/inf raise during encode, while tuples and non-string keys
+    survive encode but produce a decoded value that differs from the input.
     """
     try:
-        json.dumps(value, allow_nan=False)
+        encoded = json.dumps(value, allow_nan=False)
+        decoded = json.loads(encoded)
     except (TypeError, ValueError):
         return False
-    return True
+    return decoded == value
 
 
 def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
