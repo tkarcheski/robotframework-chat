@@ -47,7 +47,7 @@ The `.env` file is loaded automatically by:
 | `DATABASE_URL` | PostgreSQL connection string | `.env` fallback | db_listener, test_database, dry_run_listener |
 | `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | .gitlab-ci.yml |
 | `DEFAULT_MODEL` | LLM model for tests | `gpt-oss:20b` (CI: `qwen3.5:27b`) | ollama.py, keywords, listeners, scripts |
-| `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners, ci/test.sh |
+| `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners |
 | `OLLAMA_TIMEOUT` | Request timeout in seconds | `5400` (90 min) | ollama.py, keywords, safety_keywords, Robot resources |
 
 ### Node Discovery
@@ -80,7 +80,7 @@ The `.env` file is loaded automatically by:
 |----------|---------|---------|---------|
 | `GITLAB_API_URL` | GitLab instance URL | (empty) | suite_config.py |
 | `GITLAB_PROJECT_ID` | Numeric project ID | (empty) | suite_config.py, pipeline_summary.py |
-| `GITLAB_TOKEN` | API token (`read_api` scope) | (empty) | ci/review.sh, ci/report.sh, pipeline_summary.py |
+| `GITLAB_TOKEN` | API token (`read_api` scope) | (empty) | ci/report.sh, pipeline_summary.py |
 
 ### Hugging Face
 
@@ -92,10 +92,8 @@ The `.env` file is loaded automatically by:
 
 | Variable | Purpose | Default | Used By |
 |----------|---------|---------|---------|
-| `OPENROUTER_API_KEY` | OpenRouter API key for AI reviews | (empty) | ci/review.sh (via opencode) |
-| `REVIEW_MODEL` | Model for code review | `openrouter/moonshotai/kimi-k2.5` | ci/review.sh, ci/local_review.sh |
 | `AUDIT_MODEL` | Model for markdown audit | `ollama/qwen3-coder:30b-a3b-q4_K_M` | ci/audit_markdown.sh |
-| `BASE_BRANCH` | Base branch for diff reviews | auto-detected (main/master) | ci/audit_markdown.sh, ci/local_review.sh |
+| `BASE_BRANCH` | Base branch for diff reviews | auto-detected (main/master) | ci/audit_markdown.sh |
 | `COMMIT_DEPTH` | Recent commits for markdown audit | `20` | ci/audit_markdown.sh |
 
 ### CI/Deploy (only needed in CI environments)
@@ -105,13 +103,6 @@ The `.env` file is loaded automatically by:
 | `SUPERSET_DEPLOY_HOST` | Remote deploy target hostname | (required) | ci/deploy.sh |
 | `SUPERSET_DEPLOY_USER` | SSH user for deploy | (required) | ci/deploy.sh |
 | `SUPERSET_DEPLOY_PATH` | Remote path for deploy | (required) | ci/deploy.sh |
-| `RESULTS_SERVER` | Remote results server hostname | (required) | ci/send_results.sh |
-| `RESULTS_SERVER_USER` | SSH user for results server | (required) | ci/send_results.sh |
-| `RESULTS_SERVER_PATH` | Remote path for results | (required) | ci/send_results.sh |
-| `RESULTS_SERVER_PORT` | SSH port for results server | `22` | ci/send_results.sh |
-| `RESULTS_DIR` | Local results directory to send | `results/` | ci/send_results.sh |
-| `GITHUB_USER` | GitHub username for mirror sync | (required) | ci/sync.sh |
-| `GITHUB_TOKEN` | GitHub token for mirror sync | (required) | ci/sync.sh |
 
 ### Auto-Set CI Variables (do not configure in `.env`)
 

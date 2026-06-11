@@ -1,9 +1,10 @@
 name: Sync from GitLab
 
+# Manual-dispatch only (2026-06-10 CI/CD audit): GitHub is the single writer
+# of main; GitLab is a read-only mirror. The 15-minute reverse cron created a
+# force-push race against sync-to-gitlab. Run this by hand only for the rare
+# GitLab-side hotfix that must flow back.
 on:
-  schedule:
-    # Run every 15 minutes to pick up GitLab changes
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       branch:

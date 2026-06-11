@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to sync (leave empty for all branches)"
+        description: "Branch to sync (leave empty for main only)"
         required: false
         default: ""
       sync_tags:
@@ -61,8 +61,11 @@ jobs:
             echo "Syncing branch: ${BRANCH}"
             git push gitlab "refs/heads/${BRANCH}:refs/heads/${BRANCH}" --force
           else
-            echo "Syncing all branches"
-            git push gitlab --all --force
+            # 2026-06-10 CI/CD audit: sync main only. --all --force mirrored
+            # every local branch and could clobber GitLab-side work; staging
+            # already has its own dedicated mirror workflow.
+            echo "Syncing main"
+            git push gitlab refs/heads/main:refs/heads/main --force
           fi
 
           if [ "${{ github.event.inputs.sync_tags }}" = "true" ]; then

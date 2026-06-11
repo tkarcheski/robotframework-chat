@@ -321,7 +321,11 @@ class TestDetectRepoPlatform:
         with patch("bump_version.subprocess.run") as mock_run:
             mock_run.return_value.stdout = "https://git.example.com/user/repo.git\n"
             mock_run.return_value.returncode = 0
-            with patch.dict("os.environ", {"GITLAB_CI": "true"}):
+            # Isolate from the host CI: GITHUB_ACTIONS=true is always set on
+            # GitHub runners and is checked before GITLAB_CI.
+            env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
+            env["GITLAB_CI"] = "true"
+            with patch.dict("os.environ", env, clear=True):
                 assert detect_repo_platform() == "gitlab"
 
     def test_self_hosted_github(self) -> None:
@@ -351,7 +355,13 @@ class TestDetectRepoPlatform:
             "bump_version.subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git"),
         ):
-            assert detect_repo_platform() == "unknown"
+            env = {
+                k: v
+                for k, v in os.environ.items()
+                if k not in ("GITHUB_ACTIONS", "GITLAB_CI")
+            }
+            with patch.dict("os.environ", env, clear=True):
+                assert detect_repo_platform() == "unknown"
 
 
 # ── Git tag creation ─────────────────────────────────────────────────

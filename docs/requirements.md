@@ -136,10 +136,10 @@ GitLab CI with dynamic pipeline generation and modular scripts.
 | # | Requirement | Status | Notes |
 |---|-------------|--------|-------|
 | 6.1 | Modular CI scripts (`ci/*.sh`) | Complete | 8+ scripts, all `set -euo pipefail` |
-| 6.2 | Dynamic pipeline generation | Complete | `scripts/generate_pipeline.py` from YAML config |
+| 6.2 | Dynamic pipeline generation | Removed (2026-06-10 audit) | static `.gitlab-ci.yml`; generator deleted |
 | 6.3 | Ollama network discovery | Complete | `scripts/discover_nodes.py` |
-| 6.4 | GitHub mirror sync | Complete | `ci/sync.sh` |
-| 6.5 | Claude Code review stage | Complete | `ci/review.sh` — MR review + fix attempts |
+| 6.4 | GitHub mirror sync | Complete | GitHub workflows (sync-to-gitlab, mirror-staging) |
+| 6.5 | Claude Code review stage | Replaced (2026-06-10 audit) | Codex auto-review + Claude heartbeat sweep |
 | 6.6 | Repo metrics + MR comments | Complete | `ci/report.sh` |
 | 6.7 | `.env` sourcing in CI scripts | Complete | CI scripts source `.env` when present |
 | 6.8 | Single-source config (YAML) | Complete | `config/test_suites.yaml` drives dashboard + CI |

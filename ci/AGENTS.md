@@ -11,14 +11,17 @@ Scripts and automation agents used in the GitLab CI pipeline.
 | Script | Stage | Purpose |
 |--------|-------|---------|
 | `ci/lint.sh` | lint | Run ruff linter and formatter checks |
-| `ci/test.sh` | test | Run Robot Framework test suites with health checks |
-| `ci/generate.sh` | generate | Generate child pipeline YAML for dynamic jobs |
-| `ci/report.sh` | report | Generate repo metrics and optionally post to MR |
-| `ci/sync.sh` | sync | Mirror repository to GitHub |
+| `ci/report.sh` | report | Repo metrics, optional MR post (manual: `make ci-report`) |
+| `ci/pipeline_report.sh` | report | Pipeline summary, posts to MR |
 | `ci/deploy.sh` | deploy | Deploy Superset to remote host |
-| `ci/test_dashboard.sh` | test | Run dashboard pytest and Playwright tests |
-| `ci/review.sh` | review | Run AI code review on pipeline changes |
-| `ci/ensure_node.sh` | setup | Ensure Node.js >= 18 is available |
+| `ci/release.sh` | release | Build + verify sdist/wheel (`make build-check`) |
+| `ci/backup_push.sh` | manual | Push Superset export + DB dump to the backups repo |
+| `ci/audit_markdown.sh` | manual | Audit markdown file references (Ollama) |
+
+Removed by the 2026-06-10 CI/CD audit (elons-algorithm report
+`2026-06-10-cicd-pipelines.md`): `ci/test.sh`, `ci/sync.sh`,
+`ci/ensure_node.sh`, `ci/send_results.sh`, `ci/generate.sh` +
+`scripts/generate_pipeline.py`, `ci/review.sh`, `ci/local_review.sh`.
 
 ## Listener Agents
 
@@ -34,8 +37,8 @@ Keep CI pipelines minimal. GitLab CI has hard limits (e.g. a job can
 only `needs` 50 others) and debugging generated YAML is painful. Prefer
 pushing logic into developer tools that work the same locally and in CI:
 
-- **Makefile** — entry points for CI operations (`make ci-generate`,
-  `make ci-report`, etc.). A developer should be able to reproduce any
+- **Makefile** — entry points for CI operations (`make ci-report`,
+  `make ci-deploy`, etc.). A developer should be able to reproduce any
   CI job locally.
 - **Bash scripts** (`ci/*.sh`) — reusable scripts that set up the
   environment and call Python or other tools. Some are called directly
@@ -45,7 +48,7 @@ pushing logic into developer tools that work the same locally and in CI:
   (discovery, result import, report generation). These are testable and
   debuggable outside CI.
 
-The `.gitlab-ci.yml` and generated child pipelines should do as little
+The `.gitlab-ci.yml` should do as little
 as possible: pick a runner, call a script, collect artifacts. Avoid
 `needs` chains, multi-stage fan-in/fan-out, and any CI-specific feature
 that cannot be exercised locally.

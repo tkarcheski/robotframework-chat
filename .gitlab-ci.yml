@@ -84,18 +84,8 @@ run-local-models-dev2:
   tags: [dev2]
 
 # ── Report ───────────────────────────────────────────────────────────
-
-repo-metrics:
-  extends: .uv-setup
-  stage: report
-  needs: []
-  script: [make ci-report POST_MR=1]
-  artifacts:
-    paths: [metrics/]
-    expire_in: 90 days
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+# (2026-06-10 CI/CD audit: repo-metrics job removed — pipeline-summary is
+# the one CI report; `make ci-report` remains for manual use.)
 
 pipeline-summary:
   extends: .uv-setup
@@ -140,22 +130,5 @@ build-check:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
 
 # ── Review ───────────────────────────────────────────────────────────
-
-opencode-review:
-  stage: review
-  tags: [nodejs]
-  variables:
-    REVIEW_MODEL: "openrouter/moonshotai/kimi-k2.5"
-  before_script:
-    - npm install -g opencode-ai
-  script: [make opencode-pipeline-review]
-  artifacts:
-    paths:
-      - review-result.md
-      - review-fix-attempt.md
-      - review-patch-*.diff
-    expire_in: 90 days
-    when: always
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /opencode-review/
-    - when: manual
+# (2026-06-10 CI/CD audit: opencode-review removed — every PR is already
+# reviewed by Codex (auto-assign) and the Claude heartbeat sweep.)
