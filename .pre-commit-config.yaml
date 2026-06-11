@@ -1,3 +1,6 @@
+# pilots/ holds verbatim run artifacts (model output, raw logs) that must
+# stay byte-exact — formatters and whitespace fixers would corrupt evidence.
+exclude: ^pilots/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
