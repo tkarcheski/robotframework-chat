@@ -175,6 +175,24 @@ class TestAgentInteractionTracker:
         with pytest.raises(RuntimeError, match="already active"):
             active_tracker.start_interaction(2)
 
+    def test_set_interaction_state_snapshots_dicts(self, active_tracker):
+        """Mutating caller dicts after set_interaction_state must not affect the
+        recorded interaction — snapshots must be independent of caller state."""
+        state_before = {"step": "init", "files": ["a"]}
+        state_after = {"step": "done", "files": ["a", "b"]}
+
+        active_tracker.set_interaction_state("ran", state_before, state_after)
+
+        state_before["step"] = "MUTATED"
+        state_before["files"].append("x")
+        state_after["step"] = "MUTATED"
+        state_after["files"].append("y")
+
+        interaction = active_tracker.end_interaction(True)
+
+        assert interaction.state_before == {"step": "init", "files": ["a"]}
+        assert interaction.state_after == {"step": "done", "files": ["a", "b"]}
+
     def test_full_realistic_workflow(self):
         """Simulate realistic agent workflow: analyze issue → clone → edit → create PR."""
         tracker = AgentInteractionTracker(

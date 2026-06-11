@@ -214,6 +214,133 @@ class TestToolCallValidator:
         assert valid is False
         assert "Expected dict" in msg
 
+    def test_validate_call_schema_wrong_param_type_string(self):
+        """validate_call_schema must reject when string param is given an int."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="git_clone",
+            description="",
+            parameters={"url": {"type": "string"}},
+            required=["url"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="git_clone",
+            arguments={"url": 42},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "url" in msg
+        assert "string" in msg
+
+    def test_validate_call_schema_wrong_param_type_integer(self):
+        """validate_call_schema must reject when integer param is given a string."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_count",
+            description="",
+            parameters={"count": {"type": "integer"}},
+            required=["count"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_count",
+            arguments={"count": "five"},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "count" in msg
+
+    def test_validate_call_schema_accepts_matching_types(self):
+        """validate_call_schema must accept all declared JSON Schema primitive types."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="multi_param",
+            description="",
+            parameters={
+                "name": {"type": "string"},
+                "count": {"type": "integer"},
+                "ratio": {"type": "number"},
+                "enabled": {"type": "boolean"},
+                "tags": {"type": "array"},
+                "meta": {"type": "object"},
+            },
+            required=["name"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="multi_param",
+            arguments={
+                "name": "foo",
+                "count": 3,
+                "ratio": 1.5,
+                "enabled": True,
+                "tags": ["a", "b"],
+                "meta": {"k": "v"},
+            },
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is True, msg
+
+    def test_validate_call_schema_boolean_not_integer(self):
+        """Booleans must not be accepted where integer is required (Python bool ⊂ int)."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_count",
+            description="",
+            parameters={"count": {"type": "integer"}},
+            required=["count"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_count",
+            arguments={"count": True},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+
+    def test_validate_call_schema_skips_untyped_params(self):
+        """A schema entry with no 'type' must not be type-checked."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="loose",
+            description="",
+            parameters={"data": {}},
+            required=["data"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="loose",
+            arguments={"data": object()},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is True, msg
+
 
 class TestToolResultValidator:
     """ToolResultValidator: Assert output properties."""
