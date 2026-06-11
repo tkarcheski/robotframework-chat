@@ -98,11 +98,10 @@ When helping a human debug their pipeline locally:
 - **Suggest local reproduction.** Most CI scripts are runnable locally:
   ```bash
   bash ci/lint.sh          # or: make ci-lint
-  bash ci/test.sh          # or: make ci-test
   bash ci/report.sh        # or: make ci-report
   ```
 - **Check variables.** CI/CD variables are a common source of failures:
-  `GITLAB_TOKEN`, `OLLAMA_ENDPOINT`, `DEFAULT_MODEL`, `OPENROUTER_API_KEY`.
+  `GITLAB_TOKEN`, `OLLAMA_ENDPOINT`, `DEFAULT_MODEL`.
 - **One question per round.**
 
 ### Don't
@@ -119,7 +118,7 @@ When helping a human debug their pipeline locally:
 
 ## CI Mode (Automated Diagnosis)
 
-When running in CI (e.g., `ci/review.sh` Phase 1), produce a structured report
+When running unattended, produce a structured report
 for each failed job.
 
 ### Diagnostic Report Template
@@ -206,12 +205,10 @@ lint → generate → test → report → deploy → release → review
 | Script | Purpose |
 |--------|---------|
 | `ci/lint.sh` | All linters, collects failures, reports summary |
-| `ci/test.sh` | Ollama health check + test suite execution |
 | `ci/generate.sh` | Child pipeline YAML generation (regular/dynamic/discover) |
 | `ci/report.sh` | Repo metrics + MR comment posting |
 | `ci/pipeline_report.sh` | Pipeline test summary + MR comment |
 | `ci/deploy.sh` | Superset deployment to remote host |
-| `ci/review.sh` | OpenCode AI review + pipeline fix |
 
 ### Shared Templates (`ci/common.yml`)
 
@@ -247,7 +244,6 @@ lint → generate → test → report → deploy → release → review
 - `.gitlab-ci.yml` — pipeline definition (7 stages, ~263 lines)
 - `ci/common.yml` — shared job templates
 - `ci/*.sh` — all executable CI logic
-- `scripts/generate_pipeline.py` — child pipeline YAML generator
 - `scripts/repo_metrics.py` — repo metrics collection
 - `scripts/pipeline_summary.py` — pipeline test summary
 - `ai/pipelines.md` — pipeline strategy and model selection docs

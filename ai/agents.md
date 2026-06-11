@@ -213,12 +213,9 @@ make docker-logs                 # Tail service logs
 make bootstrap                   # First-time Superset setup
 
 # Layer 3: CI pipelines
-make ci-generate                 # Generate child pipeline YAML
 make ci-report                   # Generate repo metrics
 make ci-deploy                   # Deploy Superset to remote host
 make run-ci-pipeline             # Run the full CI pipeline locally
-make opencode-pipeline-review    # Run OpenCode AI review in CI
-make opencode-local-review       # Run OpenCode AI review on local changes
 
 # Layer 4: Release & versioning
 make ci-release                  # Build and verify PyPI package
@@ -226,7 +223,6 @@ make version                     # Print current version
 
 # CI scripts (called directly in .gitlab-ci.yml and run-ci-pipeline)
 bash ci/lint.sh all              # Run all lint checks
-bash ci/test.sh all              # Run all tests with Ollama health check
 bash ci/pipeline_report.sh --post-mr  # Pipeline summary + MR comment
 ```
 
@@ -446,7 +442,6 @@ variables, rules, and artifacts — nothing else. All executable logic lives in:
 | **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review |
 | **Templates** | `ci/common.yml` | Shared YAML templates (`.uv-setup`, `.robot-test`) |
 | **Makefile** | `Makefile` | `ci-*` targets wrap scripts for local and CI use |
-| **Python** | `scripts/generate_pipeline.py` | Generates child-pipeline YAML from `config/test_suites.yaml` |
 
 To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 
@@ -455,13 +450,9 @@ To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 | Script | Purpose | Makefile target |
 |--------|---------|-----------------|
 | `ci/lint.sh` | Run all linters, collect all failures, report summary | (called directly) |
-| `ci/test.sh` | Ollama health check + run test suites via Makefile | (called directly) |
-| `ci/generate.sh` | Generate child pipeline YAML (regular/dynamic/discover) | `make ci-generate` |
 | `ci/report.sh` | Repo metrics + MR comment posting | `make ci-report` |
 | `ci/pipeline_report.sh` | Pipeline testing summary + MR comment | (called directly) |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
-| `ci/review.sh` | OpenCode AI review + pipeline fix (CI) | `make opencode-pipeline-review` |
-| `ci/local_review.sh` | OpenCode AI review on local changes | `make opencode-local-review` |
 
 All scripts follow these conventions:
 - `set -euo pipefail` (fail fast)

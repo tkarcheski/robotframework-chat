@@ -97,7 +97,6 @@ lint → test → report → deploy → release → review
 | `report` | `repo-metrics`, `pipeline-summary` | `make ci-report`, `make ci-pipeline-report` | Repo metrics, MR comments |
 | `deploy` | `deploy-superset` | `make ci-deploy` | Update Superset stack on default branch |
 | `release` | `test-release`, `publish-pypi` | `make ci-release [UPLOAD=1]` | Build + publish to PyPI on version tags (`v*`) |
-| `review` | `opencode-review` | `make opencode-pipeline-review` | AI code review + fix via OpenCode + Kimi K2.5 on OpenRouter |
 
 ---
 
@@ -106,12 +105,10 @@ lint → test → report → deploy → release → review
 | Script | Usage | Arguments |
 |--------|-------|-----------|
 | `ci/lint.sh` | `bash ci/lint.sh [all\|pre-commit\|ruff\|mypy]` | Check type (default: all) |
-| `ci/test.sh` | `bash ci/test.sh [all\|math\|docker\|safety]` | Suite to run (default: all) |
 | `ci/generate.sh` | `bash ci/generate.sh [regular\|dynamic\|discover]` | Pipeline mode |
 | `ci/report.sh` | `bash ci/report.sh [--post-mr]` | Post metrics as MR comment |
 | `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
 | `ci/release.sh` | `bash ci/release.sh [--dry-run]` | Requires PYPI_TOKEN or TWINE_USERNAME+PASSWORD |
-| `ci/review.sh` | `bash ci/review.sh` | Requires OPENROUTER_API_KEY |
 
 All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`,
 `make ci-release`, etc.
@@ -182,6 +179,6 @@ Long-term: web UI to manage assignments.
 > grade code quality, and generate full reports. See `humans/TODO.md` § AI-Powered
 > Code Review in CI.
 
-Current: `ci/review.sh` uses OpenCode + Kimi K2.5 via OpenRouter.
+Removed 2026-06-10 (CI/CD audit): PR review is handled by Codex (auto-assign) and the Claude heartbeat sweep.
 Planned: AI agent reviews both code diff AND pipeline results, posts structured
 report with pass/fail + letter grade.

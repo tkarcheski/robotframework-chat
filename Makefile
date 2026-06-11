@@ -45,7 +45,6 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-swebench swebench-discover \
-        send-results \
         retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models \
@@ -56,8 +55,8 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
         model-cards \
-        ci-generate ci-report ci-deploy \
-        opencode-pipeline-review opencode-local-review opencode-audit-markdown \
+        ci-report ci-deploy \
+        opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
 
 help: ## Show this help
@@ -144,9 +143,6 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 	uv run python scripts/robot_review.py
-
-send-results: ## Send results to remote server via rsync (set RESULTS_SERVER_* env vars)
-	bash ci/send_results.sh
 
 retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfailed
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \
@@ -303,20 +299,11 @@ model-cards: ## Generate Markdown model cards from test results (requires Supers
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
 
-ci-generate: ## Generate child pipeline YAML (regular|dynamic|discover)
-	bash ci/generate.sh $(or $(MODE),regular)
-
 ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
 	bash ci/report.sh $(if $(POST_MR),--post-mr,)
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh
-
-opencode-pipeline-review: ## Run OpenCode AI review in CI (pipeline failures + MR diff)
-	bash ci/review.sh
-
-opencode-local-review: ## Run OpenCode AI review on local uncommitted/branch changes
-	bash ci/local_review.sh
 
 opencode-audit-markdown: ## Audit markdown file references for broken/stale paths (Ollama)
 	bash ci/audit_markdown.sh

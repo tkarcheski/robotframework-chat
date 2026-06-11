@@ -137,7 +137,7 @@ When debugging Docker issues with a human at the terminal:
 
 ## CI Mode (Automated Diagnosis)
 
-When running in CI pipelines (e.g., `ci/review.sh`), you can't ask questions.
+When running unattended in CI pipelines, you can't ask questions.
 Instead, follow this approach:
 
 1. **Collect** failed job logs (the review script handles this).
@@ -255,4 +255,3 @@ If you're still guessing, you're not done debugging.
 - `ai/agents.md` § Agent Personality — tone, question-asking, user validation
 - `ai/agents.md` § Docker Testing — container profiles, keywords, port allocation
 - `ai/devops.md` — infrastructure context (runners, Docker, CI pipeline)
-- `ci/review.sh` — CI pipeline review script that uses this role

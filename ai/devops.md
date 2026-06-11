@@ -33,7 +33,7 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 | CI pipeline on every push | Adopted | `.gitlab-ci.yml` — 7 stages |
 | CI on merge requests | Adopted | Lint, test, report stages run on MR events |
 | GitHub Actions CI | Adopted | `.github/workflows/robot-tests.yml` — lint, dashboard pytest, dry-run, robot tests |
-| Dynamic pipeline generation | Adopted | `scripts/generate_pipeline.py` generates child pipelines from `config/test_suites.yaml` |
+| Dynamic pipeline generation | Retired (2026-06-10 audit) | static `.gitlab-ci.yml`; the generator was deleted |
 | Scheduled pipelines | Adopted | Hourly cron triggers dynamic pipeline with full node/model matrix |
 | Pipeline artifact collection | Adopted | Test results, metrics, review artifacts archived |
 | JUnit report integration | Adopted | Dashboard pytest produces `pytest-results.xml` |

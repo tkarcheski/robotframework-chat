@@ -155,12 +155,9 @@ If a module starts doing two things, split it.
 | Script | Single Responsibility |
 |--------|----------------------|
 | `ci/lint.sh` | Run code quality checks -- no test execution |
-| `ci/test.sh` | Run Robot Framework tests -- delegates to Makefile targets |
 | `ci/generate.sh` | Generate child pipeline YAML -- delegates to Python scripts |
 | `ci/report.sh` | Generate metrics and post MR comments |
-| `ci/sync.sh` | Mirror repo to GitHub -- no other side effects |
 | `ci/deploy.sh` | Deploy Superset stack -- SSH to remote host |
-| `ci/review.sh` | Claude Code review -- pipeline fix + diff review |
 
 ### Adding New Test Suites
 
@@ -170,7 +167,7 @@ If a module starts doing two things, split it.
 4. Add Makefile target: `test-<suite-name>`
 5. Run pipeline generation locally to validate:
    ```bash
-   uv run python scripts/generate_pipeline.py --mode regular -o /dev/stdout
+   uv run yamllint .gitlab-ci.yml   # the pipeline is static YAML now
    ```
 
 ### Adding New Listeners
@@ -178,7 +175,6 @@ If a module starts doing two things, split it.
 1. Create listener in `src/rfc/` following the Robot Framework listener API v3
 2. Add to the listener table in `ai/agents.md`
 3. Add `--listener` flag to all Makefile `test-*` targets
-4. Update `scripts/generate_pipeline.py` to include the listener in CI jobs
 
 ---
 
