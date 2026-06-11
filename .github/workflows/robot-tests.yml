@@ -18,7 +18,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra superset --extra swebench
 
       - name: Ruff check
         run: uv run ruff check .
@@ -39,10 +39,12 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        # Same as `make install`: keyword libraries import superset/swebench
+        # deps at parse time, so dev-only installs fail the dry-run en masse.
+        run: uv sync --extra dev --extra superset --extra swebench
 
       - name: Validate robot files (dry-run)
-        run: uv run robot --dryrun --exclude browser -d results/dryrun robot/
+        run: uv run robot --dryrun --exclude browser -d results/dryrun --listener rfc.dry_run_listener.DryRunListener robot/
 
       - name: Check tag compliance
         run: uv run python scripts/robot_review.py results/dryrun/output.xml
@@ -71,7 +73,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra superset --extra swebench
 
       - name: Run math tests
         run: uv run robot -d results/math $LISTENERS robot/math/
