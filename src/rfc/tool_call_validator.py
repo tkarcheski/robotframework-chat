@@ -8,6 +8,19 @@ from typing import Callable
 
 from .agent_tool import ToolCall, ToolResult, ToolSchema
 
+# JSON Schema primitive types → Python types accepted for that schema type.
+# `bool` is excluded from "integer"/"number" even though Python's `bool` is a
+# subclass of `int`, because JSON Schema treats them as distinct.
+_JSON_SCHEMA_TYPES: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "integer": (int,),
+    "number": (int, float),
+    "boolean": (bool,),
+    "object": (dict,),
+    "array": (list, tuple),
+    "null": (type(None),),
+}
+
 
 class ToolCallValidator:
     """Validate tool calls against schemas, ordering, and results."""
@@ -30,6 +43,29 @@ class ToolCallValidator:
         for required_param in schema.required:
             if required_param not in call.arguments:
                 return False, f"Missing required parameter: {required_param}"
+
+        # Check declared parameter types match argument types
+        for param_name, param_value in call.arguments.items():
+            param_schema = schema.parameters.get(param_name)
+            if not isinstance(param_schema, dict):
+                continue
+            declared_type = param_schema.get("type")
+            if not isinstance(declared_type, str):
+                continue
+            allowed = _JSON_SCHEMA_TYPES.get(declared_type)
+            if allowed is None:
+                continue
+            # JSON Schema integer/number must reject Python bool even though
+            # bool ⊂ int in Python.
+            if declared_type in ("integer", "number") and isinstance(param_value, bool):
+                return False, (
+                    f"Parameter '{param_name}' expected {declared_type}, got boolean"
+                )
+            if not isinstance(param_value, allowed):
+                return False, (
+                    f"Parameter '{param_name}' expected {declared_type}, "
+                    f"got {type(param_value).__name__}"
+                )
 
         return True, ""
 
