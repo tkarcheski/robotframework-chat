@@ -69,7 +69,12 @@ jobs:
     name: Robot Tests
     runs-on: self-hosted
     needs: [lint, robot-dryrun]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Live suites (self-hosted runner, DB listeners) run only on main pushes
+    # or manual dispatch; staging pushes/PRs get the lint + dry-run gate only
+    # (issue #403).
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
     env:
       LISTENERS: >-
         --listener rfc.db_listener.DbListener
