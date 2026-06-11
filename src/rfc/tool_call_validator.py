@@ -6,20 +6,47 @@ import json
 import re
 from typing import Callable
 
+from math import isfinite
+
 from .agent_tool import ToolCall, ToolResult, ToolSchema
 
-# JSON Schema primitive types → Python types accepted for that schema type.
-# `bool` is excluded from "integer"/"number" even though Python's `bool` is a
-# subclass of `int`, because JSON Schema treats them as distinct.
-_JSON_SCHEMA_TYPES: dict[str, tuple[type, ...]] = {
-    "string": (str,),
-    "integer": (int,),
-    "number": (int, float),
-    "boolean": (bool,),
-    "object": (dict,),
-    "array": (list, tuple),
-    "null": (type(None),),
-}
+_JSON_SCHEMA_TYPE_NAMES = frozenset(
+    {"string", "integer", "number", "boolean", "object", "array", "null"}
+)
+
+
+def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
+    """True iff `value` matches the named JSON Schema primitive type.
+
+    Per https://json-schema.org/draft/2020-12/json-schema-validation#name-type:
+    - "integer" matches any number with a zero fractional part, so integral
+      floats like 1.0 are valid. Booleans are NOT valid (JSON Schema treats
+      bool and int as distinct types even though bool ⊂ int in Python).
+    - "number" matches int or float, but again excludes bool.
+    """
+    if type_name == "boolean":
+        return isinstance(value, bool)
+    if type_name == "integer":
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, int):
+            return True
+        if isinstance(value, float):
+            return isfinite(value) and value.is_integer()
+        return False
+    if type_name == "number":
+        if isinstance(value, bool):
+            return False
+        return isinstance(value, (int, float))
+    if type_name == "string":
+        return isinstance(value, str)
+    if type_name == "object":
+        return isinstance(value, dict)
+    if type_name == "array":
+        return isinstance(value, (list, tuple))
+    if type_name == "null":
+        return value is None
+    return False
 
 
 class ToolCallValidator:
@@ -49,21 +76,26 @@ class ToolCallValidator:
             param_schema = schema.parameters.get(param_name)
             if not isinstance(param_schema, dict):
                 continue
-            declared_type = param_schema.get("type")
-            if not isinstance(declared_type, str):
+            declared = param_schema.get("type")
+            # JSON Schema allows `type` to be a string OR a list of strings
+            # (a union); the instance must match at least one listed type.
+            if isinstance(declared, str):
+                candidates: list[str] = [declared]
+            elif isinstance(declared, list) and all(
+                isinstance(t, str) for t in declared
+            ):
+                candidates = list(declared)
+            else:
                 continue
-            allowed = _JSON_SCHEMA_TYPES.get(declared_type)
-            if allowed is None:
+            # Drop any unknown type names so they don't force a false negative;
+            # if none are recognised, fall through (untyped, like before).
+            known = [t for t in candidates if t in _JSON_SCHEMA_TYPE_NAMES]
+            if not known:
                 continue
-            # JSON Schema integer/number must reject Python bool even though
-            # bool ⊂ int in Python.
-            if declared_type in ("integer", "number") and isinstance(param_value, bool):
+            if not any(_value_matches_json_schema_type(param_value, t) for t in known):
+                expected = known[0] if len(known) == 1 else f"one of {known}"
                 return False, (
-                    f"Parameter '{param_name}' expected {declared_type}, got boolean"
-                )
-            if not isinstance(param_value, allowed):
-                return False, (
-                    f"Parameter '{param_name}' expected {declared_type}, "
+                    f"Parameter '{param_name}' expected {expected}, "
                     f"got {type(param_value).__name__}"
                 )
 

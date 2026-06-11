@@ -341,6 +341,118 @@ class TestToolCallValidator:
         valid, msg = validator.validate_call_schema(call)
         assert valid is True, msg
 
+    def test_validate_call_schema_integer_accepts_integral_float(self):
+        """JSON Schema 'integer' accepts any number with zero fractional part."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_count",
+            description="",
+            parameters={"count": {"type": "integer"}},
+            required=["count"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_count",
+            arguments={"count": 1.0},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is True, msg
+
+    def test_validate_call_schema_integer_rejects_fractional_float(self):
+        """Non-integral floats must still fail 'integer' validation."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_count",
+            description="",
+            parameters={"count": {"type": "integer"}},
+            required=["count"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_count",
+            arguments={"count": 1.5},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "count" in msg
+
+    def test_validate_call_schema_integer_rejects_nan(self):
+        """NaN is not integral and must fail 'integer' validation."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_count",
+            description="",
+            parameters={"count": {"type": "integer"}},
+            required=["count"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_count",
+            arguments={"count": float("nan")},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+
+    def test_validate_call_schema_type_union_accepts_either(self):
+        """JSON Schema permits 'type' to be a list (union); match any member."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="maybe_name",
+            description="",
+            parameters={"name": {"type": ["string", "null"]}},
+            required=["name"],
+        )
+        validator.register_tool(schema)
+
+        for value in ("alice", None):
+            call = ToolCall(
+                id="c1",
+                tool_name="maybe_name",
+                arguments={"name": value},
+                timestamp=1.0,
+                call_number=0,
+            )
+            valid, msg = validator.validate_call_schema(call)
+            assert valid is True, f"value={value!r}: {msg}"
+
+    def test_validate_call_schema_type_union_rejects_non_member(self):
+        """A union type must reject values that match none of its members."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="maybe_name",
+            description="",
+            parameters={"name": {"type": ["string", "null"]}},
+            required=["name"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="maybe_name",
+            arguments={"name": 42},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "name" in msg
+
 
 class TestToolResultValidator:
     """ToolResultValidator: Assert output properties."""
