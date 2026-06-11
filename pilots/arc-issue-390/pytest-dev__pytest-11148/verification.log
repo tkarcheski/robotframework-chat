@@ -1,0 +1,16 @@
+=== arc-pilot-390 verification.log (regenerated 2026-06-11) ===
+=== Reproduces the harness PatchResult for pytest-dev__pytest-11148 ===
+=== Note: regenerated outside Docker (daemon unavailable in regeneration env). ===
+=== The decisive failure — `git apply` rejecting an out-of-tree path — is environment-independent. ===
+
++ git rev-parse HEAD
+2f7415cfbc4b6ca62f9013f1abd27136f46b9653
+
++ git apply --allow-empty /home/user/robotframework-chat/pilots/arc-issue-390/pytest-dev__pytest-11148/test_patch.diff
+  (test patch applied cleanly, exit 0)
+
++ git apply --allow-empty /home/user/robotframework-chat/pilots/arc-issue-390/pytest-dev__pytest-11148/generated.patch
+error: pmxbot/logging.py: No such file or directory
+  (generated patch rejected, exit 1)
+
+EXIT_CODE=1   (matches harness PatchResult.exit_code=1, PatchResult.passed=false)
