@@ -53,6 +53,14 @@ jobs:
               return;
             }
 
+            // llm-ignore failsafe: automation must never touch labelled items.
+            const labels = (context.payload.issue?.labels ??
+              context.payload.pull_request?.labels ?? []).map(l => l.name);
+            if (labels.includes('llm-ignore')) {
+              core.info(`#${issue_number} is labelled llm-ignore; skipping.`);
+              return;
+            }
+
             // Idempotent: addLabels is a no-op if the label is already present.
             await github.rest.issues.addLabels({
               owner, repo, issue_number, labels: ['needs-review'],
