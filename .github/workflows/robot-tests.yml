@@ -2,9 +2,9 @@ name: Robot Framework Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude-code-staging]
   pull_request:
-    branches: [main]
+    branches: [main, claude-code-staging]
   workflow_dispatch:
 
 jobs:
