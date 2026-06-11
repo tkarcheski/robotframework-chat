@@ -6,7 +6,69 @@ import json
 import re
 from typing import Callable
 
+from math import isfinite
+
 from .agent_tool import ToolCall, ToolResult, ToolSchema
+
+_JSON_SCHEMA_TYPE_NAMES = frozenset(
+    {"string", "integer", "number", "boolean", "object", "array", "null"}
+)
+
+
+def _is_strict_json_value(value: object) -> bool:
+    """True iff `value` round-trips through strict JSON unchanged.
+
+    `json.dumps` accepts NaN/Infinity by default and silently coerces tuples
+    to arrays and non-string dict keys to strings. Round-tripping with
+    `allow_nan=False` and comparing for structural equality catches all of
+    these — NaN/inf raise during encode, while tuples and non-string keys
+    survive encode but produce a decoded value that differs from the input.
+    """
+    try:
+        encoded = json.dumps(value, allow_nan=False)
+        decoded = json.loads(encoded)
+    except (TypeError, ValueError):
+        return False
+    return decoded == value
+
+
+def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
+    """True iff `value` matches the named JSON Schema primitive type.
+
+    Per https://json-schema.org/draft/2020-12/json-schema-validation#name-type:
+    - "integer" matches any number with a zero fractional part, so integral
+      floats like 1.0 are valid. Booleans are NOT valid (JSON Schema treats
+      bool and int as distinct types even though bool ⊂ int in Python).
+    - "number" matches int or float, but again excludes bool.
+    """
+    if type_name == "boolean":
+        return isinstance(value, bool)
+    if type_name == "integer":
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, int):
+            return True
+        if isinstance(value, float):
+            return isfinite(value) and value.is_integer()
+        return False
+    if type_name == "number":
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, int):
+            return True
+        if isinstance(value, float):
+            return isfinite(value)
+        return False
+    if type_name == "string":
+        return isinstance(value, str)
+    if type_name == "object":
+        return isinstance(value, dict) and _is_strict_json_value(value)
+    if type_name == "array":
+        # JSON arrays deserialise to lists; tuples are not JSON arrays.
+        return isinstance(value, list) and _is_strict_json_value(value)
+    if type_name == "null":
+        return value is None
+    return False
 
 
 class ToolCallValidator:
@@ -30,6 +92,34 @@ class ToolCallValidator:
         for required_param in schema.required:
             if required_param not in call.arguments:
                 return False, f"Missing required parameter: {required_param}"
+
+        # Check declared parameter types match argument types
+        for param_name, param_value in call.arguments.items():
+            param_schema = schema.parameters.get(param_name)
+            if not isinstance(param_schema, dict):
+                continue
+            declared = param_schema.get("type")
+            # JSON Schema allows `type` to be a string OR a list of strings
+            # (a union); the instance must match at least one listed type.
+            if isinstance(declared, str):
+                candidates: list[str] = [declared]
+            elif isinstance(declared, list) and all(
+                isinstance(t, str) for t in declared
+            ):
+                candidates = list(declared)
+            else:
+                continue
+            # Drop any unknown type names so they don't force a false negative;
+            # if none are recognised, fall through (untyped, like before).
+            known = [t for t in candidates if t in _JSON_SCHEMA_TYPE_NAMES]
+            if not known:
+                continue
+            if not any(_value_matches_json_schema_type(param_value, t) for t in known):
+                expected = known[0] if len(known) == 1 else f"one of {known}"
+                return False, (
+                    f"Parameter '{param_name}' expected {expected}, "
+                    f"got {type(param_value).__name__}"
+                )
 
         return True, ""
 
