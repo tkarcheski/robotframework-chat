@@ -37,13 +37,18 @@ def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
     if type_name == "number":
         if isinstance(value, bool):
             return False
-        return isinstance(value, (int, float))
+        if isinstance(value, int):
+            return True
+        if isinstance(value, float):
+            return isfinite(value)
+        return False
     if type_name == "string":
         return isinstance(value, str)
     if type_name == "object":
         return isinstance(value, dict)
     if type_name == "array":
-        return isinstance(value, (list, tuple))
+        # JSON arrays deserialise to lists; tuples are not JSON arrays.
+        return isinstance(value, list)
     if type_name == "null":
         return value is None
     return False

@@ -430,6 +430,73 @@ class TestToolCallValidator:
             valid, msg = validator.validate_call_schema(call)
             assert valid is True, f"value={value!r}: {msg}"
 
+    def test_validate_call_schema_number_rejects_nan(self):
+        """NaN is not a JSON number and must fail 'number' validation."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_ratio",
+            description="",
+            parameters={"ratio": {"type": "number"}},
+            required=["ratio"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_ratio",
+            arguments={"ratio": float("nan")},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+
+    def test_validate_call_schema_number_rejects_infinity(self):
+        """Positive/negative infinity must fail 'number' validation."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_ratio",
+            description="",
+            parameters={"ratio": {"type": "number"}},
+            required=["ratio"],
+        )
+        validator.register_tool(schema)
+
+        for value in (float("inf"), float("-inf")):
+            call = ToolCall(
+                id="c1",
+                tool_name="set_ratio",
+                arguments={"ratio": value},
+                timestamp=1.0,
+                call_number=0,
+            )
+            valid, msg = validator.validate_call_schema(call)
+            assert valid is False, f"value={value!r} unexpectedly passed"
+
+    def test_validate_call_schema_array_rejects_tuple(self):
+        """Tuples are not JSON arrays; 'array' must accept only lists."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_tags",
+            description="",
+            parameters={"tags": {"type": "array"}},
+            required=["tags"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_tags",
+            arguments={"tags": ("a", "b")},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "tags" in msg
+
     def test_validate_call_schema_type_union_rejects_non_member(self):
         """A union type must reject values that match none of its members."""
         validator = ToolCallValidator()
