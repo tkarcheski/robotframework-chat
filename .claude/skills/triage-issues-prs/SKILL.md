@@ -27,6 +27,11 @@ The one policy every monitoring layer obeys. Repo: `tkarcheski/robotframework-ch
 These are absolute. If a situation seems to require one of these, **escalate to
 the owner instead** (see § Escalation).
 
+- **`llm-ignore` failsafe:** if an issue or PR carries the `llm-ignore` label,
+  **do not touch it in any way** — no comments, no labels, no assignment, no
+  draft PRs, no inclusion in stale nudges. List it in the report as
+  "skipped (llm-ignore)" and move on. Only a human may add or remove this label;
+  never add or remove it yourself.
 - **Never** close, merge, or reopen an issue or PR.
 - **Never** push, force-push, rebase, or delete a branch.
 - **Never** approve, request-changes, or dismiss a review on someone else's PR.
@@ -98,6 +103,35 @@ Engage when it adds real value; silence is fine. Good reasons to comment:
 
 Never comment just to look busy. A labelled, well-triaged issue with no comment
 is a perfectly good outcome.
+
+## Draft PRs — babysitting actionable issues
+
+When a sweep finds an open issue that is **clearly actionable** — unambiguous
+scope, no unanswered design questions, no `llm-ignore` label, and no open PR
+already referencing it — the agent may start the fix and open a **draft** PR:
+
+1. Branch `claude/issue-<n>-<short-desc>-<random5>` off `claude-code-staging`,
+   in an isolated worktree (never the shared checkout).
+2. Follow the normal CLAUDE.md workflow: TDD, full verification suite green,
+   atomic commits, PR template filled with real evidence.
+3. Create the PR with `--draft`, titled `<type>: <summary> (#<n>)`, body
+   linking the issue. **Never mark it ready for review and never merge it** —
+   promotion to ready is the owner's call.
+4. Comment on the issue (with the standard marker) linking the draft PR.
+5. Idempotency: one draft PR per issue, ever — if a previous draft was closed
+   without merging, treat that as the owner declining; escalate instead of
+   re-opening.
+
+Caps and limits:
+
+- At most **1 new draft PR per sweep** (the deepest action a sweep takes);
+  prefer the oldest actionable `needs-review` issue. Note deferrals in the
+  report.
+- If the fix attempt fails its own verification suite, push nothing: close the
+  loop by escalating on the issue instead (label `human-in-the-loop`, explain
+  what was tried in the report — not in a public comment).
+- Issues labelled `question`, `human-in-the-loop`, or `llm-ignore` are never
+  draft-PR candidates.
 
 ## Escalation — what goes to the owner
 
