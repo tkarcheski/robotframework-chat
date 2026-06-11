@@ -1,0 +1,27 @@
+# systemd *user* unit for the Layer 3 local webhook listener.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp monitoring/claude-monitor.service ~/.config/systemd/user/
+#   # edit WorkingDirectory below to your rfc checkout path
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now claude-monitor
+#   journalctl --user -u claude-monitor -f      # watch logs
+#
+# To let the listener actually invoke claude on events (accepting the
+# prompt-injection risk), add:  Environment=MONITOR_AUTO_ACT=1
+
+[Unit]
+Description=rfc issue/PR webhook listener (Layer 3)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/AI/github/rfc
+ExecStart=%h/AI/github/rfc/monitoring/gh-webhook-listener.sh
+Restart=on-failure
+RestartSec=10
+# Environment=MONITOR_AUTO_ACT=1
+
+[Install]
+WantedBy=default.target

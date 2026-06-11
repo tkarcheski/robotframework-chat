@@ -4,3 +4,6 @@
 [submodule ".claude/skills/elons-algorithm"]
 	path = .claude/skills/elons-algorithm
 	url = git@github.com:tkarcheski/elons-algorithm.git
+[submodule "monitoring/logs"]
+	path = monitoring/logs
+	url = git@github.com:tkarcheski/rfc-monitor-logs.git
