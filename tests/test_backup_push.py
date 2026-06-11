@@ -36,7 +36,9 @@ def _env(backups_dir: Path, repo_url: str) -> dict[str, str]:
     }
 
 
-def _run(backups_dir: Path, repo_url: str, msg: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    backups_dir: Path, repo_url: str, msg: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT), msg],
         env=_env(backups_dir, repo_url),
@@ -61,7 +63,10 @@ def _files_on_remote_main(remote: Path, tmp_path: Path) -> list[str]:
         capture_output=True,
     )
     out = subprocess.run(
-        ["git", "-C", str(verify), "ls-files"], check=True, capture_output=True, text=True
+        ["git", "-C", str(verify), "ls-files"],
+        check=True,
+        capture_output=True,
+        text=True,
     )
     return sorted(out.stdout.split())
 
@@ -78,7 +83,9 @@ def test_clones_bare_remote_and_pushes_artifact_to_main(tmp_path: Path) -> None:
     result = _run(backups, str(remote), "chore: backup 20260527_010203")
 
     assert result.returncode == 0, result.stderr
-    assert (backups / ".git").exists(), "script should have grafted a .git into backups/"
+    assert (backups / ".git").exists(), (
+        "script should have grafted a .git into backups/"
+    )
     assert _files_on_remote_main(remote, tmp_path) == ["db_20260527_010203.sql.gz"]
 
 
@@ -118,7 +125,9 @@ def test_idempotent_when_no_new_artifacts(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("missing", ["BACKUPS_DIR", "BACKUPS_REPO_URL"])
-def test_defaults_when_env_unset(tmp_path: Path, missing: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_defaults_when_env_unset(
+    tmp_path: Path, missing: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # When the optional env vars aren't set, the script must fall back to its
     # documented defaults rather than expanding `set -u` undefined references.
     # We don't actually push here — just confirm the script reaches the clone
