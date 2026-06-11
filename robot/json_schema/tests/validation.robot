@@ -8,7 +8,7 @@ Documentation     JSON Schema Validation Tests
 Resource          ../json_schema.resource
 Suite Setup       Setup JSON Schema Test Environment
 
-Default Tags      json-schema    tier:2    verify:llm
+Test Tags         json-schema    tier:2    verify:llm
 
 *** Test Cases ***
 

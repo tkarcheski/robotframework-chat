@@ -11,7 +11,7 @@ Documentation     Quantization Degradation Tests
 
 Resource          quantization.resource
 
-Default Tags      quantization    degradation    tier:2    verify:llm
+Test Tags         quantization    degradation    tier:2    verify:llm
 
 Test Timeout      5 minutes
 

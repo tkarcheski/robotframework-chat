@@ -7,7 +7,7 @@ Documentation     Negative Constraint Following Tests
 
 Resource          format.resource
 
-Default Tags      negative-constraint    tier:1    verify:python
+Test Tags         negative-constraint    tier:1    verify:python
 
 *** Test Cases ***
 
