@@ -474,6 +474,52 @@ class TestToolCallValidator:
             valid, msg = validator.validate_call_schema(call)
             assert valid is False, f"value={value!r} unexpectedly passed"
 
+    def test_validate_call_schema_array_rejects_nested_nan(self):
+        """A list containing NaN is not a valid JSON array."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_values",
+            description="",
+            parameters={"values": {"type": "array"}},
+            required=["values"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_values",
+            arguments={"values": [1.0, float("nan"), 2.0]},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "values" in msg
+
+    def test_validate_call_schema_object_rejects_nested_infinity(self):
+        """A dict whose values contain Infinity is not a valid JSON object."""
+        validator = ToolCallValidator()
+        schema = ToolSchema(
+            name="set_meta",
+            description="",
+            parameters={"meta": {"type": "object"}},
+            required=["meta"],
+        )
+        validator.register_tool(schema)
+
+        call = ToolCall(
+            id="c1",
+            tool_name="set_meta",
+            arguments={"meta": {"ratio": float("inf")}},
+            timestamp=1.0,
+            call_number=0,
+        )
+
+        valid, msg = validator.validate_call_schema(call)
+        assert valid is False
+        assert "meta" in msg
+
     def test_validate_call_schema_array_rejects_tuple(self):
         """Tuples are not JSON arrays; 'array' must accept only lists."""
         validator = ToolCallValidator()

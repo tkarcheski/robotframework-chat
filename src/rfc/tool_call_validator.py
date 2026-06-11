@@ -15,6 +15,20 @@ _JSON_SCHEMA_TYPE_NAMES = frozenset(
 )
 
 
+def _is_strict_json_value(value: object) -> bool:
+    """True iff `value` is round-trip-serialisable to strict JSON.
+
+    `json.dumps` accepts NaN/Infinity by default, so we pass `allow_nan=False`
+    to reject them at any depth. This also catches non-JSON Python types
+    (custom objects, tuples, sets) nested inside containers.
+    """
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
     """True iff `value` matches the named JSON Schema primitive type.
 
@@ -45,10 +59,10 @@ def _value_matches_json_schema_type(value: object, type_name: str) -> bool:
     if type_name == "string":
         return isinstance(value, str)
     if type_name == "object":
-        return isinstance(value, dict)
+        return isinstance(value, dict) and _is_strict_json_value(value)
     if type_name == "array":
         # JSON arrays deserialise to lists; tuples are not JSON arrays.
-        return isinstance(value, list)
+        return isinstance(value, list) and _is_strict_json_value(value)
     if type_name == "null":
         return value is None
     return False
