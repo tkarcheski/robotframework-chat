@@ -82,7 +82,7 @@ class ModelMetadataKeywords:
         Skips the test if the optional Browser library is not installed.
         """
         try:
-            from Browser import Browser  # type: ignore[import-not-found]
+            from Browser import Browser  # type: ignore[import-not-found,import-untyped]
         except ImportError as exc:
             raise SkipExecution(
                 "Browser library not installed. "
