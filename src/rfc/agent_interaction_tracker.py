@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 import uuid
 from dataclasses import dataclass, field, replace
@@ -127,8 +128,10 @@ class AgentInteractionTracker:
     ) -> None:
         builder = self._require_builder()
         builder.reasoning = reasoning
-        builder.state_before = state_before
-        builder.state_after = state_after
+        # Deep-copy so later mutations to caller dicts don't retroactively
+        # change the recorded snapshot.
+        builder.state_before = copy.deepcopy(state_before)
+        builder.state_after = copy.deepcopy(state_after)
 
     def end_interaction(
         self, success: bool, error: str | None = None
