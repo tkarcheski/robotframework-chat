@@ -32,6 +32,11 @@ jobs:
   robot-dryrun:
     name: Robot Suite Validation (dry-run)
     runs-on: ubuntu-latest
+    env:
+      # Keyword libraries validate DEFAULT_MODEL at init; a dry run parses
+      # but never calls the model, so a placeholder satisfies them.
+      DEFAULT_MODEL: dryrun-placeholder
+      OLLAMA_ENDPOINT: http://localhost:11434
     steps:
       - uses: actions/checkout@v4
 
