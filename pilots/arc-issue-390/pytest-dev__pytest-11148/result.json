@@ -1,0 +1,25 @@
+{
+  "schema_version": "arc-pilot-result-v1",
+  "instance_id": "pytest-dev__pytest-11148",
+  "dataset": "princeton-nlp/SWE-bench_Lite",
+  "generation": {
+    "provider": "ollama",
+    "model": "llama3:latest",
+    "model_version_or_digest": "365c0bd3c000a25d28ddbf732fe1c6add414de7275464c4e4d1c3b5fcb5d8ad1",
+    "harness": "robotframework-chat SWE-bench",
+    "harness_commit": "0f1ab719884ac15b1b0c7a5609362b1bf06eb2cd"
+  },
+  "artifacts": {
+    "instance": "instance.json",
+    "generated_patch": "generated.patch",
+    "gold_patch": "gold.patch",
+    "scope": "scope.json",
+    "verification_script": "verification.sh",
+    "verification_log": "verification.log"
+  },
+  "patch_result": {
+    "passed": false,
+    "exit_code": 1,
+    "test_output": "Patch apply failed: error: pmxbot/logging.py: No such file or directory\n"
+  }
+}
