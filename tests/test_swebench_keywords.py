@@ -73,6 +73,25 @@ class TestLoadInstances:
         instances = kw.load_swebench_instances(split="test", max_instances=0)
         assert instances == []
 
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_load_defaults_to_swebench_dataset(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_SAMPLE_DATASET_ROW]
+        kw = SWEBenchKeywords()
+        kw.load_swebench_instances(split="test", max_instances=1)
+        mock_load.assert_called_once_with("princeton-nlp/SWE-bench", split="test")
+
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_load_accepts_dataset_override(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_SAMPLE_DATASET_ROW]
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(
+            split="test",
+            max_instances=1,
+            dataset="princeton-nlp/SWE-bench_Lite",
+        )
+        mock_load.assert_called_once_with("princeton-nlp/SWE-bench_Lite", split="test")
+        assert len(instances) == 1
+
 
 # ---------------------------------------------------------------------------
 # Apply And Test Patch
