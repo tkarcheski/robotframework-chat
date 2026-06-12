@@ -47,7 +47,7 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         robot-swebench swebench-discover \
         retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
-        discover-local-nodes discover-local-models run-local-models \
+        discover-local-nodes discover-local-models run-local-models run-all-external \
         robot-autopilot \
         cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
@@ -194,13 +194,16 @@ rebot-merge-all: ## Merge all output.xml in results/$(VERSION)/
 # ── Local Node Discovery & Model Runs ─────────────────────────────────
 
 discover-local-nodes: ## Scan network for Ollama nodes (online/offline status)
-	uv run python scripts/run_local_models.py --discover-nodes
+	uv run python scripts/run_local_models.py --mode external --discover-nodes
 
 discover-local-models: ## Discover Ollama nodes and list their models
-	uv run python scripts/run_local_models.py --discover-models
+	uv run python scripts/run_local_models.py --mode external --discover-models
 
-run-local-models: ## Run suites against every local model; audits coverage after the first pass (AUDIT=0 to skip, ITERATIONS=-1 forever, 0 stop-on-error)
-	uv run python scripts/run_local_models.py $(if $(ITERATIONS),--iterations $(ITERATIONS),) $(if $(filter 0,$(AUDIT)),--no-audit,)
+run-local-models: ## Run suites against curated hosts from host-config.toml with loaded-model priority (AUDIT=0 to skip audit, ITERATIONS=-1 forever, 0 stop-on-error)
+	uv run python scripts/run_local_models.py --mode toml $(if $(ITERATIONS),--iterations $(ITERATIONS),) $(if $(filter 0,$(AUDIT)),--no-audit,)
+
+run-all-external: ## Legacy wide-net run: env-var/subnet discovery, runs everything found (AUDIT=0, ITERATIONS as above)
+	uv run python scripts/run_local_models.py --mode external $(if $(ITERATIONS),--iterations $(ITERATIONS),) $(if $(filter 0,$(AUDIT)),--no-audit,)
 
 robot-autopilot: ## Poll for git updates → update + install + run-local-models; idle 6h → re-run
 	@scripts/robot_autopilot.sh
