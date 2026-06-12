@@ -64,8 +64,18 @@ chains: if issue A blocks three others, A outranks its raw severity.
 - `status:in-progress` issues stale >2 days of activity → comment asking for status.
 - `status:blocked` issues → can you unblock them (answer the question, re-scope,
   re-prioritize a dependency)? Do it.
-- Open PRs without a test-design verdict → note them; aging PRs with `TEST-PLAN: PASS`
-  → flag to the human as merge-ready (you do not merge).
+- **PR feedback aging — your top flow signal (ROLES.md rule 11).** For every
+  open PR, check the review threads, verdicts, and failing checks: anything
+  waiting on engineering for more than one of its iterations (rule of thumb:
+  a few hours during active sessions) gets a nudge comment on the PR naming
+  exactly what's unanswered. A PR stuck on unanswered feedback outranks every
+  other flow concern — the human's only job is approving PRs, and unanswered
+  feedback is the #1 thing that breaks that.
+- Open PRs without a test-design verdict → note them for test-design's queue.
+- **Merge-ready has two conditions, not one:** current `TEST-PLAN: PASS`
+  (no commits after it) **and** zero unresolved review threads / failing
+  checks. Only then flag to the human as merge-ready (you do not merge).
+  PASS-with-open-threads is "almost" — nudge, don't flag.
 
 ### 3. Quality & testing review
 Read recent `ai/test-plans/` files and `from:testing` issues. Look for patterns:
