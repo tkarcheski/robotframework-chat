@@ -132,24 +132,42 @@ def sync_links(
     skills_dir: Path,
     links: dict[str, Path],
     dry_run: bool = False,
+    pack_roots: list[Path] | None = None,
     prune_prefixes: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Create planned symlinks, prune pack-owned strays. Returns (created, pruned).
 
-    A link is "pack-owned" (prunable) when it is a symlink pointing into
-    vendor/skill-packs/ — real directories are never touched, so a local
-    skill that collides with a pack name always wins. When *prune_prefixes*
-    is given, only links whose name carries one of those pack prefixes are
-    prune candidates — links of packs that are not initialized in this
-    checkout are left alone (#453).
+    A link is "pack-owned" (prunable) when it is a symlink whose target
+    resolves under one of *pack_roots* (absolute pack checkout paths) —
+    real directories are never touched, so a local skill that collides
+    with a pack name always wins. Without *pack_roots* the legacy
+    heuristic applies: targets containing a skill-packs path component.
+    Packs mounted outside vendor/skill-packs/ (e.g. the top-level
+    knowledge brain) are only prunable via *pack_roots* (#463).
+
+    When *prune_prefixes* is given, only links whose name carries one of
+    those pack prefixes are additionally prune candidates — links of packs
+    that are not initialized in this checkout are left alone (#453). Callers
+    that compute *pack_roots* from initialized packs only (see main()) get
+    the same protection without prefix matching, which empty-prefix packs
+    need.
     """
+
+    def _pack_owned(target: Path) -> bool:
+        if pack_roots is None:
+            return "skill-packs" in target.parts
+        resolved = (
+            (skills_dir / target).resolve() if not target.is_absolute() else target
+        )
+        return any(resolved.is_relative_to(root) for root in pack_roots)
+
     created: list[str] = []
     pruned: list[str] = []
     for entry in sorted(skills_dir.iterdir() if skills_dir.exists() else []):
         if not entry.is_symlink():
             continue
         target = Path(entry.readlink())
-        if "skill-packs" not in target.parts:
+        if not _pack_owned(target):
             continue
         if prune_prefixes is not None and not any(
             pref and entry.name.startswith(pref) for pref in prune_prefixes
@@ -200,11 +218,12 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
     links = plan_links(root, active, patterns)
+    # prune ownership resolves against initialized packs only, so links of
+    # uninitialized packs are never prune candidates (#453) and unprefixed
+    # packs (e.g. knowledge) remain prunable via their root (#463)
+    pack_roots = [(root / p.path).resolve() for p in active]
     created, pruned = sync_links(
-        root / SKILLS_DIR,
-        links,
-        dry_run=args.dry_run,
-        prune_prefixes={p.prefix for p in active},
+        root / SKILLS_DIR, links, dry_run=args.dry_run, pack_roots=pack_roots
     )
 
     verb = "would create" if args.dry_run else "created"
