@@ -6,7 +6,7 @@ deterministically from the first line of the response — Tier 1 / verify:python
 """
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from robot.api import logger
 from robot.api.deco import keyword
@@ -215,6 +215,34 @@ class CodeReviewKeywords:
             "response": response,
             "expected": expected,
         }
+
+    @keyword("Record Defect Detection Accuracy")
+    def record_defect_detection_accuracy(self, results: List[Any]) -> float:
+        """Compute benchmark accuracy and persist it as the grader score.
+
+        Emits the aggregate accuracy as ``RFC_DATA:score`` so ``DbListener``
+        and ``AgenticHarnessListener`` archive a real score for the run
+        (per-item ``correct`` emissions are not treated as scores).
+
+        Args:
+            results: Per-item correctness flags (bools, or "True"/"False"
+                strings as Robot list items sometimes arrive).
+
+        Returns:
+            Accuracy in [0.0, 1.0].
+
+        Raises:
+            ValueError: If *results* is empty or contains a non-boolean.
+        """
+        if not results:
+            raise ValueError("results must contain at least one result")
+        flags = [_coerce_bool(r) for r in results]
+        accuracy = sum(flags) / len(flags)
+        emit_rfc_data("score", f"{accuracy:.4f}")
+        logger.info(
+            f"Defect-detection accuracy: {accuracy:.4f} over {len(flags)} items"
+        )
+        return accuracy
 
 
 # ---------------------------------------------------------------------------

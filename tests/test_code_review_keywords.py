@@ -298,3 +298,32 @@ class TestClassifyDefectInCode:
         kw.client.generate.return_value = "YES"
         result = kw.classify_defect_in_code("void f() {}", True)
         assert set(result) >= {"verdict", "correct", "response", "expected"}
+
+
+class TestRecordDefectDetectionAccuracy:
+    @patch("rfc.code_review_keywords.create_provider")
+    @patch("rfc.code_review_keywords.emit_rfc_data")
+    def test_accuracy_computed_and_emitted_as_score(
+        self, mock_emit: MagicMock, mock_create: MagicMock
+    ) -> None:
+        kw = CodeReviewKeywords()
+        accuracy = kw.record_defect_detection_accuracy([True, True, False, True])
+        assert accuracy == 0.75
+        mock_emit.assert_any_call("score", "0.7500")
+
+    @patch("rfc.code_review_keywords.create_provider")
+    @patch("rfc.code_review_keywords.emit_rfc_data")
+    def test_string_bools_coerced(
+        self, mock_emit: MagicMock, mock_create: MagicMock
+    ) -> None:
+        # Robot list items may arrive as "True"/"False" strings.
+        kw = CodeReviewKeywords()
+        accuracy = kw.record_defect_detection_accuracy(["True", "False"])
+        assert accuracy == 0.5
+        mock_emit.assert_any_call("score", "0.5000")
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_empty_results_raise(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        with pytest.raises(ValueError, match="at least one result"):
+            kw.record_defect_detection_accuracy([])

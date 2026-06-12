@@ -12,8 +12,12 @@ Documentation     Code review benchmark — Devign defect detection subset.
 ...               Grading is accuracy over the sampled items: the task is
 ...               binary with a class-balanced subset, so chance is 50% and a
 ...               per-item assertion would be noise.  ${DEFECT_HF_MIN_ACCURACY}
-...               sets the pass bar (default 0.5 — the model must beat
-...               coin-flipping).  ${DEFECT_HF_LIMIT} caps how many items run
+...               sets the pass bar — the comparison is STRICT (>), so the
+...               default 0.5 means the model must actually beat coin-flipping
+...               (a constant YES/NO classifier scores exactly 0.5 on the
+...               balanced sample and fails).  The aggregate accuracy is also
+...               persisted as RFC_DATA:score for the DB/harness listeners.
+...               ${DEFECT_HF_LIMIT} caps how many items run
 ...               (default 10 to keep CI runtime bounded); override with
 ...               --variable DEFECT_HF_LIMIT:50 for the full committed subset.
 ...               The committed list is interleaved vulnerable/safe, so any
@@ -42,7 +46,7 @@ Defect Detection HF Benchmark Subset
         Log    Item ${item}[id] (${item}[project]): expected=${result}[expected] verdict=${result}[verdict] correct=${result}[correct]
         Append To List    ${results}    ${result}[correct]
     END
-    ${accuracy}=    Evaluate    sum($results) / len($results)
+    ${accuracy}=    CodeReview.Record Defect Detection Accuracy    ${results}
     Log    Defect-detection accuracy: ${accuracy} over ${end} items    console=True
-    Should Be True    ${accuracy} >= ${DEFECT_HF_MIN_ACCURACY}
-    ...    Defect-detection accuracy ${accuracy} below ${DEFECT_HF_MIN_ACCURACY} over ${end} items
+    Should Be True    ${accuracy} > ${DEFECT_HF_MIN_ACCURACY}
+    ...    Defect-detection accuracy ${accuracy} not above ${DEFECT_HF_MIN_ACCURACY} over ${end} items
