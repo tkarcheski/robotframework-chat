@@ -896,11 +896,14 @@ class GenerativeListener(BaseListener):
         # Audit guarantee (same as flow mode): the decision row is
         # persisted BEFORE the run is mutated; if persistence fails the
         # mutation is withheld — generated tests must never be unauditable.
-        applied = (
-            1
-            if mutation is not None and self._suite_position(data)[0] is not None
-            else 0
-        )
+        # The failable construction (deepcopy/create_keyword) happens here,
+        # pre-persist, so `applied` is truthful (#501): only the plain
+        # list insert remains after the row is written.
+        staged = None
+        if mutation is not None and self._suite_position(data)[0] is not None:
+            keyword, args = mutation
+            staged = self._build_mutation_copy(data, test_name, keyword, args)
+        applied = 1 if staged is not None else 0
         persisted = self._persist(
             AgenticDecision(
                 session_id=self._session_id,
@@ -934,25 +937,24 @@ class GenerativeListener(BaseListener):
                 )
             return
         keyword, args = mutation  # type: ignore[misc]
-        if not self._apply_mutation(data, test_name, keyword, args):
+        if not self._insert_mutation_copy(data, staged):
             logger.warning(
                 "GenerativeListener: decision %s recorded applied=1 but "
-                "applying the mutation to test %r failed after persistence.",
+                "inserting the mutated copy of %r failed after persistence.",
                 decision_id,
                 test_name,
             )
             return
         self._grade_mutation(decision_id, test_name, status, keyword, args)
 
-    def _apply_mutation(
+    def _build_mutation_copy(
         self, data: Any, test_name: str, keyword: str, args: list[str]
-    ) -> int:
-        """Insert a ``<original>::mutated::<short_hash>`` sibling copy with
-        the new assertion appended; it runs inline and gets its own
-        ``test_runs`` row from the regular results listener."""
-        tests, index = self._suite_position(data)
-        if tests is None:
-            return 0
+    ) -> Any | None:
+        """Construct the ``<original>::mutated::<short_hash>`` sibling copy.
+
+        All failable work (deepcopy, tagging, keyword creation) happens
+        here so callers can persist a truthful ``applied`` before the
+        trivial list insert (#501)."""
         assertion_line = "    ".join([keyword, *args])
         short_hash = hashlib.sha1(assertion_line.encode("utf-8")).hexdigest()[:8]
         try:
@@ -960,11 +962,27 @@ class GenerativeListener(BaseListener):
             copy.name = f"{test_name}::mutated::{short_hash}"
             _add_tag(copy, MUTATED_MARKER_TAG)
             copy.body.create_keyword(name=keyword, args=list(args))
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not build mutated copy of %r: %s",
+                test_name,
+                exc,
+            )
+            return None
+        return copy
+
+    def _insert_mutation_copy(self, data: Any, copy: Any) -> int:
+        """Insert a pre-built mutated copy right after its original; it runs
+        inline and gets its own ``test_runs`` row from the results listener."""
+        tests, index = self._suite_position(data)
+        if tests is None:
+            return 0
+        try:
             tests.insert(index + 1, copy)
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning(
-                "GenerativeListener: could not apply mutation for %r: %s",
-                test_name,
+                "GenerativeListener: could not insert mutated copy of %r: %s",
+                getattr(data, "name", ""),
                 exc,
             )
             return 0

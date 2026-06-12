@@ -615,3 +615,26 @@ class TestParseMutation:
             "Should Match Regexp",
             ["${answer}", "\\d{3}"],
         )
+
+
+class TestAppliedTruthfulness:
+    """applied=1 must mean the copy really exists in the suite (#501)."""
+
+    def test_copy_build_failure_records_applied_zero(
+        self, clean_env, tmp_path, monkeypatch
+    ):
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+
+        def broken_deepcopy(self):
+            raise RuntimeError("deepcopy exploded")
+
+        monkeypatch.setattr(FakeTest, "deepcopy", broken_deepcopy)
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1  # nothing inserted
+        rows = db.get_decisions(SESSION, proposed_action="mutate")
+        assert len(rows) == 1
+        assert rows[0].applied == 0, (
+            "decision must not claim applied=1 when the mutated copy could not be built"
+        )
