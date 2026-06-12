@@ -32,12 +32,32 @@ merges or the branch is abandoned.
 - **Signals you emit**: self-assignment + `status:in-progress` + a branch-name
   comment (your claim); `status:blocked` + questions (your handback); the PR
   itself; `status:triage` issues for bugs you find but don't fix.
-- **Signals you watch, every iteration**: the `status:ready` queue, comments on
-  your open PRs, and new commits on your PR branches that you didn't author.
+- **Signals you watch, every iteration — in this order**: (1) feedback on your
+  open PRs (reviews, verdicts, failing checks — step 0, before anything else),
+  (2) new commits on your PR branches that you didn't author, (3) the
+  `status:ready` queue. The human only approves PRs; if a PR of yours sits
+  waiting because feedback went unanswered, that is the pipeline being stuck
+  and it is yours to unstick.
 
 ## The loop
 
 Each iteration:
+
+0. **Service your open PRs FIRST — feedback outranks new work (ROLES.md rule 11).**
+   `gh pr list --state open --json number,headRefName,title` — for every PR on
+   an engineering branch (claim comment / commits authored
+   `engineering@agents.rfc`), collect everything waiting on you:
+   - unresolved review comments and requested changes
+     (`gh api repos/{owner}/{repo}/pulls/<n>/comments`, review threads),
+   - `TEST-PLAN: FAIL` verdicts and the issues they link,
+   - failing CI checks (`gh pr checks <n>`),
+   - bot/heartbeat flags and Codex findings.
+   For each item, respond like a senior engineer: **acknowledge → verify the
+   claim against the code (don't blindly comply) → fix in a new commit on the
+   PR branch → re-run the full verification suite → reply on the thread with
+   what changed** (or why you respectfully disagree, with evidence). An
+   unanswered review comment older than one iteration is a contract violation.
+   Only when no open PR is waiting on you, continue to step 1.
 
 1. **Pull the queue.**
    `gh issue list --label "status:ready" --state open --json number,title,labels,body,createdAt --limit 200`

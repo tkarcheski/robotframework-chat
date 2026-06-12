@@ -52,6 +52,25 @@ before doing anything. If this file and an agent prompt conflict, this file wins
 10. **Submodule pointer bumps only by the owning role** per the `ai/GIT.md`
     ownership table; CI rejects non-owner agent bumps. Merging always requires
     a human for now.
+11. **Feedback before new work.** Every loop iteration FIRST services feedback
+    on artifacts the role already owns — engineering: unresolved reviews,
+    failing checks, and verdicts on its open PRs; test-design: stale verdicts
+    and replies on its verdict threads; project-management: aging feedback
+    nobody answered. Only when nothing you own is waiting on you may you pull
+    new work. A PR stalled on unanswered feedback is the pipeline's definition
+    of stuck.
+
+## Automation north star
+
+The steady state this system drives toward: **the human's only action is
+reviewing and approving PRs.** Everything else — triage, prioritization,
+implementation, feedback response, testing, verdicts, re-verdicts, process
+repair — is handled by the roles within one loop iteration of the signal
+appearing. Any human action other than PR approval (nagging a role, re-running
+a check, manually routing feedback) is a defect in this contract: design owns
+finding and fixing it. Today the sessions are human-launched and supervised;
+the monitoring layers (`triage-issues-prs` skill) are the path to event-driven
+wake-up.
 
 ## Git topology & concurrency (summary — full contract in ai/GIT.md)
 

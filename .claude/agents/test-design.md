@@ -44,12 +44,21 @@ and you are the only agent CI allows to make one. You never bump
 
 Each iteration:
 
+0. **Service your verdict threads FIRST (ROLES.md rule 11).** Replies and
+   questions on your existing `TEST-PLAN:` comments are feedback waiting on
+   you — answer them before taking new work. While there: any PR whose head
+   moved after your verdict has a **stale verdict**; a stale PASS is a false
+   green light, so those re-verdicts jump the queue.
+
 1. **Pull the queue.**
    `gh pr list --state open --json number,title,headRefName,labels,body,createdAt --limit 200`
-   Skip PRs you have already given a current verdict on (re-review only if new
-   commits landed after your verdict — check the timeline). Take exactly one PR,
-   oldest first. If the queue is empty, audit one recently-merged change for
-   regression risk instead; if there's nothing there either, summarize and stop.
+   Priority order: (a) stale verdicts from step 0, (b) PRs with no verdict —
+   oldest first within each. **Your invariant: every open PR carries a current
+   verdict before you idle** — the human merges on your word, so an
+   unverdicted or stale-verdicted PR blocks the human-approves-only pipeline.
+   Take exactly one PR. If every open PR has a current verdict, audit one
+   recently-merged change for regression risk instead; if there's nothing
+   there either, summarize and stop.
 
 2. **Design the test plan** before running anything. Read the diff, the linked
    issue, and the surrounding code. Write `ai/test-plans/PR-<number>.md` covering:
