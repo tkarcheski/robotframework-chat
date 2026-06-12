@@ -1101,3 +1101,50 @@ class TestAgenticFilters:
 
     def test_filters_are_json_serializable(self) -> None:
         json.dumps(_AGENTIC_FILTER_CONFIGS)
+
+
+class TestPluginDriftPartitionsByTool:
+    """Interleaved tools at stable versions must show zero drift (#484)."""
+
+    def test_interleaved_tools_no_false_version_changes(self, agentic_db: str) -> None:
+        import sqlite3
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) VALUES (?, ?, ?)",
+                [
+                    ("c1", "claude-code", "2026-06-10T00:00:00"),
+                    ("x1", "codex", "2026-06-10T01:00:00"),
+                    ("c2", "claude-code", "2026-06-10T02:00:00"),
+                    ("x2", "codex", "2026-06-10T03:00:00"),
+                ],
+            )
+            # Same plugin, per-tool versions are individually STABLE.
+            conn.executemany(
+                "INSERT INTO agentic_plugins "
+                "(id, session_id, plugin_name, semver, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("p1", "c1", "anthropic", "1.0.0", "2026-06-10T00:00:01"),
+                    ("p2", "x1", "anthropic", "2.0.0", "2026-06-10T01:00:01"),
+                    ("p3", "c2", "anthropic", "1.0.0", "2026-06-10T02:00:01"),
+                    ("p4", "x2", "anthropic", "2.0.0", "2026-06-10T03:00:01"),
+                ],
+            )
+            rows = conn.execute(
+                _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+            ).fetchall()
+            cols = [
+                d[0]
+                for d in conn.execute(
+                    _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+                ).description
+            ]
+            records = [dict(zip(cols, r)) for r in rows]
+            changed = [r for r in records if r["version_changed"] == 1]
+            assert changed == [], (
+                "stable per-tool versions must not be flagged as drift when "
+                "sessions from different tools interleave"
+            )
