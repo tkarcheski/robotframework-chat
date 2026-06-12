@@ -132,11 +132,11 @@ class LLMKeywords:
             "timestamp": timestamp,
         }
         metrics = self.client.last_metrics or {}
-        if "prompt_eval_count" in metrics:
+        if metrics.get("prompt_eval_count") is not None:
             assistant_turn["prompt_tokens"] = int(metrics["prompt_eval_count"])
-        if "eval_count" in metrics:
+        if metrics.get("eval_count") is not None:
             assistant_turn["completion_tokens"] = int(metrics["eval_count"])
-        if "total_duration_ns" in metrics:
+        if metrics.get("total_duration_ns") is not None:
             assistant_turn["latency_ms"] = float(metrics["total_duration_ns"]) / 1e6
         emit_rfc_data("dialog_turn", json.dumps(assistant_turn))
 
