@@ -29,6 +29,22 @@ jobs:
       - name: Pytest with coverage
         run: uv run pytest --cov --cov-report=term-missing
 
+  submodule-ownership:
+    name: Submodule Ownership Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The guard diffs against the merge-base with the target branch,
+          # so it needs real history, not a depth-1 snapshot.
+          fetch-depth: 0
+
+      - name: Check submodule pointer bumps against ai/GIT.md ownership
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          python3 scripts/check_submodule_ownership.py --base "origin/${{ github.base_ref }}"
+
   robot-dryrun:
     name: Robot Suite Validation (dry-run)
     runs-on: ubuntu-latest
