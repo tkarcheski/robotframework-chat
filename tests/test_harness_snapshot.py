@@ -58,7 +58,18 @@ def _init_repo_with_resource(root: Path) -> None:
     """Create a git repo at ``root`` with one committed .resource file."""
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "root"],
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "root",
+        ],
         cwd=root,
         check=True,
     )
@@ -68,7 +79,17 @@ def _init_repo_with_resource(root: Path) -> None:
     (root / "robot" / "untracked.resource").write_text("*** Keywords ***\n")
     subprocess.run(["git", "add", "robot/safety/safety.resource"], cwd=root, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add resource"],
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "add resource",
+        ],
         cwd=root,
         check=True,
     )
