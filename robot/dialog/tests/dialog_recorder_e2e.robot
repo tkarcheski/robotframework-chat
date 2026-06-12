@@ -27,12 +27,14 @@ ${DEAD_DB_URL}        postgresql://rfc:wrong@127.0.0.1:9/rfc_unreachable
 Dialog Recording Persists End To End
     [Documentation]    Child robot run with DialogListener writes the
     ...    recording and all turns to the database at DATABASE_URL.
+    # Init before any Skip If: Robot runs the teardown for skipped tests
+    # too, and Cleanup Recording dereferences ${RECORDING_ID} (#461).
+    ${RECORDING_ID}=    Set Variable    ${EMPTY}
+    Set Test Variable    ${RECORDING_ID}
     ${db_url}=    Set Variable    %{DATABASE_URL=}
     Skip If    "${db_url}" == ""    DATABASE_URL not set — skipping live database e2e check
     ${reachable}=    DialogE2E.Dialog Database Reachable    ${db_url}
     Skip If    not ${reachable}    Database at DATABASE_URL is unreachable
-    ${RECORDING_ID}=    Set Variable    ${EMPTY}
-    Set Test Variable    ${RECORDING_ID}
     ${run}=    DialogE2E.Run Dialog Fixture Suite
     ...    ${OUTPUT DIR}${/}dialog_e2e_child    database_url=${db_url}
     Set Test Variable    ${RECORDING_ID}    ${run}[recording_id]

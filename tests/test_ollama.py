@@ -358,6 +358,39 @@ class TestWaitUntilReady:
 
         assert OllamaClient(model="test-model").wait_until_ready(timeout=5) is True
 
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.get")
+    def test_resident_target_is_ready(self, mock_get, mock_logger):
+        """Residency of the model under test is readiness, not contention (#464).
+
+        Ollama keeps idle models loaded per keep_alive; after a preflight
+        probe the target model is resident, and waiting for it to UNLOAD
+        deadlocks the run (it would only be cold-loaded again).
+        """
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "models": [{"name": "test-model", "size_vram": 1024}]
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        assert OllamaClient(model="test-model").wait_until_ready(timeout=5) is True
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.get")
+    def test_resident_target_latest_alias_is_ready(self, mock_get, mock_logger):
+        """'m' and 'm:latest' are the same model for residency checks (#464)."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "models": [{"name": "test-model:latest", "size_vram": 1024}]
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        assert OllamaClient(model="test-model").wait_until_ready(timeout=5) is True
+
     def test_invalid_timeout(self):
         with pytest.raises(ValueError, match="timeout must be >= 1"):
             OllamaClient(model="test-model").wait_until_ready(timeout=0)

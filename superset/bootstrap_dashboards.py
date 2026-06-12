@@ -8,6 +8,11 @@ Run inside the Superset container after ``superset init`` to create:
   - Virtual datasets for KPIs, host health, model performance
   - Charts covering KPIs, host health, model performance, git/version context
   - One consolidated dashboard: RFC Test Health
+  - The Agentic Stack Tracker schema (``agentic_harnesses``,
+    ``agentic_plugins``, ``agentic_skills``, ``agentic_metrics``,
+    ``agentic_decisions``, ``dialog_recordings``, ``dialog_turns``), the
+    ``agentic_sessions_full`` view, and the "Agentic Stack Tracker"
+    dashboard (issue #353)
 
 Lean schema: the two primary tables store only metrics; heavy data
 (output.xml gzip, question/answer/grading/thinking text) lives in the
@@ -1367,6 +1372,443 @@ _INFRA_LAYOUT_SECTIONS: list[dict[str, Any]] = [
 
 
 # ---------------------------------------------------------------------------
+# Agentic Stack Tracker dashboard (issue #353)
+# ---------------------------------------------------------------------------
+
+# DDL for the agentic stack tables (canonical schema lives in
+# src/rfc/harness_db.py — the HarnessDatabase backends create the same
+# tables with IF NOT EXISTS, so either side may run first) plus the
+# ``agentic_sessions_full`` view. The view body is a copy of
+# rfc.harness_db.AGENTIC_SESSIONS_FULL_VIEW_BODY; a drift-guard test in
+# tests/test_bootstrap_dashboards.py keeps the two in sync. Written in the
+# portable subset shared by PostgreSQL and SQLite (DROP VIEW IF EXISTS +
+# CREATE VIEW instead of CREATE OR REPLACE) so tests can prove idempotency.
+_AGENTIC_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
+
+CREATE TABLE IF NOT EXISTS agentic_plugins (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    plugin_name     TEXT NOT NULL,
+    semver          TEXT,
+    source          TEXT,
+    recorded_at     TEXT NOT NULL,
+    FOREIGN KEY (session_id)
+        REFERENCES agentic_harnesses(session_id) ON DELETE CASCADE,
+    UNIQUE (session_id, plugin_name)
+);
+CREATE INDEX IF NOT EXISTS idx_plugins_session ON agentic_plugins(session_id);
+
+CREATE TABLE IF NOT EXISTS agentic_skills (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    skill_path      TEXT NOT NULL,
+    git_sha         TEXT,
+    skill_name      TEXT,
+    recorded_at     TEXT NOT NULL,
+    FOREIGN KEY (session_id)
+        REFERENCES agentic_harnesses(session_id) ON DELETE CASCADE,
+    UNIQUE (session_id, skill_path)
+);
+CREATE INDEX IF NOT EXISTS idx_skills_session ON agentic_skills(session_id);
+
+CREATE TABLE IF NOT EXISTS agentic_metrics (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    test_run_id     INTEGER,
+    test_result_id  INTEGER,
+    metric_key      TEXT NOT NULL,
+    metric_value    REAL,
+    recorded_at     TEXT NOT NULL,
+    FOREIGN KEY (session_id)
+        REFERENCES agentic_harnesses(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_session ON agentic_metrics(session_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_key     ON agentic_metrics(metric_key);
+CREATE INDEX IF NOT EXISTS idx_metrics_run     ON agentic_metrics(test_run_id);
+
+CREATE TABLE IF NOT EXISTS agentic_decisions (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    test_name       TEXT,
+    hook_event      TEXT NOT NULL,
+    prompt_model    TEXT NOT NULL,
+    prompt_text     TEXT NOT NULL,
+    response_text   TEXT,
+    proposed_action TEXT,
+    applied         INTEGER NOT NULL,
+    tokens_used     INTEGER,
+    recorded_at     TEXT NOT NULL,
+    FOREIGN KEY (session_id)
+        REFERENCES agentic_harnesses(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_decisions_session
+    ON agentic_decisions(session_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_action
+    ON agentic_decisions(proposed_action);
+
+CREATE TABLE IF NOT EXISTS dialog_recordings (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT,
+    source_type     TEXT NOT NULL,
+    tool_name       TEXT,
+    tool_version    TEXT,
+    model_id        TEXT,
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    metadata_json   TEXT,
+    FOREIGN KEY (session_id)
+        REFERENCES agentic_harnesses(session_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS dialog_turns (
+    id                  TEXT PRIMARY KEY,
+    recording_id        TEXT NOT NULL,
+    turn_number         INTEGER NOT NULL,
+    role                TEXT NOT NULL,
+    content             TEXT,
+    tool_calls_json     TEXT,
+    tool_results_json   TEXT,
+    timestamp           TEXT NOT NULL,
+    prompt_tokens       INTEGER,
+    completion_tokens   INTEGER,
+    latency_ms          REAL,
+    FOREIGN KEY (recording_id)
+        REFERENCES dialog_recordings(id) ON DELETE CASCADE,
+    UNIQUE (recording_id, turn_number)
+);
+CREATE INDEX IF NOT EXISTS idx_dialog_turns_recording
+    ON dialog_turns(recording_id);
+
+DROP VIEW IF EXISTS agentic_sessions_full;
+
+CREATE VIEW agentic_sessions_full AS
+SELECT
+    h.session_id,
+    h.tool_name,
+    h.tool_version,
+    h.model_id,
+    h.rfc_version,
+    h.branch,
+    h.started_at,
+    CAST(h.started_at AS TIMESTAMP) AS started_ts,
+    h.ended_at,
+    h.outcome,
+    h.replay_of_recording_id,
+    SUM(CASE WHEN m.metric_key = 'tokens_in' THEN m.metric_value END)
+        AS tokens_in,
+    SUM(CASE WHEN m.metric_key = 'tokens_out' THEN m.metric_value END)
+        AS tokens_out,
+    AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
+        AS avg_latency_ms,
+    AVG(CASE WHEN m.metric_key = 'grader_score' THEN m.metric_value END)
+        AS avg_grader_score
+FROM agentic_harnesses h
+LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
+GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
+         h.rfc_version, h.branch, h.started_at, h.ended_at, h.outcome,
+         h.replay_of_recording_id;
+"""
+
+# Physical tables / views registered as Superset datasets.
+_AGENTIC_DATASET_TABLES: list[str] = [
+    "agentic_harnesses",
+    "agentic_plugins",
+    "agentic_skills",
+    "agentic_metrics",
+    "agentic_decisions",
+    "agentic_sessions_full",
+]
+
+# Virtual datasets. Written in the PostgreSQL/SQLite-portable subset
+# (window functions, no NOW()/DATE_TRUNC) so tests can probe them.
+_AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
+    "agentic_plugin_drift": """
+        SELECT
+            p.recorded_at,
+            h.tool_name,
+            h.model_id,
+            h.outcome,
+            p.plugin_name,
+            p.semver,
+            LAG(p.semver) OVER (
+                PARTITION BY p.plugin_name ORDER BY p.recorded_at
+            ) AS prev_semver,
+            CASE
+                WHEN LAG(p.semver) OVER (
+                    PARTITION BY p.plugin_name ORDER BY p.recorded_at
+                ) IS NOT NULL
+                 AND LAG(p.semver) OVER (
+                    PARTITION BY p.plugin_name ORDER BY p.recorded_at
+                ) <> p.semver
+                THEN 1 ELSE 0
+            END AS version_changed
+        FROM agentic_plugins p
+        JOIN agentic_harnesses h ON h.session_id = p.session_id
+        ORDER BY p.plugin_name, p.recorded_at
+    """,
+    "agentic_skill_outcomes": """
+        SELECT
+            sub.skill_name,
+            sub.outcome,
+            sub.sha_changed,
+            COUNT(*) AS session_count
+        FROM (
+            SELECT
+                COALESCE(s.skill_name, s.skill_path) AS skill_name,
+                COALESCE(h.outcome, 'unknown') AS outcome,
+                CASE
+                    WHEN LAG(s.git_sha) OVER (
+                        PARTITION BY s.skill_path ORDER BY s.recorded_at
+                    ) IS NOT NULL
+                     AND LAG(s.git_sha) OVER (
+                        PARTITION BY s.skill_path ORDER BY s.recorded_at
+                    ) <> s.git_sha
+                    THEN 1 ELSE 0
+                END AS sha_changed
+            FROM agentic_skills s
+            JOIN agentic_harnesses h ON h.session_id = s.session_id
+        ) sub
+        GROUP BY sub.skill_name, sub.outcome, sub.sha_changed
+    """,
+    "agentic_outcome_funnel": """
+        SELECT
+            tool_name,
+            COALESCE(outcome, 'running') AS outcome,
+            COUNT(*) AS session_count
+        FROM agentic_harnesses
+        GROUP BY tool_name, COALESCE(outcome, 'running')
+    """,
+}
+
+_AGENTIC_CHART_DEFS: list[dict[str, Any]] = [
+    {
+        "slice_name": "Harness Comparison",
+        "viz_type": "table",
+        "datasource_id_key": "agentic_sessions_full",
+        "params": {
+            "columns": [
+                "started_ts",
+                "tool_name",
+                "tool_version",
+                "model_id",
+                "rfc_version",
+                "branch",
+                "outcome",
+                "tokens_in",
+                "tokens_out",
+                "avg_latency_ms",
+                "avg_grader_score",
+            ],
+            "order_desc": True,
+            "row_limit": 100,
+        },
+    },
+    {
+        "slice_name": "Plugin Drift",
+        "viz_type": "table",
+        "datasource_id_key": "agentic_plugin_drift",
+        "params": {
+            "columns": [
+                "recorded_at",
+                "tool_name",
+                "plugin_name",
+                "semver",
+                "prev_semver",
+                "version_changed",
+            ],
+            "order_desc": True,
+            "row_limit": 200,
+            "conditional_formatting": [
+                {
+                    "column": "version_changed",
+                    "operator": ">",
+                    "targetValue": 0,
+                    "colorScheme": STATUS_COLORS["FAIL"],
+                },
+            ],
+        },
+    },
+    {
+        "slice_name": "Skill SHA Heatmap",
+        "viz_type": "heatmap_v2",
+        "datasource_id_key": "agentic_skill_outcomes",
+        "params": {
+            "x_axis": "skill_name",
+            "groupby": "outcome",
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "session_count"},
+                "aggregate": "SUM",
+                "label": "Sessions",
+            },
+            "legend_type": "continuous",
+            "normalize_across": "heatmap",
+        },
+    },
+    {
+        "slice_name": "Token Burn Rate",
+        "viz_type": "echarts_timeseries_bar",
+        "datasource_id_key": "agentic_sessions_full",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "tokens_in"},
+                    "aggregate": "SUM",
+                    "label": "Tokens In",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "tokens_out"},
+                    "aggregate": "SUM",
+                    "label": "Tokens Out",
+                },
+            ],
+            "groupby": ["tool_name"],
+            "x_axis": "started_ts",
+            "granularity_sqla": "started_ts",
+        },
+    },
+    {
+        "slice_name": "Outcome Funnel",
+        "viz_type": "funnel",
+        "datasource_id_key": "agentic_outcome_funnel",
+        "params": {
+            "groupby": ["tool_name", "outcome"],
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "session_count"},
+                "aggregate": "SUM",
+                "label": "Sessions",
+            },
+            "row_limit": 50,
+        },
+    },
+    {
+        "slice_name": "Latency vs Grader Score",
+        "viz_type": "bubble_v2",
+        "datasource_id_key": "agentic_sessions_full",
+        "params": {
+            "entity": "session_id",
+            "series": "tool_name",
+            "x": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "avg_latency_ms"},
+                "aggregate": "AVG",
+                "label": "Latency (ms)",
+            },
+            "y": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "avg_grader_score"},
+                "aggregate": "AVG",
+                "label": "Grader Score",
+            },
+            "size": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "tokens_out"},
+                "aggregate": "SUM",
+                "label": "Tokens Out",
+            },
+            "row_limit": 500,
+        },
+    },
+]
+
+_AGENTIC_FILTER_CONFIGS: list[dict[str, Any]] = [
+    {
+        "id": "AGENTIC_FILTER-TOOL",
+        "name": "Tool",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "tool_name"},
+                "datasetId": "__AGENTIC_SESSIONS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "AGENTIC_FILTER-MODEL",
+        "name": "Model",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "model_id"},
+                "datasetId": "__AGENTIC_SESSIONS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "AGENTIC_FILTER-VERSION",
+        "name": "RFC Version",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "rfc_version"},
+                "datasetId": "__AGENTIC_SESSIONS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "AGENTIC_FILTER-OUTCOME",
+        "name": "Outcome",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "outcome"},
+                "datasetId": "__AGENTIC_SESSIONS_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+]
+
+_AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
+    {
+        "label": "Harness Comparison",
+        "charts": [
+            {"name": "Harness Comparison", "width": 12, "height": 50},
+        ],
+    },
+    {
+        "label": "Outcomes",
+        "charts": [
+            {"name": "Outcome Funnel", "width": 6, "height": 50},
+            {"name": "Latency vs Grader Score", "width": 6, "height": 50},
+        ],
+    },
+    {
+        "label": "Token Burn",
+        "charts": [
+            {"name": "Token Burn Rate", "width": 12, "height": 50},
+        ],
+    },
+    {
+        "label": "Stack Drift",
+        "charts": [
+            {"name": "Plugin Drift", "width": 6, "height": 50},
+            {"name": "Skill SHA Heatmap", "width": 6, "height": 50},
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -1563,6 +2005,104 @@ def _build_infra_json_metadata(
     }
 
 
+def _build_sectioned_position_json(
+    sections: list[dict[str, Any]],
+    header_text: str,
+    chart_id_map: dict[str, int],
+) -> dict[str, Any]:
+    """Build Superset dashboard ``position_json`` from layout sections.
+
+    Generic equivalent of _build_position_json/_build_infra_position_json.
+
+    Args:
+        sections: layout sections (label + chart name/width/height specs).
+        header_text: dashboard header title.
+        chart_id_map: mapping of chart slice_name -> Superset slice ID.
+
+    Returns:
+        Dict suitable for ``Dashboard.position_json``.
+    """
+    layout: dict[str, Any] = {
+        "DASHBOARD_VERSION_KEY": "v2",
+        "ROOT_ID": {
+            "type": "ROOT",
+            "id": "ROOT_ID",
+            "children": ["GRID_ID"],
+        },
+        "GRID_ID": {
+            "type": "GRID",
+            "id": "GRID_ID",
+            "children": [],
+        },
+        "HEADER_ID": {
+            "type": "HEADER",
+            "id": "HEADER_ID",
+            "meta": {"text": header_text},
+        },
+    }
+
+    row_counter = 0
+    for section in sections:
+        row_id = f"ROW-{row_counter}"
+        row: dict[str, Any] = {
+            "type": "ROW",
+            "id": row_id,
+            "children": [],
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+        }
+        layout["GRID_ID"]["children"].append(row_id)
+
+        for chart_spec in section["charts"]:
+            chart_name = chart_spec["name"]
+            chart_db_id = chart_id_map.get(chart_name, 0)
+            chart_key = f"CHART-{chart_db_id}"
+            row["children"].append(chart_key)
+            layout[chart_key] = {
+                "type": "CHART",
+                "id": chart_key,
+                "children": [],
+                "meta": {
+                    "chartId": chart_db_id,
+                    "width": chart_spec["width"],
+                    "height": chart_spec["height"],
+                    "sliceName": chart_name,
+                },
+            }
+
+        layout[row_id] = row
+        row_counter += 1
+
+    return layout
+
+
+def _build_agentic_position_json(chart_id_map: dict[str, int]) -> dict[str, Any]:
+    """Build dashboard ``position_json`` for the Agentic Stack Tracker."""
+    return _build_sectioned_position_json(
+        _AGENTIC_LAYOUT_SECTIONS, "Agentic Stack Tracker", chart_id_map
+    )
+
+
+def _build_agentic_json_metadata(sessions_dataset_id: int) -> dict[str, Any]:
+    """Build dashboard ``json_metadata`` for the Agentic Stack Tracker.
+
+    Substitutes the ``__AGENTIC_SESSIONS_ID__`` placeholder in
+    _AGENTIC_FILTER_CONFIGS with the ``agentic_sessions_full`` dataset ID.
+    """
+    filters = []
+    for fconf in _AGENTIC_FILTER_CONFIGS:
+        f = json.loads(json.dumps(fconf))  # deep copy
+        for target in f.get("targets", []):
+            if target.get("datasetId") == "__AGENTIC_SESSIONS_ID__":
+                target["datasetId"] = sessions_dataset_id
+        filters.append(f)
+
+    return {
+        "native_filter_configuration": filters,
+        "chart_configuration": {},
+        "cross_filters_enabled": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap functions
 # ---------------------------------------------------------------------------
@@ -1597,18 +2137,20 @@ def bootstrap() -> None:
         _create_datasets(db_id)
         _create_charts_and_dashboard(db_id)
         _create_infra_dashboard(db_id)
+        _create_agentic_datasets(db_id)
+        _create_agentic_dashboard(db_id)
 
     log.info("Bootstrap complete.")
 
 
-def _create_tables() -> None:
-    """Create the 2-table schema in PostgreSQL."""
+def _run_ddl(ddl: str) -> None:
+    """Execute a semicolon-separated DDL block against the RFC database."""
     from sqlalchemy import create_engine, text
 
     uri = _get_database_uri()
     engine = create_engine(uri)
     with engine.begin() as conn:
-        for statement in _TABLE_DDL.split(";"):
+        for statement in ddl.split(";"):
             # Strip SQL comment lines so comment-only fragments are skipped.
             executable = "\n".join(
                 ln
@@ -1618,7 +2160,17 @@ def _create_tables() -> None:
             if executable:
                 conn.execute(text(statement.strip()))
     engine.dispose()
+
+
+def _create_tables() -> None:
+    """Create the test-result and agentic-stack schemas in PostgreSQL."""
+    _run_ddl(_TABLE_DDL)
     log.info("Created 2-table schema (test_runs, test_results).")
+    _run_ddl(_AGENTIC_TABLE_DDL)
+    log.info(
+        "Created agentic stack schema "
+        "(agentic_* tables, dialog_*, agentic_sessions_full view)."
+    )
 
 
 def _ensure_database_connection() -> int | None:
@@ -1923,6 +2475,171 @@ def _create_infra_dashboard(db_id: int) -> None:
     superset_db.session.add(dashboard)
     superset_db.session.commit()
     log.info(f"Created dashboard: Test Infrastructure (id={dashboard.id})")
+
+
+def _create_agentic_datasets(db_id: int) -> None:
+    """Create Superset datasets for the Agentic Stack Tracker."""
+    from superset import db as superset_db  # type: ignore[attr-defined]
+    from superset.connectors.sqla.models import SqlaTable
+
+    # Physical tables and the agentic_sessions_full view
+    for table_name in _AGENTIC_DATASET_TABLES:
+        existing = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
+        )
+        if existing:
+            log.info(f"Agentic dataset already exists: {table_name}")
+            continue
+
+        dataset = SqlaTable(
+            table_name=table_name,
+            database_id=db_id,
+            schema=None,
+        )
+        superset_db.session.add(dataset)
+        superset_db.session.commit()
+
+        try:
+            dataset.fetch_metadata()
+            superset_db.session.commit()
+        except Exception as e:
+            log.warning(f"fetch_metadata failed for {table_name}: {e}")
+
+        log.info(f"Created agentic dataset: {table_name} (id={dataset.id})")
+
+    # Virtual datasets (SQL-based)
+    uri = _get_database_uri()
+    for vds_name, vds_sql in _AGENTIC_VIRTUAL_DATASETS.items():
+        existing = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=vds_name, database_id=db_id)
+            .first()
+        )
+        if existing:
+            log.info(f"Agentic virtual dataset already exists: {vds_name}")
+            continue
+
+        dataset = SqlaTable(
+            table_name=vds_name,
+            database_id=db_id,
+            schema=None,
+            sql=vds_sql,
+        )
+        superset_db.session.add(dataset)
+        superset_db.session.commit()
+
+        try:
+            dataset.fetch_metadata()
+            superset_db.session.commit()
+        except Exception as e:
+            log.warning(
+                f"fetch_metadata failed for {vds_name}, "
+                f"trying _probe_columns fallback: {e}"
+            )
+            try:
+                cols = _probe_columns(uri, vds_sql)
+                log.info(f"Probed {len(cols)} columns for {vds_name}: {cols}")
+            except Exception as probe_err:
+                log.warning(f"_probe_columns also failed for {vds_name}: {probe_err}")
+
+        log.info(f"Created agentic virtual dataset: {vds_name} (id={dataset.id})")
+
+
+def _create_agentic_dashboard(db_id: int) -> None:
+    """Create charts and the Agentic Stack Tracker dashboard."""
+    from superset import db as superset_db  # type: ignore[attr-defined]
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
+
+    # Build dataset name -> ID map
+    datasets: dict[str, int] = {}
+    all_dataset_names = _AGENTIC_DATASET_TABLES + list(_AGENTIC_VIRTUAL_DATASETS)
+
+    for table_name in all_dataset_names:
+        ds = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
+        )
+        if ds:
+            datasets[table_name] = ds.id
+
+    if not datasets:
+        log.warning("No agentic datasets found; skipping agentic dashboard.")
+        return
+
+    # Create charts from _AGENTIC_CHART_DEFS
+    chart_id_map: dict[str, int] = {}
+    for chart_def in _AGENTIC_CHART_DEFS:
+        ds_key = chart_def["datasource_id_key"]
+        if ds_key not in datasets:
+            log.warning(
+                f"Skipping agentic chart '{chart_def['slice_name']}': "
+                f"dataset '{ds_key}' not found."
+            )
+            continue
+
+        ds_id = datasets[ds_key]
+        slice_name = chart_def["slice_name"]
+
+        existing = (
+            superset_db.session.query(Slice).filter_by(slice_name=slice_name).first()
+        )
+        if existing:
+            chart_id_map[slice_name] = existing.id
+            log.info(f"Agentic chart already exists: {slice_name}")
+            continue
+
+        chart = Slice(
+            slice_name=slice_name,
+            viz_type=chart_def["viz_type"],
+            datasource_id=ds_id,
+            datasource_type="table",
+            params=json.dumps(chart_def["params"]),
+        )
+        superset_db.session.add(chart)
+        superset_db.session.commit()
+        chart_id_map[slice_name] = chart.id
+        log.info(f"Created agentic chart: {slice_name} (id={chart.id})")
+
+    # Build layout and metadata
+    position = _build_agentic_position_json(chart_id_map)
+    sessions_ds_id = datasets.get("agentic_sessions_full", 0)
+    metadata = _build_agentic_json_metadata(sessions_ds_id)
+
+    # Create the Agentic Stack Tracker dashboard
+    slug = "agentic-stack-tracker"
+    existing_dash = superset_db.session.query(Dashboard).filter_by(slug=slug).first()
+    if existing_dash:
+        existing_dash.position_json = json.dumps(position)
+        existing_dash.json_metadata = json.dumps(metadata)
+        existing_dash.slices = [
+            superset_db.session.query(Slice).get(cid)
+            for cid in chart_id_map.values()
+            if superset_db.session.query(Slice).get(cid)
+        ]
+        superset_db.session.commit()
+        log.info(f"Updated dashboard: Agentic Stack Tracker (id={existing_dash.id})")
+        return
+
+    dashboard = Dashboard(
+        dashboard_title="Agentic Stack Tracker",
+        slug=slug,
+        published=True,
+        position_json=json.dumps(position),
+        json_metadata=json.dumps(metadata),
+    )
+    dashboard.slices = [
+        superset_db.session.query(Slice).get(cid)
+        for cid in chart_id_map.values()
+        if superset_db.session.query(Slice).get(cid)
+    ]
+    superset_db.session.add(dashboard)
+    superset_db.session.commit()
+    log.info(f"Created dashboard: Agentic Stack Tracker (id={dashboard.id})")
 
 
 if __name__ == "__main__":

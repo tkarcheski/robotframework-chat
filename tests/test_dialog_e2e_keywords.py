@@ -117,7 +117,9 @@ class TestRunDialogFixtureSuite:
         assert env["DIALOG_DATABASE_URL"] == url
         assert all(url not in part for part in run.call_args[0][0])
 
-    def test_clears_stale_recording_bracket_env(self, kw, tmp_path, monkeypatch) -> None:
+    def test_clears_stale_recording_bracket_env(
+        self, kw, tmp_path, monkeypatch
+    ) -> None:
         monkeypatch.setenv(RECORDING_ENV_VAR, "stale-id")
         with patch(
             "rfc.dialog_e2e_keywords.subprocess.run",
@@ -144,7 +146,8 @@ class TestRunDialogFixtureSuite:
         proc.stderr = "[ WARN ] HarnessDatabase init failed: connection refused"
         with patch("rfc.dialog_e2e_keywords.subprocess.run", return_value=proc):
             result = kw.run_dialog_fixture_suite(
-                str(tmp_path / "child"), database_url="postgresql://bad:bad@127.0.0.1:9/x"
+                str(tmp_path / "child"),
+                database_url="postgresql://bad:bad@127.0.0.1:9/x",
             )
         assert result["rc"] == 0
         assert result["warning_found"] is True
@@ -154,7 +157,9 @@ class TestRunDialogFixtureSuite:
             "rfc.dialog_e2e_keywords.subprocess.run",
             return_value=self._completed(),
         ):
-            result = kw.run_dialog_fixture_suite(str(tmp_path / "child"), database_url="x")
+            result = kw.run_dialog_fixture_suite(
+                str(tmp_path / "child"), database_url="x"
+            )
         assert result["warning_found"] is False
 
 
@@ -189,8 +194,15 @@ class TestAssertDialogRecordingPersisted:
         )
         db.save_turns(
             [
-                DialogTurn(recording_id="rec-gap", turn_number=1, role="user", timestamp=T0),
-                DialogTurn(recording_id="rec-gap", turn_number=3, role="assistant", timestamp=T0),
+                DialogTurn(
+                    recording_id="rec-gap", turn_number=1, role="user", timestamp=T0
+                ),
+                DialogTurn(
+                    recording_id="rec-gap",
+                    turn_number=3,
+                    role="assistant",
+                    timestamp=T0,
+                ),
             ]
         )
         db.end_recording("rec-gap", T1)
