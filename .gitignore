@@ -20,6 +20,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Local curated host inventory (copy host-config.toml.example)
+host-config.toml
+
 # Virtual environments
 .env
 .venv

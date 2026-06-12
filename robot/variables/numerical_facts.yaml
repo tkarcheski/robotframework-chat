@@ -1,0 +1,30 @@
+NUMERICAL_FACTS:
+  - question: "What is the speed of light in meters per second? Give the exact integer value."
+    expected: "299792458"
+
+  - question: "In what year did the Berlin Wall fall?"
+    expected: "1989"
+
+  - question: "What is the boiling point of pure water in degrees Celsius at standard atmospheric pressure? Give a single number."
+    expected: "100"
+
+  - question: "How many chromosomes does a normal human somatic cell contain? Give a single integer."
+    expected: "46"
+
+  - question: "What is the value of pi rounded to five decimal places? Give only the number."
+    expected: "3.14159"
+
+  - question: "In what year was the United Nations founded?"
+    expected: "1945"
+
+  - question: "What is the atomic number of gold (Au)? Give a single integer."
+    expected: "79"
+
+  - question: "How many bones are in the adult human body? Give a single integer."
+    expected: "206"
+
+  - question: "In what year did World War I begin?"
+    expected: "1914"
+
+  - question: "What is the freezing point of water in degrees Fahrenheit at standard atmospheric pressure? Give a single number."
+    expected: "32"

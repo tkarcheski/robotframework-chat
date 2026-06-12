@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rfc import __version__
+from rfc.dialog_import import register_dialog_command
 from rfc.git_metadata import _git_command, collect_ci_metadata
 from rfc.harness_models import AgenticHarness
 from rfc.harness_snapshot import snapshot_plugins, snapshot_skills
@@ -243,6 +244,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = actions.add_parser("status", help="show the active session")
     status.set_defaults(func=_cmd_status)
+
+    register_dialog_command(commands)
     return parser
 
 

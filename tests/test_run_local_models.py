@@ -8,13 +8,17 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
+from rfc.host_scheduler import HostConfig, HostSpec, SchedulerDefaults
 from scripts.run_local_models import (
+    PREFLIGHT_SUITE,
     RunResult,
     _build_robot_command,
     _maybe_audit,
+    _nodes_from_host_config,
     _sanitize_name,
     discover_local_models,
     load_local_config,
+    preflight_model,
     run_iteration_loop,
     run_model_suites,
     verify_db_results,
@@ -84,10 +88,11 @@ class TestSanitizeName:
 
 
 class TestDiscoverLocalModels:
+    @patch("scripts.run_local_models._query_loaded_models", return_value=[])
     @patch("scripts.run_local_models._query_models", return_value=["llama3", "mistral"])
     @patch("scripts.run_local_models._probe_port", return_value=True)
     def test_discovers_from_node_list(
-        self, mock_probe: MagicMock, mock_models: MagicMock
+        self, mock_probe: MagicMock, mock_models: MagicMock, mock_loaded: MagicMock
     ) -> None:
         nodes = [
             {"hostname": "host1", "port": 11434},
@@ -96,6 +101,39 @@ class TestDiscoverLocalModels:
         assert len(result) == 1
         assert result[0]["endpoint"] == "http://host1:11434"
         assert result[0]["models"] == ["llama3", "mistral"]
+
+    @patch("scripts.run_local_models._query_loaded_models", return_value=["mistral"])
+    @patch("scripts.run_local_models._query_models", return_value=["llama3", "mistral"])
+    @patch("scripts.run_local_models._probe_port", return_value=True)
+    def test_reports_loaded_models_from_api_ps(
+        self, mock_probe: MagicMock, mock_models: MagicMock, mock_loaded: MagicMock
+    ) -> None:
+        """discover_local_models must surface /api/ps state for the scheduler."""
+        result = discover_local_models([{"hostname": "host1", "port": 11434}])
+        assert result[0]["loaded_models"] == ["mistral"]
+
+    @patch("scripts.run_local_models._query_loaded_models", return_value=[])
+    @patch("scripts.run_local_models._query_models", return_value=["llama3"])
+    @patch("scripts.run_local_models._probe_port", return_value=True)
+    def test_carries_host_config_fields_through(
+        self, mock_probe: MagicMock, mock_models: MagicMock, mock_loaded: MagicMock
+    ) -> None:
+        """TOML-sourced node attributes survive discovery for the scheduler."""
+        nodes = [
+            {
+                "hostname": "host1",
+                "port": 11434,
+                "name": "gpu-rig",
+                "priority": 20,
+                "max_parallel": 2,
+                "skip_models": ["big:70b"],
+            },
+        ]
+        result = discover_local_models(nodes)
+        assert result[0]["name"] == "gpu-rig"
+        assert result[0]["priority"] == 20
+        assert result[0]["max_parallel"] == 2
+        assert result[0]["skip_models"] == ["big:70b"]
 
     @patch("scripts.run_local_models._probe_port", return_value=False)
     def test_skips_offline_nodes(self, mock_probe: MagicMock) -> None:
@@ -107,16 +145,55 @@ class TestDiscoverLocalModels:
         result = discover_local_models([])
         assert result == []
 
+    @patch("scripts.run_local_models._query_loaded_models", return_value=[])
     @patch("scripts.run_local_models._query_models", return_value=[])
     @patch("scripts.run_local_models._probe_port", return_value=True)
     def test_online_but_no_models(
-        self, mock_probe: MagicMock, mock_models: MagicMock
+        self, mock_probe: MagicMock, mock_models: MagicMock, mock_loaded: MagicMock
     ) -> None:
         nodes = [{"hostname": "empty", "port": 11434}]
         result = discover_local_models(nodes)
         # Node is online but has no models — still included so user sees it
         assert len(result) == 1
         assert result[0]["models"] == []
+
+
+class TestNodesFromHostConfig:
+    """TOML host entries become probe-able node dicts with scheduler fields."""
+
+    def test_converts_hosts_to_nodes(self) -> None:
+        host_config = HostConfig(
+            hosts=[
+                HostSpec(
+                    name="gpu-rig",
+                    endpoint="http://192.168.1.20:11434",
+                    priority=20,
+                    max_parallel=2,
+                    skip_models=["big:70b"],
+                ),
+            ],
+            defaults=SchedulerDefaults(),
+        )
+        nodes = _nodes_from_host_config(host_config)
+        assert nodes == [
+            {
+                "hostname": "192.168.1.20",
+                "port": 11434,
+                "name": "gpu-rig",
+                "priority": 20,
+                "max_parallel": 2,
+                "skip_models": ["big:70b"],
+            }
+        ]
+
+    def test_default_port_when_missing(self) -> None:
+        host_config = HostConfig(
+            hosts=[HostSpec(name="h", endpoint="http://myhost")],
+            defaults=SchedulerDefaults(),
+        )
+        nodes = _nodes_from_host_config(host_config)
+        assert nodes[0]["hostname"] == "myhost"
+        assert nodes[0]["port"] == 11434
 
 
 class TestBuildRobotCommand:
@@ -302,8 +379,8 @@ class TestRunModelSuites:
         assert env["OLLAMA_ENDPOINT"] == "http://host1:11434"
 
     @patch("scripts.run_local_models.subprocess.run")
-    def test_shuffles_model_order(self, mock_run: MagicMock) -> None:
-        """Models are shuffled before execution (not always alphabetical)."""
+    def test_prioritizes_loaded_models(self, mock_run: MagicMock) -> None:
+        """Models loaded per /api/ps run before cold models (no shuffle)."""
         mock_run.return_value = MagicMock(returncode=0)
         config = {
             "test_suites": [
@@ -314,30 +391,81 @@ class TestRunModelSuites:
                 "extra_args": [],
                 "listeners": [],
                 "continue_on_failure": True,
-                "parallel": 1,
             },
         }
-        models = ["alpha", "bravo", "charlie", "delta"]
         nodes_with_models = [
             {
                 "endpoint": "http://host1:11434",
                 "hostname": "host1",
-                "models": list(models),
+                "models": ["alpha", "bravo", "charlie"],
+                "loaded_models": ["charlie"],
             },
         ]
-        # Patch random.shuffle to reverse the list (deterministic non-alphabetical order)
-        with patch(
-            "scripts.run_local_models.random.shuffle", side_effect=lambda x: x.reverse()
-        ):
-            results = run_model_suites(config, nodes_with_models)
-
-        # Models should have been run in reversed order
+        results = run_model_suites(config, nodes_with_models)
         executed_models = [r.model for r in results]
-        assert executed_models == ["delta", "charlie", "bravo", "alpha"]
+        assert executed_models[0] == "charlie"
+        assert sorted(executed_models) == ["alpha", "bravo", "charlie"]
 
     @patch("scripts.run_local_models.subprocess.run")
-    def test_shuffle_does_not_mutate_input(self, mock_run: MagicMock) -> None:
-        """Shuffling models must not mutate the original nodes_with_models."""
+    def test_deduplicates_models_across_hosts(self, mock_run: MagicMock) -> None:
+        """A model available on multiple hosts runs once per suite (global queue)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        config = {
+            "test_suites": [
+                {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+            ],
+            "execution": {
+                "output_dir": "results/local/{node}/{model}",
+                "extra_args": [],
+                "listeners": [],
+                "continue_on_failure": True,
+            },
+        }
+        nodes_with_models = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["shared", "only1"],
+            },
+            {
+                "endpoint": "http://host2:11434",
+                "hostname": "host2",
+                "models": ["shared"],
+            },
+        ]
+        results = run_model_suites(config, nodes_with_models)
+        executed = sorted(r.model for r in results)
+        assert executed == ["only1", "shared"]
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_skip_models_not_run_on_skipping_host(self, mock_run: MagicMock) -> None:
+        """skip_models excludes a model from a host; unschedulable jobs are dropped."""
+        mock_run.return_value = MagicMock(returncode=0)
+        config = {
+            "test_suites": [
+                {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+            ],
+            "execution": {
+                "output_dir": "results/local/{node}/{model}",
+                "extra_args": [],
+                "listeners": [],
+                "continue_on_failure": True,
+            },
+        }
+        nodes_with_models = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["big", "small"],
+                "skip_models": ["big"],
+            },
+        ]
+        results = run_model_suites(config, nodes_with_models)
+        assert [r.model for r in results] == ["small"]
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_does_not_mutate_input(self, mock_run: MagicMock) -> None:
+        """Scheduling must not mutate the original nodes_with_models."""
         mock_run.return_value = MagicMock(returncode=0)
         config = {
             "test_suites": [
@@ -388,6 +516,174 @@ class TestRunModelSuites:
         results = run_model_suites(config, nodes_with_models)
         assert results == []
         mock_run.assert_not_called()
+
+
+class TestPreflightModel:
+    """preflight_model() probes a model with one tiny prompt (issue #426)."""
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_ok_on_nonempty_response(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "ok"}
+        )
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert ok
+        assert reason == "ok"
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_empty_response(self, mock_post: MagicMock) -> None:
+        """An HTTP 200 with an empty/whitespace response body is a failure
+        (the glm-4.7-flash:q8_0 symptom from issue #426)."""
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "   "}
+        )
+        ok, reason = preflight_model("http://host1:11434", "glm-4.7-flash:q8_0")
+        assert not ok
+        assert "empty" in reason
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_request_exception(self, mock_post: MagicMock) -> None:
+        import requests as _requests
+
+        mock_post.side_effect = _requests.ConnectionError("connection refused")
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+        assert "connection refused" in reason
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_http_error(self, mock_post: MagicMock) -> None:
+        import requests as _requests
+
+        resp = MagicMock(status_code=500)
+        resp.raise_for_status.side_effect = _requests.HTTPError("500 Server Error")
+        mock_post.return_value = resp
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_invalid_json(self, mock_post: MagicMock) -> None:
+        resp = MagicMock(status_code=200)
+        resp.json.side_effect = ValueError("not json")
+        mock_post.return_value = resp
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_sends_model_and_no_stream(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "ok"}
+        )
+        preflight_model("http://host1:11434", "llama3", timeout=42)
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["json"]["model"] == "llama3"
+        assert kwargs["json"]["stream"] is False
+        assert kwargs["timeout"] == 42
+
+
+def _preflight_config(*, preflight: bool = True) -> dict:
+    return {
+        "test_suites": [
+            {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+        ],
+        "execution": {
+            "output_dir": "results/local/{node}/{model}",
+            "extra_args": [],
+            "listeners": [],
+            "continue_on_failure": True,
+            "parallel": 1,
+            "preflight": preflight,
+            "preflight_timeout": 60,
+        },
+    }
+
+
+class TestRunModelSuitesPreflight:
+    """A model that fails preflight is recorded and skipped — the run
+    continues with the next model (issue #426)."""
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_bad_model_skipped_run_continues(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        # First model fails preflight, second passes.
+        mock_preflight.side_effect = [
+            (False, "empty response"),
+            (True, "ok"),
+        ]
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["badmodel", "goodmodel"],
+            },
+        ]
+        with patch("scripts.run_local_models.random.shuffle", side_effect=lambda x: x):
+            results = run_model_suites(_preflight_config(), nodes)
+
+        # One preflight-failure record + one real suite run.
+        assert len(results) == 2
+        assert results[0].model == "badmodel"
+        assert results[0].suite == PREFLIGHT_SUITE
+        assert results[0].returncode != 0
+        assert results[1].model == "goodmodel"
+        assert results[1].suite == "math"
+        assert results[1].returncode == 0
+        # Suites only executed for the good model.
+        assert mock_run.call_count == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_preflight_disabled_not_called(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        results = run_model_suites(_preflight_config(preflight=False), nodes)
+        mock_preflight.assert_not_called()
+        assert len(results) == 1
+        assert mock_run.call_count == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_dry_run_skips_preflight(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        results = run_model_suites(_preflight_config(), nodes, dry_run=True)
+        mock_preflight.assert_not_called()
+        mock_run.assert_not_called()
+        assert len(results) == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_preflight_timeout_from_config(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_preflight.return_value = (True, "ok")
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        run_model_suites(_preflight_config(), nodes)
+        assert mock_preflight.call_args.kwargs["timeout"] == 60
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +933,66 @@ class TestRunIterationLoop:
         run_iteration_loop(_ITER_CONFIG, iterations=3)
         assert mock_run.call_count == 3
         mock_audit.assert_called_once()
+
+    @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
+    @patch(
+        "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
+    )
+    @patch(
+        "scripts.run_local_models.discover_local_models", return_value=_ITER_DISCOVERED
+    )
+    @patch("scripts.run_local_models._load_node_list")
+    def test_toml_mode_uses_host_config_not_env(
+        self,
+        mock_nodes: MagicMock,
+        mock_discover: MagicMock,
+        mock_run: MagicMock,
+        mock_verify_db: MagicMock,
+        mock_summary: MagicMock,
+    ) -> None:
+        """mode='toml' sources nodes from host-config, not env discovery, and
+        passes the TOML global_max_parallel to the scheduler."""
+        host_config = HostConfig(
+            hosts=[HostSpec(name="h1", endpoint="http://host1:11434", priority=5)],
+            defaults=SchedulerDefaults(global_max_parallel=3),
+        )
+        run_iteration_loop(
+            _ITER_CONFIG,
+            iterations=1,
+            audit=False,
+            mode="toml",
+            host_config=host_config,
+        )
+        mock_nodes.assert_not_called()
+        probed = mock_discover.call_args.args[0]
+        assert probed[0]["hostname"] == "host1"
+        assert probed[0]["name"] == "h1"
+        assert mock_run.call_args.kwargs["global_max_parallel"] == 3
+
+    @patch("scripts.run_local_models._print_summary")
+    @patch("scripts.run_local_models.verify_db_results", return_value=True)
+    @patch(
+        "scripts.run_local_models.run_model_suites", return_value=_make_pass_result()
+    )
+    @patch(
+        "scripts.run_local_models.discover_local_models", return_value=_ITER_DISCOVERED
+    )
+    @patch("scripts.run_local_models._load_node_list", return_value=_ITER_NODES)
+    def test_external_mode_honors_execution_parallel(
+        self,
+        mock_nodes: MagicMock,
+        mock_discover: MagicMock,
+        mock_run: MagicMock,
+        mock_verify_db: MagicMock,
+        mock_summary: MagicMock,
+    ) -> None:
+        """mode='external' keeps env discovery and uses execution.parallel."""
+        config = copy.deepcopy(_ITER_CONFIG)
+        config["execution"]["parallel"] = 2
+        run_iteration_loop(config, iterations=1, audit=False, mode="external")
+        mock_nodes.assert_called_once()
+        assert mock_run.call_args.kwargs["global_max_parallel"] == 2
 
 
 # ---------------------------------------------------------------------------
