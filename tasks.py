@@ -34,6 +34,7 @@ LISTENERS = [
     "rfc.chat_log_listener.ChatLogListener",
     "--listener",
     "rfc.agentic_harness_listener.AgenticHarnessListener",
+    "--listener",
     "rfc.dialog_listener.DialogListener",
 ]
 
