@@ -158,7 +158,10 @@ class TestSelectModelsWithinBudget:
         # 2 models x 3 suites x 10 req = 60 <= 1000
         models = ["a:free", "b:free"]
         kept = select_models_within_budget(
-            models, n_suites=3, max_requests_per_day=1000, requests_per_suite_estimate=10
+            models,
+            n_suites=3,
+            max_requests_per_day=1000,
+            requests_per_suite_estimate=10,
         )
         assert kept == models
 
@@ -166,20 +169,29 @@ class TestSelectModelsWithinBudget:
         # each model costs 3 suites x 100 req = 300; budget 700 -> 2 models
         models = ["a:free", "b:free", "c:free"]
         kept = select_models_within_budget(
-            models, n_suites=3, max_requests_per_day=700, requests_per_suite_estimate=100
+            models,
+            n_suites=3,
+            max_requests_per_day=700,
+            requests_per_suite_estimate=100,
         )
         assert kept == ["a:free", "b:free"]
 
     def test_zero_budget_keeps_nothing(self) -> None:
         kept = select_models_within_budget(
-            ["a:free"], n_suites=1, max_requests_per_day=0, requests_per_suite_estimate=1
+            ["a:free"],
+            n_suites=1,
+            max_requests_per_day=0,
+            requests_per_suite_estimate=1,
         )
         assert kept == []
 
     def test_empty_models(self) -> None:
         assert (
             select_models_within_budget(
-                [], n_suites=5, max_requests_per_day=1000, requests_per_suite_estimate=10
+                [],
+                n_suites=5,
+                max_requests_per_day=1000,
+                requests_per_suite_estimate=10,
             )
             == []
         )
