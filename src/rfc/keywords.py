@@ -1,4 +1,6 @@
 import json
+import os
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
@@ -99,7 +101,44 @@ class LLMKeywords:
                 self.client.last_metrics["num_ctx"] = self.client.num_ctx
             self.client.last_metrics["num_predict"] = self.client.max_tokens
             emit_rfc_data("llm_metrics", json.dumps(self.client.last_metrics))
+        self._emit_dialog_turns(prompt, clean_answer)
         return clean_answer
+
+    # Env flag set by rfc.dialog_recorder.DialogRecorder (kept as a literal
+    # here to avoid importing the recorder into every LLMKeywords user).
+    _DIALOG_RECORDING_ENV_VAR = "RFC_DIALOG_RECORDING_ID"
+
+    def _emit_dialog_turns(self, prompt: str, answer: str) -> None:
+        """Emit dialog_turn events when a recording bracket is active (#354)."""
+        recording_id = os.environ.get(self._DIALOG_RECORDING_ENV_VAR, "")
+        if not recording_id:
+            return
+        timestamp = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+        emit_rfc_data(
+            "dialog_turn",
+            json.dumps(
+                {
+                    "recording_id": recording_id,
+                    "role": "user",
+                    "content": prompt,
+                    "timestamp": timestamp,
+                }
+            ),
+        )
+        assistant_turn: Dict[str, Any] = {
+            "recording_id": recording_id,
+            "role": "assistant",
+            "content": answer,
+            "timestamp": timestamp,
+        }
+        metrics = self.client.last_metrics or {}
+        if "prompt_eval_count" in metrics:
+            assistant_turn["prompt_tokens"] = int(metrics["prompt_eval_count"])
+        if "eval_count" in metrics:
+            assistant_turn["completion_tokens"] = int(metrics["eval_count"])
+        if "total_duration_ns" in metrics:
+            assistant_turn["latency_ms"] = float(metrics["total_duration_ns"]) / 1e6
+        emit_rfc_data("dialog_turn", json.dumps(assistant_turn))
 
     @keyword("Unload Model")
     def unload_model(self, model: Optional[str] = None) -> bool:

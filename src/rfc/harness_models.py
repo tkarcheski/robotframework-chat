@@ -67,3 +67,35 @@ class AgenticMetric:
     test_run_id: int = -1  # -1 sentinel matches TestRun.id convention
     test_result_id: int = -1
     id: str = ""
+
+
+@dataclass
+class DialogRecording:
+    """One recorded agent dialog (Phase 2). session_id "" = unattached."""
+
+    id: str
+    source_type: str  # 'live' | 'imported'
+    started_at: str
+    session_id: str = ""  # nullable in DB: imported recordings may pre-date a session
+    tool_name: str = ""
+    tool_version: str = ""
+    model_id: str = ""
+    ended_at: str = ""
+    metadata_json: str = ""
+
+
+@dataclass
+class DialogTurn:
+    """One turn of a recording. UNIQUE(recording_id, turn_number)."""
+
+    recording_id: str
+    turn_number: int
+    role: str  # 'user' | 'assistant' | 'tool'
+    timestamp: str
+    content: str = ""
+    tool_calls_json: str = ""
+    tool_results_json: str = ""
+    prompt_tokens: int = -1  # -1 sentinel = unknown (NULL in DB)
+    completion_tokens: int = -1
+    latency_ms: float = -1.0
+    id: str = ""
