@@ -29,6 +29,9 @@ jobs:
       - name: Mypy
         run: uv run mypy src/
 
+      - name: Pre-commit (all hooks, all files)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
       - name: Pytest with coverage
         run: uv run pytest --cov --cov-report=term-missing
 
