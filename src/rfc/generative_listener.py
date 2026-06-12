@@ -476,7 +476,19 @@ class GenerativeListener(BaseListener):
         """Pre-check whether *action* can be applied, without mutating."""
         if action == "skip":
             tests, index = self._suite_position(data)
-            return tests is not None and index + 1 < len(tests)
+            if tests is None or index + 1 >= len(tests):
+                return False
+            # Flow is per-test opt-in: never rewrite a next test that does
+            # not itself carry the flow tag (tags are per test in RF).
+            if not _test_has_tag(tests[index + 1], GENERATIVE_FLOW_TAG):
+                logger.warning(
+                    "GenerativeListener: skip proposed after test %r but the "
+                    "next test did not opt in to %s; not applied.",
+                    getattr(data, "name", ""),
+                    GENERATIVE_FLOW_TAG,
+                )
+                return False
+            return True
         if action == "retry":
             if id(data) in self._retried_test_ids:
                 return False
@@ -513,7 +525,7 @@ class GenerativeListener(BaseListener):
             return None, -1
 
     def _apply_skip(self, data: Any, decision_id: str) -> int:
-        """Arm a skip for the next test; 1 if there is a next test."""
+        """Arm a skip for the next test; 1 if there is an opted-in next test."""
         tests, index = self._suite_position(data)
         if tests is None or index + 1 >= len(tests):
             logger.warning(
@@ -523,6 +535,8 @@ class GenerativeListener(BaseListener):
                 self._suite_name,
             )
             return 0
+        if not _test_has_tag(tests[index + 1], GENERATIVE_FLOW_TAG):
+            return 0  # per-test opt-in; pre-checked in _action_applicable
         self._pending_skip_id = decision_id
         return 1
 
@@ -593,6 +607,12 @@ class GenerativeListener(BaseListener):
                 _add_tag(restore, FORK_MARKER_TAG)
                 restore.body.clear()
                 restore.body.create_keyword(name="Restore LLM Model", args=[])
+                # The restore must be unconditional: a copied setup that
+                # fails would prevent Restore LLM Model from running (model
+                # leak into later tests) and a copied teardown would run an
+                # extra time with an empty body.
+                restore.setup = None
+                restore.teardown = None
                 tests.insert(index + inserted + 1, restore)
             except Exception as exc:  # skip-and-log: never fail the run
                 logger.warning(

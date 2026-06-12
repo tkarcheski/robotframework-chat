@@ -92,10 +92,14 @@ class FakeTest:
         self.tags = list(tags)
         self.body = FakeBody([SimpleNamespace(name="Original Keyword", args=[])])
         self.parent = parent
+        self.setup: Any = None
+        self.teardown: Any = None
 
     def deepcopy(self) -> "FakeTest":
         clone = FakeTest(self.name, list(self.tags), self.parent)
         clone.body = FakeBody(copy_module.deepcopy(list(self.body)))
+        clone.setup = copy_module.deepcopy(self.setup)
+        clone.teardown = copy_module.deepcopy(self.teardown)
         return clone
 
 
@@ -489,3 +493,48 @@ class TestForkRestoresModel:
         assert getattr(restore.body[0], "name", "") == "Restore LLM Model", (
             "the original model must be restored after the fork copies"
         )
+
+    def test_restore_test_drops_inherited_setup_and_teardown(
+        self, clean_env, tmp_path, monkeypatch
+    ):
+        """The restore bracket must be unconditional: a copied setup that
+        fails would prevent Restore LLM Model from ever running (model
+        leak), and a copied teardown would run an extra time."""
+        _seed_harness(tmp_path)
+        monkeypatch.setenv("RFC_GENERATIVE_FORK_MODELS", "m1")
+        provider = SyntheticProvider(responses=["fork"])
+        listener = _listener(tmp_path, provider)
+        suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
+        suite.tests[0].setup = SimpleNamespace(name="Boot Model", args=[])
+        suite.tests[0].teardown = SimpleNamespace(name="Cleanup", args=[])
+        executed = _run_suite(listener, suite, {"t1": "FAIL"})
+        forks = [t for t in executed if FORK_MARKER_TAG in t.tags]
+        assert len(forks) == 2  # one model fork + the restore bracket
+        model_fork, restore = forks
+        # the model fork keeps the original fixture (it re-runs the test)
+        assert model_fork.setup.name == "Boot Model"
+        assert model_fork.teardown.name == "Cleanup"
+        # the restore bracket runs nothing but Restore LLM Model
+        assert restore.body[0].name == "Restore LLM Model"
+        assert not restore.setup
+        assert not restore.teardown
+
+
+class TestFlowSkipScoping:
+    def test_skip_does_not_cross_into_untagged_tests(self, clean_env, tmp_path):
+        """A skip armed by the last flow-tagged test must not rewrite a
+        following test that did not opt in (tags are per test in RF)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=["skip"])
+        suite = SimpleNamespace(name="Mixed Suite", tests=[], suites=[])
+        suite.tests = [
+            FakeTest("t1", [GENERATIVE_FLOW_TAG], parent=suite),
+            FakeTest("u1", ["tier:0"], parent=suite),
+        ]
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
+        assert executed[1].body[0].name == "Original Keyword", (
+            "an untagged test must never be rewritten by a flow skip"
+        )
+        rows = db.get_decisions(SESSION, proposed_action="skip")
+        assert len(rows) == 1
+        assert rows[0].applied == 0
