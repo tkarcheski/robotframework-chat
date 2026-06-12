@@ -2522,7 +2522,20 @@ def _create_agentic_datasets(db_id: int) -> None:
             .first()
         )
         if existing:
-            log.info(f"Agentic virtual dataset already exists: {vds_name}")
+            if (existing.sql or "").strip() == vds_sql.strip():
+                log.info(f"Agentic virtual dataset up to date: {vds_name}")
+                continue
+            # SQL changed in code (e.g. new rfc_version column, #483):
+            # update in place and refresh columns, or reruns of the
+            # bootstrap silently keep serving the stale dataset.
+            existing.sql = vds_sql
+            superset_db.session.commit()
+            try:
+                existing.fetch_metadata()
+                superset_db.session.commit()
+            except Exception as e:
+                log.warning(f"fetch_metadata failed for {vds_name}: {e}")
+            log.info(f"Updated agentic virtual dataset SQL: {vds_name}")
             continue
 
         dataset = SqlaTable(
