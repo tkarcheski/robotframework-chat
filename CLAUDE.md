@@ -26,7 +26,12 @@ complexity, ask 2–4 focused multiple-choice questions first.
 Every new session begins with a repo health check, before writing any code:
 
 1. **Create a feature branch** from `claude-code-staging` — one branch per
-   session, one session per feature:
+   session, one session per feature.
+   - **Role sessions** (`claude --agent <role>`): follow `ai/GIT.md` instead of
+     the command below — create or enter a worktree, branch named
+     `<type>/<issue-number>-<slug>`, role identity set. `ai/GIT.md` takes
+     precedence over this step; never branch in place in the main checkout.
+   - **Plain (non-role) sessions:**
    ```bash
    git fetch origin claude-code-staging
    git checkout -b claude/<short-description>-<random5> origin/claude-code-staging
@@ -147,6 +152,9 @@ before acting as a role. Role definitions live in `.claude/agents/`:
 - `design` — open-ended: full-system awareness, RFCs, system-wide improvements
 
 Start a role session with `claude --agent <role>` (or `@<role>` in-session).
+All four roles may run concurrently: each works in its own git worktree with a
+role-scoped identity per **`ai/GIT.md`** (worktree topology, sharing protocol,
+submodule ownership) — required reading alongside `ai/ROLES.md`.
 Role artifacts: test plans live in `ai/test-plans/`, RFCs in `ai/rfcs/`. The
 label taxonomy and inter-role contract live in `ai/ROLES.md`; if it and a role
 prompt conflict, `ai/ROLES.md` wins.
