@@ -147,8 +147,7 @@ class TestMetricCapture:
         listener.end_test(SimpleNamespace(name="t1"), SimpleNamespace())
         listener.end_suite(SimpleNamespace(name="root"), SimpleNamespace())
         tokens_out = [
-            m.metric_value
-            for m in db.get_metrics("sess-1", metric_key="tokens_out")
+            m.metric_value for m in db.get_metrics("sess-1", metric_key="tokens_out")
         ]
         assert sorted(tokens_out) == [10.0, 20.0]
 
