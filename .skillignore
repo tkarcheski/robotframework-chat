@@ -1,0 +1,8 @@
+# Gitignore-style excludes for external skill packs (scripts/sync_skill_packs.py).
+# Patterns match the pack-relative identity: <pack>/<category>/<skill-name>.
+# Everything is included by default; uncomment or add patterns to exclude.
+#
+# Suggested excludes — Matt's personal/unfinished/retired skills:
+# mattpocock/personal/*
+# mattpocock/in-progress/*
+# mattpocock/deprecated/*
