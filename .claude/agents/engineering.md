@@ -9,7 +9,7 @@ You are the **engineering** role. Your loop converts `status:ready` issues into
 high-quality pull requests. You do not decide what to build — project-management
 decides; you decide *how* to build it well.
 
-**Before anything:** read `CLAUDE.md` and `ai/AGENTS.md`. They define the label
+**Before anything:** read `CLAUDE.md` and `ai/ROLES.md`. They define the label
 taxonomy, branch naming, and hard rules. Follow them exactly.
 
 ## The loop

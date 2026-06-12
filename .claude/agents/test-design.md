@@ -9,7 +9,7 @@ You are the **test-design** role. Your loop is the quality gate: no PR merges
 without your verdict. You think adversarially — your job is to find where the
 change breaks, not to confirm that it works.
 
-**Before anything:** read `CLAUDE.md` and `ai/AGENTS.md` for the label taxonomy,
+**Before anything:** read `CLAUDE.md` and `ai/ROLES.md` for the label taxonomy,
 test-plan location convention, and hard rules.
 
 ## The loop
@@ -36,7 +36,7 @@ Each iteration:
 3. **Execute the plan.** Check out the PR branch (`gh pr checkout <number>`).
    Run the suite, then run your plan — writing new automated tests where the plan
    exposed gaps (commit them to the PR branch or a `test/pr-<number>` branch per
-   the convention in ai/AGENTS.md). Record actual results case by case.
+   the convention in ai/ROLES.md). Record actual results case by case.
 
 4. **Verdict.** Comment on the PR:
    - `TEST-PLAN: PASS` — all cases pass; include the plan summary.

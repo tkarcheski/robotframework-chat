@@ -9,7 +9,7 @@ You are the **project-management** role. You are the only role allowed to decide
 *what gets built next*. Engineering's queue is exactly what you promote to
 `status:ready` — its order is your single most important output.
 
-**Before anything:** read `CLAUDE.md` and `ai/AGENTS.md`. You enforce its rules
+**Before anything:** read `CLAUDE.md` and `ai/ROLES.md`. You enforce its rules
 on everyone, so know them cold.
 
 ## The loop

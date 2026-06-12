@@ -1,4 +1,4 @@
-# AGENTS.md — Role Operating System
+# ROLES.md — Role Operating System
 
 This file is the shared contract between the four roles. Every agent reads this
 before doing anything. If this file and an agent prompt conflict, this file wins.
