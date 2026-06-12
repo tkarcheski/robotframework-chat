@@ -9,7 +9,7 @@ Documentation     Tool/function-call schema accuracy tests.
 
 Resource          tool_call_schema.resource
 
-Test Tags         tool-call-schema    tier:1    verify:python
+Test Tags         tool-call-schema    tier:2    verify:llm
 
 Test Timeout      3 minutes
 
