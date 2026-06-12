@@ -133,6 +133,48 @@ class TestLLMKeywordsAsk:
         metrics_calls = [c for c in info_calls if "RFC_DATA:llm_metrics:" in c]
         assert len(metrics_calls) == 0
 
+    @patch.dict(os.environ, {"RFC_DIALOG_RECORDING_ID": "rec-null-test"})
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_dialog_turns_skip_null_metric_values(
+        self, MockGrader, mock_create, mock_logger, mock_rfc_logger
+    ):
+        """Metrics with None values (absent usage) must not raise TypeError.
+
+        _extract_metrics returns None for prompt_eval_count/eval_count when
+        the provider response omits the usage block.  _emit_dialog_turns checks
+        key presence, so it would call int(None) without a non-null guard.
+        """
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "answer"
+        kw.client.max_tokens = 256
+        kw.client.num_ctx = None
+        kw.client.last_metrics = {
+            "model_name": "gpt-4o",
+            "prompt_eval_count": None,
+            "eval_count": None,
+            "total_duration_ns": None,
+        }
+
+        kw.ask_llm("hello")  # must not raise TypeError
+
+        # The assistant dialog_turn must be emitted without the null fields
+        info_calls = [c.args[0] for c in mock_rfc_logger.info.call_args_list]
+        turn_calls = [c for c in info_calls if "RFC_DATA:dialog_turn:" in c]
+        assistant_payloads = [
+            json.loads(c.split("RFC_DATA:dialog_turn:", 1)[1])
+            for c in turn_calls
+            if json.loads(c.split("RFC_DATA:dialog_turn:", 1)[1]).get("role")
+            == "assistant"
+        ]
+        assert len(assistant_payloads) == 1
+        turn = assistant_payloads[0]
+        assert "prompt_tokens" not in turn
+        assert "completion_tokens" not in turn
+        assert "latency_ms" not in turn
+
 
 class TestLLMKeywordsAskThinking:
     @patch("rfc.keywords.logger")
