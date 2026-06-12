@@ -93,13 +93,21 @@ class ReplayResult:
 
 
 def _original_response_for(turns: list[DialogTurn], user_index: int) -> str:
-    """The first assistant turn following ``turns[user_index]``, or ''."""
+    """The complete textual assistant response after ``turns[user_index]``.
+
+    Imported Claude Code sessions keep assistant turns that contain only
+    ``tool_use`` blocks (``content=""``); a coding turn typically starts
+    with one. Grading against that empty turn corrupts the scores (#485),
+    so all textual assistant content up to the next user turn is
+    aggregated instead — tool-only turns contribute nothing.
+    """
+    parts: list[str] = []
     for turn in turns[user_index + 1 :]:
-        if turn.role == "assistant":
-            return turn.content
         if turn.role == "user":
             break
-    return ""
+        if turn.role == "assistant" and turn.content.strip():
+            parts.append(turn.content)
+    return "\n\n".join(parts)
 
 
 def _provider_token_counts(provider: LLMProvider) -> tuple[int, int]:
