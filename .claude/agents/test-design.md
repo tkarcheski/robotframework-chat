@@ -35,11 +35,15 @@ Each iteration:
 
 3. **Execute the plan.** Check out the PR branch (`gh pr checkout <number>`).
    Run the suite, then run your plan — writing new automated tests where the plan
-   exposed gaps (commit them to the PR branch or a `test/pr-<number>` branch per
-   the convention in ai/ROLES.md). Record actual results case by case.
+   exposed gaps. Commit new tests to the PR branch directly; if you must use a
+   `test/pr-<number>` branch instead, open a PR from it **targeting the product
+   PR's branch** and link it in your verdict — a test stranded on a side branch
+   counts as not written. Record actual results case by case.
 
 4. **Verdict.** Comment on the PR:
-   - `TEST-PLAN: PASS` — all cases pass; include the plan summary.
+   - `TEST-PLAN: PASS` — all cases pass; include the plan summary. PASS is only
+     valid once every new test from step 3 is on the PR branch or in a linked
+     PR targeting it.
    - `TEST-PLAN: FAIL` — list failing cases with exact repro. Then file one issue
      per distinct defect: `status:triage`, `from:testing`, `type:bug`, with repro
      steps, expected vs actual, and a link to the PR. Link the issues in your comment.

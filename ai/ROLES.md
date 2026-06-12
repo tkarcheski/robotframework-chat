@@ -40,6 +40,9 @@ before doing anything. If this file and an agent prompt conflict, this file wins
    affected area, and a `from:*` label. No vague issues.
 6. **Test plans live in the repo** at `ai/test-plans/PR-<number>.md` and are committed
    on a `test/pr-<number>` branch or attached as a PR comment — pick one and stay consistent.
+   New *tests* (as opposed to plans) must reach the reviewed PR: commit them to the PR
+   branch, or open a PR from `test/pr-<number>` targeting that branch and link it in the
+   verdict. `TEST-PLAN: PASS` is invalid while a new test is stranded on a side branch.
 7. **Loops end cleanly.** When a loop's queue is empty, the agent posts a summary and
    stops — it does not invent work. Inventing work is design's job.
 8. **Humans interrupt anything.** A human instruction in-session overrides loop order.
