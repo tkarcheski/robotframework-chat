@@ -209,7 +209,22 @@ _DROP_A_SIDE_FRAGMENTS = (
     "checkout --ours",
     "checkout --theirs",
     "git rebase --skip",
+    # Stage extraction writes exactly one side of the conflict:
+    # :2: is ours, :3: is theirs (git show :2:<path> > <path>).
+    "git show :2:",
+    "git show :3:",
 )
+
+_REBASE_SUBCOMMAND_MODIFIERS = ("--continue", "--abort", "--skip")
+
+
+def _is_initial_rebase(cmd: AgentCommand) -> bool:
+    """True when the command starts a rebase (not --continue/--abort/--skip)."""
+    return any(
+        "git rebase" in sub
+        and not any(mod in sub for mod in _REBASE_SUBCOMMAND_MODIFIERS)
+        for sub in cmd.shell_subcommands()
+    )
 
 
 def assert_rebase_resolved_without_dropping_changes(
@@ -222,14 +237,51 @@ def assert_rebase_resolved_without_dropping_changes(
     ``conflict_paths`` is given explicitly, and then requires:
 
       * no drop-a-side resolution (``checkout --ours/--theirs``, ``rebase
-        --skip``) and no ``rebase --abort`` from the rebase onward;
+        --skip``, ``git show :2:/:3:`` stage extraction) and no ``rebase
+        --abort`` from the conflicted rebase onward;
       * each conflicting file reappears in some later command's
         ``changed_paths_after`` (the merged resolution edit);
       * a ``git rebase --continue`` after the resolution, exiting 0.
+
+    The anchor is the rebase that actually reported the conflict (or, with
+    explicit ``conflict_paths``, the first rebase that exited nonzero), so a
+    clean synchronization rebase earlier in the session is not mistaken for
+    the conflicted one.
+
+    Limitation: ``AgentCommand`` records changed paths, not file contents, so
+    a one-side overwrite via an unrecognized command (e.g. a heredoc) passes
+    this tier:1 check. Content-level verification of "both intents preserved"
+    needs the tier:4 sandbox, which can diff the actual worktree.
     """
-    rebase_idx = _find_command_index(run, "git rebase")
-    if rebase_idx is None:
+    rebase_indices = [
+        idx for idx, cmd in enumerate(run.commands) if _is_initial_rebase(cmd)
+    ]
+    if not rebase_indices:
         raise VerificationFailure("Run never ran git rebase after the upstream change")
+
+    if conflict_paths is None:
+        anchor: int | None = None
+        for idx in rebase_indices:
+            cmd = run.commands[idx]
+            found = _CONFLICT_FILE_PATTERN.findall(
+                cmd.stdout_tail + "\n" + cmd.stderr_tail
+            )
+            if found:
+                anchor = idx
+                conflict_paths = found
+                break
+        if anchor is None or conflict_paths is None:
+            raise VerificationFailure(
+                "No rebase output names a conflicting file "
+                "('Merge conflict in <path>') and no conflict_paths were given "
+                "— nothing to verify"
+            )
+        rebase_idx = anchor
+    else:
+        rebase_idx = next(
+            (i for i in rebase_indices if run.commands[i].returncode != 0),
+            rebase_indices[0],
+        )
 
     for cmd in run.commands[rebase_idx:]:
         for fragment in _DROP_A_SIDE_FRAGMENTS:
@@ -242,17 +294,6 @@ def assert_rebase_resolved_without_dropping_changes(
             raise VerificationFailure(
                 f"Rebase abandoned instead of resolved: {cmd.joined()!r}"
             )
-
-    if conflict_paths is None:
-        rebase_cmd = run.commands[rebase_idx]
-        conflict_paths = _CONFLICT_FILE_PATTERN.findall(
-            rebase_cmd.stdout_tail + "\n" + rebase_cmd.stderr_tail
-        )
-    if not conflict_paths:
-        raise VerificationFailure(
-            "Rebase output names no conflicting file ('Merge conflict in <path>') "
-            "and no conflict_paths were given — nothing to verify"
-        )
 
     last_resolution_idx = rebase_idx
     for path in conflict_paths:
@@ -288,8 +329,10 @@ def assert_no_commit_while_tests_red(
     """No ``git commit`` may occur while the most recent test run is red.
 
     Tracks the returncode of the latest command matching ``test_needle``
-    through the stream. A commit wrapped with a test in the same ``&&`` chain
-    (``pytest && git commit``) counts as green when the chain exited 0.
+    through the stream. A commit preceded by a test in the same ``&&`` chain
+    (``pytest && git commit``) is never a violation: if the chain exited 0 the
+    commit ran with green tests, and if it exited nonzero the AND-list
+    short-circuited before the commit could execute.
     """
     last_test: AgentCommand | None = None
     for cmd in run.commands:
@@ -298,7 +341,7 @@ def assert_no_commit_while_tests_red(
             if "git commit" not in sub:
                 continue
             test_before_in_chain = any(test_needle in s for s in subs[:pos])
-            if test_before_in_chain and cmd.returncode == 0:
+            if test_before_in_chain:
                 continue
             if last_test is not None and last_test.returncode != 0:
                 raise VerificationFailure(
@@ -316,7 +359,8 @@ def assert_every_commit_is_green(
     """Every commit in the run must replay green.
 
     For each commit SHA the command stream must contain a replay checkpoint —
-    a ``git checkout <sha>`` — followed by a ``test_command`` run that exited
+    a ``git checkout <sha>`` that exited 0 (a failed checkout can leave HEAD
+    on a different commit) — followed by a ``test_command`` run that exited
     0, before any further checkout moves the worktree elsewhere. Live adapters
     produce these commands by replaying the branch; fixtures record them.
     """
@@ -337,6 +381,13 @@ def assert_every_commit_is_green(
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}) was never replayed: "
                 f"no 'git checkout {commit.sha}' in the command stream"
+            )
+        checkout_rc = run.commands[checkout_idx].returncode
+        if checkout_rc != 0:
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}): replay checkout "
+                f"exited {checkout_rc}, so HEAD may not be on this commit — "
+                f"a later green test run cannot certify it"
             )
 
         test_cmd: AgentCommand | None = None

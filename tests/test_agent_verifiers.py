@@ -452,7 +452,7 @@ class TestAssertRebaseResolvedWithoutDroppingChanges:
             AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
             conflict_stdout="some unrelated output",
         )
-        with pytest.raises(VerificationFailure, match="no conflicting file"):
+        with pytest.raises(VerificationFailure, match="conflicting file"):
             assert_rebase_resolved_without_dropping_changes(run)
 
 
@@ -594,3 +594,75 @@ class TestAssertEveryCommitIsGreen:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503:
+    """Regression tests for Codex review findings on PR #503."""
+
+    def test_failed_replay_checkout_fails(self) -> None:
+        # P1: a nonzero `git checkout <sha>` may leave HEAD elsewhere; a green
+        # test after it must not certify the commit.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=1),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_commit_skipped_by_failed_and_list_passes(self) -> None:
+        # P2: in `pytest && git commit` exiting nonzero, the commit never ran
+        # (AND-list semantics) — that is correct red-avoidance, not a violation.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m 'feat: x'"),
+                    returncode=1,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_clean_startup_rebase_then_conflicted_rebase_passes(self) -> None:
+        # P2: anchor on the rebase that reported the conflict, not the first.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("git", "rebase", "origin/claude-code-staging"),
+                    returncode=0,
+                    stdout_tail="Successfully rebased and updated.",
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+                AgentCommand(
+                    argv=("git", "rebase", "origin/claude-code-staging"),
+                    returncode=1,
+                    stdout_tail=_REBASE_CONFLICT_STDOUT,
+                ),
+                AgentCommand(
+                    argv=("sh", "-c", "merge both sides"),
+                    changed_paths_after=("src/rfc/config.py",),
+                ),
+                AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+            )
+        )
+        assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_resolving_via_git_show_stage_extraction_fails(self) -> None:
+        # P1 hardening: `git show :2:path > path` / `:3:` extracts exactly one
+        # side of the conflict — a drop-a-side resolution.
+        run = _rebase_run(
+            AgentCommand(
+                argv=(
+                    "bash",
+                    "-lc",
+                    "git show :3:src/rfc/config.py > src/rfc/config.py",
+                ),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
