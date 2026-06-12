@@ -22,6 +22,14 @@ agents:
       - git
       - pr
       - interactive
+    # Tier:4 Docker sandbox resource caps (#290): disposable scenario repos
+    # run inside a container with no network and a hard wall-clock limit.
+    sandbox:
+      image: python:3.11-slim
+      cpu_cores: 1.0
+      memory_mb: 1024
+      wall_clock_seconds: 300
+      network_mode: none
 
   - id: ollama-local
     runner: ollama

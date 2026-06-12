@@ -33,6 +33,54 @@ _ENV_OVERRIDABLE_FIELDS: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class SandboxLimits:
+    """Per-container resource caps for tier:4 sandboxed runs (#290).
+
+    Declared in ``config/local_agents.yaml`` under an agent's ``sandbox:``
+    block. ``network_mode`` defaults to ``none`` — sandboxed agents get no
+    network outside the container's scratch dir.
+    """
+
+    image: str = "python:3.11-slim"
+    cpu_cores: float = 1.0
+    memory_mb: int = 1024
+    wall_clock_seconds: int = 300
+    network_mode: str = "none"
+
+
+def _coerce_sandbox(raw: Any, agent_id: str) -> SandboxLimits | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"Agent {agent_id!r} 'sandbox' must be a mapping, got {type(raw).__name__}"
+        )
+    known = {f for f in SandboxLimits.__dataclass_fields__}
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        raise ValueError(
+            f"Agent {agent_id!r} sandbox block has unknown keys {unknown}. "
+            f"Supported: {sorted(known)}"
+        )
+    limits = SandboxLimits(
+        image=str(raw.get("image", SandboxLimits.image)),
+        cpu_cores=float(raw.get("cpu_cores", SandboxLimits.cpu_cores)),
+        memory_mb=int(raw.get("memory_mb", SandboxLimits.memory_mb)),
+        wall_clock_seconds=int(
+            raw.get("wall_clock_seconds", SandboxLimits.wall_clock_seconds)
+        ),
+        network_mode=str(raw.get("network_mode", SandboxLimits.network_mode)),
+    )
+    for cap in ("cpu_cores", "memory_mb", "wall_clock_seconds"):
+        if getattr(limits, cap) <= 0:
+            raise ValueError(
+                f"Agent {agent_id!r} sandbox {cap} must be > 0, "
+                f"got {getattr(limits, cap)}"
+            )
+    return limits
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     """Frozen configuration for one coding agent."""
 
@@ -44,6 +92,7 @@ class AgentConfig:
     temperature: float = 0.0
     capabilities: tuple[str, ...] = field(default_factory=tuple)
     env_vars: tuple[str, ...] = field(default_factory=tuple)
+    sandbox: SandboxLimits | None = None
 
 
 def _opt_str(raw: dict[str, Any], key: str) -> str:
@@ -111,6 +160,7 @@ def _coerce(raw: dict[str, Any]) -> AgentConfig:
         temperature=temperature,
         capabilities=_opt_seq(raw, "capabilities"),
         env_vars=env_vars,
+        sandbox=_coerce_sandbox(raw.get("sandbox"), agent_id),
     )
 
 
