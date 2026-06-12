@@ -9,6 +9,7 @@ file even if the superset extra is not installed.
 from __future__ import annotations
 
 import abc
+import dataclasses
 import logging
 import os
 import sqlite3
@@ -1216,6 +1217,22 @@ class HarnessDatabase:
         return self._backend.get_metrics(session_id, metric_key=metric_key)
 
     def save_recording(self, recording: DialogRecording) -> str:
+        """Persist a recording, dropping a dangling ``session_id``.
+
+        With an isolated DIALOG_DATABASE_URL the parent agentic_harnesses
+        row lives in the main DB, so the FK target is absent here. Keep
+        the recording (skip-and-log per CLAUDE.md) rather than letting
+        the FK reject it and lose the dialog.
+        """
+        if recording.session_id and self.get_harness(recording.session_id) is None:
+            logger.warning(
+                "save_recording: session_id %r has no agentic_harnesses row "
+                "in this database (isolated dialog DB?); saving recording %s "
+                "without a session link.",
+                recording.session_id,
+                recording.id,
+            )
+            recording = dataclasses.replace(recording, session_id="")
         return self._backend.save_recording(recording)
 
     def end_recording(self, recording_id: str, ended_at: str) -> None:

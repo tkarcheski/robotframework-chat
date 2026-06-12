@@ -32,6 +32,8 @@ LISTENERS = [
     "rfc.ollama_timestamp_listener.OllamaTimestampListener",
     "--listener",
     "rfc.chat_log_listener.ChatLogListener",
+    "--listener",
+    "rfc.dialog_listener.DialogListener",
 ]
 
 DRYRUN_LISTENER = ["--listener", "rfc.dry_run_listener.DryRunListener"]

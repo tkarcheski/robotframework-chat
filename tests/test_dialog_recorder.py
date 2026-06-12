@@ -80,6 +80,45 @@ class TestDialogRecordingCrud:
     def test_get_missing_recording_returns_none(self, db):
         assert db.get_recording("nope") is None
 
+    def test_unknown_session_id_is_dropped_not_rejected(self, db, caplog):
+        """Isolated DIALOG_DATABASE_URL: the harness row lives in the main
+        DB, so the FK target is absent here — the recording must still be
+        saved (with the dangling session_id dropped), not silently lost."""
+        with caplog.at_level("WARNING"):
+            db.save_recording(_recording(session_id="no-such-harness"))
+        rec = db.get_recording("rec-1")
+        assert rec is not None
+        assert rec.session_id == ""
+        assert any("no-such-harness" in m for m in caplog.messages)
+
+
+class TestListenerRegistration:
+    """DialogListener must be wired into the runners actually in use,
+    not just the retired ci.listeners section (#409 review P1)."""
+
+    REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
+    LISTENER = "rfc.dialog_listener.DialogListener"
+
+    def test_registered_in_local_models_config(self):
+        import yaml
+
+        config = yaml.safe_load(
+            (self.REPO_ROOT / "config" / "local_models.yaml").read_text()
+        )
+        assert self.LISTENER in config["execution"]["listeners"]
+
+    def test_registered_in_makefile_listener_var(self):
+        makefile = (self.REPO_ROOT / "Makefile").read_text()
+        listener_line = next(
+            line for line in makefile.splitlines() if line.startswith("LISTENER ")
+        )
+        assert self.LISTENER in listener_line
+
+    def test_registered_in_tasks_listeners(self):
+        import tasks
+
+        assert self.LISTENER in tasks.LISTENERS
+
 
 class TestDialogTurnCrud:
     def test_turns_round_trip_in_order(self, db):
@@ -107,9 +146,7 @@ class TestDialogTurnCrud:
 
     def test_tool_call_payloads_round_trip(self, db):
         db.save_recording(_recording())
-        db.save_turns(
-            [_turn(1, role="tool", tool_calls_json='[{"name": "x"}]')]
-        )
+        db.save_turns([_turn(1, role="tool", tool_calls_json='[{"name": "x"}]')])
         assert db.get_turns("rec-1")[0].tool_calls_json == '[{"name": "x"}]'
 
 
@@ -143,9 +180,7 @@ class TestDialogRecorderKeywords:
         assert data["started_at"]
 
     @patch("rfc.dialog_recorder.emit_rfc_data")
-    def test_start_picks_up_active_harness_session(
-        self, mock_emit, recorder, tmp_path
-    ):
+    def test_start_picks_up_active_harness_session(self, mock_emit, recorder, tmp_path):
         sidecar = tmp_path / ".git" / "rfc-harness-session.json"
         sidecar.write_text(json.dumps({"session_id": "sess-9"}))
         recorder.start_dialog_recording(source_type="live", agent_id="claude-code")
@@ -251,8 +286,24 @@ class TestDialogListener:
                         "started_at": T0,
                     },
                 ),
-                ("dialog_turn", {"recording_id": "rec-1", "role": "user", "content": "q", "timestamp": T0}),
-                ("dialog_turn", {"recording_id": "rec-1", "role": "assistant", "content": "a", "timestamp": T1}),
+                (
+                    "dialog_turn",
+                    {
+                        "recording_id": "rec-1",
+                        "role": "user",
+                        "content": "q",
+                        "timestamp": T0,
+                    },
+                ),
+                (
+                    "dialog_turn",
+                    {
+                        "recording_id": "rec-1",
+                        "role": "assistant",
+                        "content": "a",
+                        "timestamp": T1,
+                    },
+                ),
                 ("dialog_recording_end", {"recording_id": "rec-1", "ended_at": T1}),
             ],
         )
@@ -261,7 +312,10 @@ class TestDialogListener:
         assert rec is not None
         assert rec.ended_at == T1
         turns = db.get_turns("rec-1")
-        assert [(t.turn_number, t.role) for t in turns] == [(1, "user"), (2, "assistant")]
+        assert [(t.turn_number, t.role) for t in turns] == [
+            (1, "user"),
+            (2, "assistant"),
+        ]
 
     def test_turn_numbering_continues_across_tests(self, tmp_path):
         url = f"sqlite:///{tmp_path / 'h.db'}"
@@ -271,14 +325,39 @@ class TestDialogListener:
             [
                 (
                     "dialog_recording",
-                    {"id": "rec-1", "session_id": "", "source_type": "live", "tool_name": "t", "model_id": "", "started_at": T0},
+                    {
+                        "id": "rec-1",
+                        "session_id": "",
+                        "source_type": "live",
+                        "tool_name": "t",
+                        "model_id": "",
+                        "started_at": T0,
+                    },
                 ),
-                ("dialog_turn", {"recording_id": "rec-1", "role": "user", "content": "q1", "timestamp": T0}),
+                (
+                    "dialog_turn",
+                    {
+                        "recording_id": "rec-1",
+                        "role": "user",
+                        "content": "q1",
+                        "timestamp": T0,
+                    },
+                ),
             ],
         )
         self._run_test_cycle(
             listener,
-            [("dialog_turn", {"recording_id": "rec-1", "role": "assistant", "content": "a1", "timestamp": T1})],
+            [
+                (
+                    "dialog_turn",
+                    {
+                        "recording_id": "rec-1",
+                        "role": "assistant",
+                        "content": "a1",
+                        "timestamp": T1,
+                    },
+                )
+            ],
         )
         db = HarnessDatabase(database_url=url)
         assert [t.turn_number for t in db.get_turns("rec-1")] == [1, 2]
@@ -289,7 +368,17 @@ class TestDialogListener:
         listener = DialogListener()
         self._run_test_cycle(
             listener,
-            [("dialog_turn", {"recording_id": "rec-1", "role": "user", "content": "q", "timestamp": T0})],
+            [
+                (
+                    "dialog_turn",
+                    {
+                        "recording_id": "rec-1",
+                        "role": "user",
+                        "content": "q",
+                        "timestamp": T0,
+                    },
+                )
+            ],
         )
         assert listener.persisted_turn_count == 0
 
