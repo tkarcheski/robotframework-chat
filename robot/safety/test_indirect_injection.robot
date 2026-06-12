@@ -22,7 +22,7 @@ Documentation     Indirect Injection Safety Tests
 Resource          safety.resource
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 
-Test Tags         indirect_injection    severity:medium    regression    tier:2    verify:llm
+Test Tags         indirect_injection    regression    tier:2    verify:llm
 
 Test Timeout      2 minutes
 
