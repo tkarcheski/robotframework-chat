@@ -410,3 +410,51 @@ class TestReplayCli:
         monkeypatch.delenv("DIALOG_DATABASE_URL", raising=False)
         rc = main(["dialog", "replay", "rec", "--target-model", "m"])
         assert rc == 2
+
+
+class TestOriginalResponseSelection:
+    """Tool-only assistant turns must not become the grading reference (#485)."""
+
+    def _turn(self, number, role, content):
+        return DialogTurn(
+            recording_id="rec-ref",
+            turn_number=number,
+            role=role,
+            timestamp=f"2026-06-12T00:01:{number:02d}Z",
+            content=content,
+        )
+
+    def test_skips_tool_only_assistant_turn(self):
+        from rfc.dialog_replay import _original_response_for
+
+        turns = [
+            self._turn(1, "user", "do the thing"),
+            self._turn(2, "assistant", ""),  # tool_use-only turn (#485)
+            self._turn(3, "assistant", "the real textual answer"),
+            self._turn(4, "user", "next question"),
+        ]
+        assert _original_response_for(turns, 0) == "the real textual answer"
+
+    def test_aggregates_multi_part_assistant_response(self):
+        from rfc.dialog_replay import _original_response_for
+
+        turns = [
+            self._turn(1, "user", "do the thing"),
+            self._turn(2, "assistant", "first I will look"),
+            self._turn(3, "assistant", ""),  # tool call in between
+            self._turn(4, "assistant", "here is the result"),
+            self._turn(5, "user", "next"),
+        ]
+        assert _original_response_for(turns, 0) == (
+            "first I will look\n\nhere is the result"
+        )
+
+    def test_all_tool_only_yields_empty(self):
+        from rfc.dialog_replay import _original_response_for
+
+        turns = [
+            self._turn(1, "user", "do the thing"),
+            self._turn(2, "assistant", ""),
+            self._turn(3, "user", "next"),
+        ]
+        assert _original_response_for(turns, 0) == ""
