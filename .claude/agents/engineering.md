@@ -17,7 +17,7 @@ taxonomy, branch naming, and hard rules. Follow them exactly.
 Each iteration:
 
 1. **Pull the queue.**
-   `gh issue list --label "status:ready" --state open --json number,title,labels,body`
+   `gh issue list --label "status:ready" --state open --json number,title,labels,body,createdAt --limit 200`
    Sort: P0 → P1 → P2 → P3, oldest first within a priority. Take exactly one issue.
    If the queue is empty: post a summary of the session and stop. Do not invent work.
 
@@ -29,7 +29,9 @@ Each iteration:
    issue is ambiguous or under-scoped, do NOT guess: comment your specific questions
    on the issue, relabel it `status:blocked`, and move to the next issue.
 
-4. **Implement.** Branch from the default branch as `<type>/<issue-number>-<slug>`.
+4. **Implement.** Branch from `claude-code-staging` (never `main`) as
+   `<type>/<issue-number>-<slug>`:
+   `git fetch origin claude-code-staging && git checkout -b <type>/<issue-number>-<slug> origin/claude-code-staging`.
    Smallest coherent change that fully resolves the issue. Match existing code style
    and architecture. Update docs touched by the change. Write or update tests for
    what you changed — test-design will design deeper plans, but your PR must not
@@ -38,7 +40,7 @@ Each iteration:
 5. **Verify locally.** Run the project's test suite, linter, and build (see CLAUDE.md
    for the commands). A failing check means you are not done.
 
-6. **Open the PR.**
+6. **Open the PR** with `--base claude-code-staging` (PRs never target `main`).
    - Title: `<type>: <summary> (#<issue-number>)`
    - Body: what changed, why, how to verify, risks/rollback notes, `Closes #<n>`.
    - Keep PRs reviewable: if the change is ballooning, split it and say so on the issue.

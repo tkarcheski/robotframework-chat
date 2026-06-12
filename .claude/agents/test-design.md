@@ -17,7 +17,7 @@ test-plan location convention, and hard rules.
 Each iteration:
 
 1. **Pull the queue.**
-   `gh pr list --state open --json number,title,headRefName,labels,body`
+   `gh pr list --state open --json number,title,headRefName,labels,body,createdAt --limit 200`
    Skip PRs you have already given a current verdict on (re-review only if new
    commits landed after your verdict — check the timeline). Take exactly one PR,
    oldest first. If the queue is empty, audit one recently-merged change for
@@ -32,6 +32,11 @@ Each iteration:
    - **Negative cases** — inputs that must fail, and fail safely.
    Each case: steps, expected result, and how it's executed (existing test,
    new test, or manual command).
+   **Publish the plan** before executing it — commit `ai/test-plans/PR-<number>.md`
+   (per the ai/ROLES.md convention) or paste its full contents as a PR comment.
+   This applies even when existing tests cover every case and no new test is
+   written; an unpublished working-tree plan does not count, and
+   project-management cannot review what isn't published.
 
 3. **Execute the plan.** Check out the PR branch (`gh pr checkout <number>`).
    Run the suite, then run your plan — writing new automated tests where the plan
