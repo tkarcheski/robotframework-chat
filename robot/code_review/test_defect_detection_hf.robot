@@ -21,7 +21,9 @@ Documentation     Code review benchmark — Devign defect detection subset.
 ...               (default 10 to keep CI runtime bounded); override with
 ...               --variable DEFECT_HF_LIMIT:50 for the full committed subset.
 ...               The committed list is interleaved vulnerable/safe, so any
-...               prefix stays class-balanced.
+...               EVEN prefix stays class-balanced — odd limits are rounded
+...               down (a one-class-heavy sample would skew the 50% chance
+...               baseline), and limits below 2 are rejected.
 
 Resource          code_review.resource
 Library           Collections
@@ -38,7 +40,12 @@ Defect Detection HF Benchmark Subset
     [Documentation]    Accuracy over the committed Devign subset must beat chance.
     [Timeout]    30 minutes
     ${count}=    Get Length    ${CODE_REVIEW_DEFECT_HF}
-    ${end}=    Evaluate    min(int($DEFECT_HF_LIMIT), $count)
+    # Round down to an even prefix: the committed list alternates
+    # vulnerable/safe, so an odd slice would be one-class-heavy and skew
+    # the 50% chance baseline the strict threshold assumes.
+    ${end}=    Evaluate    min(int($DEFECT_HF_LIMIT), $count) // 2 * 2
+    Should Be True    ${end} >= 2
+    ...    DEFECT_HF_LIMIT must be at least 2 to keep the sample class-balanced (got ${DEFECT_HF_LIMIT})
     ${items}=    Get Slice From List    ${CODE_REVIEW_DEFECT_HF}    0    ${end}
     ${results}=    Create List
     FOR    ${item}    IN    @{items}
