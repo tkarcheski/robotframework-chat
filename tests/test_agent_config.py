@@ -10,6 +10,7 @@ import yaml
 from rfc.agent_config import (
     AgentConfig,
     DEFAULT_LOCAL_AGENTS_PATH,
+    SandboxLimits,
     load_agent_config,
     load_agent_configs,
 )
@@ -265,3 +266,99 @@ class TestNullValuesInYaml:
         )
         cfg = load_agent_config("ollama-local", path=path)
         assert cfg.temperature == 0.0
+
+
+class TestSandboxLimits:
+    """Resource caps for tier:4 sandboxed runs (#290)."""
+
+    def test_absent_sandbox_block_is_none(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(tmp_path, [{"id": "claude-code", "runner": "fake"}])
+        cfg = load_agent_config("claude-code", path=path)
+        assert cfg.sandbox is None
+
+    def test_full_sandbox_block(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [
+                {
+                    "id": "claude-code",
+                    "runner": "fake",
+                    "sandbox": {
+                        "image": "python:3.11-slim",
+                        "cpu_cores": 0.5,
+                        "memory_mb": 256,
+                        "wall_clock_seconds": 120,
+                        "network_mode": "none",
+                    },
+                }
+            ],
+        )
+        cfg = load_agent_config("claude-code", path=path)
+        assert cfg.sandbox == SandboxLimits(
+            image="python:3.11-slim",
+            cpu_cores=0.5,
+            memory_mb=256,
+            wall_clock_seconds=120,
+            network_mode="none",
+        )
+
+    def test_sandbox_defaults_fill_missing_keys(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "claude-code", "runner": "fake", "sandbox": {}}],
+        )
+        cfg = load_agent_config("claude-code", path=path)
+        assert cfg.sandbox is not None
+        assert cfg.sandbox.image == "python:3.11-slim"
+        assert cfg.sandbox.cpu_cores > 0
+        assert cfg.sandbox.memory_mb > 0
+        assert cfg.sandbox.wall_clock_seconds > 0
+        assert cfg.sandbox.network_mode == "none"
+
+    def test_sandbox_unknown_key_rejected(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"gpus": 8}}],
+        )
+        with pytest.raises(ValueError, match="gpus"):
+            load_agent_config("x", path=path)
+
+    def test_sandbox_nonpositive_wall_clock_rejected(self, tmp_path: Path) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"wall_clock_seconds": 0}}],
+        )
+        with pytest.raises(ValueError, match="wall_clock_seconds"):
+            load_agent_config("x", path=path)
+
+    def test_sandbox_unsupported_network_mode_rejected(self, tmp_path: Path) -> None:
+        """PR #490 review: a typo'd mode must fail loudly, not fail open.
+
+        ContainerNetwork.to_docker_network() only handles none/host/bridge;
+        any other value yields no Docker network option, silently attaching
+        the sandbox to the default bridge (network access for agent code).
+        """
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"network_mode": "disabled"}}],
+        )
+        with pytest.raises(ValueError, match="network_mode"):
+            load_agent_config("x", path=path)
+
+    @pytest.mark.parametrize("mode", ["none", "host", "bridge"])
+    def test_sandbox_supported_network_modes_accepted(
+        self, tmp_path: Path, mode: str
+    ) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"network_mode": mode}}],
+        )
+        cfg = load_agent_config("x", path=path)
+        assert cfg.sandbox is not None
+        assert cfg.sandbox.network_mode == mode
+
+    def test_shipped_claude_code_entry_declares_sandbox_caps(self) -> None:
+        """#290 acceptance: caps declared in config/local_agents.yaml."""
+        cfg = load_agent_config("claude-code", path=DEFAULT_LOCAL_AGENTS_PATH)
+        assert cfg.sandbox is not None
+        assert cfg.sandbox.network_mode == "none"
