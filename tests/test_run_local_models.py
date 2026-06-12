@@ -9,12 +9,14 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from scripts.run_local_models import (
+    PREFLIGHT_SUITE,
     RunResult,
     _build_robot_command,
     _maybe_audit,
     _sanitize_name,
     discover_local_models,
     load_local_config,
+    preflight_model,
     run_iteration_loop,
     run_model_suites,
     verify_db_results,
@@ -388,6 +390,174 @@ class TestRunModelSuites:
         results = run_model_suites(config, nodes_with_models)
         assert results == []
         mock_run.assert_not_called()
+
+
+class TestPreflightModel:
+    """preflight_model() probes a model with one tiny prompt (issue #426)."""
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_ok_on_nonempty_response(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "ok"}
+        )
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert ok
+        assert reason == "ok"
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_empty_response(self, mock_post: MagicMock) -> None:
+        """An HTTP 200 with an empty/whitespace response body is a failure
+        (the glm-4.7-flash:q8_0 symptom from issue #426)."""
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "   "}
+        )
+        ok, reason = preflight_model("http://host1:11434", "glm-4.7-flash:q8_0")
+        assert not ok
+        assert "empty" in reason
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_request_exception(self, mock_post: MagicMock) -> None:
+        import requests as _requests
+
+        mock_post.side_effect = _requests.ConnectionError("connection refused")
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+        assert "connection refused" in reason
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_http_error(self, mock_post: MagicMock) -> None:
+        import requests as _requests
+
+        resp = MagicMock(status_code=500)
+        resp.raise_for_status.side_effect = _requests.HTTPError("500 Server Error")
+        mock_post.return_value = resp
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_fails_on_invalid_json(self, mock_post: MagicMock) -> None:
+        resp = MagicMock(status_code=200)
+        resp.json.side_effect = ValueError("not json")
+        mock_post.return_value = resp
+        ok, reason = preflight_model("http://host1:11434", "llama3")
+        assert not ok
+
+    @patch("scripts.run_local_models.requests.post")
+    def test_sends_model_and_no_stream(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"response": "ok"}
+        )
+        preflight_model("http://host1:11434", "llama3", timeout=42)
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["json"]["model"] == "llama3"
+        assert kwargs["json"]["stream"] is False
+        assert kwargs["timeout"] == 42
+
+
+def _preflight_config(*, preflight: bool = True) -> dict:
+    return {
+        "test_suites": [
+            {"name": "math", "path": "robot/math/tests/", "timeout_seconds": 300},
+        ],
+        "execution": {
+            "output_dir": "results/local/{node}/{model}",
+            "extra_args": [],
+            "listeners": [],
+            "continue_on_failure": True,
+            "parallel": 1,
+            "preflight": preflight,
+            "preflight_timeout": 60,
+        },
+    }
+
+
+class TestRunModelSuitesPreflight:
+    """A model that fails preflight is recorded and skipped — the run
+    continues with the next model (issue #426)."""
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_bad_model_skipped_run_continues(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        # First model fails preflight, second passes.
+        mock_preflight.side_effect = [
+            (False, "empty response"),
+            (True, "ok"),
+        ]
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["badmodel", "goodmodel"],
+            },
+        ]
+        with patch("scripts.run_local_models.random.shuffle", side_effect=lambda x: x):
+            results = run_model_suites(_preflight_config(), nodes)
+
+        # One preflight-failure record + one real suite run.
+        assert len(results) == 2
+        assert results[0].model == "badmodel"
+        assert results[0].suite == PREFLIGHT_SUITE
+        assert results[0].returncode != 0
+        assert results[1].model == "goodmodel"
+        assert results[1].suite == "math"
+        assert results[1].returncode == 0
+        # Suites only executed for the good model.
+        assert mock_run.call_count == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_preflight_disabled_not_called(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        results = run_model_suites(_preflight_config(preflight=False), nodes)
+        mock_preflight.assert_not_called()
+        assert len(results) == 1
+        assert mock_run.call_count == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_dry_run_skips_preflight(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        results = run_model_suites(_preflight_config(), nodes, dry_run=True)
+        mock_preflight.assert_not_called()
+        mock_run.assert_not_called()
+        assert len(results) == 1
+
+    @patch("scripts.run_local_models.preflight_model")
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_preflight_timeout_from_config(
+        self, mock_run: MagicMock, mock_preflight: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_preflight.return_value = (True, "ok")
+        nodes = [
+            {
+                "endpoint": "http://host1:11434",
+                "hostname": "host1",
+                "models": ["llama3"],
+            },
+        ]
+        run_model_suites(_preflight_config(), nodes)
+        assert mock_preflight.call_args.kwargs["timeout"] == 60
 
 
 # ---------------------------------------------------------------------------
