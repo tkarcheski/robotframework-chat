@@ -106,9 +106,7 @@ class AgenticHarnessListener(BaseListener):
             db.save_metrics(metrics)
             self._persisted_count += len(metrics)
         except Exception as exc:  # skip-and-log: never fail the test
-            logger.warning(
-                "AgenticHarnessListener: metric persist failed: %s", exc
-            )
+            logger.warning("AgenticHarnessListener: metric persist failed: %s", exc)
 
     def _collect_metrics(self) -> list[AgenticMetric]:
         recorded_at = _utc_now()
