@@ -476,3 +476,335 @@ class TestMultilingualConstraints:
         english_bullets = "- Apple\n- Banana\n- Cherry\n- Date"
         passed, _ = IFEvalKeywords.check_bullet_points(english_bullets, 4)
         assert passed is True
+
+
+# ---------------------------------------------------------------------------
+# Official google/IFEval instruction checkers (HF dataset import, issue #126)
+# ---------------------------------------------------------------------------
+
+
+class TestSupportedInstructions:
+    def test_supported_set_is_nonempty_frozenset(self) -> None:
+        from rfc.ifeval_keywords import SUPPORTED_INSTRUCTIONS
+
+        assert isinstance(SUPPORTED_INSTRUCTIONS, frozenset)
+        assert "punctuation:no_comma" in SUPPORTED_INSTRUCTIONS
+        assert "keywords:existence" in SUPPORTED_INSTRUCTIONS
+
+    def test_unknown_instruction_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown instruction"):
+            IFEvalKeywords.check_instruction("text", "nope:nope", {})
+
+
+class TestNoComma:
+    def test_passes_without_comma(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "No commas here.", "punctuation:no_comma", {}
+        )
+        assert passed is True
+
+    def test_fails_with_comma(self) -> None:
+        passed, reason = IFEvalKeywords.check_instruction(
+            "One, two.", "punctuation:no_comma", {}
+        )
+        assert passed is False
+        assert "comma" in reason.lower()
+
+
+class TestChangeCaseInstructions:
+    def test_english_capital(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "ALL CAPS!", "change_case:english_capital", {}
+        )
+        assert passed is True
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Not all Caps", "change_case:english_capital", {}
+        )
+        assert passed is False
+
+    def test_english_lowercase(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "all lower.", "change_case:english_lowercase", {}
+        )
+        assert passed is True
+
+    def test_capital_word_frequency_at_least(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "THIS is VERY good INDEED",
+            "change_case:capital_word_frequency",
+            {"capital_frequency": 3, "capital_relation": "at least"},
+        )
+        assert passed is True
+
+    def test_capital_word_frequency_less_than(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "THIS is VERY good",
+            "change_case:capital_word_frequency",
+            {"capital_frequency": 2, "capital_relation": "less than"},
+        )
+        assert passed is False
+
+
+class TestLengthConstraintInstructions:
+    def test_number_words_at_least(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "one two three four",
+            "length_constraints:number_words",
+            {"num_words": 3, "relation": "at least"},
+        )
+        assert passed is True
+
+    def test_number_words_less_than(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "one two three four",
+            "length_constraints:number_words",
+            {"num_words": 3, "relation": "less than"},
+        )
+        assert passed is False
+
+    def test_number_sentences(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "One. Two. Three.",
+            "length_constraints:number_sentences",
+            {"num_sentences": 2, "relation": "at least"},
+        )
+        assert passed is True
+
+    def test_number_paragraphs_star_divider(self) -> None:
+        text = "Paragraph one.\n***\nParagraph two.\n***\nParagraph three."
+        passed, _ = IFEvalKeywords.check_instruction(
+            text,
+            "length_constraints:number_paragraphs",
+            {"num_paragraphs": 3},
+        )
+        assert passed is True
+
+    def test_number_paragraphs_wrong_count(self) -> None:
+        text = "Para one.\n***\nPara two."
+        passed, _ = IFEvalKeywords.check_instruction(
+            text,
+            "length_constraints:number_paragraphs",
+            {"num_paragraphs": 3},
+        )
+        assert passed is False
+
+
+class TestDetectableFormatInstructions:
+    def test_number_bullet_lists_exact(self) -> None:
+        text = "Intro line\n* first\n* second\n- third"
+        passed, _ = IFEvalKeywords.check_instruction(
+            text, "detectable_format:number_bullet_lists", {"num_bullets": 3}
+        )
+        assert passed is True
+
+    def test_number_bullet_lists_mismatch(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "* one\n* two", "detectable_format:number_bullet_lists", {"num_bullets": 3}
+        )
+        assert passed is False
+
+    def test_title_present(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "<<My Title>>\nBody text.", "detectable_format:title", {}
+        )
+        assert passed is True
+
+    def test_title_absent(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "No title here.", "detectable_format:title", {}
+        )
+        assert passed is False
+
+    def test_highlighted_sections_at_least(self) -> None:
+        text = "Some *highlighted* words and *more emphasis* here."
+        passed, _ = IFEvalKeywords.check_instruction(
+            text,
+            "detectable_format:number_highlighted_sections",
+            {"num_highlights": 2},
+        )
+        assert passed is True
+
+    def test_highlighted_sections_too_few(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "plain text only",
+            "detectable_format:number_highlighted_sections",
+            {"num_highlights": 1},
+        )
+        assert passed is False
+
+
+class TestKeywordInstructions:
+    def test_existence_all_present(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "The quick brown fox.",
+            "keywords:existence",
+            {"keywords": ["quick", "fox"]},
+        )
+        assert passed is True
+
+    def test_existence_missing(self) -> None:
+        passed, reason = IFEvalKeywords.check_instruction(
+            "The quick brown fox.",
+            "keywords:existence",
+            {"keywords": ["quick", "zebra"]},
+        )
+        assert passed is False
+        assert "zebra" in reason
+
+    def test_forbidden_words(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Safe text.", "keywords:forbidden_words", {"forbidden_words": ["bomb"]}
+        )
+        assert passed is True
+        passed, _ = IFEvalKeywords.check_instruction(
+            "The Bomb is here.",
+            "keywords:forbidden_words",
+            {"forbidden_words": ["bomb"]},
+        )
+        assert passed is False
+
+    def test_frequency_at_least(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "cat cat dog cat",
+            "keywords:frequency",
+            {"keyword": "cat", "frequency": 3, "relation": "at least"},
+        )
+        assert passed is True
+
+    def test_frequency_word_boundary(self) -> None:
+        # "cat" inside "catalogue" must not count
+        passed, _ = IFEvalKeywords.check_instruction(
+            "catalogue catalogue",
+            "keywords:frequency",
+            {"keyword": "cat", "frequency": 1, "relation": "at least"},
+        )
+        assert passed is False
+
+    def test_letter_frequency(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "banana",
+            "keywords:letter_frequency",
+            {"letter": "a", "let_frequency": 3, "let_relation": "at least"},
+        )
+        assert passed is True
+        passed, _ = IFEvalKeywords.check_instruction(
+            "banana",
+            "keywords:letter_frequency",
+            {"letter": "a", "let_frequency": 3, "let_relation": "less than"},
+        )
+        assert passed is False
+
+
+class TestStartEndAndContentInstructions:
+    def test_end_checker_case_insensitive(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "All done. Any other questions?",
+            "startend:end_checker",
+            {"end_phrase": "any other questions?"},
+        )
+        assert passed is True
+
+    def test_end_checker_fails(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "All done.", "startend:end_checker", {"end_phrase": "the end"}
+        )
+        assert passed is False
+
+    def test_quotation_wrapped(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            '"wrapped in quotes"', "startend:quotation", {}
+        )
+        assert passed is True
+        passed, _ = IFEvalKeywords.check_instruction(
+            "not wrapped", "startend:quotation", {}
+        )
+        assert passed is False
+
+    def test_number_placeholders(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Dear [name], welcome to [address].",
+            "detectable_content:number_placeholders",
+            {"num_placeholders": 2},
+        )
+        assert passed is True
+
+    def test_postscript_ps(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Letter body.\nP.S. Remember the milk.",
+            "detectable_content:postscript",
+            {"postscript_marker": "P.S."},
+        )
+        assert passed is True
+
+    def test_postscript_missing(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Letter body only.",
+            "detectable_content:postscript",
+            {"postscript_marker": "P.S."},
+        )
+        assert passed is False
+
+    def test_repeat_prompt(self) -> None:
+        passed, _ = IFEvalKeywords.check_instruction(
+            "Say hello to the world. Hello world!",
+            "combination:repeat_prompt",
+            {"prompt_to_repeat": "Say hello to the world."},
+        )
+        assert passed is True
+
+
+class TestNoneKwargsAreIgnored:
+    def test_none_values_stripped(self) -> None:
+        # HF datasets-server returns a struct with None for unused kwargs.
+        passed, _ = IFEvalKeywords.check_instruction(
+            "No commas here.",
+            "punctuation:no_comma",
+            {"num_words": None, "relation": None},
+        )
+        assert passed is True
+
+
+class TestRunIFEvalDatasetItem:
+    @patch("rfc.ifeval_keywords.create_provider")
+    def test_item_passes_all_instructions(self, mock_create: MagicMock) -> None:
+        kw = IFEvalKeywords()
+        kw.client.generate = MagicMock(return_value="no commas at all")  # type: ignore[method-assign]
+        item = {
+            "key": 42,
+            "prompt": "Reply without commas, in lowercase.",
+            "instructions": [
+                {"id": "punctuation:no_comma", "kwargs": {}},
+                {"id": "change_case:english_lowercase", "kwargs": {}},
+            ],
+        }
+        result = kw.run_ifeval_dataset_item(item)
+        assert result["passed"] is True
+        assert result["key"] == 42
+
+    @patch("rfc.ifeval_keywords.create_provider")
+    def test_item_fails_one_instruction(self, mock_create: MagicMock) -> None:
+        kw = IFEvalKeywords()
+        kw.client.generate = MagicMock(return_value="Has a comma, sadly")  # type: ignore[method-assign]
+        item = {
+            "key": 7,
+            "prompt": "p",
+            "instructions": [
+                {"id": "punctuation:no_comma", "kwargs": {}},
+                {"id": "change_case:english_lowercase", "kwargs": {}},
+            ],
+        }
+        result = kw.run_ifeval_dataset_item(item)
+        assert result["passed"] is False
+        assert "punctuation:no_comma" in result["reason"]
+
+    @patch("rfc.ifeval_keywords.create_provider")
+    def test_assert_keyword_raises_on_failure(self, mock_create: MagicMock) -> None:
+        kw = IFEvalKeywords()
+        kw.client.generate = MagicMock(return_value="WRONG, CASE")  # type: ignore[method-assign]
+        item = {
+            "key": 1,
+            "prompt": "p",
+            "instructions": [{"id": "change_case:english_lowercase", "kwargs": {}}],
+        }
+        with pytest.raises(AssertionError):
+            kw.assert_ifeval_passed(kw.run_ifeval_dataset_item(item))

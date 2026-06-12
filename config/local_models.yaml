@@ -164,8 +164,8 @@ test_suites:
 
   - name: "ifeval"
     path: "robot/ifeval/"
-    description: "Instruction following evaluation with deterministic constraint checking"
-    timeout_seconds: 300
+    description: "Instruction following evaluation with deterministic constraint checking (incl. google/IFEval HF subset)"
+    timeout_seconds: 900
 
   - name: "multilingual"
     path: "robot/multilingual/"

@@ -7,6 +7,9 @@
 #   * `fake`   -- replay a prerecorded run.yaml fixture (no LLM call)
 #   * `ollama` -- call a local Ollama-served model with task.yaml and parse the
 #                 response into an AgentRun
+#   * `live`   -- shell out to the local `claude` CLI against an isolated git
+#                 worktree (see src/rfc/live_agent_runner.py). Hits the real
+#                 Anthropic API; do not enable in CI without a cost gate.
 #
 # Environment variables (declared per-agent under env_vars) override YAML
 # fields at load time:
@@ -22,6 +25,27 @@ agents:
       - git
       - pr
       - interactive
+    # Tier:4 Docker sandbox resource caps (#290): disposable scenario repos
+    # run inside a container with no network and a hard wall-clock limit.
+    sandbox:
+      image: python:3.11-slim
+      cpu_cores: 1.0
+      memory_mb: 1024
+      wall_clock_seconds: 300
+      network_mode: none
+
+  # Switch the claude-code agent above to `runner: live` (or duplicate this
+  # entry under a new id) to drive the real Claude Code CLI. Requires `claude`
+  # on PATH and an authenticated session; runs a throwaway git worktree off
+  # claude-code-staging per scenario.
+  # - id: claude-code-live
+  #   runner: live
+  #   timeout_seconds: 900
+  #   env_vars: []
+  #   capabilities:
+  #     - git
+  #     - pr
+  #     - interactive
 
   - id: ollama-local
     runner: ollama

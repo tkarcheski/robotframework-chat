@@ -721,3 +721,28 @@ class TestAskLlmNumCtxInMetrics:
         assert result == "The answer is 42"
         # Verify num_ctx was added to last_metrics
         assert mock_client.last_metrics["num_ctx"] == 4096
+
+
+class TestSaveRestoreLLMModel:
+    """Save/Restore LLM Model — the generative fork bracket (#359/#480)."""
+
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_save_then_restore_round_trips(self, MockGrader, mock_create, mock_logger):
+        kw = LLMKeywords()
+        kw.client.model = "original-model"
+        assert kw.save_llm_model() == "original-model"
+        kw.set_llm_model("fork-model")
+        assert kw.client.model == "fork-model"
+        assert kw.restore_llm_model() == "original-model"
+        assert kw.client.model == "original-model"
+
+    @patch("rfc.keywords.logger")
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_restore_without_save_is_noop(self, MockGrader, mock_create, mock_logger):
+        kw = LLMKeywords()
+        kw.client.model = "original-model"
+        assert kw.restore_llm_model() == ""
+        assert kw.client.model == "original-model"

@@ -54,6 +54,30 @@ class LLMKeywords:
         logger.info(model)
         self.client.model = model
 
+    @keyword("Save LLM Model")
+    def save_llm_model(self) -> str:
+        """Remember the current model so `Restore LLM Model` can put it back.
+
+        Used by the generative fork flow (#359): fork copies switch models
+        mid-suite, and without a restore every later test would silently
+        run against the last fork model.
+        """
+        self._saved_model = self.client.model
+        logger.info(f"Saved LLM model: {self._saved_model}")
+        return self._saved_model
+
+    @keyword("Restore LLM Model")
+    def restore_llm_model(self) -> str:
+        """Switch back to the model captured by `Save LLM Model` (no-op if
+        nothing was saved)."""
+        saved = getattr(self, "_saved_model", "")
+        if saved:
+            self.client.model = saved
+            logger.info(f"Restored LLM model: {saved}")
+        else:
+            logger.warn("Restore LLM Model called without a prior Save LLM Model")
+        return saved
+
     @keyword("Set LLM Parameters")
     def set_llm_parameters(
         self,
