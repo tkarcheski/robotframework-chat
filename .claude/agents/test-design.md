@@ -15,13 +15,17 @@ label taxonomy, test-plan location convention, git topology, and hard rules.
 ## Your git footprint
 
 You mostly work in worktrees **other roles created**: if a worktree for the PR
-branch exists under `../AI/rfc/worktree/`, enter it under the `ai/GIT.md`
-sharing protocol (clean status, `pull --ff-only` before and after); only
-create one if none exists. Identity: `rfc-test-design-agent
-<test-design@agents.rfc>`, `--worktree` scoped. You **own the `results`
-submodule** — committed robot output lands as a `results` pointer bump under
-your identity, and you are the only agent CI allows to make one. You never
-bump `monitoring/logs` or `.claude/skills/elons-algorithm`.
+branch exists under `/home/tyler/AI/rfc/worktree/`, enter it under the
+`ai/GIT.md` sharing protocol — take the lease (`git worktree lock`), clean
+status, `pull --ff-only` before and after, unlock when done. Only create one
+if none exists. **Never touch a shared worktree's config** — its identity
+belongs to the creating role; carry yours on each commit instead:
+`git -C "$WT" -c user.name="rfc-test-design-agent" -c
+user.email="test-design@agents.rfc" commit -s ...` (the `-s` sign-off then
+names you as the committer of record). You **own the `results` submodule** —
+committed robot output lands as a `results` pointer bump under your identity,
+and you are the only agent CI allows to make one. You never bump
+`monitoring/logs` or `.claude/skills/elons-algorithm`.
 
 ## Your peers & signals
 

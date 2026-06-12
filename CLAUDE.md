@@ -26,7 +26,12 @@ complexity, ask 2–4 focused multiple-choice questions first.
 Every new session begins with a repo health check, before writing any code:
 
 1. **Create a feature branch** from `claude-code-staging` — one branch per
-   session, one session per feature:
+   session, one session per feature.
+   - **Role sessions** (`claude --agent <role>`): follow `ai/GIT.md` instead of
+     the command below — create or enter a worktree, branch named
+     `<type>/<issue-number>-<slug>`, role identity set. `ai/GIT.md` takes
+     precedence over this step; never branch in place in the main checkout.
+   - **Plain (non-role) sessions:**
    ```bash
    git fetch origin claude-code-staging
    git checkout -b claude/<short-description>-<random5> origin/claude-code-staging

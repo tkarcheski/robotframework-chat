@@ -88,13 +88,37 @@ def changed_gitlink_paths(base: str) -> list[str]:
     return paths
 
 
+def _commit_touches_gitlink(commit: str, path: str) -> bool:
+    """True if this commit's diff changes the gitlink itself (mode 160000) at path.
+
+    `git log -- <path>` also lists commits that only changed ordinary files
+    under <path> (e.g. while converting a directory to/from a submodule);
+    those must not be attributed as pointer bumps.
+    """
+    # -r is required: without it diff-tree reports a nested gitlink (e.g.
+    # monitoring/logs) as its parent tree (mode 040000) and the match fails.
+    raw = _git(["diff-tree", "-r", "--raw", "--no-commit-id", commit, "--", path])
+    for line in raw.splitlines():
+        meta, _, raw_path = line.partition("\t")
+        fields = meta.split()
+        if (
+            raw_path == path
+            and len(fields) >= 2
+            and GITLINK_MODE in (fields[0].lstrip(":"), fields[1])
+        ):
+            return True
+    return False
+
+
 def collect_changes(base: str) -> list[GitlinkChange]:
-    """Every commit in base..HEAD that touched a changed gitlink, with its author."""
+    """Every commit in base..HEAD that moved a changed gitlink, with its author."""
     changes: list[GitlinkChange] = []
     for path in changed_gitlink_paths(base):
         log = _git(["log", "--format=%H %ae", f"{base}..HEAD", "--", path])
         for line in log.splitlines():
             commit, _, author_email = line.partition(" ")
+            if not _commit_touches_gitlink(commit, path):
+                continue
             changes.append(
                 GitlinkChange(path=path, commit=commit, author_email=author_email)
             )

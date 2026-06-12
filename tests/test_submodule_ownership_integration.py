@@ -166,3 +166,27 @@ class TestFailureModes:
         """A bad/missing base ref must never silently pass."""
         result = _run_guard(repo, base="origin/does-not-exist")
         assert result.returncode != 0
+
+
+class TestPathVsGitlinkAttribution:
+    def test_file_changes_under_submodule_path_not_attributed(
+        self, repo: Path
+    ) -> None:  # Codex P2: directory<->submodule conversion
+        """Converting a gitlink to a directory (or back) makes `git log -- path`
+        list commits that only touched ordinary files under that path; those
+        must not be attributed as pointer bumps."""
+        # Owner legitimately moves the pointer first (a real gitlink change).
+        _commit_gitlink(repo, "results", SHA_B, OWNER, "owner bumps results")
+        # Non-owner converts the gitlink to a plain directory with a file in it:
+        # commit 1 removes the gitlink (a real gitlink change, owner does it),
+        # commit 2 (non-owner) only adds a regular file under results/.
+        _remove_gitlink(repo, "results", OWNER, "owner removes results gitlink")
+        results_dir = repo / "results"
+        results_dir.mkdir()
+        (results_dir / "report.txt").write_text("plain file, not a gitlink\n")
+        _git(repo, "add", "results/report.txt")
+        _git(repo, "commit", "-m", "engineering adds plain file", email=NON_OWNER)
+        result = _run_guard(repo)
+        # The only gitlink-mode commits are owner-authored; the non-owner
+        # file-only commit under results/ must not produce a violation.
+        assert result.returncode == 0, result.stderr

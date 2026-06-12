@@ -45,10 +45,14 @@ Each iteration:
    If the queue is empty: post a summary of the session and stop. Do not invent work.
 
 2. **Claim it — and check you won.** Re-fetch the issue first; if anyone is
-   already assigned or it carries `status:in-progress`, another engineering
-   session beat you — take the next issue instead. Otherwise assign yourself,
-   swap `status:ready` → `status:in-progress`, comment the branch name you're
-   about to create, then re-fetch once more to confirm the claim stuck.
+   assigned, it carries `status:in-progress`, or a claim comment exists,
+   another session beat you — take the next issue. Otherwise assign yourself,
+   swap `status:ready` → `status:in-progress`, and post a claim comment naming
+   your exact branch: `claiming: <type>/<n>-<slug> — engineering role`.
+   Assignment and labels are shared state that two same-role sessions can both
+   set, so **the claim comment is the tiebreaker**: re-fetch all comments, and
+   the earliest claim comment wins. If yours isn't first, post a one-line
+   back-off comment and take the next issue.
 
 3. **Understand before coding.** Read the issue fully, including linked issues and
    any `ai/test-plans/` or `ai/rfcs/` references. Explore the relevant code. If the
@@ -58,7 +62,9 @@ Each iteration:
 4. **Implement.** Create the issue's worktree per `ai/GIT.md` (never work in the
    main checkout, never `checkout -b` in place): branch `<type>/<issue-number>-<slug>`
    from `origin/claude-code-staging` (never `main`), worktree at
-   `../AI/rfc/worktree/<branch>`, submodules initialized, identity set.
+   `/home/tyler/AI/rfc/worktree/<branch>`, submodules initialized, identity set,
+   lease taken (`git worktree lock`); unlock when the PR opens. Sign every
+   commit off (`commit -s`) so the trailer names your role.
    Smallest coherent change that fully resolves the issue. Match existing code style
    and architecture. Update docs touched by the change. Write or update tests for
    what you changed — test-design will design deeper plans, but your PR must not

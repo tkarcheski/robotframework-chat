@@ -12,9 +12,15 @@ enforce.
 
 ## Worktree layout
 
-- Worktrees live at `../AI/rfc/worktree/<branch>` relative to the repo root
-  (e.g. `/home/tyler/AI/github/AI/rfc/worktree/feat/123-slug`). Setup is the
-  `rfc-worktree` skill — use it, don't hand-roll.
+- Worktrees live at `/home/tyler/AI/rfc/worktree/<branch>`
+  (e.g. `/home/tyler/AI/rfc/worktree/fix/426-continue-on-model-failure`).
+  The `rfc-worktree` skill scaffolds setup (env copy, install, baseline
+  checks); where this contract and the skill disagree — branch naming,
+  identity, submodules — **this contract wins**. Role branches are named per
+  `ai/ROLES.md` (`<type>/<issue-number>-<slug>`), never the skill's random
+  `claude/<slug>-<rand5>` scheme, and never `worktree add -B` onto a branch
+  that might already exist — plain `worktree add` fails loudly instead of
+  resetting someone's work.
 - **One worktree per branch, never per role.** Git enforces that a branch is
   checked out in at most one worktree, so two agents can never silently
   diverge the same branch — the second `worktree add` simply fails.
@@ -26,16 +32,25 @@ enforce.
 
 A worktree belongs to a *branch*, and any role with business on that branch
 may work in it — the canonical case is test-design committing tests in the
-worktree where engineering built the PR. Rules when entering a worktree you
-didn't create:
+worktree where engineering built the PR. Sharing is **sequential, never
+concurrent**: one role mutates a worktree at a time — two processes editing
+the same working tree contend on the index and overwrite each other no matter
+what branch rules say. The lease makes that mechanical. Rules when entering a
+worktree you didn't create:
 
-1. `git status` must be clean. If it isn't, someone is mid-edit: stop, report,
+1. **Take the lease first:** `git worktree lock --reason "<role>: <task>" <path>`
+   before your first mutation; `git worktree unlock <path>` when done. Already
+   locked means in use — wait or coordinate via PR comment; never work through
+   someone else's lease. Creating roles lock at creation and unlock when they
+   hand the branch off (e.g. when the PR opens).
+2. `git status` must be clean. If it isn't, someone is mid-edit: stop, report,
    do not stash or reset another agent's work in progress.
-2. `git pull --ff-only` before acting; `git pull --ff-only` again before
+3. `git pull --ff-only` before acting; `git pull --ff-only` again before
    pushing. Fast-forward only — never rebase or force-push a shared branch.
-3. Never `reset --hard`, `checkout -- .`, or `clean` in a worktree you didn't
-   create.
-4. The role that created a worktree removes it (`git worktree remove`, never
+4. Never `reset --hard`, `checkout -- .`, or `clean` in a worktree you didn't
+   create — and never touch its `--worktree` config: that identity belongs to
+   the creating role (see Per-role identity).
+5. The role that created a worktree removes it (`git worktree remove`, never
    `rm -rf`) after its branch merges or is abandoned.
 
 ## Session start ritual (every role, every session)
@@ -44,18 +59,19 @@ didn't create:
 git fetch origin
 # create or enter your worktree (rfc-worktree skill), then inside it:
 git -C "$WT" submodule update --init        # worktrees do NOT inherit submodules
+# ONLY if you created this worktree — set its default identity:
 git -C "$WT" config extensions.worktreeConfig true
 git -C "$WT" config --worktree user.name  "rfc-<role>-agent"
 git -C "$WT" config --worktree user.email "<role>@agents.rfc"
 ```
 
-**The `--worktree` flag is mandatory.** Linked worktrees share one
-`.git/config`; a plain `git config user.name` re-identifies every agent and
-the human at once. Worktree-scoped config requires `extensions.worktreeConfig`
-to be enabled first (this one shared-scope write is allowed — it only enables
-the mechanism).
+**The `--worktree` flag is mandatory** when setting a default identity.
+Linked worktrees share one `.git/config`; a plain `git config user.name`
+re-identifies every agent and the human at once. Worktree-scoped config
+requires `extensions.worktreeConfig` enabled first (this one shared-scope
+write is allowed — it only enables the mechanism).
 
-## Per-role identity
+## Per-role identity & sign-offs
 
 | Role | user.name | user.email |
 |---|---|---|
@@ -64,10 +80,34 @@ the mechanism).
 | project-management | `rfc-project-management-agent` | `project-management@agents.rfc` |
 | design | `rfc-design-agent` | `design@agents.rfc` |
 
-Every commit is attributable to the role that made it. Anything *not* ending
-in `@agents.rfc` is a human, and humans outrank agents everywhere. (Future
-hardening: separate GitHub accounts and tokens per role; identity-by-config is
-v1.)
+**Worktree config is the creating role's default identity only.** Config is
+per-worktree, not per-process: if a sharing role rewrote it, the creator's
+next commit would be mis-attributed (and a mis-attributed commit is exactly
+what the ownership guard trusts). So:
+
+- **Creating role:** set the `--worktree` config once at creation; commit
+  normally with `-s`.
+- **Any other role committing in a shared worktree:** never edit the config;
+  carry your identity on the command itself:
+
+  ```bash
+  git -C "$WT" -c user.name="rfc-<role>-agent" -c user.email="<role>@agents.rfc" \
+      commit -s -m "..."
+  ```
+
+**Every agent commit is signed off** (`commit -s`), producing
+`Signed-off-by: rfc-<role>-agent <<role>@agents.rfc>` from the identity in
+effect — so the trailer always names the role that actually committed, even
+in shared worktrees, and `git log --format='%ae %(trailers:key=Signed-off-by)'`
+shows who said what at a glance. A commit whose author and sign-off disagree,
+or an agent commit with no sign-off, is a contract violation —
+project-management flags these in its systems sweep. GitHub comments carry the
+same attribution: every agent-posted issue/PR comment ends with a
+`— <role> role` signature line.
+
+Anything *not* ending in `@agents.rfc` is a human, and humans outrank agents
+everywhere. (Future hardening: separate GitHub accounts and tokens per role;
+identity-by-config is v1.)
 
 ## Submodules
 
