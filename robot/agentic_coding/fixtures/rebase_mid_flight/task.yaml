@@ -1,0 +1,5 @@
+# Live-runner input for the rebase_mid_flight scenario.
+# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
+scenario_id: rebase_mid_flight
+task: "Add a retry_limit setting to src/rfc/config.py with a pytest."
+base_branch: claude-code-staging
