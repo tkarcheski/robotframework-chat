@@ -7,6 +7,7 @@ import pytest
 from rfc.code_review_keywords import (
     CodeReviewKeywords,
     _extract_letter,
+    _extract_verdict,
 )
 
 
@@ -210,3 +211,90 @@ class TestIdentifySecurityVulnerability:
         assert "correct" in result
         assert "response" in result
         assert "expected" in result
+
+
+# ---------------------------------------------------------------------------
+# Classify Defect In Code (HF defect-detection benchmark)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractVerdict:
+    def test_yes_extracted(self) -> None:
+        assert _extract_verdict("YES — the length check is missing.") is True
+
+    def test_no_extracted(self) -> None:
+        assert _extract_verdict("NO\nThe function validates its input.") is False
+
+    def test_case_insensitive(self) -> None:
+        assert _extract_verdict("yes, there is an overflow.") is True
+        assert _extract_verdict("No.") is False
+
+    def test_only_first_line_searched(self) -> None:
+        assert _extract_verdict("Let me look closely.\nYES") is None
+
+    def test_prose_start_not_extracted(self) -> None:
+        # "Nothing jumps out..." must not parse as NO.
+        assert _extract_verdict("Nothing jumps out at me here.") is None
+        assert _extract_verdict("Yesterday's patch fixed this.") is None
+
+    def test_empty_response_returns_none(self) -> None:
+        assert _extract_verdict("") is None
+
+
+class TestClassifyDefectInCode:
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_correct_vulnerable_classification(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "YES — unchecked buffer copy."
+        result = kw.classify_defect_in_code("void f(char *s) { strcpy(buf, s); }", True)
+        assert result["verdict"] is True
+        assert result["correct"] is True
+        assert result["expected"] is True
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_correct_safe_classification(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "NO\nBounds are checked before the copy."
+        result = kw.classify_defect_in_code("int g(void) { return 0; }", False)
+        assert result["verdict"] is False
+        assert result["correct"] is True
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_wrong_classification_marked_incorrect(
+        self, mock_create: MagicMock
+    ) -> None:
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "NO, this looks fine."
+        result = kw.classify_defect_in_code("void f() {}", True)
+        assert result["verdict"] is False
+        assert result["correct"] is False
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_non_compliant_response_is_incorrect(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "There might be an issue with the loop."
+        result = kw.classify_defect_in_code("void f() {}", False)
+        assert result["verdict"] is None
+        assert result["correct"] is False
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_string_expected_value_coerced(self, mock_create: MagicMock) -> None:
+        # Robot variables may arrive as strings — "True"/"False" must coerce.
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "YES"
+        result = kw.classify_defect_in_code("void f() {}", "True")
+        assert result["expected"] is True
+        assert result["correct"] is True
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_invalid_expected_value_raises(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        with pytest.raises(ValueError, match="vulnerable must be a boolean"):
+            kw.classify_defect_in_code("void f() {}", "maybe")
+
+    @patch("rfc.code_review_keywords.create_provider")
+    def test_result_keys_present(self, mock_create: MagicMock) -> None:
+        kw = CodeReviewKeywords()
+        kw.client.generate.return_value = "YES"
+        result = kw.classify_defect_in_code("void f() {}", True)
+        assert set(result) >= {"verdict", "correct", "response", "expected"}
