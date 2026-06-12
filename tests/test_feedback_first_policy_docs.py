@@ -29,9 +29,7 @@ class TestEngineeringPrompt:
         text = _read(".claude/agents/engineering.md")
         assert "Service your open PRs FIRST" in text
         # step 0 must come before the queue pull
-        assert text.index("Service your open PRs FIRST") < text.index(
-            "Pull the queue"
-        )
+        assert text.index("Service your open PRs FIRST") < text.index("Pull the queue")
         assert "TEST-PLAN: FAIL" in text
         assert "gh pr checks" in text
 

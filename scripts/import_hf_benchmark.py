@@ -88,9 +88,7 @@ def fetch_rows(
     return rows[:max_rows]
 
 
-def convert_ifeval_rows(
-    rows: List[Dict[str, Any]], limit: int
-) -> List[Dict[str, Any]]:
+def convert_ifeval_rows(rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
     """Convert raw google/IFEval rows to committed test items.
 
     Keeps only items whose instructions are ALL gradable by
