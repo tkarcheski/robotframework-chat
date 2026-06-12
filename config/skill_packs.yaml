@@ -9,3 +9,9 @@ packs:
     glob: "skills/*/*/SKILL.md"
     upstream: https://github.com/mattpocock/skills
     fork: git@github.com:tkarcheski/mattpocock-skills.git
+  - name: knowledge
+    path: knowledge
+    prefix: ""
+    glob: "skills/*/SKILL.md"
+    upstream: https://github.com/tkarcheski/knowledge
+    fork: git@github.com:tkarcheski/knowledge.git   # first-party, not a fork
