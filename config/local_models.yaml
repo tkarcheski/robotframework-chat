@@ -243,6 +243,30 @@ test_suites:
     timeout_seconds: 300
 
 # ---------------------------------------------------------------------------
+# External OpenAI-compatible providers (issue #507)
+#
+# Each entry is a remote API served through the existing OpenAIClient
+# (LLM_PROVIDER=openai). A provider whose api_key_env variable is unset is
+# skipped with a log line (skip-and-log), so this section is inert until
+# credentials exist. Free-pool model ids are discovered at run time from
+# {base_url}/models (ids ending in ":free") — never hardcoded, the pool
+# churns. Results are watermarked as "<name>/<model-id>".
+# ---------------------------------------------------------------------------
+providers:
+  - name: "openrouter"
+    base_url: "https://openrouter.ai/api/v1"
+    api_key_env: "OPENROUTER_API_KEY"
+    # Static model ids to always run (paid or free); raw OpenRouter ids.
+    models: []
+    # Discover the ":free" pool from /models at run time.
+    discover_free_pool: true
+    # Free-pool budget after the one-time $10 credit unlock.
+    max_requests_per_day: 1000
+    requests_per_minute: 20
+    # ~LLM calls one (model, suite) run makes; used for budget/pacing math.
+    requests_per_suite_estimate: 15
+
+# ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
 execution:

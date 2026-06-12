@@ -6,6 +6,7 @@ import copy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 
 from rfc.host_scheduler import HostConfig, HostSpec, SchedulerDefaults
@@ -1071,3 +1072,363 @@ class TestVerifyDbResults:
         """DB connection failure returns False (hard failure)."""
         mock_db_cls.side_effect = Exception("Connection refused")
         assert verify_db_results(_SAMPLE_RESULTS) is False
+
+
+# ---------------------------------------------------------------------------
+# External providers (issue #507)
+# ---------------------------------------------------------------------------
+
+from rfc.providers import ProviderConfig  # noqa: E402
+
+from scripts.run_local_models import (  # noqa: E402
+    _build_provider_robot_command,
+    run_provider_runs,
+    run_provider_suites,
+)
+
+
+def _provider(**overrides: object) -> ProviderConfig:
+    kwargs: dict[str, object] = dict(
+        name="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+    )
+    kwargs.update(overrides)
+    return ProviderConfig(**kwargs)  # type: ignore[arg-type]
+
+
+def _provider_config() -> dict:
+    return {
+        "test_suites": [
+            {"name": "math", "path": "robot/math/", "timeout_seconds": 300},
+            {"name": "safety", "path": "robot/safety/", "timeout_seconds": 300},
+        ],
+        "execution": {
+            "output_dir": "results/local/{node}/{model}",
+            "extra_args": [],
+            "listeners": ["rfc.db_listener.DbListener"],
+            "continue_on_failure": True,
+        },
+        "providers": [
+            {
+                "name": "openrouter",
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key_env": "OPENROUTER_API_KEY",
+                "discover_free_pool": True,
+            }
+        ],
+    }
+
+
+class TestBuildProviderRobotCommand:
+    def test_basic_command(self) -> None:
+        config = _provider_config()
+        cmd = _build_provider_robot_command(
+            config=config,
+            suite=config["test_suites"][0],
+            provider=_provider(),
+            model="meta-llama/llama-3.3-70b-instruct:free",
+        )
+        assert cmd[:3] == ["uv", "run", "robot"]
+        assert "rfc.db_listener.DbListener" in cmd
+        # Raw model id goes to the Robot variable (the API needs it verbatim)
+        assert any(
+            "DEFAULT_MODEL:meta-llama/llama-3.3-70b-instruct:free" in a for a in cmd
+        )
+        # No Ollama endpoint override for provider runs
+        assert not any("OLLAMA_ENDPOINT" in a for a in cmd)
+        assert "robot/math/" in cmd
+
+    def test_output_dir_uses_provider_as_node(self) -> None:
+        config = _provider_config()
+        cmd = _build_provider_robot_command(
+            config=config,
+            suite=config["test_suites"][0],
+            provider=_provider(),
+            model="qwen/qwen3-32b:free",
+        )
+        d_idx = cmd.index("-d")
+        assert cmd[d_idx + 1] == "results/local/openrouter/qwen_qwen3-32b_free"
+
+
+class TestRunProviderSuites:
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_runs_all_suites_for_all_models(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free", "c/d:free"],
+            sleep_fn=lambda _s: None,
+        )
+        assert len(results) == 4  # 2 models x 2 suites
+        assert mock_run.call_count == 4
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_subprocess_env_selects_openai_provider(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["meta-llama/llama-3.3-70b-instruct:free"],
+            sleep_fn=lambda _s: None,
+        )
+        env = mock_run.call_args.kwargs.get("env")
+        assert env is not None
+        assert env["LLM_PROVIDER"] == "openai"
+        assert env["OPENAI_BASE_URL"] == "https://openrouter.ai/api/v1"
+        assert env["OPENAI_API_KEY"] == "sk-or-abc"
+        # Raw id for the API; prefixed watermark for attribution (#507)
+        assert env["DEFAULT_MODEL"] == "meta-llama/llama-3.3-70b-instruct:free"
+        assert (
+            env["RFC_MODEL_NAME"] == "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+        )
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_results_attributed_with_provider_prefix(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free"],
+            sleep_fn=lambda _s: None,
+        )
+        assert all(r.node == "openrouter" for r in results)
+        assert all(r.model == "openrouter/a/b:free" for r in results)
+        assert {r.suite for r in results} == {"math", "safety"}
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_rpm_pacing_sleeps_between_jobs(self, mock_run: MagicMock) -> None:
+        """Consecutive jobs are paced to honor requests_per_minute."""
+        mock_run.return_value = MagicMock(returncode=0)
+        sleeps: list[float] = []
+        provider = _provider(requests_per_minute=20, requests_per_suite_estimate=20)
+        run_provider_suites(
+            _provider_config(),
+            provider,
+            "sk-or-abc",
+            ["a/b:free"],
+            sleep_fn=sleeps.append,
+        )
+        # 2 suites -> one pacing gap; ~20 requests at 20 RPM needs ~60s budget
+        assert len(sleeps) == 1
+        assert 0 < sleeps[0] <= 60.0
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_dry_run_prints_commands_without_executing(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free"],
+            dry_run=True,
+            sleep_fn=lambda _s: None,
+        )
+        mock_run.assert_not_called()
+        assert len(results) == 2
+        assert "[DRY-RUN]" in capsys.readouterr().out
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_dry_run_does_not_print_api_key(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-SECRET",
+            ["a/b:free"],
+            dry_run=True,
+            sleep_fn=lambda _s: None,
+        )
+        assert "sk-or-SECRET" not in capsys.readouterr().out
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_failed_job_does_not_abort_provider_sweep(
+        self, mock_run: MagicMock
+    ) -> None:
+        """A 429-exhausted (or otherwise failed) suite run is skip-and-log:
+        the remaining suites and models must still run (#507)."""
+        mock_run.side_effect = [
+            MagicMock(returncode=1),  # first job fails (e.g. exhausted 429)
+            MagicMock(returncode=0),
+            MagicMock(returncode=0),
+            MagicMock(returncode=0),
+        ]
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free", "c/d:free"],
+            sleep_fn=lambda _s: None,
+        )
+        assert mock_run.call_count == 4  # 2 models x 2 suites, no abort
+        assert [r.returncode for r in results] == [1, 0, 0, 0]
+        assert results[0].model == "openrouter/a/b:free"
+
+
+class TestRunProviderRuns:
+    def test_no_providers_configured_is_noop(self) -> None:
+        config = _provider_config()
+        del config["providers"]
+        assert run_provider_runs(config) == []
+
+    def test_key_absent_skips_provider_with_log(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import os as _os
+
+        env = {k: v for k, v in _os.environ.items() if k != "OPENROUTER_API_KEY"}
+        with patch.dict(_os.environ, env, clear=True):
+            results = run_provider_runs(_provider_config())
+        assert results == []
+        out = capsys.readouterr().out
+        assert "OPENROUTER_API_KEY" in out
+        assert "skipping" in out.lower()
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch(
+        "scripts.run_local_models.discover_free_models",
+        return_value=["a/b:free", "c/d:free"],
+    )
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_discovers_free_pool_and_runs(
+        self, mock_discover: MagicMock, mock_suites: MagicMock
+    ) -> None:
+        run_provider_runs(_provider_config())
+        mock_discover.assert_called_once()
+        mock_suites.assert_called_once()
+        models = mock_suites.call_args.args[3]
+        assert models == ["a/b:free", "c/d:free"]
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch(
+        "scripts.run_local_models.discover_free_models",
+        side_effect=Exception("api down"),
+    )
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_discovery_failure_skips_and_logs(
+        self,
+        mock_discover: MagicMock,
+        mock_suites: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        results = run_provider_runs(_provider_config())
+        assert results == []
+        mock_suites.assert_not_called()
+        out = capsys.readouterr().out
+        assert "skipping" in out.lower()
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("scripts.run_local_models.discover_free_models")
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_budget_caps_scheduled_models(
+        self, mock_discover: MagicMock, mock_suites: MagicMock
+    ) -> None:
+        # 3 models x 2 suites x 100 req/suite = 600; budget 400 -> 2 models
+        mock_discover.return_value = ["a:free", "b:free", "c:free"]
+        config = _provider_config()
+        config["providers"][0]["max_requests_per_day"] = 400
+        config["providers"][0]["requests_per_suite_estimate"] = 100
+        run_provider_runs(config)
+        models = mock_suites.call_args.args[3]
+        assert models == ["a:free", "b:free"]
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("scripts.run_local_models.discover_free_models")
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_static_models_combined_with_free_pool_deduped(
+        self, mock_discover: MagicMock, mock_suites: MagicMock
+    ) -> None:
+        mock_discover.return_value = ["a:free", "b:free"]
+        config = _provider_config()
+        config["providers"][0]["models"] = ["a:free", "x/y"]
+        run_provider_runs(config)
+        models = mock_suites.call_args.args[3]
+        assert models == ["a:free", "x/y", "b:free"]
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("rfc.providers.requests.get")
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_models_response_with_null_data_skips_and_logs(
+        self,
+        mock_get: MagicMock,
+        mock_suites: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A /models body of {"data": null} must skip-and-log, not crash (#507).
+
+        discover_free_models raises TypeError here (outside its documented
+        RequestException contract); the runner's broad discovery guard must
+        still contain it.
+        """
+        mock_get.return_value = MagicMock(
+            status_code=200, json=MagicMock(return_value={"data": None})
+        )
+        results = run_provider_runs(_provider_config())
+        assert results == []
+        mock_suites.assert_not_called()
+        out = capsys.readouterr().out
+        assert "free-pool discovery failed" in out
+        assert "skip" in out.lower()
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("scripts.run_local_models.discover_free_models", return_value=[])
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_empty_free_pool_and_no_static_models_skips_provider(
+        self,
+        mock_discover: MagicMock,
+        mock_suites: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Discovery succeeds but the pool is empty: skip with a log line."""
+        results = run_provider_runs(_provider_config())
+        assert results == []
+        mock_suites.assert_not_called()
+        assert "no models to run" in capsys.readouterr().out
+
+
+class TestIterationLoopRunsProviders:
+    @patch("scripts.run_local_models.run_provider_runs")
+    @patch("scripts.run_local_models.discover_local_models", return_value=[])
+    def test_providers_run_even_with_no_local_models(
+        self, mock_discover: MagicMock, mock_providers: MagicMock
+    ) -> None:
+        """Provider runs must not depend on local Ollama discovery (#507)."""
+        mock_providers.return_value = [
+            RunResult(
+                node="openrouter",
+                model="openrouter/a:free",
+                suite="math",
+                returncode=0,
+                output_dir="results/local/openrouter/a_free",
+            )
+        ]
+        config = _provider_config()
+        with patch("scripts.run_local_models.verify_db_results", return_value=True):
+            had_failure = run_iteration_loop(config, iterations=1, audit=False)
+        mock_providers.assert_called_once()
+        assert had_failure is False
+
+    @patch("scripts.run_local_models.run_provider_runs")
+    @patch("scripts.run_local_models.discover_local_models", return_value=[])
+    def test_provider_failure_marks_iteration_failed(
+        self, mock_discover: MagicMock, mock_providers: MagicMock
+    ) -> None:
+        mock_providers.return_value = [
+            RunResult(
+                node="openrouter",
+                model="openrouter/a:free",
+                suite="math",
+                returncode=1,
+                output_dir="",
+            )
+        ]
+        config = _provider_config()
+        with patch("scripts.run_local_models.verify_db_results", return_value=True):
+            had_failure = run_iteration_loop(config, iterations=1, audit=False)
+        assert had_failure is True

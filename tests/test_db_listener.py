@@ -379,6 +379,36 @@ class TestDbListenerEndSuiteArchival:
         assert runs[0]["model_name"] == "llama3"
 
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_rfc_model_name_env_overrides_robot_variable(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        """RFC_MODEL_NAME watermark override beats the Robot variable (#507).
+
+        External-provider runs send the raw model id to the API via
+        DEFAULT_MODEL but must be attributed as ``<provider>/<model-id>``.
+        """
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        env = {
+            "DEFAULT_MODEL": "meta-llama/llama-3.3-70b-instruct:free",
+            "RFC_MODEL_NAME": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+        }
+        with patch.dict(os.environ, env):
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.end_test(_mock_test_data("T1"), _mock_test_result())
+            with patch("rfc.db_listener.BuiltIn") as mock_builtin_cls:
+                mock_builtin_cls.return_value.get_variable_value.return_value = (
+                    "meta-llama/llama-3.3-70b-instruct:free"
+                )
+                listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result())
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert (
+            runs[0]["model_name"] == "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+        )
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_database_error_does_not_raise(self, _mock_ci: MagicMock) -> None:
         listener = DbListener()
         mock_db = MagicMock()

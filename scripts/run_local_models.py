@@ -42,6 +42,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -66,6 +67,13 @@ from rfc.host_scheduler import (  # noqa: E402
     Job,
     load_host_config,
     run_jobs,
+)
+from rfc.providers import (  # noqa: E402
+    ProviderConfig,
+    discover_free_models,
+    load_providers,
+    resolve_api_key,
+    select_models_within_budget,
 )
 from scripts.discover_ollama import (  # noqa: E402
     _probe_port,
@@ -524,6 +532,225 @@ def run_model_suites(
 
 
 # ---------------------------------------------------------------------------
+# External providers (issue #507)
+# ---------------------------------------------------------------------------
+
+
+def _build_provider_robot_command(
+    *,
+    config: dict[str, Any],
+    suite: dict[str, Any],
+    provider: ProviderConfig,
+    model: str,
+) -> list[str]:
+    """Build a ``uv run robot`` command for one (provider, model, suite) run.
+
+    Unlike :func:`_build_robot_command` there is no ``OLLAMA_ENDPOINT``
+    override — provider runs select the OpenAI-compatible backend through
+    subprocess env vars (``LLM_PROVIDER=openai`` etc., see
+    :func:`run_provider_suites`). ``DEFAULT_MODEL`` carries the raw model id
+    because that is what the API expects verbatim.
+    """
+    execution = config.get("execution", {})
+    output_template = execution.get("output_dir", "results/local/{node}/{model}")
+    output_dir = output_template.format(
+        node=_sanitize_name(provider.name),
+        model=_sanitize_name(model),
+    )
+
+    cmd: list[str] = ["uv", "run", "robot", "-d", output_dir]
+    for listener in execution.get("listeners", []):
+        cmd.extend(["--listener", listener])
+    cmd.extend(["--variable", f"DEFAULT_MODEL:{model}"])
+    cmd.extend(execution.get("extra_args", []))
+    cmd.append(suite["path"])
+    return cmd
+
+
+def run_provider_suites(
+    config: dict[str, Any],
+    provider: ProviderConfig,
+    api_key: str,
+    models: list[str],
+    *,
+    dry_run: bool = False,
+    sleep_fn: Any = time.sleep,
+) -> list[RunResult]:
+    """Run every configured suite against each provider model, sequentially.
+
+    Jobs are model-major and strictly sequential — remote providers have no
+    VRAM locality to exploit, and sequencing makes the rate budget
+    enforceable: consecutive job starts are spaced at least
+    ``requests_per_suite_estimate / requests_per_minute`` minutes apart so a
+    suite's burst of LLM calls stays within the provider's RPM limit
+    (OpenRouter free pool: 20 RPM).
+
+    Args:
+        config: Parsed local_models.yaml.
+        provider: The provider to run against.
+        api_key: Resolved API key (callers skip the provider when absent).
+        models: Raw model ids to run (already budget-filtered).
+        dry_run: Print commands without executing.
+        sleep_fn: Injectable sleep for the RPM pacing (tests).
+
+    Returns:
+        List of :class:`RunResult`, with ``model`` recorded as
+        ``<provider>/<model-id>`` for attribution.
+    """
+    execution = config.get("execution", {})
+    suites = config.get("test_suites", [])
+    tag = f"[provider:{provider.name}]"
+
+    pacing_gap = 0.0
+    if provider.requests_per_minute > 0:
+        pacing_gap = provider.requests_per_suite_estimate * (
+            60.0 / provider.requests_per_minute
+        )
+
+    results: list[RunResult] = []
+    prev_start: float | None = None
+    for model in models:
+        watermark = f"{provider.name}/{model}"
+        for suite in suites:
+            cmd = _build_provider_robot_command(
+                config=config, suite=suite, provider=provider, model=model
+            )
+            output_dir = execution.get(
+                "output_dir", "results/local/{node}/{model}"
+            ).format(
+                node=_sanitize_name(provider.name),
+                model=_sanitize_name(model),
+            )
+
+            if dry_run:
+                print(f"[DRY-RUN] {' '.join(cmd)}")
+                results.append(
+                    RunResult(
+                        node=provider.name,
+                        model=watermark,
+                        suite=suite["name"],
+                        returncode=0,
+                        output_dir=output_dir,
+                    )
+                )
+                continue
+
+            if prev_start is not None and pacing_gap > 0:
+                remaining = pacing_gap - (time.monotonic() - prev_start)
+                if remaining > 0:
+                    print(
+                        f"  {tag} pacing for rate budget "
+                        f"({provider.requests_per_minute} RPM): "
+                        f"sleeping {remaining:.0f}s"
+                    )
+                    sleep_fn(remaining)
+            prev_start = time.monotonic()
+
+            print(
+                f"\n{'=' * 70}\n"
+                f"  Provider: {provider.name}\n"
+                f"  Model:    {watermark}\n"
+                f"  Suite:    {suite['name']}\n"
+                f"{'=' * 70}\n"
+            )
+            print(f"  > {' '.join(cmd)}\n")
+
+            env = {
+                **os.environ,
+                "LLM_PROVIDER": "openai",
+                "OPENAI_BASE_URL": provider.base_url,
+                "OPENAI_API_KEY": api_key,
+                # Raw id for the API; prefixed watermark for attribution.
+                "DEFAULT_MODEL": model,
+                "RFC_MODEL_NAME": watermark,
+            }
+            proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
+            results.append(
+                RunResult(
+                    node=provider.name,
+                    model=watermark,
+                    suite=suite["name"],
+                    returncode=proc.returncode,
+                    output_dir=output_dir,
+                )
+            )
+
+    return results
+
+
+def run_provider_runs(
+    config: dict[str, Any],
+    *,
+    dry_run: bool = False,
+) -> list[RunResult]:
+    """Run all configured external providers (issue #507).
+
+    Per provider: resolve the API key (absent → skip-and-log, so the whole
+    feature is inert without credentials), optionally discover the free-pool
+    model list, apply the daily request budget, and run the suites.
+
+    Returns:
+        Combined :class:`RunResult` list across providers (empty when no
+        provider is configured or runnable).
+    """
+    providers = load_providers(config)
+    if not providers:
+        return []
+
+    suites = config.get("test_suites", [])
+    results: list[RunResult] = []
+    for provider in providers:
+        tag = f"[provider:{provider.name}]"
+
+        api_key = resolve_api_key(provider)
+        if api_key is None:
+            print(
+                f"{tag} {provider.api_key_env} not set — "
+                f"skipping provider (skip-and-log)."
+            )
+            continue
+
+        models = list(provider.models)
+        if provider.discover_free_pool:
+            try:
+                free = discover_free_models(provider.base_url, api_key)
+            except Exception as e:  # noqa: BLE001 - discovery is optional
+                print(f"{tag} free-pool discovery failed: {e} (skip-and-log)")
+                free = []
+            seen = set(models)
+            models.extend(m for m in free if m not in seen)
+
+        if not models:
+            print(f"{tag} no models to run — skipping provider.")
+            continue
+
+        kept = select_models_within_budget(
+            models,
+            len(suites),
+            max_requests_per_day=provider.max_requests_per_day,
+            requests_per_suite_estimate=provider.requests_per_suite_estimate,
+        )
+        if len(kept) < len(models):
+            print(
+                f"{tag} daily budget ({provider.max_requests_per_day} requests): "
+                f"running {len(kept)} of {len(models)} model(s)."
+            )
+        if not kept:
+            print(f"{tag} budget allows no runs — skipping provider.")
+            continue
+
+        print(
+            f"{tag} running {len(suites)} suite(s) x {len(kept)} model(s) "
+            f"via {provider.base_url}"
+        )
+        results.extend(
+            run_provider_suites(config, provider, api_key, kept, dry_run=dry_run)
+        )
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
@@ -806,25 +1033,31 @@ def run_iteration_loop(
             total_models = len(distinct_models)
             total_runs = total_models * len(suites)
 
+            results: list[RunResult] = []
             if total_runs == 0:
+                print("No local models discovered.")
+            else:
+                print(
+                    f"Running {len(suites)} suite(s) x {total_models} model(s) = "
+                    f"{total_runs} total run(s) "
+                    f"(global_max_parallel={global_max_parallel})\n"
+                )
+                results = run_model_suites(
+                    config,
+                    nodes_with_models,
+                    dry_run=dry_run,
+                    global_max_parallel=global_max_parallel,
+                )
+
+            # External providers run regardless of local discovery (#507):
+            # a host with zero Ollama nodes can still sweep OpenRouter.
+            results = results + run_provider_runs(config, dry_run=dry_run)
+
+            if not results:
                 print("No models discovered — nothing to run.")
-                if iterations > 0:
-                    continue
                 # For infinite/stop-on-error, keep trying
                 continue
 
-            print(
-                f"Running {len(suites)} suite(s) x {total_models} model(s) = "
-                f"{total_runs} total run(s) "
-                f"(global_max_parallel={global_max_parallel})\n"
-            )
-
-            results = run_model_suites(
-                config,
-                nodes_with_models,
-                dry_run=dry_run,
-                global_max_parallel=global_max_parallel,
-            )
             _print_summary(results)
 
             # Verify data landed in the database.
