@@ -1544,14 +1544,14 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
             p.plugin_name,
             p.semver,
             LAG(p.semver) OVER (
-                PARTITION BY p.plugin_name ORDER BY p.recorded_at
+                PARTITION BY h.tool_name, p.plugin_name ORDER BY p.recorded_at
             ) AS prev_semver,
             CASE
                 WHEN LAG(p.semver) OVER (
-                    PARTITION BY p.plugin_name ORDER BY p.recorded_at
+                    PARTITION BY h.tool_name, p.plugin_name ORDER BY p.recorded_at
                 ) IS NOT NULL
                  AND LAG(p.semver) OVER (
-                    PARTITION BY p.plugin_name ORDER BY p.recorded_at
+                    PARTITION BY h.tool_name, p.plugin_name ORDER BY p.recorded_at
                 ) <> p.semver
                 THEN 1 ELSE 0
             END AS version_changed
