@@ -106,7 +106,9 @@ class TestPlanAndSync:
         assert "mp-tdd" in links
         assert "mp-qa" not in links  # ignored
         # targets are relative paths from .claude/skills/ into the pack
-        assert links["mp-tdd"] == Path("../../vendor/skill-packs/mattpocock/skills/engineering/tdd")
+        assert links["mp-tdd"] == Path(
+            "../../vendor/skill-packs/mattpocock/skills/engineering/tdd"
+        )
 
     def test_sync_creates_and_prunes_symlinks(self, repo: Path) -> None:
         pack = load_manifest(repo / "config" / "skill_packs.yaml")[0]

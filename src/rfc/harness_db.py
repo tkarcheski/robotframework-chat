@@ -294,9 +294,10 @@ class _HarnessBackend(abc.ABC):
 class _SQLiteHarnessBackend(_HarnessBackend):
     """SQLite backend using the stdlib sqlite3 module."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, create_missing_dir: bool = True) -> None:
         self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+        if create_missing_dir:
+            os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         with sqlite3.connect(db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(_SQLITE_SCHEMA)
@@ -1334,7 +1335,11 @@ class HarnessDatabase:
                 self._backend = _SQLAlchemyHarnessBackend(database_url)
             elif database_url.startswith("sqlite:///"):
                 sqlite_path = database_url.replace("sqlite:///", "")
-                self._backend = _SQLiteHarnessBackend(sqlite_path)
+                # Match SQLAlchemy semantics: a URL pointing into a missing
+                # directory is unreachable, not an invitation to mkdir (#439).
+                self._backend = _SQLiteHarnessBackend(
+                    sqlite_path, create_missing_dir=False
+                )
             else:
                 raise RuntimeError(
                     "SQLAlchemy is required for non-sqlite database URLs. "

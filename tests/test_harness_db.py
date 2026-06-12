@@ -33,6 +33,31 @@ def harness_db(request, tmp_path):
     return HarnessDatabase(database_url=f"sqlite:///{db_file}")
 
 
+class TestMissingDirectory:
+    """sqlite3 fallback must not invent missing DB directories (#439).
+
+    The SQLAlchemy backend fails when the parent directory of a
+    sqlite:/// URL does not exist; the stdlib fallback silently created
+    it, so `rfc harness start` never hit its skip-and-log path in
+    environments without sqlalchemy.
+    """
+
+    def test_sqlite_url_fallback_fails_on_missing_dir(self, tmp_path, monkeypatch):
+        import rfc.harness_db as harness_db_module
+
+        monkeypatch.setattr(harness_db_module, "HAS_SQLALCHEMY", False)
+        missing = tmp_path / "no" / "such" / "dir"
+        with pytest.raises(sqlite3.OperationalError):
+            HarnessDatabase(database_url=f"sqlite:///{missing / 'x.db'}")
+        assert not missing.exists()
+
+    def test_explicit_db_path_still_creates_dir(self, tmp_path):
+        # Legacy fast path keeps its convenience behavior.
+        db_file = tmp_path / "made" / "for" / "you" / "harness.db"
+        HarnessDatabase(db_path=str(db_file))
+        assert db_file.exists()
+
+
 class TestSchema:
     def test_init_creates_tables(self, tmp_path):
         db_file = tmp_path / "harness.db"
