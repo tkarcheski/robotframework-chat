@@ -26,6 +26,7 @@ from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 from . import __version__
 from .base_listener import BaseListener
 from .git_metadata import collect_ci_metadata
+from .harness_cli import active_session_id
 from .host_info import collect_host_info
 from .metrics import (
     extract_llm_metrics,
@@ -51,6 +52,19 @@ from .test_database import (
     TestRunArtifact,
     build_result_artifacts,
 )
+
+
+def resolve_session_id(robot_variable: Optional[str]) -> str:
+    """Resolve the session_id for the persisted TestRun (#352).
+
+    Precedence: ``${SESSION_ID}`` Robot variable (the Makefile passes the
+    sidecar-derived value), then the ``SESSION_ID`` environment variable,
+    then the harness sidecar directly — so runs launched outside make
+    still join the active ``rfc harness start`` session. Returns '' when
+    no session is identifiable.
+    """
+    return robot_variable or os.getenv("SESSION_ID", "") or active_session_id()
+
 
 # Backward-compatible aliases (these names are imported by tests).
 _nvl = nvl
@@ -267,7 +281,7 @@ class DbListener(BaseListener):
             git_branch=self._ci_info.get("Branch", ""),
             hostname=hostname,
             rfc_version=__version__,
-            session_id=session_id_var or "",
+            session_id=resolve_session_id(session_id_var),
             model_harness=model_harness_var or "",
         )
 

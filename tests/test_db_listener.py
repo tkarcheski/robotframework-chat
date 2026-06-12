@@ -20,6 +20,7 @@ from rfc.db_listener import (
     _resolve_output_dir,
     _resolve_output_file,
     _safe_int,
+    resolve_session_id,
 )
 
 
@@ -62,6 +63,29 @@ def _mock_message(text: str) -> MagicMock:
     msg = MagicMock()
     msg.message = text
     return msg
+
+
+class TestResolveSessionId:
+    """test_runs.session_id falls back env -> sidecar so harness sessions
+    join even when the ${SESSION_ID} Robot variable is absent (#352)."""
+
+    def test_robot_variable_wins(self, monkeypatch):
+        monkeypatch.setenv("SESSION_ID", "from-env")
+        assert resolve_session_id("from-var") == "from-var"
+
+    def test_env_fallback(self, monkeypatch):
+        monkeypatch.setenv("SESSION_ID", "from-env")
+        assert resolve_session_id(None) == "from-env"
+
+    def test_sidecar_fallback(self, monkeypatch):
+        monkeypatch.delenv("SESSION_ID", raising=False)
+        monkeypatch.setattr("rfc.db_listener.active_session_id", lambda: "from-sidecar")
+        assert resolve_session_id(None) == "from-sidecar"
+
+    def test_empty_when_nothing_available(self, monkeypatch):
+        monkeypatch.delenv("SESSION_ID", raising=False)
+        monkeypatch.setattr("rfc.db_listener.active_session_id", lambda: "")
+        assert resolve_session_id(None) == ""
 
 
 class TestDbListenerInit:
