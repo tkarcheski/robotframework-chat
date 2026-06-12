@@ -41,6 +41,11 @@ DATA_CACHE_CONFIG = {
     "CACHE_KEY_PREFIX": "superset_data_",
 }
 
+# flask-limiter rate-limit state — in-memory by default, which resets on
+# restart and isn't shared across workers (issue #414). DB 2 keeps it
+# apart from the caches on DB 0.
+RATELIMIT_STORAGE_URI = "redis://redis:6379/2"
+
 # Feature flags
 FEATURE_FLAGS = {
     "ENABLE_TEMPLATE_PROCESSING": True,

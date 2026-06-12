@@ -6,6 +6,7 @@ reference docs live under `ai/`.
 
 - Read `ai/agents.md` for architecture, code style, and the agent contract.
 - Read `ai/testing.md` for grading tiers and test rules.
+- Read `ai/ROLES.md` for the four-role agent system (see § Role system).
 
 ---
 
@@ -100,7 +101,8 @@ If something looks wrong, fix it or ask (fix now / leave / split).
 Multiple agents may work on this repo simultaneously, so:
 
 - **One branch per session:** `claude/<description>-<random5>`, created at
-  session start. All work for the session goes on it.
+  session start. All work for the session goes on it. (Role-loop agents use
+  `<type>/<issue-number>-<slug>` instead — see `ai/ROLES.md`.)
 - **Rebase before pushing:**
   ```bash
   git fetch origin claude-code-staging
@@ -131,6 +133,31 @@ Multiple agents may work on this repo simultaneously, so:
   metric) with a clear log message and continue, rather than aborting the whole
   run. Hard-fail only when the work cannot meaningfully proceed (e.g., primary
   DB URL is unset). Always surface a final summary of what was skipped and why.
+
+---
+
+## Role system
+
+This repo runs a four-role agent system defined in **`ai/ROLES.md`** — read it
+before acting as a role. Role definitions live in `.claude/agents/`:
+
+- `engineering` — loop: `status:ready` issues → pull requests
+- `test-design` — loop: PRs → test plans → runs → verdicts + issues
+- `project-management` — loop: triage → prioritize → quality review → monitoring
+- `design` — open-ended: full-system awareness, RFCs, system-wide improvements
+
+Start a role session with `claude --agent <role>` (or `@<role>` in-session).
+Role artifacts: test plans live in `ai/test-plans/`, RFCs in `ai/rfcs/`. The
+label taxonomy and inter-role contract live in `ai/ROLES.md`; if it and a role
+prompt conflict, `ai/ROLES.md` wins.
+
+---
+
+## Monitoring & dashboards
+
+- CI: GitHub Actions — `gh run list` / `gh pr checks <number>`.
+- Test results are archived to SQL and visualized in Apache Superset dashboards
+  (see `ai/agents.md`).
 
 ---
 
