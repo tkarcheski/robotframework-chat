@@ -252,6 +252,11 @@ test_suites:
     path: "robot/harness"
     description: "End-to-end tests for the rfc harness start|status|end session-bracketing CLI: sidecar lifecycle, DB row bracketing, cross-process attachment, and force-overwrite regression"
 
+  harness-listener:
+    label: "Agentic Harness Listener"
+    path: "robot/harness"
+    description: "End-to-end integration tests for the AgenticHarnessListener: a Robot run with the listener attached persists agentic_metrics rows per test case keyed to the harness session, with skip-and-log tolerance for DB-down and no-session runs"
+
   context-window:
     label: "Context Window Stress"
     path: "robot/context_window/tests"
