@@ -134,6 +134,7 @@ see the `audit-robot-reports` skill for the robotmetrics/LFS quirks),
 | `monitoring/logs` | project-management |
 | `.claude/skills/elons-algorithm` | design |
 | `vendor/skill-packs/*` (all external skill packs, see #447) | design |
+| `knowledge` (the tiered brain, see #454) | design |
 
 External resources follow the **fork-first policy**: never submodule an
 upstream you don't control — fork it under `tkarcheski/*` and submodule the

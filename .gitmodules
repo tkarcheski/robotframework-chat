@@ -10,3 +10,6 @@
 [submodule "vendor/skill-packs/mattpocock"]
 	path = vendor/skill-packs/mattpocock
 	url = git@github.com:tkarcheski/mattpocock-skills.git
+[submodule "knowledge"]
+	path = knowledge
+	url = git@github.com:tkarcheski/knowledge.git
