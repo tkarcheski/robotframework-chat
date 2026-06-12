@@ -28,6 +28,10 @@ from rfc.harness_snapshot import snapshot_plugins, snapshot_skills
 SIDECAR_NAME = "rfc-harness-session.json"
 TOOLS = ("claude-code", "codex", "opencode")
 
+# Tool name (our taxonomy) -> executable probed for --version. claude-code
+# installs the `claude` binary (https://docs.claude.com/en/docs/claude-code/cli-reference).
+_TOOL_EXECUTABLES = {"claude-code": "claude"}
+
 
 def _sidecar_path() -> Path:
     """Locate the per-worktree sidecar inside the current .git dir."""
@@ -41,13 +45,20 @@ def _utc_now() -> str:
     return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
 
 
-def _tool_version(tool: str, explicit: str) -> str:
-    """Use the explicit version, falling back to ``<tool> --version``."""
+def _tool_version(tool: str, explicit: str, probe: bool = True) -> str:
+    """Use the explicit version, falling back to ``<executable> --version``.
+
+    ``probe=False`` (the ``--no-version-probe`` flag) skips the subprocess
+    fallback entirely.
+    """
     if explicit:
         return explicit
+    if not probe:
+        return ""
+    executable = _TOOL_EXECUTABLES.get(tool, tool)
     try:
         result = subprocess.run(
-            [tool, "--version"], capture_output=True, text=True, timeout=10
+            [executable, "--version"], capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -71,13 +82,16 @@ def _open_db(database_url: str):  # type: ignore[no-untyped-def]
 
 def _cmd_start(args: argparse.Namespace) -> int:
     sidecar = _sidecar_path()
-    if sidecar.exists() and not args.force_overwrite:
-        print(
-            f"ERROR: active session already recorded in {sidecar}; "
-            "use --force-overwrite to replace it.",
-            file=sys.stderr,
-        )
-        return 1
+    previous_session_id = ""
+    if sidecar.exists():
+        if not args.force_overwrite:
+            print(
+                f"ERROR: active session already recorded in {sidecar}; "
+                "use --force-overwrite to replace it.",
+                file=sys.stderr,
+            )
+            return 1
+        previous_session_id = json.loads(sidecar.read_text()).get("session_id", "")
 
     url = args.database_url or os.environ.get("DATABASE_URL", "")
     if not url:
@@ -91,7 +105,9 @@ def _cmd_start(args: argparse.Namespace) -> int:
 
     session_id = uuid.uuid4().hex
     started_at = _utc_now()
-    tool_version = _tool_version(args.tool, args.tool_version)
+    tool_version = _tool_version(
+        args.tool, args.tool_version, probe=not args.no_version_probe
+    )
     harness = AgenticHarness(
         session_id=session_id,
         tool_name=args.tool,
@@ -105,9 +121,12 @@ def _cmd_start(args: argparse.Namespace) -> int:
     try:
         db = _open_db(url)
         assert db is not None  # url checked above
+        if previous_session_id:
+            db.end_harness(previous_session_id, "abandoned", started_at)
         db.save_harness(harness)
         db.save_plugins(snapshot_plugins(session_id, started_at))
-        db.save_skills(snapshot_skills(session_id, started_at))
+        repo_root = _git_command("rev-parse", "--show-toplevel") or "."
+        db.save_skills(snapshot_skills(session_id, started_at, repo_root=repo_root))
     except Exception as exc:  # noqa: BLE001 — skip-and-log per CLAUDE.md
         print(
             f"WARN: skipping DB write ({exc}); session is still bracketed "
@@ -169,6 +188,25 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def makefile_session_id() -> str:
+    """SESSION_ID for the Makefile: the active sidecar's ID, else a fresh UUID.
+
+    This is how `rfc harness start` attaches subsequent ``make robot`` runs
+    to the open harness row (Issue #411): the Makefile calls this instead of
+    generating an unconditional UUID. Outside a git repo, or with no active
+    session, behaviour is unchanged (fresh UUID per invocation).
+    """
+    try:
+        sidecar = _sidecar_path()
+        if sidecar.exists():
+            session_id = json.loads(sidecar.read_text()).get("session_id", "")
+            if session_id:
+                return str(session_id)
+    except (RuntimeError, OSError, json.JSONDecodeError):
+        pass
+    return uuid.uuid4().hex
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rfc", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -182,6 +220,11 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--model", default="")
     start.add_argument("--database-url", default="")
     start.add_argument("--force-overwrite", action="store_true")
+    start.add_argument(
+        "--no-version-probe",
+        action="store_true",
+        help="do not run `<tool> --version` to detect the tool version",
+    )
     start.set_defaults(func=_cmd_start)
 
     end = actions.add_parser("end", help="close the active session")

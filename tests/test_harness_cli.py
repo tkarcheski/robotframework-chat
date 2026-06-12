@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from rfc.harness_cli import main
+from rfc.harness_cli import main, makefile_session_id
 from rfc.harness_db import HarnessDatabase
 
 
@@ -14,7 +14,18 @@ def _init_worktree(root: Path) -> None:
     """Create a minimal git repo so the sidecar has a .git dir to live in."""
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "root"],
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "root",
+        ],
         cwd=root,
         check=True,
     )
@@ -72,14 +83,26 @@ class TestStart:
         (repo / "robot" / "x.resource").write_text("*** Keywords ***\n")
         subprocess.run(["git", "add", "robot/x.resource"], cwd=repo, check=True)
         subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "r"],
+            [
+                "git",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                "r",
+            ],
             cwd=repo,
             check=True,
         )
         assert _start(repo) == 0
         session_id = json.loads(_sidecar(repo).read_text())["session_id"]
         db = HarnessDatabase(database_url=_db_url(repo))
-        assert any(p.plugin_name == "robotframework" for p in db.get_plugins(session_id))
+        assert any(
+            p.plugin_name == "robotframework" for p in db.get_plugins(session_id)
+        )
         assert [s.skill_path for s in db.get_skills(session_id)] == ["robot/x.resource"]
 
     def test_existing_sidecar_blocks_without_force(self, repo, capsys):
@@ -93,6 +116,63 @@ class TestStart:
         first = json.loads(_sidecar(repo).read_text())["session_id"]
         assert _start(repo, "--force-overwrite") == 0
         assert json.loads(_sidecar(repo).read_text())["session_id"] != first
+
+    def test_force_overwrite_closes_previous_db_row(self, repo):
+        assert _start(repo) == 0
+        first = json.loads(_sidecar(repo).read_text())["session_id"]
+        assert _start(repo, "--force-overwrite") == 0
+        db = HarnessDatabase(database_url=_db_url(repo))
+        old = db.get_harness(first)
+        assert old is not None
+        assert old.outcome == "abandoned"
+        assert old.ended_at
+
+    def test_force_overwrite_survives_unreachable_db(self, repo, capsys):
+        assert _start(repo) == 0
+        rc = main(
+            [
+                "harness",
+                "start",
+                "--tool",
+                "claude-code",
+                "--tool-version",
+                "1",
+                "--database-url",
+                f"sqlite:///{repo}/no/such/dir/x.db",
+                "--force-overwrite",
+            ]
+        )
+        assert rc == 0
+        assert _sidecar(repo).exists()
+
+    def test_snapshots_skills_from_repo_root_when_run_in_subdir(
+        self, repo, monkeypatch
+    ):
+        (repo / "robot").mkdir()
+        (repo / "robot" / "x.resource").write_text("*** Keywords ***\n")
+        subprocess.run(["git", "add", "robot/x.resource"], cwd=repo, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                "r",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        subdir = repo / "src"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+        assert _start(repo) == 0
+        session_id = json.loads(_sidecar(repo).read_text())["session_id"]
+        db = HarnessDatabase(database_url=_db_url(repo))
+        assert [s.skill_path for s in db.get_skills(session_id)] == ["robot/x.resource"]
 
     def test_model_falls_back_to_default_model_env(self, repo, monkeypatch):
         monkeypatch.setenv("DEFAULT_MODEL", "llama3:latest")
@@ -130,7 +210,9 @@ class TestEnd:
     def test_end_closes_db_row_and_removes_sidecar(self, repo):
         assert _start(repo) == 0
         session_id = json.loads(_sidecar(repo).read_text())["session_id"]
-        rc = main(["harness", "end", "--outcome", "success", "--database-url", _db_url(repo)])
+        rc = main(
+            ["harness", "end", "--outcome", "success", "--database-url", _db_url(repo)]
+        )
         assert rc == 0
         assert not _sidecar(repo).exists()
         db = HarnessDatabase(database_url=_db_url(repo))
@@ -140,7 +222,9 @@ class TestEnd:
         assert harness.ended_at
 
     def test_end_without_active_session_fails(self, repo, capsys):
-        rc = main(["harness", "end", "--outcome", "success", "--database-url", _db_url(repo)])
+        rc = main(
+            ["harness", "end", "--outcome", "success", "--database-url", _db_url(repo)]
+        )
         assert rc == 1
         assert "no active session" in capsys.readouterr().err.lower()
 
@@ -157,6 +241,90 @@ class TestStatus:
     def test_status_without_session(self, repo, capsys):
         assert main(["harness", "status"]) == 0
         assert "no active session" in capsys.readouterr().out.lower()
+
+
+class TestToolVersion:
+    def test_claude_code_probes_claude_executable(self, monkeypatch):
+        from rfc import harness_cli
+
+        seen: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            seen.append(cmd)
+
+            class Result:
+                returncode = 0
+                stdout = "1.2.3\n"
+
+            return Result()
+
+        monkeypatch.setattr(harness_cli.subprocess, "run", fake_run)
+        assert harness_cli._tool_version("claude-code", "") == "1.2.3"
+        assert seen == [["claude", "--version"]]
+
+    def test_other_tools_probe_their_own_name(self, monkeypatch):
+        from rfc import harness_cli
+
+        seen: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            seen.append(cmd)
+
+            class Result:
+                returncode = 0
+                stdout = "0.1\n"
+
+            return Result()
+
+        monkeypatch.setattr(harness_cli.subprocess, "run", fake_run)
+        assert harness_cli._tool_version("codex", "") == "0.1"
+        assert seen == [["codex", "--version"]]
+
+    def test_no_version_probe_skips_subprocess(self, repo, monkeypatch):
+        from rfc import harness_cli
+
+        real_run = harness_cli.subprocess.run
+
+        def boom(cmd, **kwargs):
+            if "--version" in cmd:
+                raise AssertionError(f"probe ran: {cmd}")
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(harness_cli.subprocess, "run", boom)
+        rc = main(
+            [
+                "harness",
+                "start",
+                "--tool",
+                "claude-code",
+                "--database-url",
+                _db_url(repo),
+                "--no-version-probe",
+            ]
+        )
+        assert rc == 0
+        assert json.loads(_sidecar(repo).read_text())["tool_version"] == ""
+
+
+class TestMakefileSessionId:
+    def test_returns_active_sidecar_session_id(self, repo):
+        assert _start(repo) == 0
+        session_id = json.loads(_sidecar(repo).read_text())["session_id"]
+        assert makefile_session_id() == session_id
+
+    def test_returns_fresh_uuid_without_sidecar(self, repo):
+        value = makefile_session_id()
+        assert len(value) == 32
+        int(value, 16)
+        assert makefile_session_id() != value
+
+    def test_returns_fresh_uuid_outside_git_repo(self, tmp_path, monkeypatch):
+        outside = tmp_path / "plain"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+        value = makefile_session_id()
+        assert len(value) == 32
+        int(value, 16)
 
 
 class TestWorktreeIsolation:

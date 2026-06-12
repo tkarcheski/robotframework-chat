@@ -22,7 +22,7 @@ export
 # Watermark inputs for the results path + output.xml --metadata flags (Issue #350).
 # SESSION_ID is fresh per `make` invocation; all suites chained in one invocation share it.
 HOSTNAME           := $(shell hostname)
-SESSION_ID         := $(shell uv run python -c "import uuid; print(uuid.uuid4().hex)")
+SESSION_ID         := $(shell uv run python -c "from rfc.harness_cli import makefile_session_id; print(makefile_session_id())")
 DEFAULT_MODEL_SLUG := $(shell printf '%s' '$(or $(DEFAULT_MODEL),unknown-model)' | tr -c 'A-Za-z0-9._-' '_')
 MODEL_HARNESS_SLUG := $(shell printf '%s' '$(or $(MODEL_HARNESS),unknown-harness)' | tr -c 'A-Za-z0-9._-' '_')
 
