@@ -149,6 +149,31 @@ once as `TEST_RESULTS_FULL_VIEW_BODY` in `src/rfc/test_database.py` and
 is mirrored into `superset/bootstrap_dashboards.py`; a drift test keeps
 the two in sync.
 
+### Agentic Stack Tracker tables and `agentic_sessions_full` view
+
+The Agentic Stack Tracker (issues #352/#358/#353) adds seven tables —
+`agentic_harnesses`, `agentic_plugins`, `agentic_skills`,
+`agentic_metrics` (EAV per-session/per-test metrics),
+`agentic_decisions`, `dialog_recordings`, and `dialog_turns` — owned by
+`HarnessDatabase` in `src/rfc/harness_db.py` (SQLite and PostgreSQL).
+The Superset bootstrap creates the same tables with
+`CREATE TABLE IF NOT EXISTS`, so either side may run first.
+
+`agentic_sessions_full` denormalizes one row per harness session and
+pre-pivots the EAV metrics (`tokens_in`, `tokens_out`, `latency_ms` →
+`avg_latency_ms`, `grader_score` → `avg_grader_score`), plus a
+`started_ts` timestamp cast for time-series charts.  The body is
+defined once as `AGENTIC_SESSIONS_FULL_VIEW_BODY` in
+`src/rfc/harness_db.py` and mirrored into
+`superset/bootstrap_dashboards.py`; a drift test keeps the two in sync.
+
+`make bootstrap` registers the tables, the view, and three virtual
+datasets (`agentic_plugin_drift`, `agentic_skill_outcomes`,
+`agentic_outcome_funnel`) as Superset datasets and builds the
+**Agentic Stack Tracker** dashboard (slug `agentic-stack-tracker`) with
+six panels: Harness Comparison, Plugin Drift, Skill SHA Heatmap, Token
+Burn Rate, Outcome Funnel, and Latency vs Grader Score.
+
 ### `models`
 
 LLM model metadata:
