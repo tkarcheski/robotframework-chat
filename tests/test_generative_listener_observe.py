@@ -238,9 +238,7 @@ class TestGenerativeListenerObserve:
     def test_tagged_suite_produces_decision_rows(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider()
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         _run_suite(listener, tags=[GENERATIVE_OBSERVE_TAG], test_results=[False])
         rows = db.get_decisions(SESSION)
         assert {r.hook_event for r in rows} == {"start_suite", "end_test"}
@@ -251,9 +249,7 @@ class TestGenerativeListenerObserve:
     def test_passing_test_only_prompts_at_suite_start(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider()
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         _run_suite(listener, tags=[GENERATIVE_OBSERVE_TAG], test_results=[True, True])
         rows = db.get_decisions(SESSION)
         assert [r.hook_event for r in rows] == ["start_suite"]
@@ -262,9 +258,7 @@ class TestGenerativeListenerObserve:
     def test_untagged_suite_produces_no_rows(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider()
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         _run_suite(listener, tags=["tier:0"], test_results=[False])
         assert db.get_decisions(SESSION) == []
         assert provider.calls == 0
@@ -273,9 +267,7 @@ class TestGenerativeListenerObserve:
         monkeypatch.setenv("RFC_GENERATIVE_BUDGET_TOKENS", "120")
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(tokens_per_call=100)
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         _run_suite(
             listener,
             tags=[GENERATIVE_OBSERVE_TAG],
@@ -291,9 +283,7 @@ class TestGenerativeListenerObserve:
         monkeypatch.setenv("RFC_GENERATIVE_BUDGET_TOKENS", "100")
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(tokens_per_call=10_000)  # drains instantly
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         _run_suite(
             listener,
             tags=[GENERATIVE_OBSERVE_TAG],
@@ -319,9 +309,7 @@ class TestGenerativeListenerObserve:
     def test_no_harness_row_skips_and_warns(self, clean_env, tmp_path, caplog):
         db = HarnessDatabase(database_url=_db_url(tmp_path))  # no seeded row
         provider = SyntheticProvider()
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         with caplog.at_level("WARNING"):
             _run_suite(listener, tags=[GENERATIVE_OBSERVE_TAG], test_results=[False])
         assert db.get_decisions(SESSION) == []
@@ -346,9 +334,7 @@ class TestGenerativeListenerObserve:
     def test_nested_suite_tag_detected(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider()
-        listener = GenerativeListener(
-            database_url=_db_url(tmp_path), provider=provider
-        )
+        listener = GenerativeListener(database_url=_db_url(tmp_path), provider=provider)
         root = SimpleNamespace(
             name="Root",
             tests=[],

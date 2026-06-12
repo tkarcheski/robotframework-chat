@@ -71,7 +71,11 @@ def _turn_from_line(line: dict[str, Any]) -> DialogTurn | None:
         if not text:
             return None
         return DialogTurn(
-            recording_id="", turn_number=0, role="user", timestamp=timestamp, content=text
+            recording_id="",
+            turn_number=0,
+            role="user",
+            timestamp=timestamp,
+            content=text,
         )
 
     tool_calls = [b for b in blocks if b.get("type") == "tool_use"]
