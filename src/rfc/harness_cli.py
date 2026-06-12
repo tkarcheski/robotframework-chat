@@ -188,6 +188,21 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def active_session_id() -> str:
+    """The sidecar's session_id, or '' when no session is active.
+
+    Safe to call outside a git repository or with a corrupt sidecar —
+    both simply mean "no active session".
+    """
+    try:
+        sidecar = _sidecar_path()
+        if sidecar.exists():
+            return str(json.loads(sidecar.read_text()).get("session_id", ""))
+    except (RuntimeError, OSError, json.JSONDecodeError):
+        pass
+    return ""
+
+
 def makefile_session_id() -> str:
     """SESSION_ID for the Makefile: the active sidecar's ID, else a fresh UUID.
 
@@ -196,15 +211,7 @@ def makefile_session_id() -> str:
     generating an unconditional UUID. Outside a git repo, or with no active
     session, behaviour is unchanged (fresh UUID per invocation).
     """
-    try:
-        sidecar = _sidecar_path()
-        if sidecar.exists():
-            session_id = json.loads(sidecar.read_text()).get("session_id", "")
-            if session_id:
-                return str(session_id)
-    except (RuntimeError, OSError, json.JSONDecodeError):
-        pass
-    return uuid.uuid4().hex
+    return active_session_id() or uuid.uuid4().hex
 
 
 def build_parser() -> argparse.ArgumentParser:
