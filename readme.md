@@ -314,6 +314,23 @@ See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/a
 | [docs/GRAFANA_SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |
+| [ai/ROLES.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/ROLES.md) | Four-role agent system — engineering, test-design, project-management, design |
+| [ai/GIT.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/GIT.md) | Git topology contract for concurrent agent operation (worktrees, identities, submodule ownership) |
+
+---
+
+## Role System
+
+This repo runs a **four-role agent system** for continuous development and quality assurance:
+
+| Role | Responsibility |
+|------|----------------|
+| **engineering** | Picks up `status:ready` issues, implements on a branch, opens pull requests |
+| **test-design** | Reviews open PRs, writes test plans, executes them, posts PASS/FAIL verdicts |
+| **project-management** | Triages issues, sets priorities, monitors CI health, grooms the backlog |
+| **design** | Architecture RFCs, system-wide improvements, open-ended design exploration |
+
+The roles communicate through GitHub labels (`status:*`, `P0–P3`, `from:*`, `type:*`) and run concurrently in isolated git worktrees. See [`ai/ROLES.md`](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/ROLES.md) for the full contract and [`ai/GIT.md`](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/GIT.md) for the git topology. Role prompts live in [`.claude/agents/`](https://github.com/tkarcheski/robotframework-chat/blob/main/.claude/agents/).
 
 ---
 
