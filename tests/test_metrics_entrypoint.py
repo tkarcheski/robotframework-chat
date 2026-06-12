@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import time
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "metrics" / "entrypoint.sh"
@@ -53,7 +55,10 @@ def test_generate_metrics_uses_supported_flags_and_writes_dashboard(
     results_dir = tmp_path / "results"
     suite = results_dir / "local" / "host" / "model"
     suite.mkdir(parents=True)
-    (suite / "output.xml").write_text("<robot/>")
+    xml = suite / "output.xml"
+    xml.write_text("<robot><suite></suite></robot>")
+    old_time = time.time() - 3600
+    os.utime(xml, (old_time, old_time))
     output_dir = tmp_path / "metrics"
     output_dir.mkdir()
     bin_dir = tmp_path / "bin"
@@ -61,7 +66,8 @@ def test_generate_metrics_uses_supported_flags_and_writes_dashboard(
 
     proc = run_bash(
         f"export PATH='{bin_dir}':\"$PATH\" "
-        f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}'; "
+        f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}' "
+        "METRICS_FRESH_WINDOW_SECONDS=120; "
         f"source '{SCRIPT}'; generate_metrics"
     )
 
@@ -71,6 +77,67 @@ def test_generate_metrics_uses_supported_flags_and_writes_dashboard(
         f"dashboard not generated; stdout={proc.stdout} stderr={proc.stderr}"
     )
     assert "Generated metrics for 1 suite" in proc.stdout
+
+
+def test_generate_metrics_skips_recently_modified_xml(tmp_path: Path) -> None:
+    """output.xml modified within the fresh window is skipped with INFO, not processed."""
+    results_dir = tmp_path / "results"
+    suite = results_dir / "local" / "host" / "model"
+    suite.mkdir(parents=True)
+    xml = suite / "output.xml"
+    xml.write_text("<robot><suite></suite></robot>")
+    # mtime is "now" by default — keep it fresh
+    output_dir = tmp_path / "metrics"
+    output_dir.mkdir()
+    bin_dir = tmp_path / "bin"
+    _fake_robotmetrics(bin_dir)
+
+    proc = run_bash(
+        f"export PATH='{bin_dir}':\"$PATH\" "
+        f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}' "
+        "METRICS_FRESH_WINDOW_SECONDS=3600; "
+        f"source '{SCRIPT}'; generate_metrics"
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    dashboard = output_dir / "local" / "host" / "model" / "dashboard.html"
+    assert not dashboard.exists(), (
+        f"dashboard must not be generated for an in-progress run; stdout={proc.stdout}"
+    )
+    assert "in progress" in proc.stdout.lower(), (
+        f"expected in-progress INFO message; stdout={proc.stdout}"
+    )
+
+
+def test_generate_metrics_skips_stale_truncated_xml(tmp_path: Path) -> None:
+    """output.xml that is old but lacks </robot> produces a WARNING and is skipped."""
+    results_dir = tmp_path / "results"
+    suite = results_dir / "local" / "host" / "model"
+    suite.mkdir(parents=True)
+    xml = suite / "output.xml"
+    xml.write_text("<robot><suite><test>no closing tag")
+    old_time = time.time() - 3600
+    os.utime(xml, (old_time, old_time))
+    output_dir = tmp_path / "metrics"
+    output_dir.mkdir()
+    bin_dir = tmp_path / "bin"
+    _fake_robotmetrics(bin_dir)
+
+    proc = run_bash(
+        f"export PATH='{bin_dir}':\"$PATH\" "
+        f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}' "
+        "METRICS_FRESH_WINDOW_SECONDS=120; "
+        f"source '{SCRIPT}'; generate_metrics"
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    dashboard = output_dir / "local" / "host" / "model" / "dashboard.html"
+    assert not dashboard.exists(), (
+        f"dashboard must not be generated for truncated XML; stdout={proc.stdout}"
+    )
+    assert "truncated" in proc.stdout.lower(), (
+        f"expected truncation WARNING message; stdout={proc.stdout}"
+    )
 
 
 def test_generate_index_lists_root_and_nested_dashboards(tmp_path: Path) -> None:
