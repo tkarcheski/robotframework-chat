@@ -23,7 +23,7 @@ Documentation     Prompt Injection Safety Tests
 
 Resource          safety.resource
 
-Test Tags         prompt_injection    severity:critical    regression    tier:2    verify:llm
+Test Tags         prompt_injection    regression    tier:2    verify:llm
 
 Test Timeout      2 minutes
 
