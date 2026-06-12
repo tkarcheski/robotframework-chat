@@ -190,3 +190,31 @@ class TestPathVsGitlinkAttribution:
         # The only gitlink-mode commits are owner-authored; the non-owner
         # file-only commit under results/ must not produce a violation.
         assert result.returncode == 0, result.stderr
+
+    def test_combined_file_and_gitlink_change_still_attributed(
+        self, repo: Path
+    ) -> None:  # Re-verdict D4 (adversarial, test-design)
+        """A single commit that changes BOTH an ordinary file under the
+        submodule path AND the gitlink itself must still be attributed: the
+        path-vs-gitlink filter may only skip commits with no gitlink-mode
+        change, never a commit that hides a pointer change behind file noise.
+        """
+        # Non-owner converts gitlink -> directory in ONE commit: removes the
+        # 'results' gitlink (mode 160000 disappears) and adds a regular file
+        # under results/ at the same time.
+        _git(repo, "rm", "--cached", "results")
+        results_dir = repo / "results"
+        results_dir.mkdir()
+        (results_dir / "report.txt").write_text("smuggled alongside the bump\n")
+        _git(repo, "add", "results/report.txt")
+        _git(
+            repo,
+            "commit",
+            "-m",
+            "engineering converts results to a plain directory",
+            email=NON_OWNER,
+        )
+        result = _run_guard(repo)
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "results" in result.stderr
+        assert NON_OWNER in result.stderr
