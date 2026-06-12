@@ -55,9 +55,7 @@ class Skill:
 def load_manifest(path: Path) -> list[SkillPack]:
     data = yaml.safe_load(path.read_text())
     return [
-        SkillPack(
-            name=p["name"], path=p["path"], prefix=p["prefix"], glob=p["glob"]
-        )
+        SkillPack(name=p["name"], path=p["path"], prefix=p["prefix"], glob=p["glob"])
         for p in data.get("packs", [])
     ]
 
@@ -104,8 +102,7 @@ def plan_links(
             link_name = f"{pack.prefix}{skill.name}"
             if link_name in links:
                 print(
-                    f"WARN: duplicate skill name '{link_name}' "
-                    f"({skill.ident} skipped)",
+                    f"WARN: duplicate skill name '{link_name}' ({skill.ident} skipped)",
                     file=sys.stderr,
                 )
                 continue
