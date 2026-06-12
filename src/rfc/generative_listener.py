@@ -25,17 +25,23 @@ and may *apply* ``proposed_action in {skip, retry, fork}``:
 
 **Mutate mode (#360, active, explicit opt-in).** When a suite is tagged
 ``generative:mutate``, the listener prompts the LLM after each opted-in
-test finishes (PASS or FAIL — mutating passing tests is the point: it
-probes over-lenient assertions) for ONE new assertion. The assertion is
-appended to a deep copy of the test which is inserted right after the
-original, so it executes inline and gets its own sibling ``test_runs``
-row from the regular results listener. Synthetic test name:
-``<original>::mutated::<short_hash>``; tagged ``mutated:true`` (copies
-never re-mutate). Safety rails:
+test PASSES (mutating passing tests is the point: it probes over-lenient
+assertions; failed tests are not mutated because Robot stops at the
+first failing keyword, so an appended assertion would never execute)
+for ONE new assertion. The assertion is appended to a deep copy of the
+test which is inserted right after the original, so it executes inline
+and gets its own sibling ``test_runs`` row from the regular results
+listener. Synthetic test name: ``<original>::mutated::<short_hash>``;
+tagged ``mutated:true`` (copies never re-mutate). Safety rails:
 
 - the assertion keyword must come from a small allow-list of
   deterministic BuiltIn assertions (``ALLOWED_MUTATION_KEYWORDS``);
   anything else is recorded with ``applied=0`` and never executed.
+- arguments may contain only plain values and simple scalar variables
+  (``${name}``): inline Python evaluation ``${{...}}``, extended
+  variable syntax, and environment/list/dict variables are rejected,
+  because the keyword allow-list alone would not stop code execution
+  smuggled through an argument.
 - mutation prompts are externalized to
   ``robot/resources/generative_mutate_prompts.resource`` so reviewers
   can read and edit them (built-in fallback if unreadable).
@@ -186,8 +192,10 @@ _DEFAULT_MUTATE_PROMPTS = {
         "Reply with EXACTLY one line and nothing else, in Robot Framework "
         "syntax: the keyword, then each argument, separated by four spaces.\n"
         "You may only use one of these keywords: {allowed_keywords}.\n"
-        "Reference variables created by the test body exactly as they "
-        "appear there."
+        "Arguments may contain only plain values and simple scalar "
+        "variables created by the test body, referenced exactly as they "
+        "appear there; inline expressions, environment variables, and "
+        "list/dict variables are rejected."
     ),
     "MUTATION_GRADER_QUESTION": (
         "A test-mutation agent was asked to strengthen the Robot Framework "
@@ -283,14 +291,37 @@ def _parse_action(response: str) -> str:
     return "none"
 
 
+# A "simple" scalar variable: ${plain name} — identifier-ish, no nesting,
+# no item access, no attribute access, no inline expressions.
+_SIMPLE_VARIABLE_RE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_ ]*\}")
+
+
+def _safe_mutation_arg(arg: str) -> bool:
+    """True when ``arg`` is plain text plus simple scalar variables only.
+
+    Robot evaluates ``${{...}}`` as inline Python (full builtins access),
+    extended syntax (``${obj.attr}``, ``${list[0]}``) calls into objects,
+    and ``%{ENV}`` / ``@{list}`` / ``&{dict}`` reach beyond plain values —
+    so an allow-listed keyword with a hostile argument could still execute
+    arbitrary code (Codex P1, PR #501). After removing simple scalar
+    variables, any surviving variable opener rejects the argument.
+    Literal braces that are not Robot variable syntax (e.g. the regex
+    ``\\d{3}``) stay legal.
+    """
+    stripped = _SIMPLE_VARIABLE_RE.sub("", arg)
+    return not any(tok in stripped for tok in ("${", "%{", "@{", "&{"))
+
+
 def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
     """Parse ``(keyword, args)`` from the FIRST non-empty response line.
 
     The prompt demands exactly one assertion line; only that line is
     honoured (same rationale as :func:`_parse_action`). The keyword must
     match ``ALLOWED_MUTATION_KEYWORDS`` case-insensitively and carry at
-    least one argument; cells are separated by two-plus spaces or tabs,
-    Robot style. Anything else returns ``None`` (recorded, never run).
+    least one argument, and every argument must pass
+    :func:`_safe_mutation_arg`; cells are separated by two-plus spaces or
+    tabs, Robot style. Anything else returns ``None`` (recorded, never
+    run).
     """
     for line in response.splitlines():
         line = line.strip().strip("`").strip()
@@ -302,8 +333,24 @@ def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
         keyword = _ALLOWED_MUTATION_LOOKUP.get(cells[0].lower())
         if keyword is None:
             return None
-        return keyword, cells[1:]
+        args = cells[1:]
+        if not all(_safe_mutation_arg(a) for a in args):
+            return None
+        return keyword, args
     return None
+
+
+def _fill_template(template: str, **values: Any) -> str:
+    """Substitute ``{placeholder}`` tokens without ``str.format``.
+
+    Prompt templates are reviewer-editable and may legitimately contain
+    literal Robot variables like ``${answer}``; ``str.format`` would read
+    that as a ``{answer}`` placeholder and raise ``KeyError`` (Codex P2,
+    PR #501). Plain replacement only touches the known placeholders.
+    """
+    for key, value in values.items():
+        template = template.replace("{" + key + "}", str(value))
+    return template
 
 
 def _render_body(test: Any) -> str:
@@ -815,8 +862,12 @@ class GenerativeListener(BaseListener):
         """Ask the LLM for one new assertion, run it as a sibling test,
         and grade the mutation's quality in parallel."""
         status = str(getattr(result, "status", "") or "").upper()
-        if status not in ("PASS", "FAIL"):
-            return  # skipped / not-run tests have no output to mutate against
+        if status != "PASS":
+            # Failed tests are not mutated: Robot stops at the first failing
+            # keyword, so an assertion appended after the failing body would
+            # never execute — recording it as applied would be untrue.
+            # Skipped / not-run tests have no output to mutate against.
+            return
         if (
             _test_has_tag(data, MUTATED_MARKER_TAG)
             or _test_has_tag(data, RETRY_MARKER_TAG)
@@ -827,7 +878,8 @@ class GenerativeListener(BaseListener):
             return  # mutate is per-test opt-in: untagged siblings stay static
         test_name = getattr(data, "name", "") or ""
         prompts = _load_mutate_prompts()
-        prompt = prompts["MUTATION_PROMPT_TEMPLATE"].format(
+        prompt = _fill_template(
+            prompts["MUTATION_PROMPT_TEMPLATE"],
             test=test_name,
             suite=self._suite_name,
             status=status,
@@ -940,7 +992,8 @@ class GenerativeListener(BaseListener):
             return
         prompts = _load_mutate_prompts()
         assertion_line = "    ".join([keyword, *args])
-        question = prompts["MUTATION_GRADER_QUESTION"].format(
+        question = _fill_template(
+            prompts["MUTATION_GRADER_QUESTION"],
             test=test_name,
             suite=self._suite_name,
             status=status,

@@ -210,15 +210,17 @@ class TestMutateInsertsSibling:
         assert rows[0].test_name == "t1"
         assert ASSERTION.split("    ")[0] in rows[0].response_text
 
-    def test_failed_test_is_also_mutated(self, clean_env, tmp_path):
+    def test_failed_test_is_not_mutated(self, clean_env, tmp_path):
+        """Robot stops a test at the first failing keyword, so an assertion
+        appended after a failing body would never execute — recording it as
+        applied=1 would be a lie (Codex P2 on PR #501)."""
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
         suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
         executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
-        assert len(executed) == 2
-        rows = db.get_decisions(SESSION, proposed_action="mutate")
-        assert len(rows) == 1
-        assert rows[0].applied == 1
+        assert len(executed) == 1  # nothing inserted
+        assert provider.calls == 0  # no budget spent on unreachable assertions
+        assert db.get_decisions(SESSION) == []
 
     def test_skipped_test_is_not_mutated(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
@@ -238,9 +240,7 @@ class TestMutateInsertsSibling:
         assert provider.calls == 2  # one mutation prompt + one grading call
         assert len(db.get_decisions(SESSION, proposed_action="mutate")) == 1
 
-    def test_mutation_prompt_shows_body_and_allowed_keywords(
-        self, clean_env, tmp_path
-    ):
+    def test_mutation_prompt_shows_body_and_allowed_keywords(self, clean_env, tmp_path):
         _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
         suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
@@ -304,6 +304,21 @@ class TestMutateSafety:
     def test_disallowed_keyword_recorded_not_applied(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["Run Process    rm    -rf    /"])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1  # nothing inserted
+        rows = db.get_decisions(SESSION, proposed_action="mutate")
+        assert len(rows) == 1
+        assert rows[0].applied == 0
+        assert provider.calls == 1  # no grading call for a rejected mutation
+
+    def test_injected_argument_recorded_not_applied(self, clean_env, tmp_path):
+        """Allow-listed keyword with an executable argument is rejected
+        end-to-end (Codex P1 on PR #501)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(
+            responses=["Should Be Equal    ${{__import__('os').getcwd()}}    x"]
+        )
         suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 1  # nothing inserted
@@ -498,6 +513,31 @@ class TestPromptResource:
         # variables not present in the file keep their built-in defaults
         assert "{assertion}" in prompts["MUTATION_GRADER_QUESTION"]
 
+    def test_template_with_literal_robot_variable_does_not_break_filling(
+        self, clean_env, tmp_path, monkeypatch
+    ):
+        """A custom template containing a literal Robot variable like
+        ``${answer}`` must not blow up placeholder filling (Codex P2 on
+        PR #501: str.format would raise KeyError on ``{answer}``)."""
+        resource = tmp_path / "custom.resource"
+        resource.write_text(
+            "*** Variables ***\n"
+            "${MUTATION_PROMPT_TEMPLATE}    SEPARATOR=\\n\n"
+            "...    Mutate test {test} (e.g. assert on \\${answer}).\n"
+            "...    Allowed: {allowed_keywords}. Body: {body}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("RFC_GENERATIVE_MUTATE_PROMPTS", str(resource))
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2  # mutation applied, no KeyError swallowed
+        prompt = provider.prompts[0]
+        assert prompt.startswith("Mutate test t1")
+        assert "${answer}" in prompt  # the literal variable survived filling
+        assert len(db.get_decisions(SESSION, proposed_action="mutate")) == 1
+
     def test_missing_resource_falls_back_to_builtins(self, monkeypatch, tmp_path):
         from rfc.generative_listener import _load_mutate_prompts
 
@@ -549,3 +589,29 @@ class TestParseMutation:
     def test_prose_rejected(self):
         assert _parse_mutation("this test looks fine to me") is None
         assert _parse_mutation("") is None
+
+    def test_inline_python_evaluation_in_args_rejected(self):
+        """Codex P1 on PR #501: Robot evaluates ${{...}} inline Python in
+        ANY argument, so the keyword allow-list alone is not enough."""
+        evil = "Should Be Equal    ${{__import__('os').system('rm -rf /')}}    0"
+        assert _parse_mutation(evil) is None
+
+    def test_extended_and_env_variable_args_rejected(self):
+        # extended syntax can call properties / index into objects
+        assert _parse_mutation("Should Contain    ${obj.attr}    x") is None
+        assert _parse_mutation("Should Contain    ${list[0]}    x") is None
+        # environment, list, and dict variables are not plain values either
+        assert _parse_mutation("Should Contain    %{HOME}    x") is None
+        assert _parse_mutation("Should Contain    @{items}    x") is None
+        assert _parse_mutation("Should Contain    &{map}    x") is None
+        # nested variables resolve inner-out — also rejected
+        assert _parse_mutation("Should Contain    ${a${b}}    x") is None
+
+    def test_simple_variables_and_regex_braces_still_allowed(self):
+        assert _parse_mutation("Should Contain    ${answer}    Paris") is not None
+        assert _parse_mutation("Should Contain    ${LLM RESPONSE}    ok") is not None
+        # literal braces that are NOT Robot variable syntax stay legal
+        assert _parse_mutation("Should Match Regexp    ${answer}    \\d{3}") == (
+            "Should Match Regexp",
+            ["${answer}", "\\d{3}"],
+        )

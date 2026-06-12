@@ -10,7 +10,9 @@ Documentation    Prompts for the generative listener's mutate mode (#360).
 ...
 ...    Placeholders in curly braces ({test}, {suite}, {status}, {message},
 ...    {rfc_data}, {body}, {allowed_keywords}, {assertion}) are filled in
-...    by Python str.format — keep them intact when editing.
+...    by plain text substitution (not str.format, so a literal Robot
+...    variable like \${answer} in a template is safe) — keep the
+...    placeholders intact when editing.
 
 *** Variables ***
 ${MUTATION_PROMPT_TEMPLATE}    SEPARATOR=\n
@@ -25,7 +27,9 @@ ${MUTATION_PROMPT_TEMPLATE}    SEPARATOR=\n
 ...    Reply with EXACTLY one line and nothing else, in Robot Framework syntax:
 ...    the keyword, then each argument, separated by four spaces.
 ...    You may only use one of these keywords: {allowed_keywords}.
-...    Reference variables created by the test body exactly as they appear there.
+...    Arguments may contain only plain values and simple scalar variables created
+...    by the test body, referenced exactly as they appear there; inline expressions,
+...    environment variables, and list/dict variables are rejected.
 
 ${MUTATION_GRADER_QUESTION}    SEPARATOR=\n
 ...    A test-mutation agent was asked to strengthen the Robot Framework test
