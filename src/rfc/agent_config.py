@@ -23,7 +23,7 @@ DEFAULT_LOCAL_AGENTS_PATH = (
     Path(__file__).resolve().parent.parent.parent / "config" / "local_agents.yaml"
 )
 
-SUPPORTED_RUNNERS: frozenset[str] = frozenset({"fake", "ollama"})
+SUPPORTED_RUNNERS: frozenset[str] = frozenset({"fake", "ollama", "live"})
 
 # YAML field name -> environment variable that overrides it when set.
 _ENV_OVERRIDABLE_FIELDS: dict[str, str] = {
