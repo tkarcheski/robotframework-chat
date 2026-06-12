@@ -13,13 +13,15 @@ import logging
 import os
 import sqlite3
 import uuid
-from typing import Optional
+from typing import Any, Optional, Sequence
 
 from .harness_models import (
     AgenticHarness,
     AgenticMetric,
     AgenticPlugin,
     AgenticSkill,
+    DialogRecording,
+    DialogTurn,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,9 +94,77 @@ CREATE TABLE IF NOT EXISTS agentic_metrics (
 CREATE INDEX IF NOT EXISTS idx_metrics_session ON agentic_metrics(session_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_key     ON agentic_metrics(metric_key);
 CREATE INDEX IF NOT EXISTS idx_metrics_run     ON agentic_metrics(test_run_id);
+
+CREATE TABLE IF NOT EXISTS dialog_recordings (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT,
+    source_type     TEXT NOT NULL,
+    tool_name       TEXT,
+    tool_version    TEXT,
+    model_id        TEXT,
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    metadata_json   TEXT,
+    FOREIGN KEY (session_id) REFERENCES agentic_harnesses(session_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS dialog_turns (
+    id                  TEXT PRIMARY KEY,
+    recording_id        TEXT NOT NULL,
+    turn_number         INTEGER NOT NULL,
+    role                TEXT NOT NULL,
+    content             TEXT,
+    tool_calls_json     TEXT,
+    tool_results_json   TEXT,
+    timestamp           TEXT NOT NULL,
+    prompt_tokens       INTEGER,
+    completion_tokens   INTEGER,
+    latency_ms          REAL,
+    FOREIGN KEY (recording_id) REFERENCES dialog_recordings(id) ON DELETE CASCADE,
+    UNIQUE (recording_id, turn_number)
+);
+CREATE INDEX IF NOT EXISTS idx_dialog_turns_recording ON dialog_turns(recording_id);
 """
 
 _SQLITE_MIGRATIONS: list[str] = []  # placeholder for future column adds
+
+
+def _recording_from_row(row: "Sequence[Any]") -> DialogRecording:
+    """Map a positional (id, session_id, source_type, tool_name, tool_version,
+    model_id, started_at, ended_at, metadata_json) row to a dataclass.
+
+    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
+    """
+    return DialogRecording(
+        id=row[0],
+        session_id=row[1] or "",
+        source_type=row[2],
+        tool_name=row[3] or "",
+        tool_version=row[4] or "",
+        model_id=row[5] or "",
+        started_at=row[6],
+        ended_at=row[7] or "",
+        metadata_json=row[8] or "",
+    )
+
+
+def _turn_from_row(row: "Sequence[Any]") -> DialogTurn:
+    """Map a positional (id, recording_id, turn_number, role, content,
+    tool_calls_json, tool_results_json, timestamp, prompt_tokens,
+    completion_tokens, latency_ms) row to a dataclass."""
+    return DialogTurn(
+        recording_id=row[1],
+        turn_number=int(row[2]),
+        role=row[3],
+        content=row[4] or "",
+        tool_calls_json=row[5] or "",
+        tool_results_json=row[6] or "",
+        timestamp=row[7],
+        prompt_tokens=int(row[8]) if row[8] is not None else -1,
+        completion_tokens=int(row[9]) if row[9] is not None else -1,
+        latency_ms=float(row[10]) if row[10] is not None else -1.0,
+        id=row[0],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +211,21 @@ class _HarnessBackend(abc.ABC):
     def get_metrics(
         self, session_id: str, *, metric_key: str = ""
     ) -> list[AgenticMetric]: ...
+
+    @abc.abstractmethod
+    def save_recording(self, recording: DialogRecording) -> str: ...
+
+    @abc.abstractmethod
+    def end_recording(self, recording_id: str, ended_at: str) -> None: ...
+
+    @abc.abstractmethod
+    def get_recording(self, recording_id: str) -> Optional[DialogRecording]: ...
+
+    @abc.abstractmethod
+    def save_turns(self, turns: list[DialogTurn]) -> list[str]: ...
+
+    @abc.abstractmethod
+    def get_turns(self, recording_id: str) -> list[DialogTurn]: ...
 
     @abc.abstractmethod
     def get_version(self) -> str: ...
@@ -406,6 +491,97 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             for r in rows
         ]
 
+    def save_recording(self, recording: DialogRecording) -> str:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute(
+                """
+                INSERT INTO dialog_recordings
+                (id, session_id, source_type, tool_name, tool_version,
+                 model_id, started_at, ended_at, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    recording.id,
+                    recording.session_id or None,
+                    recording.source_type,
+                    recording.tool_name or None,
+                    recording.tool_version or None,
+                    recording.model_id or None,
+                    recording.started_at,
+                    recording.ended_at or None,
+                    recording.metadata_json or None,
+                ),
+            )
+        return recording.id
+
+    def end_recording(self, recording_id: str, ended_at: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE dialog_recordings SET ended_at = ? WHERE id = ?",
+                (ended_at, recording_id),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"no recording with id={recording_id!r}")
+
+    def get_recording(self, recording_id: str) -> Optional[DialogRecording]:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT id, session_id, source_type, tool_name, tool_version,
+                       model_id, started_at, ended_at, metadata_json
+                FROM dialog_recordings WHERE id = ?
+                """,
+                (recording_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _recording_from_row(row)
+
+    def save_turns(self, turns: list[DialogTurn]) -> list[str]:
+        ids: list[str] = []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            for t in turns:
+                row_id = t.id or uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO dialog_turns
+                    (id, recording_id, turn_number, role, content,
+                     tool_calls_json, tool_results_json, timestamp,
+                     prompt_tokens, completion_tokens, latency_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_id,
+                        t.recording_id,
+                        t.turn_number,
+                        t.role,
+                        t.content or None,
+                        t.tool_calls_json or None,
+                        t.tool_results_json or None,
+                        t.timestamp,
+                        t.prompt_tokens if t.prompt_tokens >= 0 else None,
+                        t.completion_tokens if t.completion_tokens >= 0 else None,
+                        t.latency_ms if t.latency_ms >= 0 else None,
+                    ),
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_turns(self, recording_id: str) -> list[DialogTurn]:
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, recording_id, turn_number, role, content,
+                       tool_calls_json, tool_results_json, timestamp,
+                       prompt_tokens, completion_tokens, latency_ms
+                FROM dialog_turns WHERE recording_id = ? ORDER BY turn_number
+                """,
+                (recording_id,),
+            ).fetchall()
+        return [_turn_from_row(r) for r in rows]
+
     def get_version(self) -> str:
         with sqlite3.connect(self.db_path) as conn:
             return str(conn.execute("SELECT sqlite_version()").fetchone()[0])
@@ -417,6 +593,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             "agentic_plugins",
             "agentic_skills",
             "agentic_metrics",
+            "dialog_recordings",
+            "dialog_turns",
         }:
             raise ValueError(f"unknown harness table: {table_name}")
         with sqlite3.connect(self.db_path) as conn:
@@ -533,6 +711,47 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             Column("metric_key", String, nullable=False),
             Column("metric_value", Float),
             Column("recorded_at", String, nullable=False),
+        )
+        self._recordings = Table(
+            "dialog_recordings",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column(
+                "session_id",
+                String,
+                ForeignKey("agentic_harnesses.session_id", ondelete="SET NULL"),
+            ),
+            Column("source_type", String, nullable=False),
+            Column("tool_name", String),
+            Column("tool_version", String),
+            Column("model_id", String),
+            Column("started_at", String, nullable=False),
+            Column("ended_at", String),
+            Column("metadata_json", String),
+        )
+        self._turns = Table(
+            "dialog_turns",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column(
+                "recording_id",
+                String,
+                ForeignKey("dialog_recordings.id", ondelete="CASCADE"),
+                nullable=False,
+                index=True,
+            ),
+            Column("turn_number", Integer, nullable=False),
+            Column("role", String, nullable=False),
+            Column("content", String),
+            Column("tool_calls_json", String),
+            Column("tool_results_json", String),
+            Column("timestamp", String, nullable=False),
+            Column("prompt_tokens", Integer),
+            Column("completion_tokens", Integer),
+            Column("latency_ms", Float),
+            UniqueConstraint(
+                "recording_id", "turn_number", name="uq_turns_recording_number"
+            ),
         )
         # SQLite ignores FK constraints unless PRAGMA foreign_keys=ON is set
         # on every connection. Postgres enforces FKs unconditionally.
@@ -775,6 +994,110 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             for r in rows
         ]
 
+    def save_recording(self, recording: DialogRecording) -> str:
+        with self.engine.begin() as conn:
+            conn.execute(
+                self._recordings.insert(),
+                {
+                    "id": recording.id,
+                    "session_id": recording.session_id or None,
+                    "source_type": recording.source_type,
+                    "tool_name": recording.tool_name or None,
+                    "tool_version": recording.tool_version or None,
+                    "model_id": recording.model_id or None,
+                    "started_at": recording.started_at,
+                    "ended_at": recording.ended_at or None,
+                    "metadata_json": recording.metadata_json or None,
+                },
+            )
+        return recording.id
+
+    def end_recording(self, recording_id: str, ended_at: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                self._recordings.update()
+                .where(self._recordings.c.id == recording_id)
+                .values(ended_at=ended_at)
+            )
+            if result.rowcount == 0:
+                raise LookupError(f"no recording with id={recording_id!r}")
+
+    def get_recording(self, recording_id: str) -> Optional[DialogRecording]:
+        cols = self._recordings.c
+        stmt = self._select(
+            cols.id,
+            cols.session_id,
+            cols.source_type,
+            cols.tool_name,
+            cols.tool_version,
+            cols.model_id,
+            cols.started_at,
+            cols.ended_at,
+            cols.metadata_json,
+        ).where(cols.id == recording_id)
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).fetchone()
+        if row is None:
+            return None
+        return _recording_from_row(row)
+
+    def save_turns(self, turns: list[DialogTurn]) -> list[str]:
+        ids: list[str] = []
+        with self.engine.begin() as conn:
+            for t in turns:
+                row_id = t.id or uuid.uuid4().hex
+                conn.execute(
+                    self._turns.delete().where(
+                        (self._turns.c.recording_id == t.recording_id)
+                        & (self._turns.c.turn_number == t.turn_number)
+                    )
+                )
+                conn.execute(
+                    self._turns.insert(),
+                    {
+                        "id": row_id,
+                        "recording_id": t.recording_id,
+                        "turn_number": t.turn_number,
+                        "role": t.role,
+                        "content": t.content or None,
+                        "tool_calls_json": t.tool_calls_json or None,
+                        "tool_results_json": t.tool_results_json or None,
+                        "timestamp": t.timestamp,
+                        "prompt_tokens": t.prompt_tokens
+                        if t.prompt_tokens >= 0
+                        else None,
+                        "completion_tokens": (
+                            t.completion_tokens if t.completion_tokens >= 0 else None
+                        ),
+                        "latency_ms": t.latency_ms if t.latency_ms >= 0 else None,
+                    },
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_turns(self, recording_id: str) -> list[DialogTurn]:
+        cols = self._turns.c
+        stmt = (
+            self._select(
+                cols.id,
+                cols.recording_id,
+                cols.turn_number,
+                cols.role,
+                cols.content,
+                cols.tool_calls_json,
+                cols.tool_results_json,
+                cols.timestamp,
+                cols.prompt_tokens,
+                cols.completion_tokens,
+                cols.latency_ms,
+            )
+            .where(cols.recording_id == recording_id)
+            .order_by(cols.turn_number)
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        return [_turn_from_row(r) for r in rows]
+
     def get_version(self) -> str:
         return self.engine.dialect.name
 
@@ -784,6 +1107,8 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_plugins",
             "agentic_skills",
             "agentic_metrics",
+            "dialog_recordings",
+            "dialog_turns",
         }:
             raise ValueError(f"unknown harness table: {table_name}")
         table_map = {
@@ -791,6 +1116,8 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_plugins": self._plugins,
             "agentic_skills": self._skills,
             "agentic_metrics": self._metrics,
+            "dialog_recordings": self._recordings,
+            "dialog_turns": self._turns,
         }
         with self.engine.connect() as conn:
             return int(
@@ -887,6 +1214,21 @@ class HarnessDatabase:
         self, session_id: str, *, metric_key: str = ""
     ) -> list[AgenticMetric]:
         return self._backend.get_metrics(session_id, metric_key=metric_key)
+
+    def save_recording(self, recording: DialogRecording) -> str:
+        return self._backend.save_recording(recording)
+
+    def end_recording(self, recording_id: str, ended_at: str) -> None:
+        self._backend.end_recording(recording_id, ended_at)
+
+    def get_recording(self, recording_id: str) -> Optional[DialogRecording]:
+        return self._backend.get_recording(recording_id)
+
+    def save_turns(self, turns: list[DialogTurn]) -> list[str]:
+        return self._backend.save_turns(turns)
+
+    def get_turns(self, recording_id: str) -> list[DialogTurn]:
+        return self._backend.get_turns(recording_id)
 
     def get_version(self) -> str:
         return self._backend.get_version()
