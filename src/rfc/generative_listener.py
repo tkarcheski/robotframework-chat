@@ -1,19 +1,43 @@
-"""Robot Framework listener: read-only generative observation (#358).
+"""Robot Framework listener: generative observation and flow control.
 
-Phase 3 of the Agentic Stack Tracker. When a suite is tagged
+Phase 3 of the Agentic Stack Tracker.
+
+**Observe mode (#358, read-only).** When a suite is tagged
 ``generative:observe``, this listener prompts a configured LLM at hook
 events (``start_suite``, and ``end_test`` when the test failed) and
 records every exchange in the ``agentic_decisions`` table with full
 provenance and ``applied=0`` — suggestions only, the execution
 behaviour of the suite is never changed.
 
+**Flow mode (#359, active, explicit opt-in).** When a suite is tagged
+``generative:flow``, the listener prompts the LLM on each test failure
+and may *apply* ``proposed_action in {skip, retry, fork}``:
+
+- ``skip``  — the next test is marked SKIPPED (its body is replaced
+  with a single ``Skip`` keyword naming the decision id).
+- ``retry`` — the failed test is re-run once (a tagged copy is
+  inserted right after it; copies are never retried again).
+- ``fork``  — the failed test is re-run once per model in
+  ``RFC_GENERATIVE_FORK_MODELS`` (comma-separated). Each fork copy is
+  tagged ``generative_fork:true`` (so its ``test_runs`` row is
+  identifiable) plus ``generative_fork:model:<model>``, and gets a
+  ``Set LLM Model`` keyword prepended.
+
+Every applied action persists a decision row with ``applied=1``;
+suggestions that cannot be applied (no next test to skip, no fork
+models configured, unparseable LLM output) persist with ``applied=0``.
+``generative:observe`` semantics are unchanged — observe-tagged suites
+never have their execution modified, whatever the LLM says. Execution
+of ``generative:flow`` suites diverges from the static ``.robot`` file;
+CI consumers should treat them as exploratory, not gating.
+
 A hard per-suite token budget prevents recursion / runaway cost: once
 ``RFC_GENERATIVE_BUDGET_TOKENS`` (default 10_000) is consumed, the
 listener writes ONE ``budget_exhausted`` decision and goes silent for
-the rest of the suite.
+the rest of the suite (in flow mode this also stops all flow actions).
 
 All failures are skip-and-log per CLAUDE.md — the test outcome is
-never affected by this listener.
+never affected by listener errors.
 
 Usage::
 
@@ -23,6 +47,8 @@ Environment:
     RFC_GENERATIVE_MODEL          Prompting model (default: a fast cheap
                                   local model, ``llama3.2:1b``).
     RFC_GENERATIVE_BUDGET_TOKENS  Per-suite token budget (default 10_000).
+    RFC_GENERATIVE_FORK_MODELS    Comma-separated model pool for ``fork``
+                                  (flow mode; unset = fork never applied).
     GENERATIVE_DATABASE_URL       Preferred DB for decision rows.
     HARNESS_DATABASE_URL          Fallback (shared with the harness tables).
     DATABASE_URL                  Final fallback.
@@ -33,8 +59,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any, Optional
+from uuid import uuid4
 
 from .base_listener import BaseListener
 from .harness_cli import active_session_id
@@ -45,8 +73,15 @@ from .llm_client import LLMProvider, create_provider
 logger = logging.getLogger(__name__)
 
 GENERATIVE_OBSERVE_TAG = "generative:observe"
+GENERATIVE_FLOW_TAG = "generative:flow"
+RETRY_MARKER_TAG = "generative:retried"
+FORK_MARKER_TAG = "generative_fork:true"
+FORK_MODEL_TAG_PREFIX = "generative_fork:model:"
 DEFAULT_GENERATIVE_MODEL = "llama3.2:1b"
 DEFAULT_BUDGET_TOKENS = 10_000
+
+_FLOW_ACTIONS = ("skip", "retry", "fork", "none")
+_ACTION_RE = re.compile(r"\b(skip|retry|fork|none)\b", re.IGNORECASE)
 
 _SUITE_PROMPT_TEMPLATE = (
     "You are observing a Robot Framework test run (read-only; your "
@@ -61,6 +96,19 @@ _FAILURE_PROMPT_TEMPLATE = (
     "Test '{test}' in suite '{suite}' FAILED with message:\n{message}\n"
     "Captured run data: {rfc_data}\n"
     "Briefly suggest a likely cause and what a follow-up action could be."
+)
+
+_FLOW_PROMPT_TEMPLATE = (
+    "You control the flow of a Robot Framework test run (suite opted in "
+    "via the generative:flow tag).\n"
+    "Test '{test}' in suite '{suite}' FAILED with message:\n{message}\n"
+    "Captured run data: {rfc_data}\n"
+    "Reply with exactly one word on the first line — your chosen action:\n"
+    "  skip  — mark the NEXT test in the suite as SKIPPED\n"
+    "  retry — re-run this failed test once\n"
+    "  fork  — re-run this failed test against alternate models\n"
+    "  none  — take no action\n"
+    "You may add a one-sentence rationale after the first line."
 )
 
 
@@ -78,8 +126,52 @@ def _suite_has_tag(node: Any, tag: str) -> bool:
     )
 
 
+def _test_has_tag(test: Any, tag: str) -> bool:
+    return any(str(t).lower() == tag for t in (getattr(test, "tags", None) or []))
+
+
+def _parse_action(response: str) -> str:
+    """Extract the first flow action mentioned in the LLM response.
+
+    Anything that names none of the known actions maps to ``none``
+    (recorded, never applied) — an unparseable model can never steer
+    the run.
+    """
+    match = _ACTION_RE.search(response)
+    return match.group(1).lower() if match else "none"
+
+
+def _add_tag(test: Any, tag: str) -> None:
+    """Add a tag on either a robot.running ``Tags`` or a plain list."""
+    tags = getattr(test, "tags", None)
+    if tags is None:
+        return
+    if hasattr(tags, "add"):
+        tags.add(tag)
+    else:
+        tags.append(tag)
+
+
+def _copy_test(test: Any) -> Any:
+    """Deep-copy a running-model test (robot objects expose ``deepcopy``)."""
+    if hasattr(test, "deepcopy"):
+        return test.deepcopy()
+    import copy as _copy
+
+    return _copy.deepcopy(test)
+
+
+def _test_failed(result: Any) -> bool:
+    """True only for a genuine FAIL — SKIP must not look like a failure."""
+    status = getattr(result, "status", None)
+    if status is not None:
+        return str(status).upper() == "FAIL"
+    return not getattr(result, "passed", True)
+
+
 class GenerativeListener(BaseListener):
-    """Record read-only LLM observations into ``agentic_decisions``."""
+    """Record LLM observations into ``agentic_decisions``; in flow mode
+    (``generative:flow``) additionally apply skip / retry / fork."""
 
     def __init__(
         self,
@@ -97,11 +189,14 @@ class GenerativeListener(BaseListener):
         self._db: Optional[HarnessDatabase] = None
         self._session_id = ""
         self._suite_name = ""
-        self._observing = False
+        self._mode = ""  # "" | "observe" | "flow"
         self._budget_tokens = DEFAULT_BUDGET_TOKENS
         self._tokens_used = 0
         self._budget_exhausted = False
         self._persisted_count = 0
+        self._pending_skip_id = ""  # decision id to stamp on the next test
+        self._retried_tests: set[str] = set()
+        self._suppressed_test_ids: set[int] = set()  # id(data) of skip targets
 
     @property
     def persisted_count(self) -> int:
@@ -110,6 +205,10 @@ class GenerativeListener(BaseListener):
     @property
     def budget_tokens(self) -> int:
         return self._budget_tokens
+
+    @property
+    def _observing(self) -> bool:
+        return self._mode != ""
 
     # ------------------------------------------------------------------
     # Hooks
@@ -120,8 +219,15 @@ class GenerativeListener(BaseListener):
         self._tokens_used = 0
         self._budget_exhausted = False
         self._budget_tokens = self._read_budget()
-        self._observing = _suite_has_tag(data, GENERATIVE_OBSERVE_TAG)
-        if not self._observing:
+        self._pending_skip_id = ""
+        self._retried_tests = set()
+        self._suppressed_test_ids = set()
+        if _suite_has_tag(data, GENERATIVE_FLOW_TAG):
+            self._mode = "flow"
+        elif _suite_has_tag(data, GENERATIVE_OBSERVE_TAG):
+            self._mode = "observe"
+        else:
+            self._mode = ""
             return
         self._session_id = active_session_id() or os.getenv("SESSION_ID", "")
         if not self._session_id:
@@ -130,12 +236,14 @@ class GenerativeListener(BaseListener):
                 "session is active (sidecar or SESSION_ID); observations "
                 "will not be captured.",
                 self._suite_name,
-                GENERATIVE_OBSERVE_TAG,
+                GENERATIVE_FLOW_TAG if self._mode == "flow" else GENERATIVE_OBSERVE_TAG,
             )
-            self._observing = False
+            self._mode = ""
             return
         if not self._session_has_harness_row():
-            self._observing = False
+            self._mode = ""
+            return
+        if self._mode != "observe":
             return
         prompt = _SUITE_PROMPT_TEMPLATE.format(
             suite=self._suite_name,
@@ -143,19 +251,47 @@ class GenerativeListener(BaseListener):
         )
         self._observe("start_suite", "", prompt)
 
+    def on_test_start(self, data: Any, result: Any) -> None:
+        if self._mode != "flow" or not self._pending_skip_id:
+            return
+        decision_id, self._pending_skip_id = self._pending_skip_id, ""
+        self._suppressed_test_ids.add(id(data))
+        message = f"Skipped by generative listener (decision {decision_id})"
+        try:
+            body = data.body
+            body.clear()
+            body.create_keyword(name="Skip", args=[message])
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not apply skip to test %r: %s",
+                getattr(data, "name", ""),
+                exc,
+            )
+
     def on_test_end(self, data: Any, result: Any) -> None:
-        if not self._observing:
+        if self._mode == "observe":
+            if getattr(result, "passed", True):
+                return
+            test_name = getattr(data, "name", "") or ""
+            prompt = _FAILURE_PROMPT_TEMPLATE.format(
+                test=test_name,
+                suite=self._suite_name,
+                message=getattr(result, "message", "") or "",
+                rfc_data=dict(self._current_test_data) or "none",
+            )
+            self._observe("end_test", test_name, prompt)
             return
-        if getattr(result, "passed", True):
+        if self._mode != "flow":
             return
-        test_name = getattr(data, "name", "") or ""
-        prompt = _FAILURE_PROMPT_TEMPLATE.format(
-            test=test_name,
-            suite=self._suite_name,
-            message=getattr(result, "message", "") or "",
-            rfc_data=dict(self._current_test_data) or "none",
-        )
-        self._observe("end_test", test_name, prompt)
+        if not _test_failed(result):
+            return
+        if id(data) in self._suppressed_test_ids:
+            return  # a test we ourselves marked skipped
+        if _test_has_tag(data, RETRY_MARKER_TAG) or _test_has_tag(
+            data, FORK_MARKER_TAG
+        ):
+            return  # copies we inserted never trigger further actions
+        self._handle_flow_failure(data, result)
 
     # ------------------------------------------------------------------
     # Internals
@@ -224,27 +360,35 @@ class GenerativeListener(BaseListener):
             return None
         return self._provider
 
-    def _observe(self, hook_event: str, test_name: str, prompt: str) -> None:
-        """Prompt the LLM and persist the exchange, honouring the budget."""
+    def _prompt_llm(self, hook_event: str, test_name: str, prompt: str) -> str:
+        """Prompt the LLM honouring the budget; '' means no response
+        (budget exhausted, provider missing, or call failed)."""
         if self._budget_exhausted:
-            return
+            return ""
         if self._tokens_used >= self._budget_tokens:
             self._write_budget_exhausted(hook_event, test_name)
-            return
+            return ""
         provider = self._get_provider()
         if provider is None:
-            return
+            return ""
         try:
             response = provider.generate(prompt)
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning("GenerativeListener: LLM call failed: %s", exc)
-            return
+            return ""
         self._tokens_used += self._tokens_consumed(provider, prompt, response)
+        return response
+
+    def _observe(self, hook_event: str, test_name: str, prompt: str) -> None:
+        """Prompt the LLM and persist a read-only observation row."""
+        response = self._prompt_llm(hook_event, test_name, prompt)
+        if not response:
+            return
         self._persist(
             AgenticDecision(
                 session_id=self._session_id,
                 hook_event=hook_event,
-                prompt_model=getattr(provider, "model", "") or "",
+                prompt_model=getattr(self._provider, "model", "") or "",
                 prompt_text=prompt,
                 recorded_at=_utc_now(),
                 test_name=test_name,
@@ -254,6 +398,131 @@ class GenerativeListener(BaseListener):
                 tokens_used=self._tokens_used,
             )
         )
+
+    # ------------------------------------------------------------------
+    # Flow mode (#359)
+    # ------------------------------------------------------------------
+
+    def _handle_flow_failure(self, data: Any, result: Any) -> None:
+        """Ask the LLM for a flow action on a failed test and apply it."""
+        test_name = getattr(data, "name", "") or ""
+        prompt = _FLOW_PROMPT_TEMPLATE.format(
+            test=test_name,
+            suite=self._suite_name,
+            message=getattr(result, "message", "") or "",
+            rfc_data=dict(self._current_test_data) or "none",
+        )
+        response = self._prompt_llm("end_test", test_name, prompt)
+        if not response:
+            return
+        action = _parse_action(response)
+        decision_id = uuid4().hex  # pre-generated so skip can stamp it
+        applied = 0
+        if action == "skip":
+            applied = self._apply_skip(data, decision_id)
+        elif action == "retry":
+            applied = self._apply_retry(data, test_name)
+        elif action == "fork":
+            applied = self._apply_fork(data, test_name)
+        self._persist(
+            AgenticDecision(
+                session_id=self._session_id,
+                hook_event="end_test",
+                prompt_model=getattr(self._provider, "model", "") or "",
+                prompt_text=prompt,
+                recorded_at=_utc_now(),
+                test_name=test_name,
+                response_text=response,
+                proposed_action=action,
+                applied=applied,
+                tokens_used=self._tokens_used,
+                id=decision_id,
+            )
+        )
+
+    def _suite_position(self, data: Any) -> tuple[Any, int]:
+        """Return ``(tests, index)`` for a running test, or ``(None, -1)``."""
+        tests = getattr(getattr(data, "parent", None), "tests", None)
+        if tests is None:
+            return None, -1
+        try:
+            return tests, tests.index(data)
+        except ValueError:
+            return None, -1
+
+    def _apply_skip(self, data: Any, decision_id: str) -> int:
+        """Arm a skip for the next test; 1 if there is a next test."""
+        tests, index = self._suite_position(data)
+        if tests is None or index + 1 >= len(tests):
+            logger.warning(
+                "GenerativeListener: skip proposed after test %r but there "
+                "is no next test in suite %r; not applied.",
+                getattr(data, "name", ""),
+                self._suite_name,
+            )
+            return 0
+        self._pending_skip_id = decision_id
+        return 1
+
+    def _apply_retry(self, data: Any, test_name: str) -> int:
+        """Insert one tagged copy of the failed test right after it."""
+        if test_name in self._retried_tests:
+            return 0  # at most one retry per test
+        tests, index = self._suite_position(data)
+        if tests is None:
+            return 0
+        try:
+            copy = _copy_test(data)
+            copy.name = f"{test_name} (generative retry)"
+            _add_tag(copy, RETRY_MARKER_TAG)
+            tests.insert(index + 1, copy)
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not apply retry for %r: %s",
+                test_name,
+                exc,
+            )
+            return 0
+        self._retried_tests.add(test_name)
+        return 1
+
+    def _apply_fork(self, data: Any, test_name: str) -> int:
+        """Insert one tagged copy per configured fork model."""
+        models = [
+            m.strip()
+            for m in os.getenv("RFC_GENERATIVE_FORK_MODELS", "").split(",")
+            if m.strip()
+        ]
+        if not models:
+            logger.warning(
+                "GenerativeListener: fork proposed for %r but "
+                "RFC_GENERATIVE_FORK_MODELS is not configured; not applied.",
+                test_name,
+            )
+            return 0
+        tests, index = self._suite_position(data)
+        if tests is None:
+            return 0
+        inserted = 0
+        for offset, model in enumerate(models, start=1):
+            try:
+                copy = _copy_test(data)
+                copy.name = f"{test_name} (generative fork: {model})"
+                _add_tag(copy, FORK_MARKER_TAG)
+                _add_tag(copy, f"{FORK_MODEL_TAG_PREFIX}{model}")
+                # Point the copy at the alternate model before anything else.
+                copy.body.create_keyword(name="Set LLM Model", args=[model])
+                copy.body.insert(0, copy.body.pop())
+                tests.insert(index + offset, copy)
+                inserted += 1
+            except Exception as exc:  # skip-and-log: never fail the run
+                logger.warning(
+                    "GenerativeListener: could not fork %r onto model %r: %s",
+                    test_name,
+                    model,
+                    exc,
+                )
+        return 1 if inserted else 0
 
     def _write_budget_exhausted(self, hook_event: str, test_name: str) -> None:
         """Record ONE budget_exhausted marker, then go silent for the suite."""
