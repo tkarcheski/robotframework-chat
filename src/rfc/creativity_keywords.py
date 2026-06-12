@@ -67,7 +67,7 @@ class CreativityKeywords:
     def creativity_grader(self) -> CreativityGrader:
         """Lazily build a panel-backed grader from CREATIVITY_GRADER_MODELS.
 
-        Raises MissingEnvironmentError (ROBOT_SKIP) if the env var is unset
+        Raises MissingEnvironmentError (ROBOT_SKIP_EXECUTION) if the env var is unset
         or has fewer than 3 models. This skips the test rather than silently
         falling back to the generation client (issue #260).
         """
