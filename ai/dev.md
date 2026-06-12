@@ -54,10 +54,28 @@ The `.env` file is loaded automatically by:
 
 | Variable | Purpose | Default | Used By |
 |----------|---------|---------|---------|
-| `OLLAMA_NODES_LIST` | Comma-separated hostnames | from `config/test_suites.yaml` | discover_nodes.py, run_local_models.py |
+| `OLLAMA_NODES_LIST` | Comma-separated hostnames | from `config/test_suites.yaml` | discover_nodes.py, run_local_models.py (`--mode external`) |
 | `OLLAMA_NODES` | Legacy: comma-separated `host:port` entries | (empty) | discover_ollama.py |
 | `OLLAMA_SUBNET` | CIDR notation for subnet scanning | (empty) | discover_ollama.py |
 | `RFC_HOSTNAME` | Override hostname in test results | `platform.node()` | host_info.py |
+
+#### host-config.toml vs env-var discovery (issue #306)
+
+`make run-local-models` no longer uses the env vars above. It reads a
+curated host inventory from `host-config.toml` at the repo root
+(git-ignored; `cp host-config.toml.example host-config.toml`). The runner
+builds a global `(model, suite)` job queue and dispatches it across hosts
+(`rfc.host_scheduler`), preferring jobs whose model is already loaded in
+VRAM per Ollama `/api/ps` — this skips cold model loads (10–60s on large
+models). Per-host knobs: `priority`, `max_parallel`, `skip_models`; global
+knobs: `connect_timeout`, `request_timeout`, `global_max_parallel`.
+
+**Migration:** each hostname in your old `OLLAMA_NODES_LIST` becomes a
+`[[hosts]]` entry with `endpoint = "http://<host>:11434"`. The old
+env-var/subnet behavior lives on as `make run-all-external` (sequential
+by default; `execution.parallel` in `config/local_models.yaml` is its
+global concurrency cap and is deprecated for the TOML path in favor of
+`global_max_parallel`).
 
 ### PostgreSQL & Superset
 

@@ -169,31 +169,48 @@ models.
 
 ```bash
 make discover-local-models   # List models available on all configured nodes
-make run-local-models        # Run all test suites against every discovered model
+make run-local-models        # Curated hosts (host-config.toml), parallel + loaded-model priority
+make run-all-external        # Legacy wide-net discovery (env vars / subnet scan)
 
 # Windows
-uv run python scripts/run_local_models.py --discover-models
+uv run python scripts/run_local_models.py --discover-models --mode external
 uv run python scripts/run_local_models.py
 ```
 
-Use `ITERATIONS` for continuous testing:
+Use `ITERATIONS` for continuous testing (both targets):
 
 ```bash
 make run-local-models ITERATIONS=-1   # Run forever
 make run-local-models ITERATIONS=0    # Stop on first error
 ```
 
-### Multi-Node Setup (Optional)
+### Multi-Host Setup with host-config.toml
 
-To distribute tests across multiple machines running Ollama, set
-`OLLAMA_NODES_LIST` in `.env`:
+`make run-local-models` reads a curated host inventory from
+`host-config.toml` (git-ignored) at the repo root:
+
+```bash
+cp host-config.toml.example host-config.toml   # then edit endpoints
+```
+
+A global `(model, suite)` job queue is scheduled across the configured
+hosts in parallel. Each host prefers jobs whose model is already loaded
+in VRAM (per Ollama's `/api/ps`), avoiding cold model loads. Per-host
+`max_parallel`, `priority`, and `skip_models` plus a `global_max_parallel`
+cap are configured in the TOML — see `host-config.toml.example`.
+
+### Wide-Net Discovery (run-all-external)
+
+`make run-all-external` preserves the previous env-var driven behavior:
+it probes `OLLAMA_NODES_LIST` hosts (or scans `OLLAMA_SUBNET`, or falls
+back to `OLLAMA_ENDPOINT`) and runs everything it finds, sequentially by
+default (`execution.parallel` in `config/local_models.yaml`):
 
 ```bash
 OLLAMA_NODES_LIST=localhost,gpu-server-1,gpu-server-2
 ```
 
-Or edit the `nodes` list in `config/test_suites.yaml` directly. Check node
-status with:
+Check node status with:
 
 ```bash
 make discover-local-nodes
