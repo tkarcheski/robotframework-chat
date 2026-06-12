@@ -64,7 +64,7 @@ swebench = [
 dev = [
     "pre-commit",
     "python-dotenv",
-    "ruff",
+    "ruff==0.14.10",
     "mypy",
     "types-requests",
     "types-PyYAML",
