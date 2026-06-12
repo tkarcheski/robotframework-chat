@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from robot.api import logger
+
 from rfc import agent_verifiers as verifiers
 from rfc.agent_config import (
     DEFAULT_LOCAL_AGENTS_PATH,
@@ -140,12 +142,18 @@ class AgenticCodingKeywords:
             canon = f"{canon}:latest"
         return canon
 
-    def _prose_judge_panel(self) -> MultiGrader:
+    def _generation_model(self, run: AgentRun) -> str:
+        """The model that produced ``run``'s prose ('' for fake replays)."""
+        return self._agent_config(run.agent_id).model
+
+    def _prose_judge_panel(self, generation_model: str = "") -> MultiGrader:
         """Build the judge panel from AGENT_PROSE_GRADER_MODELS.
 
         Raises MissingEnvironmentError (ROBOT_SKIP) when the env var is
         unset, so tier:3 tests skip with a clear reason instead of
-        failing when no grading models are configured.
+        failing when no grading models are configured. Rejects a panel
+        containing ``generation_model`` — that judge would grade its own
+        output (ai/testing.md distinct-judges rule).
         """
         models_str = os.getenv("AGENT_PROSE_GRADER_MODELS", "").strip()
         if not models_str:
@@ -161,6 +169,13 @@ class AgenticCodingKeywords:
                 f"models for consensus grading, got {len(models)} unique: "
                 f"{models} (raw: {raw_models})"
             )
+        if generation_model and self._canonical_model(generation_model) in seen:
+            raise ValueError(
+                f"AGENT_PROSE_GRADER_MODELS must not contain the generation "
+                f"model '{generation_model}' — that judge would grade its "
+                f"own output, violating the ai/testing.md distinct-judges "
+                f"rule."
+            )
         timeout = resolve_timeout(None)
         providers = [create_provider(model=model, timeout=timeout) for model in models]
         return MultiGrader(providers=providers)
@@ -170,6 +185,12 @@ class AgenticCodingKeywords:
     ) -> None:
         emit_rfc_data("score", str(result.majority_score))
         emit_rfc_data("grading_reason", f"{dimension}: " + " | ".join(result.reasons))
+        if not result.unanimous:
+            logger.warn(
+                f"{dimension}: prose judges disagree — scores={result.scores}, "
+                f"agreement={result.agreement_ratio:.2f}, "
+                f"reasons={result.reasons}"
+            )
         if result.majority_score < threshold:
             raise AssertionError(
                 f"{dimension} consensus score {result.majority_score} below "
@@ -181,21 +202,22 @@ class AgenticCodingKeywords:
         self, run: AgentRun, threshold: float = 0.5
     ) -> None:
         """Judge panel: each MC question must reference a concrete repo artifact."""
-        result = AgentProseGrader(self._prose_judge_panel()).grade_question_grounding(
-            run
-        )
+        panel = self._prose_judge_panel(generation_model=self._generation_model(run))
+        result = AgentProseGrader(panel).grade_question_grounding(run)
         self._assert_prose_grade("question-grounding", result, float(threshold))
 
     def pr_body_should_explain_how_to_review(
         self, run: AgentRun, threshold: float = 0.5
     ) -> None:
         """Judge panel: PR body names a starting file and sequences key changes."""
-        result = AgentProseGrader(self._prose_judge_panel()).grade_pr_body(run)
+        panel = self._prose_judge_panel(generation_model=self._generation_model(run))
+        result = AgentProseGrader(panel).grade_pr_body(run)
         self._assert_prose_grade("pr-body-quality", result, float(threshold))
 
     def commits_should_match_their_changes(
         self, run: AgentRun, threshold: float = 0.5
     ) -> None:
         """Judge panel: each commit subject truthfully describes its files."""
-        result = AgentProseGrader(self._prose_judge_panel()).grade_commit_cohesion(run)
+        panel = self._prose_judge_panel(generation_model=self._generation_model(run))
+        result = AgentProseGrader(panel).grade_commit_cohesion(run)
         self._assert_prose_grade("commit-cohesion", result, float(threshold))

@@ -17,10 +17,39 @@ from .multi_grader import MultiGrader, MultiGradeResult
 
 _GROUNDING_RUBRIC = (
     "Score 1.0 when every question references a concrete file, symbol, "
-    "function, or other artifact that plausibly exists in the repository "
-    "the task describes. Score 0.0 when questions are generic and could "
-    "be asked about any repository. Use partial credit for a mix."
+    "function, or other artifact that is supported by the task or by the "
+    "repository evidence provided (commands the agent ran and their "
+    "output). Score 0.0 when questions are generic and could be asked "
+    "about any repository, or when they confidently name artifacts that "
+    "nothing in the evidence shows the agent actually observed. Use "
+    "partial credit for a mix."
 )
+
+_EVIDENCE_COMMAND_LIMIT = 20
+_EVIDENCE_TAIL_CHARS = 400
+
+
+def _command_evidence(run: AgentRun) -> str:
+    """Render what the agent actually observed in the repository.
+
+    Grounding judges need this to tell genuine repo grounding from
+    fabricated-but-plausible identifiers: a question may only count as
+    grounded if the referenced artifact shows up in the task or in the
+    commands/output below.
+    """
+    if not run.commands:
+        return "(no repository evidence captured)"
+    lines = []
+    for cmd in run.commands[:_EVIDENCE_COMMAND_LIMIT]:
+        lines.append(f"- $ {' '.join(cmd.argv)}")
+        tail = (cmd.stdout_tail or cmd.stderr_tail).strip()
+        if tail:
+            lines.append(f"  output: {tail[-_EVIDENCE_TAIL_CHARS:]}")
+    omitted = len(run.commands) - _EVIDENCE_COMMAND_LIMIT
+    if omitted > 0:
+        lines.append(f"  (… {omitted} further commands omitted)")
+    return "\n".join(lines)
+
 
 _PR_BODY_RUBRIC = (
     "Score 1.0 when the body has a 'How to review' section that names a "
@@ -57,8 +86,12 @@ class AgentProseGrader:
             question=(
                 "An AI coding agent was given this task:\n"
                 f"{run.task}\n\n"
+                "Repository evidence — commands the agent ran and the "
+                "output it observed:\n"
+                f"{_command_evidence(run)}\n\n"
                 "Before acting it asked the clarifying questions below. "
-                "Are they grounded in concrete repository artifacts?"
+                "Are they grounded in concrete repository artifacts the "
+                "agent actually observed?"
             ),
             expected="Each question references a concrete file, symbol, or function.",
             actual=questions_text,
