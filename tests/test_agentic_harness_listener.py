@@ -98,6 +98,26 @@ class TestSessionResolution:
         _run_one_test(listener, {LLM_METRICS_DATA_KEY: _metrics_payload()})
         assert len(db.get_metrics("sess-2")) == 3
 
+    def test_env_session_without_harness_row_skips_persist(
+        self, plain_cwd, tmp_path, monkeypatch, caplog
+    ):
+        """A Make-generated SESSION_ID has no agentic_harnesses row (#419).
+
+        The Makefile exports a fresh UUID when no harness is active;
+        persisting against it would violate the FK on every test. The
+        listener must verify the row exists, warn once, and disable.
+        """
+        monkeypatch.setenv("SESSION_ID", "make-fresh-uuid")
+        db = HarnessDatabase(database_url=_db_url(tmp_path))  # no seeded row
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        with caplog.at_level("WARNING"):
+            _run_one_test(listener, {LLM_METRICS_DATA_KEY: _metrics_payload()})
+            _run_one_test(listener, {LLM_METRICS_DATA_KEY: _metrics_payload()})
+        assert listener.persisted_count == 0
+        assert db.get_metrics("make-fresh-uuid") == []
+        warnings = [r for r in caplog.records if "harness" in r.message.lower()]
+        assert len(warnings) == 1
+
     def test_no_session_warns_once_and_continues(self, plain_cwd, tmp_path, caplog):
         listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
         with caplog.at_level("WARNING"):
@@ -147,8 +167,7 @@ class TestMetricCapture:
         listener.end_test(SimpleNamespace(name="t1"), SimpleNamespace())
         listener.end_suite(SimpleNamespace(name="root"), SimpleNamespace())
         tokens_out = [
-            m.metric_value
-            for m in db.get_metrics("sess-1", metric_key="tokens_out")
+            m.metric_value for m in db.get_metrics("sess-1", metric_key="tokens_out")
         ]
         assert sorted(tokens_out) == [10.0, 20.0]
 
