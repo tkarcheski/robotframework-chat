@@ -27,6 +27,7 @@ SUBMODULE_OWNERS: dict[str, str] = {
     "results": "test-design@agents.rfc",
     "monitoring/logs": "project-management@agents.rfc",
     ".claude/skills/elons-algorithm": "design@agents.rfc",
+    "knowledge": "design@agents.rfc",
 }
 
 # Prefix-based ownership for submodule families (e.g. external skill packs,

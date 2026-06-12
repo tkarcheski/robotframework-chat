@@ -148,6 +148,46 @@ class TestPlanAndSync:
         assert created == [] and pruned == []
 
 
+class TestTopLevelPackPruning:
+    """Links of packs mounted outside vendor/skill-packs/ must be prunable (#463)."""
+
+    @pytest.fixture()
+    def knowledge_repo(self, tmp_path: Path) -> Path:
+        (tmp_path / ".claude" / "skills").mkdir(parents=True)
+        (tmp_path / "config").mkdir(exist_ok=True)
+        (tmp_path / "config" / "skill_packs.yaml").write_text(
+            "packs:\n"
+            "  - name: knowledge\n"
+            "    path: knowledge\n"
+            '    prefix: ""\n'
+            '    glob: "skills/*/SKILL.md"\n'
+            "    upstream: https://github.com/tkarcheski/knowledge\n"
+            "    fork: git@github.com:tkarcheski/knowledge.git\n"
+        )
+        for name in ["writing-prose", "tiered-recall"]:
+            d = tmp_path / "knowledge" / "skills" / name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(f"# {name}\n")
+        return tmp_path
+
+    def test_removed_knowledge_skill_link_is_pruned(self, knowledge_repo: Path) -> None:
+        import shutil
+
+        from scripts.sync_skill_packs import main
+
+        assert main(["--root", str(knowledge_repo)]) == 0
+        skills_dir = knowledge_repo / ".claude" / "skills"
+        assert (skills_dir / "writing-prose").is_symlink()
+
+        # The skill disappears upstream; the committed link must be pruned.
+        shutil.rmtree(knowledge_repo / "knowledge" / "skills" / "writing-prose")
+        assert main(["--root", str(knowledge_repo)]) == 0
+        assert not (skills_dir / "writing-prose").is_symlink(), (
+            "stale (broken) link of a top-level pack must be pruned"
+        )
+        assert (skills_dir / "tiered-recall").is_symlink()
+
+
 class TestUninitializedPack:
     """A clone without --recurse-submodules must not nuke committed links (#453)."""
 

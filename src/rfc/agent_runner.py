@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 from .agent_config import AgentConfig
 from .agent_run import AgentRun
 from .fake_agent_runner import FakeAgentRunner
+from .live_agent_runner import LiveClaudeCodeRunner
 from .llm_client import LLMProvider
 from .ollama_agent_runner import OllamaAgentRunner
 
@@ -36,11 +37,13 @@ def create_agent_runner(
 
     ``scenarios_root`` is the directory containing per-scenario subdirs.
     For ``runner: fake`` each subdir must have a ``run.yaml``; for
-    ``runner: ollama`` each subdir must have a ``task.yaml``.
+    ``runner: ollama`` and ``runner: live`` each subdir must have a
+    ``task.yaml``.
 
     ``provider`` is only used for ``runner: ollama``. If omitted, the
     OllamaAgentRunner constructs a default OllamaClient from ``config``
-    on first use.
+    on first use. ``runner: live`` shells out to the ``claude`` CLI
+    against an isolated git worktree -- see :mod:`rfc.live_agent_runner`.
     """
     if config.runner == "fake":
         return FakeAgentRunner(fixtures_root=scenarios_root, agent_id=config.id)
@@ -49,6 +52,11 @@ def create_agent_runner(
             config=config,
             scenarios_root=scenarios_root,
             provider=provider,
+        )
+    if config.runner == "live":
+        return LiveClaudeCodeRunner(
+            config=config,
+            scenarios_root=scenarios_root,
         )
     raise ValueError(
         f"Cannot build runner for agent {config.id!r}: "

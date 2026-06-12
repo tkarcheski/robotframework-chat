@@ -32,6 +32,57 @@ _NUMBERED_PATTERN = re.compile(r"^\s*(\d+)[.)]\s+")
 # a failure for cosmetic formatting.
 _WORD_WRAPPER_CHARS = "*_`~()[]{}\"'\u2018\u2019\u201c\u201d"
 
+# Paragraph divider used by the official google/IFEval ParagraphChecker.
+_IFEVAL_PARAGRAPH_SPLIT = re.compile(r"\s?\*\*\*\s?")
+
+# Bullet-line patterns per the official IFEval BulletListChecker.
+_IFEVAL_STAR_BULLET = re.compile(r"^\s*\*[^*].*$", re.MULTILINE)
+_IFEVAL_DASH_BULLET = re.compile(r"^\s*-.*$", re.MULTILINE)
+
+# <<title>> per the official IFEval TitleChecker.
+_IFEVAL_TITLE = re.compile(r"<<[^\n]+>>")
+
+# *highlighted section* per the official IFEval HighlightSectionChecker.
+_IFEVAL_HIGHLIGHT = re.compile(r"\*[^\n*]+\*")
+_IFEVAL_DOUBLE_HIGHLIGHT = re.compile(r"\*\*[^\n*]+\*\*")
+
+# [placeholder] per the official IFEval PlaceholderChecker.
+_IFEVAL_PLACEHOLDER = re.compile(r"\[.*?\]")
+
+# Official google/IFEval instruction ids this library can grade.  The HF
+# importer (scripts/import_hf_benchmark.py) only commits dataset items whose
+# instructions are ALL in this set, so committed data is always gradable.
+SUPPORTED_INSTRUCTIONS: frozenset = frozenset(
+    {
+        "change_case:capital_word_frequency",
+        "change_case:english_capital",
+        "change_case:english_lowercase",
+        "combination:repeat_prompt",
+        "detectable_content:number_placeholders",
+        "detectable_content:postscript",
+        "detectable_format:number_bullet_lists",
+        "detectable_format:number_highlighted_sections",
+        "detectable_format:title",
+        "keywords:existence",
+        "keywords:forbidden_words",
+        "keywords:frequency",
+        "keywords:letter_frequency",
+        "length_constraints:number_paragraphs",
+        "length_constraints:number_sentences",
+        "length_constraints:number_words",
+        "punctuation:no_comma",
+        "startend:end_checker",
+        "startend:quotation",
+    }
+)
+
+
+def _check_relation(actual: int, expected: int, relation: str) -> bool:
+    """IFEval comparison: ``at least`` (default) or ``less than``."""
+    if relation == "less than":
+        return actual < expected
+    return actual >= expected
+
 
 class IFEvalKeywords:
     """Robot Framework keyword library for instruction-following evaluation.
@@ -329,3 +380,300 @@ class IFEvalKeywords:
         if any(c.isdigit() for c in response):
             return False, "Response contains digit characters"
         return True, "No digits found in response"
+
+    # ------------------------------------------------------------------
+    # Official google/IFEval instruction checkers (HF dataset import)
+    # ------------------------------------------------------------------
+
+    @keyword("Run IFEval Dataset Item")
+    def run_ifeval_dataset_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Run one imported google/IFEval dataset item end to end.
+
+        *item* is an entry from ``robot/ifeval/variables/ifeval_hf.yaml``:
+        ``{"key": int, "prompt": str, "instructions": [{"id": ..., "kwargs":
+        {...}}]}``.  Sends the prompt to the LLM, strips ``<think>`` tags,
+        then checks every instruction (strict prompt-level accuracy: all
+        instructions must pass).  Emits RFC_DATA for the database listener.
+        """
+        prompt = item["prompt"]
+        raw_response = self.client.generate(prompt)
+        answer, _ = parse_thinking(raw_response, strip_unclosed=True)
+        answer = answer.strip()
+
+        failures = []
+        for instruction in item["instructions"]:
+            passed, reason = self.check_instruction(
+                answer, instruction["id"], instruction.get("kwargs") or {}
+            )
+            if not passed:
+                failures.append(f"{instruction['id']}: {reason}")
+
+        all_passed = not failures
+        instruction_ids = ", ".join(i["id"] for i in item["instructions"])
+        reason = "; ".join(failures) if failures else "All instructions satisfied"
+
+        emit_rfc_data("actual_answer", answer)
+        emit_rfc_data("score", "1" if all_passed else "0")
+        emit_rfc_data("expected_answer", f"ifeval:{instruction_ids}")
+        emit_rfc_data("grading_reason", reason)
+
+        return {
+            "passed": all_passed,
+            "key": item.get("key"),
+            "constraint": instruction_ids,
+            "reason": reason,
+            "response": answer,
+        }
+
+    @staticmethod
+    @keyword("Check IFEval Instruction")
+    def check_instruction(
+        response: str, instruction_id: str, kwargs: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """Check one official IFEval *instruction_id* against *response*.
+
+        *kwargs* is the (possibly ``None``-padded) kwargs dict from the HF
+        dataset; ``None`` values are ignored.  Semantics follow the official
+        ``instruction_following_eval`` checkers.
+
+        Raises:
+            ValueError: If *instruction_id* is not in
+                :data:`SUPPORTED_INSTRUCTIONS`.
+        """
+        if instruction_id not in SUPPORTED_INSTRUCTIONS:
+            raise ValueError(
+                f"Unknown instruction: {instruction_id!r}. "
+                f"Supported: {sorted(SUPPORTED_INSTRUCTIONS)}"
+            )
+        kw = {k: v for k, v in kwargs.items() if v is not None}
+        checker = getattr(
+            IFEvalKeywords,
+            "_instr_" + instruction_id.replace(":", "__"),
+        )
+        result: Tuple[bool, str] = checker(response, kw)
+        return result
+
+    @staticmethod
+    def _instr_punctuation__no_comma(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        if "," in response:
+            return False, "Response contains a comma"
+        return True, "No commas in response"
+
+    @staticmethod
+    def _instr_change_case__english_capital(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        return IFEvalKeywords.check_all_caps(response)
+
+    @staticmethod
+    def _instr_change_case__english_lowercase(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        return IFEvalKeywords.check_all_lowercase(response)
+
+    @staticmethod
+    def _instr_change_case__capital_word_frequency(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["capital_frequency"])
+        relation = kw.get("capital_relation", "at least")
+        words = [w for w in response.split() if any(c.isalpha() for c in w)]
+        actual = sum(1 for w in words if w.isupper())
+        if _check_relation(actual, expected, relation):
+            return True, f"Found {actual} all-caps words ({relation} {expected})"
+        return False, f"Expected {relation} {expected} all-caps words, found {actual}"
+
+    @staticmethod
+    def _instr_length_constraints__number_words(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_words"])
+        relation = kw.get("relation", "at least")
+        actual = len(response.split())
+        if _check_relation(actual, expected, relation):
+            return True, f"Found {actual} words ({relation} {expected})"
+        return False, f"Expected {relation} {expected} words, found {actual}"
+
+    @staticmethod
+    def _instr_length_constraints__number_sentences(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_sentences"])
+        relation = kw.get("relation", "at least")
+        text = response.strip()
+        sentences = (
+            [s for s in _SENTENCE_SPLIT.split(text) if s.strip()] if text else []
+        )
+        actual = len(sentences)
+        if _check_relation(actual, expected, relation):
+            return True, f"Found {actual} sentences ({relation} {expected})"
+        return False, f"Expected {relation} {expected} sentences, found {actual}"
+
+    @staticmethod
+    def _instr_length_constraints__number_paragraphs(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_paragraphs"])
+        paragraphs = _IFEVAL_PARAGRAPH_SPLIT.split(response)
+        count = len(paragraphs)
+        for index, paragraph in enumerate(paragraphs):
+            if paragraph.strip():
+                continue
+            if index in (0, len(paragraphs) - 1):
+                count -= 1
+            else:
+                return False, f"Empty paragraph at *** divider position {index}"
+        if count == expected:
+            return True, f"Found {count} ***-separated paragraphs as expected"
+        return False, f"Expected {expected} ***-separated paragraphs, found {count}"
+
+    @staticmethod
+    def _instr_detectable_format__number_bullet_lists(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_bullets"])
+        actual = len(_IFEVAL_STAR_BULLET.findall(response)) + len(
+            _IFEVAL_DASH_BULLET.findall(response)
+        )
+        if actual == expected:
+            return True, f"Found {actual} bullet points as expected"
+        return False, f"Expected {expected} bullet points, found {actual}"
+
+    @staticmethod
+    def _instr_detectable_format__title(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        if _IFEVAL_TITLE.search(response):
+            return True, "Found a <<title>>"
+        return False, "No <<title>> found in response"
+
+    @staticmethod
+    def _instr_detectable_format__number_highlighted_sections(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_highlights"])
+        actual = 0
+        for match in _IFEVAL_HIGHLIGHT.findall(response):
+            if match.strip("*").strip():
+                actual += 1
+        for match in _IFEVAL_DOUBLE_HIGHLIGHT.findall(response):
+            if match.strip("*").strip():
+                actual += 1
+        if actual >= expected:
+            return True, f"Found {actual} highlighted sections (at least {expected})"
+        return False, (
+            f"Expected at least {expected} *highlighted* sections, found {actual}"
+        )
+
+    @staticmethod
+    def _instr_keywords__existence(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        keywords = kw["keywords"]
+        missing = [
+            k
+            for k in keywords
+            if not re.search(rf"\b{re.escape(k)}\b", response, flags=re.IGNORECASE)
+        ]
+        if missing:
+            return False, f"Missing keyword(s): {', '.join(missing)}"
+        return True, f"All {len(keywords)} keywords present"
+
+    @staticmethod
+    def _instr_keywords__forbidden_words(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        found = [
+            w
+            for w in kw["forbidden_words"]
+            if re.search(rf"\b{re.escape(w)}\b", response, flags=re.IGNORECASE)
+        ]
+        if found:
+            return False, f"Forbidden word(s) present: {', '.join(found)}"
+        return True, "No forbidden words present"
+
+    @staticmethod
+    def _instr_keywords__frequency(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        word = kw["keyword"]
+        expected = int(kw["frequency"])
+        relation = kw.get("relation", "at least")
+        actual = len(
+            re.findall(rf"\b{re.escape(word)}\b", response, flags=re.IGNORECASE)
+        )
+        if _check_relation(actual, expected, relation):
+            return True, f"Keyword {word!r} appears {actual}x ({relation} {expected})"
+        return False, (
+            f"Expected keyword {word!r} {relation} {expected}x, found {actual}x"
+        )
+
+    @staticmethod
+    def _instr_keywords__letter_frequency(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        letter = kw["letter"].lower()
+        expected = int(kw["let_frequency"])
+        relation = kw.get("let_relation", "at least")
+        actual = response.lower().count(letter)
+        if _check_relation(actual, expected, relation):
+            return True, f"Letter {letter!r} appears {actual}x ({relation} {expected})"
+        return False, (
+            f"Expected letter {letter!r} {relation} {expected}x, found {actual}x"
+        )
+
+    @staticmethod
+    def _instr_startend__end_checker(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        end_phrase = kw["end_phrase"].strip().lower()
+        value = response.strip().strip('"').lower()
+        if value.endswith(end_phrase):
+            return True, f"Response ends with {kw['end_phrase']!r}"
+        return False, f"Response does not end with {kw['end_phrase']!r}"
+
+    @staticmethod
+    def _instr_startend__quotation(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        value = response.strip()
+        if len(value) > 1 and value.startswith('"') and value.endswith('"'):
+            return True, "Response is wrapped in double quotation marks"
+        return False, "Response is not wrapped in double quotation marks"
+
+    @staticmethod
+    def _instr_detectable_content__number_placeholders(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        expected = int(kw["num_placeholders"])
+        actual = len(_IFEVAL_PLACEHOLDER.findall(response))
+        if actual >= expected:
+            return True, f"Found {actual} [placeholders] (at least {expected})"
+        return False, f"Expected at least {expected} [placeholders], found {actual}"
+
+    @staticmethod
+    def _instr_detectable_content__postscript(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        marker = kw["postscript_marker"]
+        value = response.lower()
+        if marker == "P.P.S":
+            pattern = r"\s*p\.\s?p\.\s?s.*$"
+        elif marker == "P.S.":
+            pattern = r"\s*p\.\s?s\..*$"
+        else:
+            pattern = r"\s*" + re.escape(marker.lower()) + r".*$"
+        if re.search(pattern, value, flags=re.MULTILINE):
+            return True, f"Postscript marker {marker!r} found"
+        return False, f"Postscript marker {marker!r} not found"
+
+    @staticmethod
+    def _instr_combination__repeat_prompt(
+        response: str, kw: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        prompt_to_repeat = kw["prompt_to_repeat"].strip().lower()
+        if response.strip().lower().startswith(prompt_to_repeat):
+            return True, "Response begins by repeating the prompt"
+        return False, "Response does not begin with the repeated prompt"

@@ -222,3 +222,83 @@ class TestOllamaRunnerDispatch:
         assert run.scenario_id == "smoke"
         assert run.branch_name == "claude/say-hi-12345"
         assert provider.prompts, "the local model should have been called"
+
+
+class TestSandboxKeywords:
+    """Tier:4 sandbox keywords (#290) — assertion wiring, no Docker needed."""
+
+    @staticmethod
+    def _result(**overrides: Any):
+        from rfc.agent_run import AgentRun
+        from rfc.agent_sandbox import SandboxResult
+
+        defaults: dict[str, Any] = dict(
+            scenario_id="tier4_bug_fix",
+            agent_id="claude-code",
+            variant="good",
+            agent_exit_code=0,
+            agent_output_tail="",
+            tests_exit_code=0,
+            tests_output_tail="OK",
+            changed_paths=("calculator.py",),
+            unexpected_paths=(),
+            duration_seconds=1.0,
+            run=AgentRun(
+                agent_id="claude-code",
+                scenario_id="tier4_bug_fix",
+                task="t",
+                base_branch="claude-code-staging",
+                branch_name="sandbox/tier4_bug_fix",
+            ),
+        )
+        defaults.update(overrides)
+        return SandboxResult(**defaults)
+
+    def test_sandbox_tests_should_pass(self) -> None:
+        kw = AgenticCodingKeywords()
+        kw.sandbox_tests_should_pass(self._result())
+        with pytest.raises(AssertionError, match="exit code 1"):
+            kw.sandbox_tests_should_pass(
+                self._result(tests_exit_code=1, tests_output_tail="FAILED")
+            )
+
+    def test_sandbox_should_surface_test_failure(self) -> None:
+        kw = AgenticCodingKeywords()
+        kw.sandbox_should_surface_test_failure(self._result(tests_exit_code=1))
+        with pytest.raises(AssertionError, match="expected"):
+            kw.sandbox_should_surface_test_failure(self._result())
+
+    def test_sandbox_churn_assertions(self) -> None:
+        kw = AgenticCodingKeywords()
+        clean = self._result()
+        dirty = self._result(unexpected_paths=("debug.log",))
+        kw.sandbox_should_have_no_unexpected_file_churn(clean)
+        with pytest.raises(AssertionError, match="debug.log"):
+            kw.sandbox_should_have_no_unexpected_file_churn(dirty)
+        kw.sandbox_should_report_unexpected_file_churn(dirty)
+        with pytest.raises(AssertionError, match="expected"):
+            kw.sandbox_should_report_unexpected_file_churn(clean)
+
+    def test_sandbox_agent_command_should_succeed(self) -> None:
+        kw = AgenticCodingKeywords()
+        kw.sandbox_agent_command_should_succeed(self._result())
+        with pytest.raises(AssertionError, match="124"):
+            kw.sandbox_agent_command_should_succeed(self._result(agent_exit_code=124))
+
+    def test_run_sandboxed_scenario_requires_sandbox_config(
+        self, tmp_path: Path
+    ) -> None:
+        agents_yaml = tmp_path / "local_agents.yaml"
+        agents_yaml.write_text(
+            yaml.safe_dump(
+                {
+                    "agents": [{"id": "claude-code", "runner": "fake"}],
+                    "executions": [],
+                }
+            )
+        )
+        kw = AgenticCodingKeywords(agents_yaml_path=agents_yaml)
+        with pytest.raises(ValueError, match="sandbox"):
+            kw.run_sandboxed_coding_scenario(
+                agent="claude-code", scenario="tier4_bug_fix"
+            )

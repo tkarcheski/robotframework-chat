@@ -132,3 +132,18 @@ class TestPrefixOwnership:
         violations = evaluate_changes(changes)
         assert len(violations) == 1
         assert "design@agents.rfc" in violations[0]
+
+
+class TestKnowledgeOwnership:
+    def test_knowledge_owned_by_design(self) -> None:
+        assert SUBMODULE_OWNERS["knowledge"] == "design@agents.rfc"
+
+    def test_knowledge_bump_by_other_agent_rejected(self) -> None:
+        changes = [
+            GitlinkChange(
+                path="knowledge", commit="abc1234", author_email="test-design@agents.rfc"
+            )
+        ]
+        violations = evaluate_changes(changes)
+        assert len(violations) == 1
+        assert "design@agents.rfc" in violations[0]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from robot.api import logger
 
@@ -27,6 +28,9 @@ from rfc.fake_agent_runner import DEFAULT_FIXTURES_ROOT
 from rfc.llm_client import LLMProvider, create_provider, resolve_timeout
 from rfc.multi_grader import MultiGrader, MultiGradeResult
 from rfc.rfc_data import emit_rfc_data
+
+if TYPE_CHECKING:
+    from rfc.agent_sandbox import SandboxResult
 
 
 class AgenticCodingKeywords:
@@ -127,6 +131,78 @@ class AgenticCodingKeywords:
         verifiers.assert_pr_body_includes_sections(
             run, self._contract(run.agent_id).pr_required_sections
         )
+
+    # ------------------------------------------------------------------
+    # Tier:4 Docker sandbox (#290) — disposable repo in a container, agent
+    # runs live inside it, worktree state is verified afterwards. Imported
+    # lazily so dryrun and tier:1 keywords never touch Docker.
+    # ------------------------------------------------------------------
+
+    def run_sandboxed_coding_scenario(
+        self, agent: str, scenario: str, variant: str = "good"
+    ) -> "SandboxResult":
+        """Run ``scenario`` for ``agent`` inside a Docker sandbox.
+
+        ``variant`` selects which scripted agent from the scenario's
+        ``agents:`` mapping drives the run (the live Claude Code adapter from
+        #288 plugs in here once it lands). Resource caps come from the
+        agent's ``sandbox:`` block in ``config/local_agents.yaml``. Skips
+        (not fails) when the Docker daemon is unavailable.
+        """
+        from rfc.agent_sandbox import AgentSandbox
+
+        config = self._agent_config(agent)
+        if config.sandbox is None:
+            raise ValueError(
+                f"Agent {agent!r} declares no sandbox: block in "
+                f"{self._agents_yaml_path} — tier:4 runs need resource caps "
+                f"(image, cpu_cores, memory_mb, wall_clock_seconds)"
+            )
+        sandbox = AgentSandbox(limits=config.sandbox)
+        return sandbox.run_scenario(scenario, variant=variant, agent_id=agent)
+
+    def sandbox_agent_command_should_succeed(self, result: "SandboxResult") -> None:
+        if result.agent_exit_code != 0:
+            raise AssertionError(
+                f"Sandbox agent command exited {result.agent_exit_code} "
+                f"(124 means the wall-clock cap was hit): "
+                f"{result.agent_output_tail}"
+            )
+
+    def sandbox_tests_should_pass(self, result: "SandboxResult") -> None:
+        if not result.tests_passed:
+            raise AssertionError(
+                f"Scenario tests failed after the agent run with "
+                f"exit code {result.tests_exit_code}: {result.tests_output_tail}"
+            )
+
+    def sandbox_should_surface_test_failure(self, result: "SandboxResult") -> None:
+        if result.tests_passed:
+            raise AssertionError(
+                f"Sandbox was expected to surface a test failure for "
+                f"{result.scenario_id}/{result.variant}, but the suite passed "
+                f"— the regression guard caught nothing"
+            )
+
+    def sandbox_should_have_no_unexpected_file_churn(
+        self, result: "SandboxResult"
+    ) -> None:
+        if result.has_unexpected_churn:
+            raise AssertionError(
+                f"Agent changed paths outside the scenario's allowed set: "
+                f"{list(result.unexpected_paths)} "
+                f"(all changes: {list(result.changed_paths)})"
+            )
+
+    def sandbox_should_report_unexpected_file_churn(
+        self, result: "SandboxResult"
+    ) -> None:
+        if not result.has_unexpected_churn:
+            raise AssertionError(
+                f"Sandbox was expected to flag unexpected file churn for "
+                f"{result.scenario_id}/{result.variant}, but none was detected "
+                f"(changed: {list(result.changed_paths)})"
+            )
 
     # ------------------------------------------------------------------
     # Tier:3 prose graders (#289) — LLM-as-judge, multi-grader consensus.

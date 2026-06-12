@@ -86,6 +86,27 @@ Triage steps per item:
 4. **Link** — if it duplicates or relates to another open item, note the link in
    a comment (don't apply `duplicate` unless it's an exact dup).
 
+## Review findings on open PRs — route, don't file (#423)
+
+The merge-then-file pattern (review finding → standalone issue → PR merges
+anyway → production bug, e.g. #411/#412/#418) is banned. A finding that
+references a PR which is still **open** is review feedback, not a work item:
+
+1. **Never mint a standalone issue from a review finding while its PR is
+   open.** Route the finding to the PR instead: post it (with the standard
+   marker) as a PR comment quoting the finding and linking the review thread,
+   so it blocks at the verdict gate — a P1-severity finding on an open PR
+   means the PR is changes-requested material, not backlog.
+2. **Only findings that survive the merge become issues.** If the PR has
+   already merged with the finding unaddressed, a standalone issue is correct —
+   and its body MUST link the originating review-thread URL so the thread and
+   the issue can be closed together.
+3. **Existing misfiled issues:** if you encounter a bot-filed issue whose
+   subject is a finding on a still-open PR, comment the finding onto the PR
+   (idempotency rules apply), cross-link both, and label the issue
+   `needs-review` for project-management to close as routed — the safety rails
+   forbid closing it yourself.
+
 ## Engage — when and how to comment (full-engage mode)
 
 Engage when it adds real value; silence is fine. Good reasons to comment:
