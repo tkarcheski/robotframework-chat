@@ -10,11 +10,14 @@ from rfc.agent_verifiers import (
     assert_branch_matches_contract,
     assert_clarifying_question_count_in_range,
     assert_commands_appear_in_order,
+    assert_every_commit_is_green,
     assert_first_change_under,
     assert_no_commands_matching,
+    assert_no_commit_while_tests_red,
     assert_no_source_changes_before_command,
     assert_pr_body_includes_sections,
     assert_questions_are_multiple_choice,
+    assert_rebase_resolved_without_dropping_changes,
 )
 
 
@@ -319,3 +322,275 @@ class TestAssertNoCommandsMatching:
         )
         with pytest.raises(VerificationFailure, match="forbidden"):
             assert_no_commands_matching(run, claude_contract.forbidden_commands)
+
+
+_REBASE_CONFLICT_STDOUT = (
+    "Auto-merging src/rfc/config.py\n"
+    "CONFLICT (content): Merge conflict in src/rfc/config.py\n"
+    "error: could not apply 1234abc... feat: add retry_limit setting\n"
+)
+
+
+def _rebase_run(
+    *extra: AgentCommand, conflict_stdout: str = _REBASE_CONFLICT_STDOUT
+) -> AgentRun:
+    """A run up to and including a conflicting rebase; callers append the resolution."""
+    return _minimal_run(
+        scenario_id="rebase_mid_flight",
+        commands=(
+            AgentCommand(argv=("git", "fetch", "origin", "claude-code-staging")),
+            AgentCommand(
+                argv=("git", "rebase", "origin/claude-code-staging"),
+                returncode=1,
+                stdout_tail=conflict_stdout,
+            ),
+            *extra,
+        ),
+    )
+
+
+class TestAssertRebaseResolvedWithoutDroppingChanges:
+    def test_proper_resolution_passes(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides of the conflict"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "add", "src/rfc/config.py")),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_no_rebase_at_all_fails(self) -> None:
+        run = _minimal_run(commands=(AgentCommand(argv=("git", "fetch", "origin")),))
+        with pytest.raises(VerificationFailure, match="never ran git rebase"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_resolving_with_theirs_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("git", "checkout", "--theirs", "src/rfc/config.py"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_resolving_with_ours_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=(
+                    "bash",
+                    "-lc",
+                    "git checkout --ours src/rfc/config.py && git add src/rfc/config.py",
+                ),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_skipping_the_commit_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(argv=("git", "rebase", "--skip"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_aborting_the_rebase_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(argv=("git", "rebase", "--abort"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="abandoned"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_conflict_file_never_edited_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=1),
+        )
+        with pytest.raises(VerificationFailure, match="never reappears"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_missing_rebase_continue_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="--continue"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_failed_rebase_continue_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=1),
+        )
+        with pytest.raises(VerificationFailure, match="exited 1"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_explicit_conflict_path_overrides_stdout_parsing(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides"),
+                changed_paths_after=("src/rfc/other.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+            conflict_stdout="",
+        )
+        assert_rebase_resolved_without_dropping_changes(
+            run, conflict_paths=("src/rfc/other.py",)
+        )
+
+    def test_rebase_without_detectable_conflict_fails(self) -> None:
+        run = _rebase_run(
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+            conflict_stdout="some unrelated output",
+        )
+        with pytest.raises(VerificationFailure, match="no conflicting file"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+
+class TestAssertNoCommitWhileTestsRed:
+    def test_commit_after_green_tests_passes(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+                AgentCommand(argv=("git", "commit", "-m", "feat: x")),
+            )
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_commit_while_tests_red_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(argv=("git", "commit", "-m", "feat: broken")),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run)
+
+    def test_red_then_fixed_then_commit_passes(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("sh", "-c", "fix downstream caller"),
+                    changed_paths_after=("src/rfc/report.py",),
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+                AgentCommand(argv=("git", "commit", "-m", "refactor: x")),
+            )
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_commit_with_no_prior_test_run_passes(self) -> None:
+        run = _minimal_run(
+            commands=(AgentCommand(argv=("git", "commit", "-m", "docs: x")),)
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_wrapped_green_test_then_commit_passes(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_wrapped_commit_after_earlier_red_test_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "git commit -m 'feat: x' && echo done"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run)
+
+
+def _green_replay(sha: str) -> tuple[AgentCommand, AgentCommand]:
+    return (
+        AgentCommand(argv=("git", "checkout", sha), returncode=0),
+        AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+    )
+
+
+class TestAssertEveryCommitIsGreen:
+    def test_all_commits_replay_green_passes(self) -> None:
+        run = _minimal_run(
+            commits=(
+                AgentCommit(sha="aaa1111", subject="feat: module"),
+                AgentCommit(sha="bbb2222", subject="feat: wiring"),
+            ),
+            commands=(
+                *_green_replay("aaa1111"),
+                *_green_replay("bbb2222"),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_no_commits_fails(self) -> None:
+        run = _minimal_run(commits=())
+        with pytest.raises(VerificationFailure, match="no commits"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_commit_never_replayed_fails(self) -> None:
+        run = _minimal_run(
+            commits=(
+                AgentCommit(sha="aaa1111", subject="feat: module"),
+                AgentCommit(sha="bbb2222", subject="feat: wiring"),
+            ),
+            commands=_green_replay("aaa1111"),
+        )
+        with pytest.raises(VerificationFailure, match="never replayed"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_red_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="not green"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_checkout_without_test_run_fails(self) -> None:
+        run = _minimal_run(
+            commits=(
+                AgentCommit(sha="aaa1111", subject="feat: module"),
+                AgentCommit(sha="bbb2222", subject="feat: wiring"),
+            ),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                *_green_replay("bbb2222"),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="no .* recorded"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_wrapped_checkout_and_test_passes(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 && uv run pytest"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")

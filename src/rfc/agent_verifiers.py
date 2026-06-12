@@ -196,3 +196,171 @@ def assert_no_commands_matching(run: AgentRun, forbidden: Iterable[str]) -> None
                 raise VerificationFailure(
                     f"Run contains forbidden command fragment: {needle!r} in {cmd.joined()!r}"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Complex workflow verifiers (#292): rebase, regression, bisectability.
+# ---------------------------------------------------------------------------
+
+_CONFLICT_FILE_PATTERN = re.compile(r"Merge conflict in (\S+)")
+
+# Resolutions that drop one side of a conflict instead of merging both intents.
+_DROP_A_SIDE_FRAGMENTS = (
+    "checkout --ours",
+    "checkout --theirs",
+    "git rebase --skip",
+)
+
+
+def assert_rebase_resolved_without_dropping_changes(
+    run: AgentRun, conflict_paths: Sequence[str] | None = None
+) -> None:
+    """The run must rebase, hit a conflict, and merge it without dropping a side.
+
+    Walks the command stream for a ``git rebase``, derives the conflicting
+    file(s) from the rebase output (``Merge conflict in <path>``) unless
+    ``conflict_paths`` is given explicitly, and then requires:
+
+      * no drop-a-side resolution (``checkout --ours/--theirs``, ``rebase
+        --skip``) and no ``rebase --abort`` from the rebase onward;
+      * each conflicting file reappears in some later command's
+        ``changed_paths_after`` (the merged resolution edit);
+      * a ``git rebase --continue`` after the resolution, exiting 0.
+    """
+    rebase_idx = _find_command_index(run, "git rebase")
+    if rebase_idx is None:
+        raise VerificationFailure("Run never ran git rebase after the upstream change")
+
+    for cmd in run.commands[rebase_idx:]:
+        for fragment in _DROP_A_SIDE_FRAGMENTS:
+            if _command_matches(cmd, fragment):
+                raise VerificationFailure(
+                    f"Conflict resolved by dropping one side: {fragment!r} "
+                    f"in {cmd.joined()!r}"
+                )
+        if _command_matches(cmd, "git rebase --abort"):
+            raise VerificationFailure(
+                f"Rebase abandoned instead of resolved: {cmd.joined()!r}"
+            )
+
+    if conflict_paths is None:
+        rebase_cmd = run.commands[rebase_idx]
+        conflict_paths = _CONFLICT_FILE_PATTERN.findall(
+            rebase_cmd.stdout_tail + "\n" + rebase_cmd.stderr_tail
+        )
+    if not conflict_paths:
+        raise VerificationFailure(
+            "Rebase output names no conflicting file ('Merge conflict in <path>') "
+            "and no conflict_paths were given — nothing to verify"
+        )
+
+    last_resolution_idx = rebase_idx
+    for path in conflict_paths:
+        resolution_idx = None
+        for idx in range(rebase_idx + 1, len(run.commands)):
+            if path in run.commands[idx].changed_paths_after:
+                resolution_idx = idx
+                break
+        if resolution_idx is None:
+            raise VerificationFailure(
+                f"Conflicting file {path!r} never reappears in changed_paths_after "
+                f"following the rebase — the conflict was not resolved by editing it"
+            )
+        last_resolution_idx = max(last_resolution_idx, resolution_idx)
+
+    continue_idx = _find_command_index(
+        run, "git rebase --continue", start=last_resolution_idx
+    )
+    if continue_idx is None:
+        raise VerificationFailure(
+            "No 'git rebase --continue' after the conflict resolution edit"
+        )
+    continue_rc = run.commands[continue_idx].returncode
+    if continue_rc != 0:
+        raise VerificationFailure(
+            f"'git rebase --continue' exited {continue_rc} — the rebase never completed"
+        )
+
+
+def assert_no_commit_while_tests_red(
+    run: AgentRun, test_needle: str = "pytest"
+) -> None:
+    """No ``git commit`` may occur while the most recent test run is red.
+
+    Tracks the returncode of the latest command matching ``test_needle``
+    through the stream. A commit wrapped with a test in the same ``&&`` chain
+    (``pytest && git commit``) counts as green when the chain exited 0.
+    """
+    last_test: AgentCommand | None = None
+    for cmd in run.commands:
+        subs = cmd.shell_subcommands()
+        for pos, sub in enumerate(subs):
+            if "git commit" not in sub:
+                continue
+            test_before_in_chain = any(test_needle in s for s in subs[:pos])
+            if test_before_in_chain and cmd.returncode == 0:
+                continue
+            if last_test is not None and last_test.returncode != 0:
+                raise VerificationFailure(
+                    f"Commit {sub!r} while tests were red: most recent "
+                    f"{test_needle!r} run ({last_test.joined()!r}) exited "
+                    f"{last_test.returncode}"
+                )
+        if any(test_needle in s for s in subs):
+            last_test = cmd
+
+
+def assert_every_commit_is_green(
+    run: AgentRun, test_command: str = "uv run pytest"
+) -> None:
+    """Every commit in the run must replay green.
+
+    For each commit SHA the command stream must contain a replay checkpoint —
+    a ``git checkout <sha>`` — followed by a ``test_command`` run that exited
+    0, before any further checkout moves the worktree elsewhere. Live adapters
+    produce these commands by replaying the branch; fixtures record them.
+    """
+    if not run.commits:
+        raise VerificationFailure(
+            "Run produced no commits; cannot verify bisectability"
+        )
+    for commit in run.commits:
+        checkout_idx = None
+        for idx, cmd in enumerate(run.commands):
+            if any(
+                "git checkout" in sub and commit.sha in sub
+                for sub in cmd.shell_subcommands()
+            ):
+                checkout_idx = idx
+                break
+        if checkout_idx is None:
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}) was never replayed: "
+                f"no 'git checkout {commit.sha}' in the command stream"
+            )
+
+        test_cmd: AgentCommand | None = None
+        moved_on = False
+        for idx in range(checkout_idx, len(run.commands)):
+            cmd = run.commands[idx]
+            for sub in cmd.shell_subcommands():
+                if test_command in sub:
+                    test_cmd = cmd
+                    break
+                if "git checkout" in sub and not (
+                    idx == checkout_idx and commit.sha in sub
+                ):
+                    moved_on = True
+                    break
+            if test_cmd is not None or moved_on:
+                break
+        if test_cmd is None:
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}): no {test_command!r} "
+                f"recorded after its replay checkout"
+            )
+        if test_cmd.returncode != 0:
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}) is not green: "
+                f"{test_command!r} exited {test_cmd.returncode} at its replay"
+            )
