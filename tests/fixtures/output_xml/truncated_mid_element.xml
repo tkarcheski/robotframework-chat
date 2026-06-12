@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 6.0.2 (Python 3.11.4 on linux)" generated="20240611 18:23:14.421" rpa="FALSE" schemaversion="4">
+<suite id="s1" name="Test Numerical Accuracy" source="/robot/hallucination/test_numerical_accuracy.robot">
+<suite id="s1-s1" name="Numerical Accuracy Tests">
+<test id="s1-s1-t1" name="Verify Numerical Fact 1">
+<kw name="Prompt Model" library="rfc.llm_test_keywords">
+<arg>${NUMERICAL_FACTS}[0][question]</arg>
