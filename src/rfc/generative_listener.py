@@ -23,13 +23,40 @@ and may *apply* ``proposed_action in {skip, retry, fork}``:
   identifiable) plus ``generative_fork:model:<model>``, and gets a
   ``Set LLM Model`` keyword prepended.
 
+**Mutate mode (#360, active, explicit opt-in).** When a suite is tagged
+``generative:mutate``, the listener prompts the LLM after each opted-in
+test finishes (PASS or FAIL — mutating passing tests is the point: it
+probes over-lenient assertions) for ONE new assertion. The assertion is
+appended to a deep copy of the test which is inserted right after the
+original, so it executes inline and gets its own sibling ``test_runs``
+row from the regular results listener. Synthetic test name:
+``<original>::mutated::<short_hash>``; tagged ``mutated:true`` (copies
+never re-mutate). Safety rails:
+
+- the assertion keyword must come from a small allow-list of
+  deterministic BuiltIn assertions (``ALLOWED_MUTATION_KEYWORDS``);
+  anything else is recorded with ``applied=0`` and never executed.
+- mutation prompts are externalized to
+  ``robot/resources/generative_mutate_prompts.resource`` so reviewers
+  can read and edit them (built-in fallback if unreadable).
+- a parallel grader (the ``Grade Answer`` core, same prompting model)
+  scores each applied mutation's quality and writes it to
+  ``agentic_metrics`` as ``metric_key='mutation_quality'`` with the
+  metric id equal to the decision id (the join key). Grading is
+  advisory: a grader failure never blocks the recorded mutation.
+  Caveat: the mutation model grades its own output — treat the score
+  as a noise filter (e.g. Superset alert on ``mutation_quality < 0.5``),
+  never as a pass/fail verdict.
+
 Every applied action persists a decision row with ``applied=1``;
 suggestions that cannot be applied (no next test to skip, no fork
-models configured, unparseable LLM output) persist with ``applied=0``.
-``generative:observe`` semantics are unchanged — observe-tagged suites
-never have their execution modified, whatever the LLM says. Execution
-of ``generative:flow`` suites diverges from the static ``.robot`` file;
-CI consumers should treat them as exploratory, not gating.
+models configured, unparseable LLM output, disallowed mutation
+keyword) persist with ``applied=0``. ``generative:observe`` semantics
+are unchanged — observe-tagged suites never have their execution
+modified, whatever the LLM says. If a suite carries both tags, flow
+wins over mutate (one mode per suite). Execution of ``generative:flow``
+and ``generative:mutate`` suites diverges from the static ``.robot``
+file; CI consumers should treat them as exploratory, not gating.
 
 A hard per-suite token budget prevents recursion / runaway cost: once
 ``RFC_GENERATIVE_BUDGET_TOKENS`` (default 10_000) is consumed, the
@@ -49,6 +76,8 @@ Environment:
     RFC_GENERATIVE_BUDGET_TOKENS  Per-suite token budget (default 10_000).
     RFC_GENERATIVE_FORK_MODELS    Comma-separated model pool for ``fork``
                                   (flow mode; unset = fork never applied).
+    RFC_GENERATIVE_MUTATE_PROMPTS Path override for the mutate prompts
+                                  resource file.
     GENERATIVE_DATABASE_URL       Preferred DB for decision rows.
     HARNESS_DATABASE_URL          Fallback (shared with the harness tables).
     DATABASE_URL                  Final fallback.
@@ -57,28 +86,56 @@ Environment:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
 from .base_listener import BaseListener
+from .grader import Grader
 from .harness_cli import active_session_id
 from .harness_db import HarnessDatabase
-from .harness_models import AgenticDecision
+from .harness_models import AgenticDecision, AgenticMetric
 from .llm_client import LLMProvider, create_provider
 
 logger = logging.getLogger(__name__)
 
 GENERATIVE_OBSERVE_TAG = "generative:observe"
 GENERATIVE_FLOW_TAG = "generative:flow"
+GENERATIVE_MUTATE_TAG = "generative:mutate"
 RETRY_MARKER_TAG = "generative:retried"
 FORK_MARKER_TAG = "generative_fork:true"
 FORK_MODEL_TAG_PREFIX = "generative_fork:model:"
+MUTATED_MARKER_TAG = "mutated:true"
+MUTATION_QUALITY_METRIC = "mutation_quality"
 DEFAULT_GENERATIVE_MODEL = "llama3.2:1b"
 DEFAULT_BUDGET_TOKENS = 10_000
+
+# Deterministic BuiltIn assertions a mutation may use — anything else is
+# recorded (applied=0) but never executed. Deliberately excludes anything
+# that runs code, touches the OS, or sets state.
+ALLOWED_MUTATION_KEYWORDS = (
+    "Length Should Be",
+    "Should Be Equal",
+    "Should Be Equal As Numbers",
+    "Should Be Equal As Strings",
+    "Should Contain",
+    "Should Match Regexp",
+    "Should Not Be Empty",
+    "Should Not Contain",
+)
+_ALLOWED_MUTATION_LOOKUP = {k.lower(): k for k in ALLOWED_MUTATION_KEYWORDS}
+
+MUTATE_PROMPTS_RESOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "robot"
+    / "resources"
+    / "generative_mutate_prompts.resource"
+)
 
 _FLOW_ACTIONS = ("skip", "retry", "fork", "none")
 _ACTION_RE = re.compile(r"\b(skip|retry|fork|none)\b", re.IGNORECASE)
@@ -110,6 +167,85 @@ _FLOW_PROMPT_TEMPLATE = (
     "  none  — take no action\n"
     "You may add a one-sentence rationale after the first line."
 )
+
+
+# Built-in fallbacks, kept in sync with
+# robot/resources/generative_mutate_prompts.resource (the reviewable copy).
+_DEFAULT_MUTATE_PROMPTS = {
+    "MUTATION_PROMPT_TEMPLATE": (
+        "You are mutating a Robot Framework test (suite opted in via the "
+        "generative:mutate tag).\n"
+        "Test '{test}' in suite '{suite}' just finished with status {status}.\n"
+        "Failure message (if any): {message}\n"
+        "Captured run data: {rfc_data}\n"
+        "The test body (keywords and arguments, four-space separated) is:\n"
+        "{body}\n"
+        "Propose ONE new assertion that would make this test stricter or "
+        "probe a nearby behavior. It will be appended to a copy of the test "
+        "and executed.\n"
+        "Reply with EXACTLY one line and nothing else, in Robot Framework "
+        "syntax: the keyword, then each argument, separated by four spaces.\n"
+        "You may only use one of these keywords: {allowed_keywords}.\n"
+        "Reference variables created by the test body exactly as they "
+        "appear there."
+    ),
+    "MUTATION_GRADER_QUESTION": (
+        "A test-mutation agent was asked to strengthen the Robot Framework "
+        "test '{test}' (suite '{suite}', finished with status {status}) by "
+        "proposing one new assertion. Judge the quality of the proposed "
+        "assertion below: is it strict, meaningful, and likely to catch a "
+        "real regression — or is it trivial, tautological, or too lenient?\n"
+        "Proposed assertion: {assertion}"
+    ),
+    "MUTATION_GRADER_EXPECTED": (
+        "A strict, meaningful assertion that checks real test output and "
+        "would fail on a genuine regression; not a tautology, not vacuously "
+        "true, not so loose that any output passes."
+    ),
+}
+
+_mutate_prompts_cache: dict[str, dict[str, str]] = {}  # keyed by resource path
+
+
+def _load_mutate_prompts() -> dict[str, str]:
+    """Parse the externalized prompts resource; fall back to built-ins.
+
+    Reads the ``*** Variables ***`` section of the resource file via the
+    Robot parsing API (the file is never *executed*). Multi-line scalars
+    honour a leading ``SEPARATOR=`` value; ``\\${`` unescapes to ``${``.
+    """
+    path = os.getenv("RFC_GENERATIVE_MUTATE_PROMPTS", "") or str(
+        MUTATE_PROMPTS_RESOURCE
+    )
+    cached = _mutate_prompts_cache.get(path)
+    if cached is not None:
+        return cached
+    prompts = dict(_DEFAULT_MUTATE_PROMPTS)
+    try:
+        from robot.api import get_resource_model
+
+        model = get_resource_model(path)
+        for section in model.sections:
+            for stmt in getattr(section, "body", None) or []:
+                name = (getattr(stmt, "name", "") or "").strip("${}")
+                if name not in prompts:
+                    continue
+                values = list(getattr(stmt, "value", None) or [])
+                separator = " "
+                if values and values[0].startswith("SEPARATOR="):
+                    separator = values[0][len("SEPARATOR=") :].replace("\\n", "\n")
+                    values = values[1:]
+                if values:
+                    prompts[name] = separator.join(values).replace("\\${", "${")
+    except Exception as exc:  # skip-and-log: built-in fallbacks remain
+        logger.warning(
+            "GenerativeListener: could not load mutate prompts from %s "
+            "(using built-in defaults): %s",
+            path,
+            exc,
+        )
+    _mutate_prompts_cache[path] = prompts
+    return prompts
 
 
 def _utc_now() -> str:
@@ -147,6 +283,42 @@ def _parse_action(response: str) -> str:
     return "none"
 
 
+def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
+    """Parse ``(keyword, args)`` from the FIRST non-empty response line.
+
+    The prompt demands exactly one assertion line; only that line is
+    honoured (same rationale as :func:`_parse_action`). The keyword must
+    match ``ALLOWED_MUTATION_KEYWORDS`` case-insensitively and carry at
+    least one argument; cells are separated by two-plus spaces or tabs,
+    Robot style. Anything else returns ``None`` (recorded, never run).
+    """
+    for line in response.splitlines():
+        line = line.strip().strip("`").strip()
+        if not line:
+            continue
+        cells = [c.strip() for c in re.split(r"\t+| {2,}", line) if c.strip()]
+        if len(cells) < 2:
+            return None
+        keyword = _ALLOWED_MUTATION_LOOKUP.get(cells[0].lower())
+        if keyword is None:
+            return None
+        return keyword, cells[1:]
+    return None
+
+
+def _render_body(test: Any) -> str:
+    """Render a test body as Robot-style lines for the mutation prompt,
+    so the LLM can see the keywords, arguments, and assigned variables."""
+    lines = []
+    for kw in getattr(test, "body", None) or []:
+        assign = [str(a) for a in (getattr(kw, "assign", None) or [])]
+        name = getattr(kw, "name", "") or ""
+        args = [str(a) for a in (getattr(kw, "args", None) or [])]
+        cells = (["    ".join(assign) + " ="] if assign else []) + [name] + args
+        lines.append("    ".join(c for c in cells if c))
+    return "\n".join(lines) or "(empty)"
+
+
 def _add_tag(test: Any, tag: str) -> None:
     """Add a tag on either a robot.running ``Tags`` or a plain list."""
     tags = getattr(test, "tags", None)
@@ -177,7 +349,9 @@ def _test_failed(result: Any) -> bool:
 
 class GenerativeListener(BaseListener):
     """Record LLM observations into ``agentic_decisions``; in flow mode
-    (``generative:flow``) additionally apply skip / retry / fork."""
+    (``generative:flow``) additionally apply skip / retry / fork; in
+    mutate mode (``generative:mutate``) generate, run, and grade
+    LLM-suggested test mutations."""
 
     def __init__(
         self,
@@ -195,7 +369,7 @@ class GenerativeListener(BaseListener):
         self._db: Optional[HarnessDatabase] = None
         self._session_id = ""
         self._suite_name = ""
-        self._mode = ""  # "" | "observe" | "flow"
+        self._mode = ""  # "" | "observe" | "flow" | "mutate"
         self._budget_tokens = DEFAULT_BUDGET_TOKENS
         self._tokens_used = 0
         self._budget_exhausted = False
@@ -229,12 +403,19 @@ class GenerativeListener(BaseListener):
         self._retried_test_ids = set()
         self._suppressed_test_ids = set()
         if _suite_has_tag(data, GENERATIVE_FLOW_TAG):
-            self._mode = "flow"
+            self._mode = "flow"  # flow wins when a suite carries both tags
+        elif _suite_has_tag(data, GENERATIVE_MUTATE_TAG):
+            self._mode = "mutate"
         elif _suite_has_tag(data, GENERATIVE_OBSERVE_TAG):
             self._mode = "observe"
         else:
             self._mode = ""
             return
+        mode_tag = {
+            "flow": GENERATIVE_FLOW_TAG,
+            "mutate": GENERATIVE_MUTATE_TAG,
+            "observe": GENERATIVE_OBSERVE_TAG,
+        }[self._mode]
         self._session_id = active_session_id() or os.getenv("SESSION_ID", "")
         if not self._session_id:
             logger.warning(
@@ -242,7 +423,7 @@ class GenerativeListener(BaseListener):
                 "session is active (sidecar or SESSION_ID); observations "
                 "will not be captured.",
                 self._suite_name,
-                GENERATIVE_FLOW_TAG if self._mode == "flow" else GENERATIVE_OBSERVE_TAG,
+                mode_tag,
             )
             self._mode = ""
             return
@@ -286,6 +467,9 @@ class GenerativeListener(BaseListener):
                 rfc_data=dict(self._current_test_data) or "none",
             )
             self._observe("end_test", test_name, prompt)
+            return
+        if self._mode == "mutate":
+            self._handle_mutation(data, result)
             return
         if self._mode != "flow":
             return
@@ -622,6 +806,184 @@ class GenerativeListener(BaseListener):
                     exc,
                 )
         return 1 if inserted else 0
+
+    # ------------------------------------------------------------------
+    # Mutate mode (#360)
+    # ------------------------------------------------------------------
+
+    def _handle_mutation(self, data: Any, result: Any) -> None:
+        """Ask the LLM for one new assertion, run it as a sibling test,
+        and grade the mutation's quality in parallel."""
+        status = str(getattr(result, "status", "") or "").upper()
+        if status not in ("PASS", "FAIL"):
+            return  # skipped / not-run tests have no output to mutate against
+        if (
+            _test_has_tag(data, MUTATED_MARKER_TAG)
+            or _test_has_tag(data, RETRY_MARKER_TAG)
+            or _test_has_tag(data, FORK_MARKER_TAG)
+        ):
+            return  # copies we inserted never trigger further mutations
+        if not _test_has_tag(data, GENERATIVE_MUTATE_TAG):
+            return  # mutate is per-test opt-in: untagged siblings stay static
+        test_name = getattr(data, "name", "") or ""
+        prompts = _load_mutate_prompts()
+        prompt = prompts["MUTATION_PROMPT_TEMPLATE"].format(
+            test=test_name,
+            suite=self._suite_name,
+            status=status,
+            message=getattr(result, "message", "") or "none",
+            rfc_data=dict(self._current_test_data) or "none",
+            body=_render_body(data),
+            allowed_keywords=", ".join(ALLOWED_MUTATION_KEYWORDS),
+        )
+        response = self._prompt_llm("end_test", test_name, prompt)
+        if not response:
+            return
+        mutation = _parse_mutation(response)
+        decision_id = uuid4().hex
+        # Audit guarantee (same as flow mode): the decision row is
+        # persisted BEFORE the run is mutated; if persistence fails the
+        # mutation is withheld — generated tests must never be unauditable.
+        applied = (
+            1
+            if mutation is not None and self._suite_position(data)[0] is not None
+            else 0
+        )
+        persisted = self._persist(
+            AgenticDecision(
+                session_id=self._session_id,
+                hook_event="end_test",
+                prompt_model=getattr(self._provider, "model", "") or "",
+                prompt_text=prompt,
+                recorded_at=_utc_now(),
+                test_name=test_name,
+                response_text=response,
+                proposed_action="mutate",
+                applied=applied,
+                tokens_used=self._tokens_used,
+                id=decision_id,
+            )
+        )
+        if not persisted:
+            if applied:
+                logger.warning(
+                    "GenerativeListener: NOT applying mutation for test %r — "
+                    "the decision row could not be persisted and generated "
+                    "tests must stay auditable.",
+                    test_name,
+                )
+            return
+        if not applied:
+            if mutation is None:
+                logger.warning(
+                    "GenerativeListener: mutation response for %r was not a "
+                    "single allow-listed assertion; recorded, not applied.",
+                    test_name,
+                )
+            return
+        keyword, args = mutation  # type: ignore[misc]
+        if not self._apply_mutation(data, test_name, keyword, args):
+            logger.warning(
+                "GenerativeListener: decision %s recorded applied=1 but "
+                "applying the mutation to test %r failed after persistence.",
+                decision_id,
+                test_name,
+            )
+            return
+        self._grade_mutation(decision_id, test_name, status, keyword, args)
+
+    def _apply_mutation(
+        self, data: Any, test_name: str, keyword: str, args: list[str]
+    ) -> int:
+        """Insert a ``<original>::mutated::<short_hash>`` sibling copy with
+        the new assertion appended; it runs inline and gets its own
+        ``test_runs`` row from the regular results listener."""
+        tests, index = self._suite_position(data)
+        if tests is None:
+            return 0
+        assertion_line = "    ".join([keyword, *args])
+        short_hash = hashlib.sha1(assertion_line.encode("utf-8")).hexdigest()[:8]
+        try:
+            copy = _copy_test(data)
+            copy.name = f"{test_name}::mutated::{short_hash}"
+            _add_tag(copy, MUTATED_MARKER_TAG)
+            copy.body.create_keyword(name=keyword, args=list(args))
+            tests.insert(index + 1, copy)
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not apply mutation for %r: %s",
+                test_name,
+                exc,
+            )
+            return 0
+        return 1
+
+    def _grade_mutation(
+        self,
+        decision_id: str,
+        test_name: str,
+        status: str,
+        keyword: str,
+        args: list[str],
+    ) -> None:
+        """Score the mutation's quality with the ``Grade Answer`` core and
+        write ``metric_key='mutation_quality'`` to ``agentic_metrics``,
+        reusing the decision id as the metric id (the join key). Advisory
+        only: failures are logged and never block the recorded mutation."""
+        if self._budget_exhausted:
+            return
+        if self._tokens_used >= self._budget_tokens:
+            self._write_budget_exhausted("end_test", test_name)
+            return
+        provider = self._get_provider()
+        if provider is None:
+            return
+        prompts = _load_mutate_prompts()
+        assertion_line = "    ".join([keyword, *args])
+        question = prompts["MUTATION_GRADER_QUESTION"].format(
+            test=test_name,
+            suite=self._suite_name,
+            status=status,
+            assertion=assertion_line,
+        )
+        expected = prompts["MUTATION_GRADER_EXPECTED"]
+        grade = None
+        try:
+            grade = Grader(provider).grade(question, expected, assertion_line)
+        except Exception as exc:  # skip-and-log: grading is advisory
+            logger.warning(
+                "GenerativeListener: mutation_quality grading failed for "
+                "decision %s: %s",
+                decision_id,
+                exc,
+            )
+        self._tokens_used += self._tokens_consumed(
+            provider,
+            question + expected + assertion_line,
+            grade.reason if grade else "",
+        )
+        if grade is None:
+            return
+        db = self._get_db()
+        if db is None:
+            return
+        try:
+            db.save_metric(
+                AgenticMetric(
+                    session_id=self._session_id,
+                    metric_key=MUTATION_QUALITY_METRIC,
+                    metric_value=grade.score,
+                    recorded_at=_utc_now(),
+                    id=decision_id,
+                )
+            )
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not persist mutation_quality for "
+                "decision %s: %s",
+                decision_id,
+                exc,
+            )
 
     def _write_budget_exhausted(self, hook_event: str, test_name: str) -> None:
         """Record ONE budget_exhausted marker, then go silent for the suite."""
