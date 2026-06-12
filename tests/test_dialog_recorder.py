@@ -242,6 +242,37 @@ class TestAskLlmEmission:
     @patch("rfc.keywords.emit_rfc_data")
     @patch("rfc.keywords.create_provider")
     @patch("rfc.keywords.Grader")
+    def test_ask_llm_skips_null_metrics_in_assistant_turn(
+        self, MockGrader, mock_create, mock_emit, monkeypatch
+    ):
+        """Providers may report metric keys with None values (e.g. OpenAI
+        without `usage`); the turn must still be emitted (#354 review P1)."""
+        monkeypatch.setenv(RECORDING_ENV_VAR, "rec-7")
+        kw = LLMKeywords()
+        kw.client.generate.return_value = "42"
+        kw.client.num_ctx = None
+        kw.client.max_tokens = 256
+        kw.client.last_metrics = {
+            "prompt_eval_count": None,
+            "eval_count": None,
+            "total_duration_ns": None,
+        }
+        kw.ask_llm("What is 6 * 7?")
+        dialog_payloads = [
+            json.loads(c.args[1])
+            for c in mock_emit.call_args_list
+            if c.args[0] == "dialog_turn"
+        ]
+        assert [p["role"] for p in dialog_payloads] == ["user", "assistant"]
+        assistant = dialog_payloads[1]
+        assert assistant["content"] == "42"
+        assert "prompt_tokens" not in assistant
+        assert "completion_tokens" not in assistant
+        assert "latency_ms" not in assistant
+
+    @patch("rfc.keywords.emit_rfc_data")
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
     def test_ask_llm_emits_no_turns_without_bracket(
         self, MockGrader, mock_create, mock_emit, monkeypatch
     ):
