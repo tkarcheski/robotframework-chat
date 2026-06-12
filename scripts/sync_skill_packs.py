@@ -89,6 +89,17 @@ def discover_skills(repo_root: Path, pack: SkillPack) -> list[Skill]:
     return skills
 
 
+def pack_is_initialized(repo_root: Path, pack: SkillPack) -> bool:
+    """Whether the pack's submodule is actually checked out.
+
+    A clone made without ``--recurse-submodules`` leaves the gitlink as an
+    existing-but-empty directory; planning against it yields zero links and
+    pruning would then delete every committed link for the pack (#453).
+    """
+    pack_root = repo_root / pack.path
+    return pack_root.is_dir() and next(pack_root.iterdir(), None) is not None
+
+
 def plan_links(
     repo_root: Path, packs: list[SkillPack], patterns: list[str]
 ) -> dict[str, Path]:
@@ -118,13 +129,19 @@ def plan_links(
 
 
 def sync_links(
-    skills_dir: Path, links: dict[str, Path], dry_run: bool = False
+    skills_dir: Path,
+    links: dict[str, Path],
+    dry_run: bool = False,
+    prune_prefixes: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Create planned symlinks, prune pack-owned strays. Returns (created, pruned).
 
     A link is "pack-owned" (prunable) when it is a symlink pointing into
     vendor/skill-packs/ — real directories are never touched, so a local
-    skill that collides with a pack name always wins.
+    skill that collides with a pack name always wins. When *prune_prefixes*
+    is given, only links whose name carries one of those pack prefixes are
+    prune candidates — links of packs that are not initialized in this
+    checkout are left alone (#453).
     """
     created: list[str] = []
     pruned: list[str] = []
@@ -133,6 +150,10 @@ def sync_links(
             continue
         target = Path(entry.readlink())
         if "skill-packs" not in target.parts:
+            continue
+        if prune_prefixes is not None and not any(
+            pref and entry.name.startswith(pref) for pref in prune_prefixes
+        ):
             continue
         if entry.name not in links:
             if not dry_run:
@@ -169,8 +190,22 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve()
     packs = load_manifest(root / MANIFEST)
     patterns = load_ignore_patterns(root / SKILLIGNORE)
-    links = plan_links(root, packs, patterns)
-    created, pruned = sync_links(root / SKILLS_DIR, links, dry_run=args.dry_run)
+    active = [p for p in packs if pack_is_initialized(root, p)]
+    for pack in packs:
+        if pack not in active:
+            print(
+                f"WARN: pack '{pack.name}' is not initialized "
+                f"({pack.path} is empty) — skipping its links; run "
+                f"`git submodule update --init {pack.path}`",
+                file=sys.stderr,
+            )
+    links = plan_links(root, active, patterns)
+    created, pruned = sync_links(
+        root / SKILLS_DIR,
+        links,
+        dry_run=args.dry_run,
+        prune_prefixes={p.prefix for p in active},
+    )
 
     verb = "would create" if args.dry_run else "created"
     print(
