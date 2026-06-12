@@ -248,6 +248,7 @@ execution:
     - "rfc.git_metadata_listener.GitMetaData"
     - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
     - "rfc.agent_workflow_listener.AgentWorkflowListener"
+    - "rfc.agentic_harness_listener.AgenticHarnessListener"
   # Continue to next model even if a suite fails
   continue_on_failure: true
   # Maximum parallel model runs (1 = sequential)

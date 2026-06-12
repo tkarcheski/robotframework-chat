@@ -12,7 +12,7 @@
 COMPOSE = $(if $(_COMPOSE_CACHED),,$(eval _COMPOSE_CACHED := 1)$(eval _COMPOSE_VAL := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || { echo "Error: Docker Compose V2 is required. Install it with: https://docs.docker.com/compose/install/" >&2; echo "false"; })))$(_COMPOSE_VAL)
 ROBOT    := uv run robot
 VERSION  := $(shell uv run python -c "from rfc import __version__; print(__version__)")
-LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener
+LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener --listener rfc.agentic_harness_listener.AgenticHarnessListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
 
 # Load .env if present

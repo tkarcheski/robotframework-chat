@@ -337,6 +337,7 @@ ci:
     - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
     - "rfc.chat_log_listener.ChatLogListener"
     - "rfc.agent_workflow_listener.AgentWorkflowListener"
+    - "rfc.agentic_harness_listener.AgenticHarnessListener"
 
   # Job groups: combine multiple atomic suites into a single CI job.
   # Suites not listed here run as individual jobs.
