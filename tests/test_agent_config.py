@@ -331,6 +331,32 @@ class TestSandboxLimits:
         with pytest.raises(ValueError, match="wall_clock_seconds"):
             load_agent_config("x", path=path)
 
+    def test_sandbox_unsupported_network_mode_rejected(self, tmp_path: Path) -> None:
+        """PR #490 review: a typo'd mode must fail loudly, not fail open.
+
+        ContainerNetwork.to_docker_network() only handles none/host/bridge;
+        any other value yields no Docker network option, silently attaching
+        the sandbox to the default bridge (network access for agent code).
+        """
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"network_mode": "disabled"}}],
+        )
+        with pytest.raises(ValueError, match="network_mode"):
+            load_agent_config("x", path=path)
+
+    @pytest.mark.parametrize("mode", ["none", "host", "bridge"])
+    def test_sandbox_supported_network_modes_accepted(
+        self, tmp_path: Path, mode: str
+    ) -> None:
+        path = _write_agents_yaml(
+            tmp_path,
+            [{"id": "x", "runner": "fake", "sandbox": {"network_mode": mode}}],
+        )
+        cfg = load_agent_config("x", path=path)
+        assert cfg.sandbox is not None
+        assert cfg.sandbox.network_mode == mode
+
     def test_shipped_claude_code_entry_declares_sandbox_caps(self) -> None:
         """#290 acceptance: caps declared in config/local_agents.yaml."""
         cfg = load_agent_config("claude-code", path=DEFAULT_LOCAL_AGENTS_PATH)

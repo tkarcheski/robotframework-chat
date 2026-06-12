@@ -25,6 +25,12 @@ DEFAULT_LOCAL_AGENTS_PATH = (
 
 SUPPORTED_RUNNERS: frozenset[str] = frozenset({"fake", "ollama"})
 
+# Mirrors the modes ContainerNetwork.to_docker_network() actually handles.
+# Any other value would produce no Docker network option at all, silently
+# attaching the sandbox to the default bridge — i.e. failing open with
+# network access — so unsupported modes must be rejected at load time.
+SUPPORTED_SANDBOX_NETWORK_MODES: frozenset[str] = frozenset({"none", "host", "bridge"})
+
 # YAML field name -> environment variable that overrides it when set.
 _ENV_OVERRIDABLE_FIELDS: dict[str, str] = {
     "endpoint": "OLLAMA_ENDPOINT",
@@ -77,6 +83,12 @@ def _coerce_sandbox(raw: Any, agent_id: str) -> SandboxLimits | None:
                 f"Agent {agent_id!r} sandbox {cap} must be > 0, "
                 f"got {getattr(limits, cap)}"
             )
+    if limits.network_mode not in SUPPORTED_SANDBOX_NETWORK_MODES:
+        raise ValueError(
+            f"Agent {agent_id!r} sandbox network_mode {limits.network_mode!r} "
+            f"is not supported. "
+            f"Supported: {sorted(SUPPORTED_SANDBOX_NETWORK_MODES)}"
+        )
     return limits
 
 

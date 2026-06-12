@@ -50,6 +50,10 @@ _MANIFEST_COMMAND = (
     f"find {_WORKSPACE} -type f -not -path '*/.git/*' -exec sha256sum {{}} + | sort"
 )
 _OUTPUT_TAIL_CHARS = 4000
+# Grace period between SIGTERM and SIGKILL for `timeout -k`. Without the
+# escalation, an agent (or child) that ignores SIGTERM outlives the
+# advertised wall-clock cap and can hang the suite (PR #490 review, P1).
+_KILL_AFTER_SECONDS = 10
 _SANDBOX_BASE_BRANCH = "claude-code-staging"
 
 _REQUIRED_SCENARIO_KEYS = ("scenario_id", "task", "test_command")
@@ -180,9 +184,7 @@ def parse_manifest(text: str) -> dict[str, str]:
 def diff_manifests(before: dict[str, str], after: dict[str, str]) -> tuple[str, ...]:
     """Paths added, removed, or modified between two manifests (sorted)."""
     changed = {
-        path
-        for path in set(before) | set(after)
-        if before.get(path) != after.get(path)
+        path for path in set(before) | set(after) if before.get(path) != after.get(path)
     }
     return tuple(sorted(changed))
 
@@ -297,11 +299,10 @@ class AgentSandbox:
             )
             baseline = self._manifest(container_id)
 
-            self.manager.copy_to_container(
-                container_id, str(script), _AGENT_SCRIPT_DIR
-            )
+            self.manager.copy_to_container(container_id, str(script), _AGENT_SCRIPT_DIR)
             agent_command = (
-                f"timeout {wall_clock}s sh {_AGENT_SCRIPT_DIR}/{script.name}"
+                f"timeout -k {_KILL_AFTER_SECONDS}s {wall_clock}s "
+                f"sh {_AGENT_SCRIPT_DIR}/{script.name}"
             )
             agent_result = self.manager.execute_command(
                 container_id,
@@ -314,7 +315,10 @@ class AgentSandbox:
             changed = diff_manifests(baseline, after)
             unexpected = filter_unexpected(changed, resolved.allowed_paths)
 
-            test_command = f"timeout {wall_clock}s {resolved.test_command}"
+            test_command = (
+                f"timeout -k {_KILL_AFTER_SECONDS}s {wall_clock}s "
+                f"{resolved.test_command}"
+            )
             tests_result = self.manager.execute_command(
                 container_id,
                 test_command,

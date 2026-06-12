@@ -34,9 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 class TestShippedScenarios:
     """The two starter scenarios from #290 must be loadable and well-formed."""
 
-    @pytest.mark.parametrize(
-        "scenario_id", ["tier4_bug_fix", "tier4_regression_guard"]
-    )
+    @pytest.mark.parametrize("scenario_id", ["tier4_bug_fix", "tier4_regression_guard"])
     def test_scenario_loads(self, scenario_id: str) -> None:
         scenario = load_sandbox_scenario(DEFAULT_SANDBOX_SCENARIOS_ROOT / scenario_id)
         assert scenario.scenario_id == scenario_id
@@ -59,9 +57,7 @@ class TestShippedScenarios:
         )
         assert set(scenario.agents) >= {"careful", "naive"}
 
-    @pytest.mark.parametrize(
-        "scenario_id", ["tier4_bug_fix", "tier4_regression_guard"]
-    )
+    @pytest.mark.parametrize("scenario_id", ["tier4_bug_fix", "tier4_regression_guard"])
     def test_scenario_repo_contains_a_unittest_file(self, scenario_id: str) -> None:
         repo = DEFAULT_SANDBOX_SCENARIOS_ROOT / scenario_id / "repo"
         assert repo.is_dir()
@@ -250,12 +246,23 @@ class TestAgentSandboxRun:
         assert result.tests_exit_code == 1
         assert not result.tests_passed
 
-    def test_agent_command_is_wall_clock_capped(self) -> None:
+    def test_agent_command_is_wall_clock_capped_with_kill_escalation(self) -> None:
+        """PR #490 review (P1): plain `timeout` only sends SIGTERM; an agent
+        (or child) that ignores it survives the advertised wall-clock cap.
+        `--kill-after` escalates to SIGKILL so the limit is actually enforced.
+        """
         fake = FakeContainerManager()
         self._run(fake)
         agent_call = fake.exec_calls[1]
-        assert agent_call["command"].startswith("timeout 42s ")
+        assert agent_call["command"].startswith("timeout -k 10s 42s ")
         assert agent_call["workdir"] == "/workspace"
+
+    def test_test_command_is_wall_clock_capped_with_kill_escalation(self) -> None:
+        fake = FakeContainerManager()
+        self._run(fake)
+        test_call = fake.exec_calls[3]
+        assert test_call["command"].startswith("timeout -k 10s 42s ")
+        assert test_call["workdir"] == "/workspace"
 
     def test_container_is_stopped_on_success(self) -> None:
         fake = FakeContainerManager()
