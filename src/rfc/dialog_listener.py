@@ -70,7 +70,10 @@ class DialogListener(BaseListener):
 
     def on_test_end(self, data: Any, result: Any) -> None:
         events = (
-            [(RECORDING_DATA_KEY, p) for p in self.get_rfc_data_history(RECORDING_DATA_KEY)]
+            [
+                (RECORDING_DATA_KEY, p)
+                for p in self.get_rfc_data_history(RECORDING_DATA_KEY)
+            ]
             + [(TURN_DATA_KEY, p) for p in self.get_rfc_data_history(TURN_DATA_KEY)]
             + [
                 (RECORDING_END_DATA_KEY, p)
@@ -134,6 +137,4 @@ class DialogListener(BaseListener):
             )
             self._persisted_turn_count += 1
         elif key == RECORDING_END_DATA_KEY:
-            db.end_recording(
-                str(payload["recording_id"]), str(payload["ended_at"])
-            )
+            db.end_recording(str(payload["recording_id"]), str(payload["ended_at"]))
