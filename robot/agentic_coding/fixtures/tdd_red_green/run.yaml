@@ -45,3 +45,24 @@ commits:
   - sha: "4444ddd"
     subject: "feat: add is_palindrome to strings module"
     files_changed: ["src/rfc/strings.py"]
+pr:
+  title: "feat: add is_palindrome to strings module"
+  body: |
+    ## Summary
+
+    Adds `is_palindrome` to `src/rfc/strings.py`, TDD red-green per
+    CLAUDE.md: failing test first, then the implementation.
+
+    ## How to review
+
+    **Start here:** `tests/test_strings.py` — the failing-first test
+    defines the contract (case folding, non-alphanumeric stripping).
+
+    **Key changes:**
+    1. `tests/test_strings.py` — new test cases, written before the code
+    2. `src/rfc/strings.py` — the `is_palindrome` implementation
+
+    ## Evidence of testing
+
+    `uv run pytest` — all tests pass after the feat commit; the test
+    commit alone fails as expected (red phase).
