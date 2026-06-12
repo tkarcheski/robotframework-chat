@@ -35,6 +35,8 @@ LISTENERS = [
     "--listener",
     "rfc.agentic_harness_listener.AgenticHarnessListener",
     "rfc.dialog_listener.DialogListener",
+    "--listener",
+    "rfc.generative_listener.GenerativeListener",
 ]
 
 DRYRUN_LISTENER = ["--listener", "rfc.dry_run_listener.DryRunListener"]

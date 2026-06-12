@@ -5,12 +5,12 @@ before doing anything. If this file and an agent prompt conflict, this file wins
 
 ## Roles at a glance
 
-| Role | Shape | Consumes | Produces |
-|---|---|---|---|
-| `engineering` | loop | `status:ready` issues | pull requests |
-| `test-design` | loop | open PRs, merged changes | test plans, test runs, `from:testing` issues |
-| `project-management` | loop | all issues, test results, system signals | priorities, ordering, `from:pm` issues |
-| `design` | open-ended | everything (read access to all) | RFCs, `from:design` issues, system-wide proposals |
+| Role | Shape | Consumes | Produces | Git footprint |
+|---|---|---|---|---|
+| `engineering` | loop | `status:ready` issues | pull requests | creates issue-branch worktrees |
+| `test-design` | loop | open PRs, merged changes | test plans, test runs, `from:testing` issues | joins PR-branch worktrees; owns `results` |
+| `project-management` | loop | all issues, test results, system signals | priorities, ordering, `from:pm` issues | none (read + `gh` only); owns `monitoring/logs` |
+| `design` | open-ended | everything (read access to all) | RFCs, `from:design` issues, system-wide proposals | own worktree for RFCs/prompt diffs; owns `elons-algorithm` |
 
 ## Label taxonomy (GitHub Issues)
 
@@ -46,6 +46,42 @@ before doing anything. If this file and an agent prompt conflict, this file wins
 7. **Loops end cleanly.** When a loop's queue is empty, the agent posts a summary and
    stops — it does not invent work. Inventing work is design's job.
 8. **Humans interrupt anything.** A human instruction in-session overrides loop order.
+9. **Every role works in a worktree with its role identity set** (`ai/GIT.md`),
+   never in the human's main checkout. Project-management, which writes no files,
+   works read-only plus `gh`.
+10. **Submodule pointer bumps only by the owning role** per the `ai/GIT.md`
+    ownership table; CI rejects non-owner agent bumps. Merging always requires
+    a human for now.
+
+## Git topology & concurrency (summary — full contract in ai/GIT.md)
+
+All four roles run **simultaneously**, each in its own Claude Code session.
+Isolation comes from git worktrees at `../AI/rfc/worktree/<branch>` — one per
+*branch*, shared between roles that have business on that branch (test-design
+commits tests in the worktree where engineering built the PR). Each role
+commits under its own identity (`rfc-<role>-agent <role>@agents.rfc`,
+worktree-scoped config) so every action is attributable. Submodules are
+initialized per-worktree and pointer bumps belong to owning roles. If this
+summary and `ai/GIT.md` disagree, `ai/GIT.md` wins.
+
+## Communication contract
+
+Roles never talk to each other directly — **GitHub is the message bus**, and
+the labels/comments above are the protocol. Two consequences:
+
+1. **Emit deliberately.** State changes are how your peers find out anything.
+   An unlabeled issue, an uncommented claim, or an unpublished test plan is a
+   message you failed to send. Each role prompt lists the exact signals it
+   emits and watches.
+2. **Poll deliberately.** No role is woken by events; you discover peer
+   activity only when you re-fetch. Therefore: re-fetch your queue at the top
+   of **every** iteration, and re-fetch the specific object (issue, PR) right
+   before you mutate it — a claim race lost gracefully beats a duplicate PR.
+   Idle loops re-poll on their iteration cadence; they do not exit just
+   because one poll came back empty if the human asked for continuous
+   operation. (Push delivery exists outside the sessions: the monitoring
+   layers in the `triage-issues-prs` skill can wake agents on GitHub events —
+   that is the upgrade path, not a thing loop roles rely on today.)
 
 ## Handoff map
 
@@ -66,7 +102,9 @@ before doing anything. If this file and an agent prompt conflict, this file wins
 ## Session conventions
 
 - Run each role in its own interactive Claude Code session: `claude --agent <role>`
-  or `@<role>` inside a session.
+  or `@<role>` inside a session. All four sessions may run at the same time.
+- Start every session with the git ritual in `ai/GIT.md` (fetch, worktree,
+  submodules, worktree-scoped identity).
 - At the start of every loop iteration, re-fetch state with `gh` — never trust
   memory of issue state from earlier in the session.
 - At the end of every iteration, post a one-paragraph summary in-session so the

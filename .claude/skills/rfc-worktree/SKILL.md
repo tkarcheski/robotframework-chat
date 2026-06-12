@@ -46,8 +46,14 @@ layout and will produce confusing paths elsewhere.
 
 ## Step 2 — Gather inputs
 
-Ask **one** multiple-choice question that bundles both inputs. Use the format
-the user prefers (see `CLAUDE.md` § Questions):
+**Role sessions skip the question.** If you are a role agent (engineering,
+test-design, project-management, design), `ai/GIT.md` already dictates both
+inputs: `BRANCH="<type>/<issue-number>-<slug>"` (no random suffix) and
+`BASE="origin/claude-code-staging"`. Use them and go straight to Step 3 with
+plain `git worktree add` (no `-B` — see below).
+
+Otherwise, ask **one** multiple-choice question that bundles both inputs. Use
+the format the user prefers (see `CLAUDE.md` § Questions):
 
 > Two quick inputs before I create the worktree:
 >
@@ -89,6 +95,11 @@ erroring out. That's the user's reference command and matches how they like to
 work — collisions on `claude/<slug>-<rand5>` are vanishingly unlikely thanks
 to the random suffix, but `-B` keeps the skill idempotent.
 
+**Exception — role-contract branches (`<type>/<n>-<slug>`, per `ai/GIT.md`):
+use plain `git worktree add`, never `-B`.** These names are deterministic, so
+a collision means the branch genuinely exists (another session's work);
+`-B` would silently reset it. Let the command fail loudly and investigate.
+
 If `git worktree add` fails because the path already exists as a worktree, run
 `git worktree list` and ask the user whether to reuse it, remove it
 (`git worktree remove`), or pick a new slug. Never delete someone else's
@@ -118,6 +129,17 @@ fi
 # 4b. Install Python dependencies. uv.lock is gitignored on purpose;
 #     pyproject.toml pins versions, so uv sync gives a clean install.
 uv sync
+
+# 4c. Initialize submodules — worktrees do NOT inherit them, and several
+#     targets (robot runs, results archiving) assume they exist.
+git submodule update --init
+
+# 4d. Role sessions only: set the worktree-scoped role identity per ai/GIT.md
+#     (plain `git config` here would rewrite the SHARED .git/config and
+#     re-identify every other session — the --worktree flag is mandatory).
+git config extensions.worktreeConfig true
+git config --worktree user.name  "rfc-<role>-agent"
+git config --worktree user.email "<role>@agents.rfc"
 ```
 
 If `uv sync` fails, fix it before going further — a broken env will cascade

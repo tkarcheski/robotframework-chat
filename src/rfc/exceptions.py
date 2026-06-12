@@ -1,7 +1,7 @@
-"""Centralised exception hierarchy with Robot Framework ROBOT_SKIP support.
+"""Centralised exception hierarchy with Robot Framework ROBOT_SKIP_EXECUTION support.
 
-Robot Framework recognises the ``ROBOT_SKIP`` class attribute on exceptions.
-When a keyword raises an exception whose class has ``ROBOT_SKIP = True``,
+Robot Framework recognises the ``ROBOT_SKIP_EXECUTION`` class attribute on exceptions.
+When a keyword raises an exception whose class has ``ROBOT_SKIP_EXECUTION = True``,
 the test is marked **skipped** instead of **failed**.  This module defines
 a base class and concrete subclasses for every infrastructure / environment
 error that should skip — not fail — a test.
@@ -13,11 +13,11 @@ from typing import List
 class RFCSkipError(Exception):
     """Base for infrastructure errors that should SKIP, not FAIL.
 
-    All subclasses inherit ``ROBOT_SKIP = True`` so Robot Framework marks
+    All subclasses inherit ``ROBOT_SKIP_EXECUTION = True`` so Robot Framework marks
     the enclosing test as *skipped* rather than *failed*.
     """
 
-    ROBOT_SKIP: bool = True
+    ROBOT_SKIP_EXECUTION: bool = True
 
 
 # ── Ollama ────────────────────────────────────────────────────────────

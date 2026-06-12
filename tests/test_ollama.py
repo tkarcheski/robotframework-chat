@@ -781,8 +781,8 @@ class TestModelNotFoundError:
         assert "try pulling it first" in str(exc)
 
     def test_robot_skip_attribute(self):
-        """OllamaModelNotFoundError has ROBOT_SKIP for RF integration."""
-        assert OllamaModelNotFoundError.ROBOT_SKIP is True
+        """OllamaModelNotFoundError has ROBOT_SKIP_EXECUTION for RF integration."""
+        assert OllamaModelNotFoundError.ROBOT_SKIP_EXECUTION is True
 
 
 class TestLLMClientAlias:

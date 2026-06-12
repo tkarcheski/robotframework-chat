@@ -339,6 +339,7 @@ ci:
     - "rfc.agent_workflow_listener.AgentWorkflowListener"
     - "rfc.agentic_harness_listener.AgenticHarnessListener"
     - "rfc.dialog_listener.DialogListener"
+    - "rfc.generative_listener.GenerativeListener"
 
   # Job groups: combine multiple atomic suites into a single CI job.
   # Suites not listed here run as individual jobs.

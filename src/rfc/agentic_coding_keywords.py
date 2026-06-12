@@ -149,7 +149,7 @@ class AgenticCodingKeywords:
     def _prose_judge_panel(self, generation_model: str = "") -> MultiGrader:
         """Build the judge panel from AGENT_PROSE_GRADER_MODELS.
 
-        Raises MissingEnvironmentError (ROBOT_SKIP) when the env var is
+        Raises MissingEnvironmentError (ROBOT_SKIP_EXECUTION) when the env var is
         unset, so tier:3 tests skip with a clear reason instead of
         failing when no grading models are configured. Rejects a panel
         containing ``generation_model`` — that judge would grade its own
