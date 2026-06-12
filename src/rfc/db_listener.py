@@ -254,8 +254,13 @@ class DbListener(BaseListener):
         except Exception:
             pass  # Not running inside Robot context (e.g. unit tests)
 
+        # RFC_MODEL_NAME is an explicit watermark override for external
+        # provider runs (issue #507): the API needs the raw model id in
+        # DEFAULT_MODEL, while results must be attributed as
+        # ``<provider>/<model-id>`` (e.g. ``openrouter/qwen/qwen3-32b:free``).
         model_name: str = (
-            robot_model
+            os.getenv("RFC_MODEL_NAME")
+            or robot_model
             or self._ci_info.get("Default_Model")
             or os.getenv("DEFAULT_MODEL")
             or "unknown"

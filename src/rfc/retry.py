@@ -14,11 +14,22 @@ _TRANSIENT_EXCEPTIONS = (
 )
 
 
+def _is_rate_limited(exc: Exception) -> bool:
+    """True when *exc* is an HTTPError for a 429 (rate-limit) response."""
+    return (
+        isinstance(exc, requests.exceptions.HTTPError)
+        and exc.response is not None
+        and exc.response.status_code == 429
+    )
+
+
 def retry_on_transient(fn: Callable[[], T], *, max_retries: int) -> T:
     """Call *fn* with retry on transient HTTP errors.
 
-    Catches ``ReadTimeout`` and ``ConnectionError``, applying exponential
-    backoff (2, 4, 8, … seconds).  All other exceptions propagate immediately.
+    Catches ``ReadTimeout``, ``ConnectionError``, and HTTP 429 rate limits
+    (issue #507), applying exponential backoff (2, 4, 8, … seconds). All
+    other exceptions propagate immediately; an exhausted 429 propagates so
+    the caller can skip-and-log per CLAUDE.md.
 
     Args:
         fn: Zero-argument callable that returns a result or raises.
@@ -34,7 +45,11 @@ def retry_on_transient(fn: Callable[[], T], *, max_retries: int) -> T:
     for attempt in range(1 + max_retries):
         try:
             return fn()
-        except _TRANSIENT_EXCEPTIONS as exc:
+        except (*_TRANSIENT_EXCEPTIONS, requests.exceptions.HTTPError) as exc:
+            if isinstance(exc, requests.exceptions.HTTPError) and not _is_rate_limited(
+                exc
+            ):
+                raise
             last_exception = exc
             if attempt < max_retries:
                 delay = 2 ** (attempt + 1)
