@@ -68,10 +68,14 @@ class TestEvaluateChanges:
     def test_human_may_bump_anything(self) -> None:
         changes = [
             GitlinkChange(
-                path="results", commit="abc1234", author_email="tyler.karcheski@gmail.com"
+                path="results",
+                commit="abc1234",
+                author_email="tyler.karcheski@gmail.com",
             ),
             GitlinkChange(
-                path="monitoring/logs", commit="def5678", author_email="someone@example.com"
+                path="monitoring/logs",
+                commit="def5678",
+                author_email="someone@example.com",
             ),
         ]
         assert evaluate_changes(changes) == []
@@ -80,7 +84,9 @@ class TestEvaluateChanges:
         # A gitlink not in the table has no owner, so no agent may bump it.
         changes = [
             GitlinkChange(
-                path="some/new/submodule", commit="abc1234", author_email="design@agents.rfc"
+                path="some/new/submodule",
+                commit="abc1234",
+                author_email="design@agents.rfc",
             )
         ]
         violations = evaluate_changes(changes)

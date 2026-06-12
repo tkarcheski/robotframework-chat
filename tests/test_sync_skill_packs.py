@@ -186,3 +186,41 @@ class TestTopLevelPackPruning:
             "stale (broken) link of a top-level pack must be pruned"
         )
         assert (skills_dir / "tiered-recall").is_symlink()
+
+
+class TestUninitializedPack:
+    """A clone without --recurse-submodules must not nuke committed links (#453)."""
+
+    def test_pack_is_initialized(self, repo: Path) -> None:
+        from scripts.sync_skill_packs import pack_is_initialized
+
+        packs = load_manifest(repo / "config" / "skill_packs.yaml")
+        assert pack_is_initialized(repo, packs[0]) is True
+        # Uninitialized submodule == existing but empty directory
+        import shutil
+
+        pack_dir = repo / packs[0].path
+        shutil.rmtree(pack_dir)
+        pack_dir.mkdir(parents=True)
+        assert pack_is_initialized(repo, packs[0]) is False
+
+    def test_uninitialized_pack_preserves_committed_links(self, repo: Path) -> None:
+        """Empty pack dir → zero planned links → prune must NOT fire."""
+        import shutil
+
+        from scripts.sync_skill_packs import main
+
+        # First sync with the pack present creates the committed links.
+        assert main(["--root", str(repo)]) == 0
+        skills_dir = repo / ".claude" / "skills"
+        before = sorted(p.name for p in skills_dir.iterdir() if p.is_symlink())
+        assert before, "fixture should have created pack links"
+
+        # Simulate a fresh clone: submodule dir exists but is empty.
+        pack_dir = repo / "vendor" / "skill-packs" / "mattpocock"
+        shutil.rmtree(pack_dir)
+        pack_dir.mkdir(parents=True)
+
+        assert main(["--root", str(repo)]) == 0
+        after = sorted(p.name for p in skills_dir.iterdir() if p.is_symlink())
+        assert after == before, "links must survive an uninitialized pack"

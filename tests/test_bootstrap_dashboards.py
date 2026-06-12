@@ -699,3 +699,405 @@ class TestResultsFullViewConsistency:
             "superset/bootstrap_dashboards.py::_TABLE_DDL has drifted from "
             "rfc.test_database.TEST_RESULTS_FULL_VIEW_BODY — update both."
         )
+
+
+# ---------------------------------------------------------------------------
+# Agentic Stack Tracker dashboard (issue #353)
+# ---------------------------------------------------------------------------
+
+from bootstrap_dashboards import (  # noqa: E402
+    _AGENTIC_CHART_DEFS,
+    _AGENTIC_DATASET_TABLES,
+    _AGENTIC_FILTER_CONFIGS,
+    _AGENTIC_LAYOUT_SECTIONS,
+    _AGENTIC_TABLE_DDL,
+    _AGENTIC_VIRTUAL_DATASETS,
+    _build_agentic_position_json,
+)
+
+AGENTIC_CHART_NAMES = {
+    "Harness Comparison",
+    "Plugin Drift",
+    "Skill SHA Heatmap",
+    "Token Burn Rate",
+    "Outcome Funnel",
+    "Latency vs Grader Score",
+}
+
+
+@pytest.fixture()
+def agentic_db(tmp_path: Path) -> str:
+    """SQLite database with the canonical agentic stack schema applied."""
+    import sqlite3
+
+    from rfc.harness_db import _SQLITE_SCHEMA
+
+    db_path = tmp_path / "agentic.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(_SQLITE_SCHEMA)
+    return f"sqlite:///{db_path}"
+
+
+@pytest.fixture()
+def agentic_db_with_view(agentic_db: str) -> str:
+    """Agentic SQLite database with the agentic_sessions_full view created."""
+    import sqlite3
+
+    from rfc.harness_db import AGENTIC_SESSIONS_FULL_VIEW_BODY
+
+    db_path = agentic_db.removeprefix("sqlite:///")
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            f"CREATE VIEW agentic_sessions_full AS\n{AGENTIC_SESSIONS_FULL_VIEW_BODY};"
+        )
+    return agentic_db
+
+
+class TestAgenticTableDDL:
+    """Tests for the agentic stack DDL embedded in the bootstrap."""
+
+    EXPECTED_TABLES = {
+        "agentic_harnesses",
+        "agentic_plugins",
+        "agentic_skills",
+        "agentic_metrics",
+        "agentic_decisions",
+        "dialog_recordings",
+        "dialog_turns",
+    }
+
+    def test_creates_all_agentic_tables(self) -> None:
+        for table in self.EXPECTED_TABLES:
+            assert f"CREATE TABLE IF NOT EXISTS {table}" in _AGENTIC_TABLE_DDL, (
+                f"_AGENTIC_TABLE_DDL is missing table {table}"
+            )
+
+    def test_creates_sessions_full_view(self) -> None:
+        assert "DROP VIEW IF EXISTS agentic_sessions_full" in _AGENTIC_TABLE_DDL
+        assert "CREATE VIEW agentic_sessions_full" in _AGENTIC_TABLE_DDL
+
+    def test_no_comment_only_fragments_after_split(self) -> None:
+        """Splitting on ';' must not produce comment-only fragments."""
+        for i, fragment in enumerate(_AGENTIC_TABLE_DDL.split(";")):
+            executable = "\n".join(
+                ln
+                for ln in fragment.splitlines()
+                if ln.strip() and not ln.strip().startswith("--")
+            ).strip()
+            raw_stripped = fragment.strip()
+            assert not (raw_stripped and not executable), (
+                f"Fragment {i} is comment-only after ';' split:\n{raw_stripped!r}"
+            )
+
+    def test_ddl_is_idempotent_on_sqlite(self, tmp_path: Path) -> None:
+        """Running the agentic DDL twice must not error or duplicate objects.
+
+        The DDL is written in the portable subset shared by PostgreSQL and
+        SQLite (IF NOT EXISTS tables/indexes, DROP VIEW IF EXISTS + CREATE
+        VIEW), so executing it twice against SQLite proves idempotency of
+        the table-creation step of the bootstrap.
+        """
+        import sqlite3
+
+        db_path = tmp_path / "idempotent.db"
+        with sqlite3.connect(db_path) as conn:
+            for _ in range(2):
+                for statement in _AGENTIC_TABLE_DDL.split(";"):
+                    executable = "\n".join(
+                        ln
+                        for ln in statement.splitlines()
+                        if ln.strip() and not ln.strip().startswith("--")
+                    ).strip()
+                    if executable:
+                        conn.execute(executable)
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            views = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='view'"
+                )
+            }
+        assert self.EXPECTED_TABLES <= tables
+        assert "agentic_sessions_full" in views
+
+
+class TestAgenticSessionsFullView:
+    """Tests for the agentic_sessions_full view definition."""
+
+    def test_bootstrap_view_matches_canonical_body(self) -> None:
+        import re
+
+        from rfc.harness_db import AGENTIC_SESSIONS_FULL_VIEW_BODY
+
+        def normalize(sql: str) -> str:
+            return re.sub(r"\s+", " ", sql).strip().lower()
+
+        assert normalize(AGENTIC_SESSIONS_FULL_VIEW_BODY) in normalize(
+            _AGENTIC_TABLE_DDL
+        ), (
+            "superset/bootstrap_dashboards.py::_AGENTIC_TABLE_DDL has drifted "
+            "from rfc.harness_db.AGENTIC_SESSIONS_FULL_VIEW_BODY — update both."
+        )
+
+    def test_view_columns(self, agentic_db: str) -> None:
+        from rfc.harness_db import AGENTIC_SESSIONS_FULL_VIEW_BODY
+
+        cols = _probe_columns(agentic_db, AGENTIC_SESSIONS_FULL_VIEW_BODY)
+        expected = {
+            "session_id",
+            "tool_name",
+            "tool_version",
+            "model_id",
+            "rfc_version",
+            "branch",
+            "started_at",
+            "started_ts",
+            "ended_at",
+            "outcome",
+            "replay_of_recording_id",
+            "tokens_in",
+            "tokens_out",
+            "avg_latency_ms",
+            "avg_grader_score",
+        }
+        assert expected <= set(cols), f"missing: {expected - set(cols)}"
+
+    def test_view_pivots_eav_metrics(self, agentic_db: str) -> None:
+        """tokens_in/out and latency/grader pivots aggregate correctly."""
+        import sqlite3
+
+        from rfc.harness_db import AGENTIC_SESSIONS_FULL_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, tool_version, model_id, started_at) "
+                "VALUES ('s1', 'claude-code', '4.7', 'claude-fable-5', "
+                "'2026-06-12T00:00:00')"
+            )
+            rows = [
+                ("m1", "s1", "tokens_in", 100.0),
+                ("m2", "s1", "tokens_in", 50.0),
+                ("m3", "s1", "tokens_out", 30.0),
+                ("m4", "s1", "latency_ms", 200.0),
+                ("m5", "s1", "latency_ms", 400.0),
+                ("m6", "s1", "grader_score", 0.5),
+            ]
+            conn.executemany(
+                "INSERT INTO agentic_metrics "
+                "(id, session_id, metric_key, metric_value, recorded_at) "
+                "VALUES (?, ?, ?, ?, '2026-06-12T00:00:01')",
+                rows,
+            )
+            result = conn.execute(AGENTIC_SESSIONS_FULL_VIEW_BODY).fetchall()
+
+        assert len(result) == 1
+        row = result[0]
+        # Column order matches the SELECT list probed above.
+        cols = _probe_columns(agentic_db, AGENTIC_SESSIONS_FULL_VIEW_BODY)
+        record = dict(zip(cols, row, strict=True))
+        assert record["tokens_in"] == 150.0
+        assert record["tokens_out"] == 30.0
+        assert record["avg_latency_ms"] == 300.0
+        assert record["avg_grader_score"] == 0.5
+
+
+class TestAgenticVirtualDatasets:
+    """Tests for the agentic virtual datasets."""
+
+    EXPECTED_KEYS = {
+        "agentic_plugin_drift",
+        "agentic_skill_outcomes",
+        "agentic_outcome_funnel",
+    }
+
+    def test_all_expected_keys_present(self) -> None:
+        assert self.EXPECTED_KEYS <= set(_AGENTIC_VIRTUAL_DATASETS)
+
+    def test_no_collision_with_existing_datasets(self) -> None:
+        assert not set(_AGENTIC_VIRTUAL_DATASETS) & set(_VIRTUAL_DATASETS)
+
+    def test_plugin_drift_columns(self, agentic_db: str) -> None:
+        cols = _probe_columns(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+        )
+        for col in ("plugin_name", "semver", "prev_semver", "version_changed"):
+            assert col in cols
+
+    def test_skill_outcomes_columns(self, agentic_db: str) -> None:
+        cols = _probe_columns(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_skill_outcomes"]
+        )
+        for col in ("skill_name", "outcome", "sha_changed", "session_count"):
+            assert col in cols
+
+    def test_outcome_funnel_columns(self, agentic_db: str) -> None:
+        cols = _probe_columns(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_outcome_funnel"]
+        )
+        for col in ("tool_name", "outcome", "session_count"):
+            assert col in cols
+
+    def test_plugin_drift_flags_version_changes(self, agentic_db: str) -> None:
+        """Drift dataset marks rows where semver differs from prior session."""
+        import sqlite3
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) VALUES (?, ?, ?)",
+                [
+                    ("s1", "claude-code", "2026-06-10T00:00:00"),
+                    ("s2", "claude-code", "2026-06-11T00:00:00"),
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO agentic_plugins "
+                "(id, session_id, plugin_name, semver, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("p1", "s1", "anthropic", "1.0.0", "2026-06-10T00:00:01"),
+                    ("p2", "s2", "anthropic", "1.1.0", "2026-06-11T00:00:01"),
+                ],
+            )
+            rows = conn.execute(
+                _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+            ).fetchall()
+            cols = [
+                d[0]
+                for d in conn.execute(
+                    _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+                ).description
+            ]
+
+        records = [dict(zip(cols, r, strict=True)) for r in rows]
+        changed = [r for r in records if r["version_changed"] == 1]
+        assert len(changed) == 1
+        assert changed[0]["semver"] == "1.1.0"
+        assert changed[0]["prev_semver"] == "1.0.0"
+
+
+class TestAgenticChartDefs:
+    """Tests for the six Agentic Stack Tracker charts."""
+
+    def test_all_six_charts_present(self) -> None:
+        names = {c["slice_name"] for c in _AGENTIC_CHART_DEFS}
+        assert AGENTIC_CHART_NAMES <= names
+
+    def test_no_duplicate_chart_names(self) -> None:
+        names = [c["slice_name"] for c in _AGENTIC_CHART_DEFS]
+        assert len(names) == len(set(names))
+
+    def test_no_collision_with_existing_charts(self) -> None:
+        agentic = {c["slice_name"] for c in _AGENTIC_CHART_DEFS}
+        existing = {c["slice_name"] for c in _CHART_DEFS}
+        assert not agentic & existing
+
+    def test_every_chart_has_required_fields(self) -> None:
+        for chart in _AGENTIC_CHART_DEFS:
+            assert chart.get("slice_name")
+            assert chart.get("viz_type")
+            assert chart.get("datasource_id_key")
+            assert isinstance(chart.get("params"), dict)
+
+    def test_datasource_keys_reference_valid_datasets(self) -> None:
+        valid = set(_AGENTIC_DATASET_TABLES) | set(_AGENTIC_VIRTUAL_DATASETS)
+        for chart in _AGENTIC_CHART_DEFS:
+            assert chart["datasource_id_key"] in valid, (
+                f"{chart['slice_name']} references unknown dataset "
+                f"{chart['datasource_id_key']}"
+            )
+
+    def test_chart_params_are_json_serializable(self) -> None:
+        for chart in _AGENTIC_CHART_DEFS:
+            json.dumps(chart["params"])
+
+    def test_table_charts_have_columns(self) -> None:
+        for chart in _AGENTIC_CHART_DEFS:
+            if chart["viz_type"] == "table":
+                assert chart["params"].get("columns"), (
+                    f"{chart['slice_name']} table chart missing columns"
+                )
+
+
+class TestAgenticDatasetTables:
+    """Physical datasets registered for the agentic dashboard."""
+
+    def test_includes_core_tables_and_view(self) -> None:
+        expected = {
+            "agentic_harnesses",
+            "agentic_plugins",
+            "agentic_skills",
+            "agentic_metrics",
+            "agentic_decisions",
+            "agentic_sessions_full",
+        }
+        assert expected <= set(_AGENTIC_DATASET_TABLES)
+
+
+class TestAgenticLayout:
+    """Tests for the Agentic Stack Tracker dashboard layout."""
+
+    def test_all_charts_have_positions(self) -> None:
+        layout_names = {
+            spec["name"]
+            for section in _AGENTIC_LAYOUT_SECTIONS
+            for spec in section["charts"]
+        }
+        assert AGENTIC_CHART_NAMES <= layout_names
+
+    def test_position_json_structure(self) -> None:
+        chart_id_map = {
+            name: i + 1 for i, name in enumerate(sorted(AGENTIC_CHART_NAMES))
+        }
+        layout = _build_agentic_position_json(chart_id_map)
+        assert layout["ROOT_ID"]["type"] == "ROOT"
+        assert layout["GRID_ID"]["type"] == "GRID"
+        assert layout["HEADER_ID"]["meta"]["text"] == "Agentic Stack Tracker"
+        chart_keys = [k for k in layout if k.startswith("CHART-")]
+        assert len(chart_keys) == len(AGENTIC_CHART_NAMES)
+
+    def test_position_json_is_deterministic(self) -> None:
+        chart_id_map = {
+            name: i + 1 for i, name in enumerate(sorted(AGENTIC_CHART_NAMES))
+        }
+        assert _build_agentic_position_json(chart_id_map) == (
+            _build_agentic_position_json(chart_id_map)
+        )
+
+    def test_layout_is_json_serializable(self) -> None:
+        chart_id_map = {
+            name: i + 1 for i, name in enumerate(sorted(AGENTIC_CHART_NAMES))
+        }
+        json.dumps(_build_agentic_position_json(chart_id_map))
+
+
+class TestAgenticFilters:
+    """Tests for the agentic dashboard native filters."""
+
+    def test_filter_names(self) -> None:
+        names = {f["name"] for f in _AGENTIC_FILTER_CONFIGS}
+        assert {"Tool", "Model", "RFC Version", "Outcome"} <= names
+
+    def test_every_filter_has_required_fields(self) -> None:
+        for f in _AGENTIC_FILTER_CONFIGS:
+            assert f.get("id")
+            assert f.get("name")
+            assert f.get("filterType")
+            assert f.get("targets")
+
+    def test_select_filters_have_column_targets(self) -> None:
+        for f in _AGENTIC_FILTER_CONFIGS:
+            if f["filterType"] == "filter_select":
+                for target in f["targets"]:
+                    assert "column" in target
+
+    def test_filters_are_json_serializable(self) -> None:
+        json.dumps(_AGENTIC_FILTER_CONFIGS)

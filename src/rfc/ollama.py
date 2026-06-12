@@ -26,6 +26,14 @@ def _check_model_not_found(
     response.raise_for_status()
 
 
+def _canonical_model_name(name: str) -> str:
+    """Normalize a model name so tag aliases compare equal ('m' == 'm:latest')."""
+    canon = name.strip().lower()
+    if ":" not in canon:
+        canon = f"{canon}:latest"
+    return canon
+
+
 def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[float]:
     """Compute tokens/s from token count and nanosecond duration."""
     if count is None or duration_ns is None or duration_ns <= 0:
@@ -353,8 +361,18 @@ class OllamaClient:
                 logger.info("Ollama is idle, no models running")
                 return True
 
-            # Log what's running
+            # Residency != busyness: Ollama keeps idle models loaded per
+            # keep_alive. If everything resident IS the model we're about to
+            # use, waiting for it to unload (only to cold-load it again) is a
+            # deadlock, not contention (#464).
             names = [m.get("name", "unknown") for m in models]
+            target = _canonical_model_name(self.model)
+            if all(_canonical_model_name(n) == target for n in names):
+                logger.info(
+                    f"Ollama ready: only the target model is resident "
+                    f"({', '.join(names)})"
+                )
+                return True
             if elapsed >= next_warn_at:
                 logger.warn(
                     f"Still waiting for Ollama after {elapsed}s — "

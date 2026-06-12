@@ -196,7 +196,9 @@ class TestSkipLogicWithXmlFixtures:
         return proc, dashboard
 
     def test_truncated_mid_element_is_skipped(self, tmp_path: Path) -> None:
-        proc, dashboard = self._run_with_fixture_xml(tmp_path, "truncated_mid_element.xml")
+        proc, dashboard = self._run_with_fixture_xml(
+            tmp_path, "truncated_mid_element.xml"
+        )
         assert proc.returncode == 0, proc.stderr
         assert "truncated" in proc.stdout.lower()
         assert not dashboard.exists()

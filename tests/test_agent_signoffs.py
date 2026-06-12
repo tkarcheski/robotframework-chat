@@ -55,7 +55,5 @@ class TestEvaluateCommits:
     def test_sharing_role_signoff_differs_from_author_is_allowed(self) -> None:
         # Mismatch is PM-judged, not CI-failed (legitimate after rewrites);
         # CI only requires that SOME agent identity signed off.
-        commit = _commit(
-            email="test-design@agents.rfc", signoffs=["design@agents.rfc"]
-        )
+        commit = _commit(email="test-design@agents.rfc", signoffs=["design@agents.rfc"])
         assert evaluate_commits([commit]) == []

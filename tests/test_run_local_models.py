@@ -619,8 +619,7 @@ class TestRunModelSuitesPreflight:
                 "models": ["badmodel", "goodmodel"],
             },
         ]
-        with patch("scripts.run_local_models.random.shuffle", side_effect=lambda x: x):
-            results = run_model_suites(_preflight_config(), nodes)
+        results = run_model_suites(_preflight_config(), nodes)
 
         # One preflight-failure record + one real suite run.
         assert len(results) == 2

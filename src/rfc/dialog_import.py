@@ -132,6 +132,7 @@ def _cmd_import(args: argparse.Namespace) -> int:
 def register_dialog_command(commands: argparse._SubParsersAction) -> None:
     """Attach the ``dialog`` subcommand to the ``rfc`` CLI parser."""
     from rfc.dialog_parsers import SUPPORTED_TOOLS  # local to avoid cycles
+    from rfc.dialog_replay import register_replay_command  # local to avoid cycles
 
     dialog = commands.add_parser("dialog", help="dialog recording tools")
     actions = dialog.add_subparsers(dest="action", required=True)
@@ -156,3 +157,5 @@ def register_dialog_command(commands: argparse._SubParsersAction) -> None:
     )
     imp.add_argument("--database-url", default="")
     imp.set_defaults(func=_cmd_import)
+
+    register_replay_command(actions)

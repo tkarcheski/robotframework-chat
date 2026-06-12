@@ -423,67 +423,43 @@ def run_model_suites(
     preflight_enabled = execution.get("preflight", False)
     preflight_timeout = execution.get("preflight_timeout", DEFAULT_PREFLIGHT_TIMEOUT)
 
-    results: list[RunResult] = []
+    hosts = _host_states_from_nodes(nodes_with_models)
+    jobs = _build_jobs(config, nodes_with_models)
+    print_lock = threading.Lock()
 
-    for node_info in nodes_with_models:
-        endpoint = node_info["endpoint"]
-        hostname = node_info["hostname"]
-        models = list(node_info.get("models", []))
-        random.shuffle(models)
+    def _run(host: HostState, job: Job) -> RunResult:
+        node_name = host.spec.name
+        endpoint = host.spec.endpoint
 
-        if models:
-            print(f"  Model order (shuffled): {models}")
-
-        for model in models:
-            if preflight_enabled and not dry_run:
-                ok, reason = preflight_model(endpoint, model, timeout=preflight_timeout)
-                if not ok:
+        if preflight_enabled and not dry_run:
+            ok, reason = preflight_model(endpoint, job.model, timeout=preflight_timeout)
+            if not ok:
+                with print_lock:
                     print(
-                        f"\n  [preflight] SKIPPING {model}@{hostname}: {reason}\n"
+                        f"\n  [preflight] SKIPPING {job.model}@{node_name}: "
+                        f"{reason}\n"
                         f"  [preflight] Recording failure and continuing with "
                         f"the next model."
                     )
-                    results.append(
-                        RunResult(
-                            node=hostname,
-                            model=model,
-                            suite=PREFLIGHT_SUITE,
-                            returncode=1,
-                            output_dir="",
-                        )
-                    )
-                    continue
-
-            for suite in suites:
-                cmd = _build_robot_command(
-                    config=config,
-                    suite=suite,
-                    endpoint=endpoint,
-                    model=model,
-                    node_name=hostname,
+                return RunResult(
+                    node=node_name,
+                    model=job.model,
+                    suite=PREFLIGHT_SUITE,
+                    returncode=1,
+                    output_dir="",
                 )
 
-                output_dir = (
-                    config.get("execution", {})
-                    .get("output_dir", "results/local/{node}/{model}")
-                    .format(
-                        node=_sanitize_name(hostname),
-                        model=_sanitize_name(model),
-                    )
-                )
-
-                if dry_run:
-                    print(f"[DRY-RUN] {' '.join(cmd)}")
-                    results.append(
-                        RunResult(
-                            node=hostname,
-                            model=model,
-                            suite=suite["name"],
-                            returncode=0,
-                            output_dir=output_dir,
-                        )
-                    )
-                    continue
+        cmd = _build_robot_command(
+            config=config,
+            suite=job.suite,
+            endpoint=endpoint,
+            model=job.model,
+            node_name=node_name,
+        )
+        output_dir = execution.get("output_dir", "results/local/{node}/{model}").format(
+            node=_sanitize_name(node_name),
+            model=_sanitize_name(job.model),
+        )
 
         if dry_run:
             with print_lock:
@@ -509,7 +485,7 @@ def run_model_suites(
         env = {
             **os.environ,
             "DEFAULT_MODEL": job.model,
-            "OLLAMA_ENDPOINT": host.spec.endpoint,
+            "OLLAMA_ENDPOINT": endpoint,
         }
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
