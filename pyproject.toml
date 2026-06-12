@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "1.17.0"
+version = "1.15.2"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 license = "Apache-2.0"
 readme = "readme.md"
@@ -64,7 +64,7 @@ swebench = [
 dev = [
     "pre-commit",
     "python-dotenv",
-    "ruff",
+    "ruff==0.14.10",
     "mypy",
     "types-requests",
     "types-PyYAML",

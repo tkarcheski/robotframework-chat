@@ -23,7 +23,7 @@ DEFAULT_LOCAL_AGENTS_PATH = (
     Path(__file__).resolve().parent.parent.parent / "config" / "local_agents.yaml"
 )
 
-SUPPORTED_RUNNERS: frozenset[str] = frozenset({"fake", "ollama"})
+SUPPORTED_RUNNERS: frozenset[str] = frozenset({"fake", "ollama", "live"})
 
 # Mirrors the modes ContainerNetwork.to_docker_network() actually handles.
 # Any other value would produce no Docker network option at all, silently
