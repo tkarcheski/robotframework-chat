@@ -63,7 +63,7 @@ class TestCreativityKeywords:
         kw = CreativityKeywords()
         with pytest.raises(MissingEnvironmentError) as exc_info:
             kw.grade_joke("Tell me a joke", "joke text", "humor")
-        assert exc_info.value.ROBOT_SKIP is True
+        assert exc_info.value.ROBOT_SKIP_EXECUTION is True
         assert "CREATIVITY_GRADER_MODELS" in str(exc_info.value)
 
     @patch("rfc.creativity_keywords.create_provider")
@@ -390,4 +390,4 @@ class TestCreativityKeywords:
         kw = CreativityKeywords()
         with pytest.raises(EmptyLLMResponseError) as exc_info:
             kw.ask_and_grade_joke_with_retry("Tell me a joke", "humor")
-        assert exc_info.value.ROBOT_SKIP is True
+        assert exc_info.value.ROBOT_SKIP_EXECUTION is True

@@ -15,16 +15,34 @@ from rfc.exceptions import (
 
 class TestRFCSkipError:
     def test_robot_skip_attribute(self) -> None:
-        assert RFCSkipError.ROBOT_SKIP is True
+        assert RFCSkipError.ROBOT_SKIP_EXECUTION is True
 
     def test_is_exception(self) -> None:
         assert issubclass(RFCSkipError, Exception)
+
+    def test_robot_framework_actually_skips(self) -> None:
+        """RF must classify a raised RFCSkipError as SKIP, not FAIL (#427).
+
+        Exercises Robot Framework's own error machinery rather than our
+        attribute name: RF reads ``ROBOT_SKIP_EXECUTION`` via
+        ``HandlerExecutionFailed``. The old ``ROBOT_SKIP`` name was never
+        recognised, so every "skip" actually failed the test.
+        """
+        from robot.errors import HandlerExecutionFailed
+        from robot.utils import ErrorDetails
+
+        try:
+            raise MissingEnvironmentError("AGENT_PROSE_GRADER_MODELS")
+        except MissingEnvironmentError:
+            failure = HandlerExecutionFailed(ErrorDetails())
+        assert failure.skip is True
+        assert failure.status == "SKIP"
 
 
 class TestOllamaModelNotFoundError:
     def test_inherits_skip(self) -> None:
         assert issubclass(OllamaModelNotFoundError, RFCSkipError)
-        assert OllamaModelNotFoundError.ROBOT_SKIP is True
+        assert OllamaModelNotFoundError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = OllamaModelNotFoundError("phi4:14b", "http://localhost:11434")
@@ -44,7 +62,7 @@ class TestOllamaModelNotFoundError:
 class TestOllamaTimeoutError:
     def test_inherits_skip(self) -> None:
         assert issubclass(OllamaTimeoutError, RFCSkipError)
-        assert OllamaTimeoutError.ROBOT_SKIP is True
+        assert OllamaTimeoutError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = OllamaTimeoutError(elapsed=120, models=["llama3"])
@@ -57,7 +75,7 @@ class TestOllamaTimeoutError:
 class TestEmptyLLMResponseError:
     def test_inherits_skip(self) -> None:
         assert issubclass(EmptyLLMResponseError, RFCSkipError)
-        assert EmptyLLMResponseError.ROBOT_SKIP is True
+        assert EmptyLLMResponseError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = EmptyLLMResponseError(model="phi4:14b", prompt_snippet="Tell me a joke")
@@ -76,7 +94,7 @@ class TestEmptyLLMResponseError:
 class TestDockerNotAvailableError:
     def test_inherits_skip(self) -> None:
         assert issubclass(DockerNotAvailableError, RFCSkipError)
-        assert DockerNotAvailableError.ROBOT_SKIP is True
+        assert DockerNotAvailableError.ROBOT_SKIP_EXECUTION is True
 
     def test_message(self) -> None:
         exc = DockerNotAvailableError()
@@ -86,7 +104,7 @@ class TestDockerNotAvailableError:
 class TestPortAllocationError:
     def test_inherits_skip(self) -> None:
         assert issubclass(PortAllocationError, RFCSkipError)
-        assert PortAllocationError.ROBOT_SKIP is True
+        assert PortAllocationError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = PortAllocationError(start_port=11434, end_port=11500)
@@ -99,7 +117,7 @@ class TestPortAllocationError:
 class TestMissingDependencyError:
     def test_inherits_skip(self) -> None:
         assert issubclass(MissingDependencyError, RFCSkipError)
-        assert MissingDependencyError.ROBOT_SKIP is True
+        assert MissingDependencyError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = MissingDependencyError(
@@ -114,7 +132,7 @@ class TestMissingDependencyError:
 class TestMissingEnvironmentError:
     def test_inherits_skip(self) -> None:
         assert issubclass(MissingEnvironmentError, RFCSkipError)
-        assert MissingEnvironmentError.ROBOT_SKIP is True
+        assert MissingEnvironmentError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = MissingEnvironmentError(variable="DATABASE_URL")
@@ -125,7 +143,7 @@ class TestMissingEnvironmentError:
 class TestMissingProviderConfigError:
     def test_inherits_skip(self) -> None:
         assert issubclass(MissingProviderConfigError, RFCSkipError)
-        assert MissingProviderConfigError.ROBOT_SKIP is True
+        assert MissingProviderConfigError.ROBOT_SKIP_EXECUTION is True
 
     def test_attributes(self) -> None:
         exc = MissingProviderConfigError(provider="openai", variable="OPENAI_API_KEY")
