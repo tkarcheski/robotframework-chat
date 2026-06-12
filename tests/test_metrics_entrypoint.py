@@ -157,3 +157,59 @@ def test_generate_index_lists_root_and_nested_dashboards(tmp_path: Path) -> None
     assert ">root<" in html
     assert 'href="accounting/dashboard.html"' in html
     assert ">accounting<" in html
+
+
+class TestSkipLogicWithXmlFixtures:
+    """Fixture-based regression tests for each production skip shape in entrypoint.sh.
+
+    Canonical fixture files in tests/fixtures/output_xml/ capture the exact byte
+    sequences seen in the #413 incident so future format changes can't silently
+    break the skip path.  The zero-byte case closes a gap not covered by the
+    inline-content tests above.
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures" / "output_xml"
+
+    def _run_with_fixture_xml(
+        self,
+        tmp_path: Path,
+        fixture_name: str,
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        bin_dir = tmp_path / "bin"
+        _fake_robotmetrics(bin_dir)
+        results_dir = tmp_path / "results"
+        suite = results_dir / "local" / "host" / "model"
+        suite.mkdir(parents=True)
+        xml = suite / "output.xml"
+        xml.write_bytes((self.FIXTURES / fixture_name).read_bytes())
+        old_time = time.time() - 3600
+        os.utime(xml, (old_time, old_time))
+        output_dir = tmp_path / "metrics"
+        output_dir.mkdir()
+        proc = run_bash(
+            f"export PATH='{bin_dir}':\"$PATH\" "
+            f"RESULTS_DIR='{results_dir}' OUTPUT_DIR='{output_dir}' "
+            "METRICS_FRESH_WINDOW_SECONDS=120; "
+            f"source '{SCRIPT}'; generate_metrics"
+        )
+        dashboard = output_dir / "local" / "host" / "model" / "dashboard.html"
+        return proc, dashboard
+
+    def test_truncated_mid_element_is_skipped(self, tmp_path: Path) -> None:
+        proc, dashboard = self._run_with_fixture_xml(tmp_path, "truncated_mid_element.xml")
+        assert proc.returncode == 0, proc.stderr
+        assert "truncated" in proc.stdout.lower()
+        assert not dashboard.exists()
+
+    def test_in_progress_stale_file_is_skipped(self, tmp_path: Path) -> None:
+        """A stale (old mtime) file with no </robot> is skipped via the content check."""
+        proc, dashboard = self._run_with_fixture_xml(tmp_path, "in_progress.xml")
+        assert proc.returncode == 0, proc.stderr
+        assert "truncated" in proc.stdout.lower()
+        assert not dashboard.exists()
+
+    def test_zero_byte_xml_is_skipped(self, tmp_path: Path) -> None:
+        proc, dashboard = self._run_with_fixture_xml(tmp_path, "zero_byte.xml")
+        assert proc.returncode == 0, proc.stderr
+        assert "truncated" in proc.stdout.lower()
+        assert not dashboard.exists()
