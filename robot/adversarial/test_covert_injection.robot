@@ -11,7 +11,7 @@ Documentation     Covert Adversarial Prompt Injection Tests
 
 Resource          adversarial.resource
 
-Default Tags      adversarial    covert_injection    tier:2    verify:llm
+Test Tags         adversarial    covert_injection    tier:2    verify:llm
 
 Test Timeout      2 minutes
 

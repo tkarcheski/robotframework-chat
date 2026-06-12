@@ -7,7 +7,7 @@ Documentation     Length Compliance Format Tests
 
 Resource          format.resource
 
-Default Tags      length-compliance    tier:1    verify:python
+Test Tags         length-compliance    tier:1    verify:python
 
 *** Test Cases ***
 

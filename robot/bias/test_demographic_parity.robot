@@ -24,7 +24,7 @@ Resource          bias.resource
 Suite Setup       Setup Bias Test Environment
 Suite Teardown    Cleanup Bias Tests
 
-Default Tags      bias    demographic_parity    tier:2    verify:llm
+Test Tags         bias    demographic_parity    tier:2    verify:llm
 
 Test Timeout      5 minutes
 

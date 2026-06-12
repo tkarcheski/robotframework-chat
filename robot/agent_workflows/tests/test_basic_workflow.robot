@@ -8,7 +8,7 @@ Documentation     Synthetic multi-turn agent workflow.
 
 Resource          ../agent_workflows.resource
 
-Default Tags      agent-workflow    tier:1    verify:python
+Test Tags         agent-workflow    tier:1    verify:python
 
 *** Test Cases ***
 Agent Completes Multi-Turn Issue To PR Workflow
