@@ -1,14 +1,17 @@
 # Local Model Test Configuration
 #
 # Defines which tests to run when exercising every model discovered on
-# the local network.  Used by `scripts/run_local_models.py` and the
-# `make run-local-models` target.
+# the local network.  Used by `scripts/run_local_models.py` via both
+# `make run-local-models` (curated hosts from host-config.toml) and
+# `make run-all-external` (legacy wide-net discovery).
 #
-# Environment variable overrides:
-#   OLLAMA_ENDPOINT  -- starting-point endpoint (default: http://localhost:11434)
-#   DEFAULT_MODEL    -- fallback model when none discovered
-#   OLLAMA_SUBNET    -- CIDR to scan (e.g. 192.168.1.0/24)
-#   OLLAMA_NODES_LIST -- comma-separated hostnames to probe
+# Host inventory:
+#   run-local-models  -- reads host-config.toml (copy host-config.toml.example)
+#   run-all-external  -- env-var / subnet discovery:
+#     OLLAMA_ENDPOINT  -- starting-point endpoint (default: http://localhost:11434)
+#     DEFAULT_MODEL    -- fallback model when none discovered
+#     OLLAMA_SUBNET    -- CIDR to scan (e.g. 192.168.1.0/24)
+#     OLLAMA_NODES_LIST -- comma-separated hostnames to probe
 
 # ---------------------------------------------------------------------------
 # Discovery settings

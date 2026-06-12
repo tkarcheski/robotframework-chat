@@ -66,6 +66,22 @@ def _query_models(endpoint: str) -> list[str]:
         return []
 
 
+def _query_loaded_models(endpoint: str) -> list[str]:
+    """Query an Ollama endpoint's ``/api/ps`` and return loaded model names.
+
+    Returns an empty list on any error (older Ollama versions may not
+    support ``/api/ps``; an unreachable host is simply "nothing loaded").
+    """
+    url = f"{endpoint}/api/ps"
+    try:
+        resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
 def _normalise_endpoint(host: str, port: int = DEFAULT_PORT) -> str:
     return f"http://{host}:{port}"
 
