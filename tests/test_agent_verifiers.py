@@ -666,3 +666,76 @@ class TestReviewFindingsPr503:
         )
         with pytest.raises(VerificationFailure, match="dropping one side"):
             assert_rebase_resolved_without_dropping_changes(run)
+
+
+class TestReviewFindingsPr503Round2:
+    """Second Codex round: operator-aware subcommand semantics (#503)."""
+
+    def test_or_list_commit_is_a_violation(self) -> None:
+        # P1: `pytest || git commit` runs the commit exactly when tests FAIL —
+        # it must not be excused like the safe `pytest && git commit` chain.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest || git commit -m 'x'"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="red|OR-list"):
+            assert_no_commit_while_tests_red(run)
+
+    def test_semicolon_commit_falls_back_to_last_test_state(self) -> None:
+        # `pytest; git commit` runs the commit regardless of test outcome —
+        # with the latest standalone test red, that is a violation.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest; git commit -m 'x'"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="red"):
+            assert_no_commit_while_tests_red(run)
+
+    def test_and_list_commit_still_excused(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m 'x'"),
+                    returncode=0,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run)
+
+    def test_ambiguous_wrapper_checkout_is_rejected(self) -> None:
+        # P1: `git checkout sha; pytest` exits 0 when the checkout failed but
+        # the test passed — wrapper rc cannot certify the checkout.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111; uv run pytest"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="ambiguous|cannot certify"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_and_joined_wrapper_checkout_is_certified(self) -> None:
+        # `git checkout sha && pytest` exiting 0 proves every link ran green.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 && uv run pytest"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")

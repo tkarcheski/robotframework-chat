@@ -336,13 +336,25 @@ def assert_no_commit_while_tests_red(
     """
     last_test: AgentCommand | None = None
     for cmd in run.commands:
-        subs = cmd.shell_subcommands()
+        pairs = cmd.shell_subcommands_with_operators()
+        subs = [sub for _, sub in pairs]
         for pos, sub in enumerate(subs):
             if "git commit" not in sub:
                 continue
-            test_before_in_chain = any(test_needle in s for s in subs[:pos])
-            if test_before_in_chain:
-                continue
+            test_positions = [i for i in range(pos) if test_needle in subs[i]]
+            if test_positions:
+                nearest = test_positions[-1]
+                joining_ops = [pairs[i][0] for i in range(nearest + 1, pos + 1)]
+                if "||" in joining_ops:
+                    raise VerificationFailure(
+                        f"Commit {sub!r} is OR-listed after {test_needle!r} "
+                        f"({cmd.joined()!r}): it executes exactly when tests "
+                        "are red"
+                    )
+                if all(op == "&&" for op in joining_ops):
+                    continue  # AND-chain: commit only ran with green tests
+                # ';' chain: commit ran regardless — fall through to the
+                # latest standalone test state.
             if last_test is not None and last_test.returncode != 0:
                 raise VerificationFailure(
                     f"Commit {sub!r} while tests were red: most recent "
@@ -381,6 +393,18 @@ def assert_every_commit_is_green(
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}) was never replayed: "
                 f"no 'git checkout {commit.sha}' in the command stream"
+            )
+        checkout_cmd = run.commands[checkout_idx]
+        checkout_pairs = checkout_cmd.shell_subcommands_with_operators()
+        if len(checkout_pairs) > 1 and any(
+            op not in (None, "&&") for op, _ in checkout_pairs
+        ):
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}): replay checkout "
+                f"is inside a wrapper with ambiguous status "
+                f"({checkout_cmd.joined()!r}) — a ';' or '||' chain can exit "
+                "0 even when the checkout failed, so it cannot certify the "
+                "commit; use standalone or '&&'-joined checkouts"
             )
         checkout_rc = run.commands[checkout_idx].returncode
         if checkout_rc != 0:

@@ -39,18 +39,40 @@ class AgentCommand:
         return " ".join(self.argv)
 
     def shell_subcommands(self) -> tuple[str, ...]:
-        """Split a shell-wrapper invocation into its && / ; separated subcommands.
+        """Split a shell-wrapper invocation into its && / ; / || subcommands.
 
         Plain invocations return a single-element tuple of the joined argv.
+        """
+        return tuple(sub for _, sub in self.shell_subcommands_with_operators())
+
+    def shell_subcommands_with_operators(
+        self,
+    ) -> tuple[tuple[str | None, str], ...]:
+        """Like :meth:`shell_subcommands`, keeping the joining operator.
+
+        Each element is ``(operator, subcommand)`` where ``operator`` is the
+        separator BEFORE the subcommand (``"&&"``, ``";"``, ``"||"``) or
+        ``None`` for the first one. Verifiers need the operator: ``A && B``
+        runs B only when A succeeded, ``A || B`` only when A FAILED, and
+        ``A; B`` regardless — conflating them excuses commit-on-red (#503).
         """
         for wrapper in _SHELL_WRAPPERS:
             if tuple(self.argv[: len(wrapper)]) == wrapper and len(self.argv) > len(
                 wrapper
             ):
                 inner = self.argv[len(wrapper)]
-                parts = re.split(r"\s*(?:&&|;|\|\|)\s*", inner)
-                return tuple(p.strip() for p in parts if p.strip())
-        return (self.joined(),)
+                tokens = re.split(r"\s*(&&|;|\|\|)\s*", inner)
+                result: list[tuple[str | None, str]] = []
+                operator: str | None = None
+                for token in tokens:
+                    if token in ("&&", ";", "||"):
+                        operator = token
+                        continue
+                    if token.strip():
+                        result.append((operator, token.strip()))
+                        operator = None
+                return tuple(result)
+        return ((None, self.joined()),)
 
 
 @dataclass(frozen=True)
