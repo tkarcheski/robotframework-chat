@@ -1541,6 +1541,7 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
             h.tool_name,
             h.model_id,
             h.outcome,
+            h.rfc_version,
             p.plugin_name,
             p.semver,
             LAG(p.semver) OVER (
@@ -1563,12 +1564,14 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
         SELECT
             sub.skill_name,
             sub.outcome,
+            sub.rfc_version,
             sub.sha_changed,
             COUNT(*) AS session_count
         FROM (
             SELECT
                 COALESCE(s.skill_name, s.skill_path) AS skill_name,
                 COALESCE(h.outcome, 'unknown') AS outcome,
+                h.rfc_version,
                 CASE
                     WHEN LAG(s.git_sha) OVER (
                         PARTITION BY s.skill_path ORDER BY s.recorded_at
@@ -1581,15 +1584,16 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
             FROM agentic_skills s
             JOIN agentic_harnesses h ON h.session_id = s.session_id
         ) sub
-        GROUP BY sub.skill_name, sub.outcome, sub.sha_changed
+        GROUP BY sub.skill_name, sub.outcome, sub.rfc_version, sub.sha_changed
     """,
     "agentic_outcome_funnel": """
         SELECT
             tool_name,
+            rfc_version,
             COALESCE(outcome, 'running') AS outcome,
             COUNT(*) AS session_count
         FROM agentic_harnesses
-        GROUP BY tool_name, COALESCE(outcome, 'running')
+        GROUP BY tool_name, rfc_version, COALESCE(outcome, 'running')
     """,
 }
 

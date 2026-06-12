@@ -1148,3 +1148,19 @@ class TestPluginDriftPartitionsByTool:
                 "stable per-tool versions must not be flagged as drift when "
                 "sessions from different tools interleave"
             )
+
+
+class TestRfcVersionInVirtualDatasets:
+    """All three virtual datasets must expose rfc_version so the
+    dashboard's RFC Version filter constrains every panel (#483)."""
+
+    @pytest.mark.parametrize(
+        "dataset",
+        ["agentic_plugin_drift", "agentic_skill_outcomes", "agentic_outcome_funnel"],
+    )
+    def test_dataset_exposes_rfc_version(self, agentic_db: str, dataset: str) -> None:
+        cols = _probe_columns(agentic_db, _AGENTIC_VIRTUAL_DATASETS[dataset])
+        assert "rfc_version" in cols, (
+            f"{dataset} omits rfc_version — the RFC Version filter "
+            "silently does not apply to its panel (#483)"
+        )
