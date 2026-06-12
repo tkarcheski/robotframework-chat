@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Optional, Sequence
 
 from .harness_models import (
+    AgenticDecision,
     AgenticHarness,
     AgenticMetric,
     AgenticPlugin,
@@ -96,6 +97,23 @@ CREATE INDEX IF NOT EXISTS idx_metrics_session ON agentic_metrics(session_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_key     ON agentic_metrics(metric_key);
 CREATE INDEX IF NOT EXISTS idx_metrics_run     ON agentic_metrics(test_run_id);
 
+CREATE TABLE IF NOT EXISTS agentic_decisions (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    test_name       TEXT,
+    hook_event      TEXT NOT NULL,
+    prompt_model    TEXT NOT NULL,
+    prompt_text     TEXT NOT NULL,
+    response_text   TEXT,
+    proposed_action TEXT,
+    applied         INTEGER NOT NULL,
+    tokens_used     INTEGER,
+    recorded_at     TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES agentic_harnesses(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_decisions_session ON agentic_decisions(session_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_action  ON agentic_decisions(proposed_action);
+
 CREATE TABLE IF NOT EXISTS dialog_recordings (
     id              TEXT PRIMARY KEY,
     session_id      TEXT,
@@ -128,6 +146,28 @@ CREATE INDEX IF NOT EXISTS idx_dialog_turns_recording ON dialog_turns(recording_
 """
 
 _SQLITE_MIGRATIONS: list[str] = []  # placeholder for future column adds
+
+
+def _decision_from_row(row: "Sequence[Any]") -> AgenticDecision:
+    """Map a positional (id, session_id, test_name, hook_event, prompt_model,
+    prompt_text, response_text, proposed_action, applied, tokens_used,
+    recorded_at) row to a dataclass.
+
+    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
+    """
+    return AgenticDecision(
+        session_id=row[1],
+        hook_event=row[3],
+        prompt_model=row[4],
+        prompt_text=row[5],
+        recorded_at=row[10],
+        test_name=row[2] or "",
+        response_text=row[6] or "",
+        proposed_action=row[7] or "",
+        applied=int(row[8]),
+        tokens_used=int(row[9]) if row[9] is not None else -1,
+        id=row[0],
+    )
 
 
 def _recording_from_row(row: "Sequence[Any]") -> DialogRecording:
@@ -212,6 +252,17 @@ class _HarnessBackend(abc.ABC):
     def get_metrics(
         self, session_id: str, *, metric_key: str = ""
     ) -> list[AgenticMetric]: ...
+
+    @abc.abstractmethod
+    def save_decision(self, decision: AgenticDecision) -> str: ...
+
+    @abc.abstractmethod
+    def save_decisions(self, decisions: list[AgenticDecision]) -> list[str]: ...
+
+    @abc.abstractmethod
+    def get_decisions(
+        self, session_id: str, *, proposed_action: str = ""
+    ) -> list[AgenticDecision]: ...
 
     @abc.abstractmethod
     def save_recording(self, recording: DialogRecording) -> str: ...
@@ -492,6 +543,58 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             for r in rows
         ]
 
+    def save_decision(self, decision: AgenticDecision) -> str:
+        return self.save_decisions([decision])[0]
+
+    def save_decisions(self, decisions: list[AgenticDecision]) -> list[str]:
+        ids: list[str] = []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            for d in decisions:
+                row_id = d.id or uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO agentic_decisions
+                    (id, session_id, test_name, hook_event, prompt_model,
+                     prompt_text, response_text, proposed_action, applied,
+                     tokens_used, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_id,
+                        d.session_id,
+                        d.test_name or None,
+                        d.hook_event,
+                        d.prompt_model,
+                        d.prompt_text,
+                        d.response_text or None,
+                        d.proposed_action or None,
+                        d.applied,
+                        d.tokens_used if d.tokens_used >= 0 else None,
+                        d.recorded_at,
+                    ),
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_decisions(
+        self, session_id: str, *, proposed_action: str = ""
+    ) -> list[AgenticDecision]:
+        sql = (
+            "SELECT id, session_id, test_name, hook_event, prompt_model, "
+            "prompt_text, response_text, proposed_action, applied, "
+            "tokens_used, recorded_at "
+            "FROM agentic_decisions WHERE session_id = ? "
+        )
+        params: tuple = (session_id,)
+        if proposed_action:
+            sql += "AND proposed_action = ? "
+            params = params + (proposed_action,)
+        sql += "ORDER BY recorded_at, id"
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_decision_from_row(r) for r in rows]
+
     def save_recording(self, recording: DialogRecording) -> str:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
@@ -594,6 +697,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             "agentic_plugins",
             "agentic_skills",
             "agentic_metrics",
+            "agentic_decisions",
             "dialog_recordings",
             "dialog_turns",
         }:
@@ -629,6 +733,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             Column,
             Float,
             ForeignKey,
+            Index,
             Integer,
             MetaData,
             String,
@@ -712,6 +817,28 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             Column("metric_key", String, nullable=False),
             Column("metric_value", Float),
             Column("recorded_at", String, nullable=False),
+        )
+        self._decisions = Table(
+            "agentic_decisions",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column(
+                "session_id",
+                String,
+                ForeignKey("agentic_harnesses.session_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            Column("test_name", String),
+            Column("hook_event", String, nullable=False),
+            Column("prompt_model", String, nullable=False),
+            Column("prompt_text", String, nullable=False),
+            Column("response_text", String),
+            Column("proposed_action", String),
+            Column("applied", Integer, nullable=False),
+            Column("tokens_used", Integer),
+            Column("recorded_at", String, nullable=False),
+            Index("idx_decisions_session", "session_id"),
+            Index("idx_decisions_action", "proposed_action"),
         )
         self._recordings = Table(
             "dialog_recordings",
@@ -995,6 +1122,57 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             for r in rows
         ]
 
+    def save_decision(self, decision: AgenticDecision) -> str:
+        return self.save_decisions([decision])[0]
+
+    def save_decisions(self, decisions: list[AgenticDecision]) -> list[str]:
+        ids: list[str] = []
+        with self.engine.begin() as conn:
+            for d in decisions:
+                row_id = d.id or uuid.uuid4().hex
+                conn.execute(
+                    self._decisions.insert(),
+                    {
+                        "id": row_id,
+                        "session_id": d.session_id,
+                        "test_name": d.test_name or None,
+                        "hook_event": d.hook_event,
+                        "prompt_model": d.prompt_model,
+                        "prompt_text": d.prompt_text,
+                        "response_text": d.response_text or None,
+                        "proposed_action": d.proposed_action or None,
+                        "applied": d.applied,
+                        "tokens_used": d.tokens_used if d.tokens_used >= 0 else None,
+                        "recorded_at": d.recorded_at,
+                    },
+                )
+                ids.append(row_id)
+        return ids
+
+    def get_decisions(
+        self, session_id: str, *, proposed_action: str = ""
+    ) -> list[AgenticDecision]:
+        cols = self._decisions.c
+        stmt = self._select(
+            cols.id,
+            cols.session_id,
+            cols.test_name,
+            cols.hook_event,
+            cols.prompt_model,
+            cols.prompt_text,
+            cols.response_text,
+            cols.proposed_action,
+            cols.applied,
+            cols.tokens_used,
+            cols.recorded_at,
+        ).where(cols.session_id == session_id)
+        if proposed_action:
+            stmt = stmt.where(cols.proposed_action == proposed_action)
+        stmt = stmt.order_by(cols.recorded_at, cols.id)
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        return [_decision_from_row(r) for r in rows]
+
     def save_recording(self, recording: DialogRecording) -> str:
         with self.engine.begin() as conn:
             conn.execute(
@@ -1103,23 +1281,17 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         return self.engine.dialect.name
 
     def get_table_row_count(self, table_name: str) -> int:
-        if table_name not in {
-            "agentic_harnesses",
-            "agentic_plugins",
-            "agentic_skills",
-            "agentic_metrics",
-            "dialog_recordings",
-            "dialog_turns",
-        }:
-            raise ValueError(f"unknown harness table: {table_name}")
         table_map = {
             "agentic_harnesses": self._harnesses,
             "agentic_plugins": self._plugins,
             "agentic_skills": self._skills,
             "agentic_metrics": self._metrics,
+            "agentic_decisions": self._decisions,
             "dialog_recordings": self._recordings,
             "dialog_turns": self._turns,
         }
+        if table_name not in table_map:
+            raise ValueError(f"unknown harness table: {table_name}")
         with self.engine.connect() as conn:
             return int(
                 conn.execute(
@@ -1215,6 +1387,17 @@ class HarnessDatabase:
         self, session_id: str, *, metric_key: str = ""
     ) -> list[AgenticMetric]:
         return self._backend.get_metrics(session_id, metric_key=metric_key)
+
+    def save_decision(self, decision: AgenticDecision) -> str:
+        return self._backend.save_decision(decision)
+
+    def save_decisions(self, decisions: list[AgenticDecision]) -> list[str]:
+        return self._backend.save_decisions(decisions)
+
+    def get_decisions(
+        self, session_id: str, *, proposed_action: str = ""
+    ) -> list[AgenticDecision]:
+        return self._backend.get_decisions(session_id, proposed_action=proposed_action)
 
     def save_recording(self, recording: DialogRecording) -> str:
         """Persist a recording, dropping a dangling ``session_id``.
