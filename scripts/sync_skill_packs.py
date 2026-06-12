@@ -55,9 +55,7 @@ class Skill:
 def load_manifest(path: Path) -> list[SkillPack]:
     data = yaml.safe_load(path.read_text())
     return [
-        SkillPack(
-            name=p["name"], path=p["path"], prefix=p["prefix"], glob=p["glob"]
-        )
+        SkillPack(name=p["name"], path=p["path"], prefix=p["prefix"], glob=p["glob"])
         for p in data.get("packs", [])
     ]
 
@@ -104,8 +102,7 @@ def plan_links(
             link_name = f"{pack.prefix}{skill.name}"
             if link_name in links:
                 print(
-                    f"WARN: duplicate skill name '{link_name}' "
-                    f"({skill.ident} skipped)",
+                    f"WARN: duplicate skill name '{link_name}' ({skill.ident} skipped)",
                     file=sys.stderr,
                 )
                 continue
@@ -121,21 +118,37 @@ def plan_links(
 
 
 def sync_links(
-    skills_dir: Path, links: dict[str, Path], dry_run: bool = False
+    skills_dir: Path,
+    links: dict[str, Path],
+    dry_run: bool = False,
+    pack_roots: list[Path] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Create planned symlinks, prune pack-owned strays. Returns (created, pruned).
 
-    A link is "pack-owned" (prunable) when it is a symlink pointing into
-    vendor/skill-packs/ — real directories are never touched, so a local
-    skill that collides with a pack name always wins.
+    A link is "pack-owned" (prunable) when it is a symlink whose target
+    resolves under one of *pack_roots* (absolute pack checkout paths) —
+    real directories are never touched, so a local skill that collides
+    with a pack name always wins. Without *pack_roots* the legacy
+    heuristic applies: targets containing a skill-packs path component.
+    Packs mounted outside vendor/skill-packs/ (e.g. the top-level
+    knowledge brain) are only prunable via *pack_roots* (#463).
     """
+
+    def _pack_owned(target: Path) -> bool:
+        if pack_roots is None:
+            return "skill-packs" in target.parts
+        resolved = (
+            (skills_dir / target).resolve() if not target.is_absolute() else target
+        )
+        return any(resolved.is_relative_to(root) for root in pack_roots)
+
     created: list[str] = []
     pruned: list[str] = []
     for entry in sorted(skills_dir.iterdir() if skills_dir.exists() else []):
         if not entry.is_symlink():
             continue
         target = Path(entry.readlink())
-        if "skill-packs" not in target.parts:
+        if not _pack_owned(target):
             continue
         if entry.name not in links:
             if not dry_run:
@@ -173,7 +186,10 @@ def main(argv: list[str] | None = None) -> int:
     packs = load_manifest(root / MANIFEST)
     patterns = load_ignore_patterns(root / SKILLIGNORE)
     links = plan_links(root, packs, patterns)
-    created, pruned = sync_links(root / SKILLS_DIR, links, dry_run=args.dry_run)
+    pack_roots = [(root / p.path).resolve() for p in packs]
+    created, pruned = sync_links(
+        root / SKILLS_DIR, links, dry_run=args.dry_run, pack_roots=pack_roots
+    )
 
     verb = "would create" if args.dry_run else "created"
     print(
