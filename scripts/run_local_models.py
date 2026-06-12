@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import requests
 import yaml
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,15 @@ from scripts.discover_ollama import (  # noqa: E402
 DEFAULT_CONFIG = _project_root / "config" / "local_models.yaml"
 TEST_SUITES_CONFIG = _project_root / "config" / "test_suites.yaml"
 HOST_CONFIG_PATH = _project_root / "host-config.toml"
+
+# Pseudo-suite name recorded when a model fails its preflight probe and its
+# real suites are skipped (issue #426).
+PREFLIGHT_SUITE = "<preflight>"
+
+# Default ceiling for one preflight generate call. Cold-loading a large model
+# can take tens of minutes (observed ~26 min for glm-4.7-flash:q8_0), so this
+# must be generous; override with execution.preflight_timeout.
+DEFAULT_PREFLIGHT_TIMEOUT = 1800
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +294,57 @@ def _build_robot_command(
 
 
 # ---------------------------------------------------------------------------
+# Preflight probe (issue #426)
+# ---------------------------------------------------------------------------
+
+
+def preflight_model(
+    endpoint: str,
+    model: str,
+    *,
+    timeout: float = DEFAULT_PREFLIGHT_TIMEOUT,
+) -> tuple[bool, str]:
+    """Probe a model with one tiny prompt before running its suites.
+
+    A model that errors, times out, or returns an empty response (the
+    glm-4.7-flash:q8_0 symptom from issue #426) would otherwise fail every
+    test of every suite — each with its own retries and long waits — before
+    the runner moves on. One probe up front lets the runner record the
+    failure and skip straight to the next model.
+
+    Args:
+        endpoint: Ollama base URL (e.g. ``http://host:11434``).
+        model: Model name to probe.
+        timeout: Max seconds for the probe request (cold model loads can
+            take tens of minutes, so the default is generous).
+
+    Returns:
+        ``(ok, reason)`` — ``reason`` is ``"ok"`` on success, otherwise a
+        short human-readable failure description.
+    """
+    try:
+        resp = requests.post(
+            f"{endpoint}/api/generate",
+            json={
+                "model": model,
+                "prompt": "Reply with the single word: ok",
+                "stream": False,
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        text = (resp.json().get("response") or "").strip()
+    except requests.RequestException as e:
+        return False, f"request failed: {e}"
+    except ValueError as e:
+        return False, f"invalid JSON response: {e}"
+
+    if not text:
+        return False, "empty response from model"
+    return True, "ok"
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -359,25 +420,70 @@ def run_model_suites(
     """
     execution = config.get("execution", {})
     continue_on_failure = execution.get("continue_on_failure", True)
-    output_template = execution.get("output_dir", "results/local/{node}/{model}")
+    preflight_enabled = execution.get("preflight", False)
+    preflight_timeout = execution.get("preflight_timeout", DEFAULT_PREFLIGHT_TIMEOUT)
 
-    hosts = _host_states_from_nodes(nodes_with_models)
-    jobs = _build_jobs(config, nodes_with_models)
-    print_lock = threading.Lock()
+    results: list[RunResult] = []
 
-    def _run(host: HostState, job: Job) -> RunResult:
-        node_name = host.spec.name
-        cmd = _build_robot_command(
-            config=config,
-            suite=job.suite,
-            endpoint=host.spec.endpoint,
-            model=job.model,
-            node_name=node_name,
-        )
-        output_dir = output_template.format(
-            node=_sanitize_name(node_name),
-            model=_sanitize_name(job.model),
-        )
+    for node_info in nodes_with_models:
+        endpoint = node_info["endpoint"]
+        hostname = node_info["hostname"]
+        models = list(node_info.get("models", []))
+        random.shuffle(models)
+
+        if models:
+            print(f"  Model order (shuffled): {models}")
+
+        for model in models:
+            if preflight_enabled and not dry_run:
+                ok, reason = preflight_model(endpoint, model, timeout=preflight_timeout)
+                if not ok:
+                    print(
+                        f"\n  [preflight] SKIPPING {model}@{hostname}: {reason}\n"
+                        f"  [preflight] Recording failure and continuing with "
+                        f"the next model."
+                    )
+                    results.append(
+                        RunResult(
+                            node=hostname,
+                            model=model,
+                            suite=PREFLIGHT_SUITE,
+                            returncode=1,
+                            output_dir="",
+                        )
+                    )
+                    continue
+
+            for suite in suites:
+                cmd = _build_robot_command(
+                    config=config,
+                    suite=suite,
+                    endpoint=endpoint,
+                    model=model,
+                    node_name=hostname,
+                )
+
+                output_dir = (
+                    config.get("execution", {})
+                    .get("output_dir", "results/local/{node}/{model}")
+                    .format(
+                        node=_sanitize_name(hostname),
+                        model=_sanitize_name(model),
+                    )
+                )
+
+                if dry_run:
+                    print(f"[DRY-RUN] {' '.join(cmd)}")
+                    results.append(
+                        RunResult(
+                            node=hostname,
+                            model=model,
+                            suite=suite["name"],
+                            returncode=0,
+                            output_dir=output_dir,
+                        )
+                    )
+                    continue
 
         if dry_run:
             with print_lock:
@@ -452,8 +558,9 @@ def _print_summary(results: list[RunResult]) -> None:
         print("\nNo test runs were executed.")
         return
 
-    passed = [r for r in results if r.returncode == 0]
-    failed = [r for r in results if r.returncode != 0]
+    skipped = [r for r in results if r.suite == PREFLIGHT_SUITE]
+    passed = [r for r in results if r.returncode == 0 and r.suite != PREFLIGHT_SUITE]
+    failed = [r for r in results if r.returncode != 0 and r.suite != PREFLIGHT_SUITE]
 
     print(f"\n{'=' * 70}")
     print("  Run Summary")
@@ -461,11 +568,18 @@ def _print_summary(results: list[RunResult]) -> None:
     print(f"  Total runs: {len(results)}")
     print(f"  Passed:     {len(passed)}")
     print(f"  Failed:     {len(failed)}")
+    if skipped:
+        print(f"  Skipped:    {len(skipped)} model(s) failed preflight")
 
     if failed:
         print("\n  Failed runs:")
         for r in failed:
             print(f"    - {r.suite} | {r.model}@{r.node} (rc={r.returncode})")
+
+    if skipped:
+        print("\n  Models skipped (preflight failed):")
+        for r in skipped:
+            print(f"    - {r.model}@{r.node}")
 
     print()
 

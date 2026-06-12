@@ -446,7 +446,7 @@ class TestAskAndGradeWithRetry:
 
         with pytest.raises(EmptyLLMResponseError) as exc_info:
             kw.ask_and_grade_with_retry("Q", "42", max_retries=3)
-        assert exc_info.value.ROBOT_SKIP is True
+        assert exc_info.value.ROBOT_SKIP_EXECUTION is True
         assert kw.client.generate.call_count == 1
         assert kw.client.max_tokens == 256
 

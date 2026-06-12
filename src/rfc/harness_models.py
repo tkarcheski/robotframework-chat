@@ -70,6 +70,29 @@ class AgenticMetric:
 
 
 @dataclass
+class AgenticDecision:
+    """One LLM-influenced decision with full provenance (Phase 3, #358).
+
+    ``applied`` is 0 while the generative listener is observe-only:
+    suggestions are recorded but execution is never changed.
+    """
+
+    session_id: str
+    hook_event: str  # 'start_suite' | 'end_test' | 'on_failure' | ...
+    prompt_model: str
+    prompt_text: str
+    recorded_at: str
+    test_name: str = ""
+    response_text: str = ""
+    proposed_action: str = (
+        ""  # 'skip'|'retry'|'mutate'|'heal'|'observe'|'budget_exhausted'
+    )
+    applied: int = 0  # 0 = suggestion only, 1 = applied to run
+    tokens_used: int = -1  # -1 sentinel = unknown (NULL in DB)
+    id: str = ""  # backend assigns uuid4().hex when blank
+
+
+@dataclass
 class DialogRecording:
     """One recorded agent dialog (Phase 2). session_id "" = unattached."""
 

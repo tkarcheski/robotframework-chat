@@ -28,6 +28,18 @@ cp .env.example .env
 pre-commit install
 ```
 
+### Docker host prerequisites
+
+Redis (the Superset cache in `docker-compose.yml`) warns at startup unless
+memory overcommit is enabled on the **host** — a sysctl, not fixable inside
+the container. Without it, BGSAVE forks can fail under memory pressure
+(issue #415; low severity here since Redis is cache-only):
+
+```bash
+sudo sysctl vm.overcommit_memory=1                     # immediate
+echo 'vm.overcommit_memory = 1' | sudo tee -a /etc/sysctl.conf  # persistent
+```
+
 ---
 
 ## Environment Configuration

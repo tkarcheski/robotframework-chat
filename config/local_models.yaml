@@ -253,10 +253,15 @@ execution:
     - "rfc.agent_workflow_listener.AgentWorkflowListener"
     - "rfc.agentic_harness_listener.AgenticHarnessListener"
     - "rfc.dialog_listener.DialogListener"
+    - "rfc.generative_listener.GenerativeListener"
   # Continue to next model even if a suite fails
   continue_on_failure: true
-  # NOTE: `parallel` only applies to `make run-all-external` (global cap on
-  # concurrent runs; 1 = sequential, preserving legacy behavior). For
-  # `make run-local-models` it is DEPRECATED — set `global_max_parallel`
-  # in host-config.toml instead (a warning is printed if both are present).
-  # parallel: 1
+  # Maximum parallel model runs (1 = sequential)
+  parallel: 1
+  # Probe each model with one tiny prompt before running its suites; a model
+  # that errors or returns an empty response (issue #426: glm-4.7-flash:q8_0)
+  # is recorded as failed and skipped instead of churning through every test.
+  preflight: true
+  # Max seconds for the preflight probe — generous, because cold-loading a
+  # large model can take tens of minutes.
+  preflight_timeout: 1800
