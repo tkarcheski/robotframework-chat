@@ -1,0 +1,209 @@
+"""``rfc harness start | end | status`` — session bracketing CLI.
+
+One Claude-Code / Codex / OpenCode session = one feature branch
+(CLAUDE.md "one branch per session"). ``start`` generates the
+session_id UUID, snapshots plugins and skills, writes the
+agentic_harnesses row, and persists session info to a per-worktree
+sidecar (``.git/rfc-harness-session.json``) so subsequent Robot/pytest
+runs can attach to it. ``end`` closes the row and removes the sidecar.
+
+DB-write failures are skip-and-log (the sidecar still brackets the
+session locally); only a missing database URL is a hard failure.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+from rfc import __version__
+from rfc.git_metadata import _git_command, collect_ci_metadata
+from rfc.harness_models import AgenticHarness
+from rfc.harness_snapshot import snapshot_plugins, snapshot_skills
+
+SIDECAR_NAME = "rfc-harness-session.json"
+TOOLS = ("claude-code", "codex", "opencode")
+
+
+def _sidecar_path() -> Path:
+    """Locate the per-worktree sidecar inside the current .git dir."""
+    git_dir = _git_command("rev-parse", "--absolute-git-dir")
+    if not git_dir:
+        raise RuntimeError("not inside a git repository")
+    return Path(git_dir) / SIDECAR_NAME
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+
+
+def _tool_version(tool: str, explicit: str) -> str:
+    """Use the explicit version, falling back to ``<tool> --version``."""
+    if explicit:
+        return explicit
+    try:
+        result = subprocess.run(
+            [tool, "--version"], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return ""
+
+
+def _open_db(database_url: str):  # type: ignore[no-untyped-def]
+    """Open HarnessDatabase from flag or DATABASE_URL; None if URL unset.
+
+    Import is deferred so ``status`` works without DB extras installed.
+    """
+    from rfc.harness_db import HarnessDatabase
+
+    url = database_url or os.environ.get("DATABASE_URL", "")
+    if not url:
+        return None
+    return HarnessDatabase(database_url=url)
+
+
+def _cmd_start(args: argparse.Namespace) -> int:
+    sidecar = _sidecar_path()
+    if sidecar.exists() and not args.force_overwrite:
+        print(
+            f"ERROR: active session already recorded in {sidecar}; "
+            "use --force-overwrite to replace it.",
+            file=sys.stderr,
+        )
+        return 1
+
+    url = args.database_url or os.environ.get("DATABASE_URL", "")
+    if not url:
+        print(
+            "ERROR: no database configured — pass --database-url or set "
+            "DATABASE_URL. The harness row is the point of `harness start`, "
+            "so this is a hard failure.",
+            file=sys.stderr,
+        )
+        return 2
+
+    session_id = uuid.uuid4().hex
+    started_at = _utc_now()
+    tool_version = _tool_version(args.tool, args.tool_version)
+    harness = AgenticHarness(
+        session_id=session_id,
+        tool_name=args.tool,
+        started_at=started_at,
+        tool_version=tool_version,
+        model_id=args.model or os.environ.get("DEFAULT_MODEL", ""),
+        rfc_version=__version__,
+        branch=collect_ci_metadata().get("Branch", ""),
+    )
+
+    try:
+        db = _open_db(url)
+        assert db is not None  # url checked above
+        db.save_harness(harness)
+        db.save_plugins(snapshot_plugins(session_id, started_at))
+        db.save_skills(snapshot_skills(session_id, started_at))
+    except Exception as exc:  # noqa: BLE001 — skip-and-log per CLAUDE.md
+        print(
+            f"WARN: skipping DB write ({exc}); session is still bracketed "
+            "by the local sidecar.",
+            file=sys.stderr,
+        )
+
+    sidecar.write_text(
+        json.dumps(
+            {
+                "session_id": session_id,
+                "tool_name": args.tool,
+                "tool_version": tool_version,
+                "started_at": started_at,
+            },
+            indent=2,
+        )
+    )
+    print(f"started session {session_id} ({args.tool}) — sidecar: {sidecar}")
+    return 0
+
+
+def _cmd_end(args: argparse.Namespace) -> int:
+    sidecar = _sidecar_path()
+    if not sidecar.exists():
+        print("ERROR: no active session (sidecar not found).", file=sys.stderr)
+        return 1
+    session = json.loads(sidecar.read_text())
+    ended_at = _utc_now()
+    try:
+        db = _open_db(args.database_url)
+        if db is None:
+            print(
+                "WARN: skipping DB update (no database configured); "
+                "removing sidecar only.",
+                file=sys.stderr,
+            )
+        else:
+            db.end_harness(session["session_id"], args.outcome, ended_at)
+    except Exception as exc:  # noqa: BLE001 — skip-and-log per CLAUDE.md
+        print(f"WARN: skipping DB update ({exc}).", file=sys.stderr)
+    sidecar.unlink()
+    print(f"ended session {session['session_id']} — outcome: {args.outcome}")
+    return 0
+
+
+def _cmd_status(_args: argparse.Namespace) -> int:
+    sidecar = _sidecar_path()
+    if not sidecar.exists():
+        print("no active session")
+        return 0
+    session = json.loads(sidecar.read_text())
+    print(
+        f"active session {session['session_id']}\n"
+        f"  tool:       {session['tool_name']} {session['tool_version']}\n"
+        f"  started_at: {session['started_at']}\n"
+        f"  sidecar:    {sidecar}"
+    )
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rfc", description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    harness = commands.add_parser("harness", help="agent session bracketing")
+    actions = harness.add_subparsers(dest="action", required=True)
+
+    start = actions.add_parser("start", help="open a session")
+    start.add_argument("--tool", required=True, choices=TOOLS)
+    start.add_argument("--tool-version", default="")
+    start.add_argument("--model", default="")
+    start.add_argument("--database-url", default="")
+    start.add_argument("--force-overwrite", action="store_true")
+    start.set_defaults(func=_cmd_start)
+
+    end = actions.add_parser("end", help="close the active session")
+    end.add_argument(
+        "--outcome", default="success", choices=("success", "partial", "failed")
+    )
+    end.add_argument("--database-url", default="")
+    end.set_defaults(func=_cmd_end)
+
+    status = actions.add_parser("status", help="show the active session")
+    status.set_defaults(func=_cmd_status)
+    return parser
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        return int(args.func(args))
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -40,6 +40,9 @@ dependencies = [
     "urllib3==2.6.2",
 ]
 
+[project.scripts]
+rfc = "rfc.harness_cli:main"
+
 [project.urls]
 Homepage = "https://github.com/tkarcheski/robotframework-chat"
 Repository = "https://github.com/tkarcheski/robotframework-chat"
