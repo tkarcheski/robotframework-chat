@@ -47,6 +47,14 @@ affected area). Then either:
 - **Push back**: comment exactly what's missing and leave it in triage.
 - **Close**: duplicates (link the original) or won't-fix (state the reasoning).
 - **Merge/split**: combine duplicates; split issues that hide multiple work items.
+- **Route review feedback (#423)**: a bot-filed issue whose substance is a
+  review finding on a still-**open** PR is review feedback, not backlog —
+  never promote it. Route it back to the PR (comment the finding + review-thread
+  link on the PR), then close the issue as routed, linking the PR. The finding
+  must block at the gate: a P1-severity finding on an open PR makes that PR
+  changes-requested, not a post-merge issue. Accept such an issue as standalone
+  work only when its PR has already merged — and then require the originating
+  review-thread URL in the body so thread and issue close together.
 
 Prioritization heuristics: user-facing breakage > data integrity > security >
 blocked work > velocity (quality/tooling) > features > polish. Prefer unblocking
