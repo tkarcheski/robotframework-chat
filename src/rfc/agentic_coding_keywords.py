@@ -7,6 +7,7 @@ testable and reusable across future agent adapters.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from rfc import agent_verifiers as verifiers
@@ -16,10 +17,14 @@ from rfc.agent_config import (
     load_agent_config,
 )
 from rfc.agent_contract import AgentContract, load_agent_contract
+from rfc.agent_prose_grader import AgentProseGrader
 from rfc.agent_run import AgentRun
 from rfc.agent_runner import create_agent_runner
+from rfc.exceptions import MissingEnvironmentError
 from rfc.fake_agent_runner import DEFAULT_FIXTURES_ROOT
-from rfc.llm_client import LLMProvider
+from rfc.llm_client import LLMProvider, create_provider, resolve_timeout
+from rfc.multi_grader import MultiGrader, MultiGradeResult
+from rfc.rfc_data import emit_rfc_data
 
 
 class AgenticCodingKeywords:
@@ -120,3 +125,77 @@ class AgenticCodingKeywords:
         verifiers.assert_pr_body_includes_sections(
             run, self._contract(run.agent_id).pr_required_sections
         )
+
+    # ------------------------------------------------------------------
+    # Tier:3 prose graders (#289) — LLM-as-judge, multi-grader consensus.
+    # Built lazily from AGENT_PROSE_GRADER_MODELS so dryrun and the tier:1
+    # keywords above work without any grading model configured.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _canonical_model(name: str) -> str:
+        """Normalize a model name so tag aliases compare equal (see #260)."""
+        canon = name.strip().lower()
+        if ":" not in canon:
+            canon = f"{canon}:latest"
+        return canon
+
+    def _prose_judge_panel(self) -> MultiGrader:
+        """Build the judge panel from AGENT_PROSE_GRADER_MODELS.
+
+        Raises MissingEnvironmentError (ROBOT_SKIP) when the env var is
+        unset, so tier:3 tests skip with a clear reason instead of
+        failing when no grading models are configured.
+        """
+        models_str = os.getenv("AGENT_PROSE_GRADER_MODELS", "").strip()
+        if not models_str:
+            raise MissingEnvironmentError("AGENT_PROSE_GRADER_MODELS")
+        raw_models = [m.strip() for m in models_str.split(",") if m.strip()]
+        seen: dict[str, str] = {}
+        for raw in raw_models:
+            seen.setdefault(self._canonical_model(raw), raw)
+        models = list(seen.values())
+        if len(models) < 3:
+            raise ValueError(
+                f"AGENT_PROSE_GRADER_MODELS must contain at least 3 distinct "
+                f"models for consensus grading, got {len(models)} unique: "
+                f"{models} (raw: {raw_models})"
+            )
+        timeout = resolve_timeout(None)
+        providers = [create_provider(model=model, timeout=timeout) for model in models]
+        return MultiGrader(providers=providers)
+
+    def _assert_prose_grade(
+        self, dimension: str, result: MultiGradeResult, threshold: float
+    ) -> None:
+        emit_rfc_data("score", str(result.majority_score))
+        emit_rfc_data("grading_reason", f"{dimension}: " + " | ".join(result.reasons))
+        if result.majority_score < threshold:
+            raise AssertionError(
+                f"{dimension} consensus score {result.majority_score} below "
+                f"threshold {threshold} "
+                f"(scores={result.scores}, reasons={result.reasons})"
+            )
+
+    def clarifying_questions_should_be_grounded(
+        self, run: AgentRun, threshold: float = 0.5
+    ) -> None:
+        """Judge panel: each MC question must reference a concrete repo artifact."""
+        result = AgentProseGrader(self._prose_judge_panel()).grade_question_grounding(
+            run
+        )
+        self._assert_prose_grade("question-grounding", result, float(threshold))
+
+    def pr_body_should_explain_how_to_review(
+        self, run: AgentRun, threshold: float = 0.5
+    ) -> None:
+        """Judge panel: PR body names a starting file and sequences key changes."""
+        result = AgentProseGrader(self._prose_judge_panel()).grade_pr_body(run)
+        self._assert_prose_grade("pr-body-quality", result, float(threshold))
+
+    def commits_should_match_their_changes(
+        self, run: AgentRun, threshold: float = 0.5
+    ) -> None:
+        """Judge panel: each commit subject truthfully describes its files."""
+        result = AgentProseGrader(self._prose_judge_panel()).grade_commit_cohesion(run)
+        self._assert_prose_grade("commit-cohesion", result, float(threshold))
