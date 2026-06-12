@@ -102,3 +102,27 @@ class TestEvaluateChanges:
 
     def test_no_changes_no_violations(self) -> None:
         assert evaluate_changes([]) == []
+
+
+class TestPrefixOwnership:
+    def test_skill_pack_bump_by_design_allowed(self) -> None:
+        changes = [
+            GitlinkChange(
+                path="vendor/skill-packs/mattpocock",
+                commit="abc1234",
+                author_email="design@agents.rfc",
+            )
+        ]
+        assert evaluate_changes(changes) == []
+
+    def test_skill_pack_bump_by_other_agent_rejected(self) -> None:
+        changes = [
+            GitlinkChange(
+                path="vendor/skill-packs/mattpocock",
+                commit="abc1234",
+                author_email="engineering@agents.rfc",
+            )
+        ]
+        violations = evaluate_changes(changes)
+        assert len(violations) == 1
+        assert "design@agents.rfc" in violations[0]

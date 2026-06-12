@@ -29,6 +29,12 @@ SUBMODULE_OWNERS: dict[str, str] = {
     ".claude/skills/elons-algorithm": "design@agents.rfc",
 }
 
+# Prefix-based ownership for submodule families (e.g. external skill packs,
+# ai/GIT.md fork-first policy): any gitlink under the prefix has this owner.
+PREFIX_OWNERS: dict[str, str] = {
+    "vendor/skill-packs/": "design@agents.rfc",
+}
+
 AGENT_EMAIL_DOMAIN = "@agents.rfc"
 GITLINK_MODE = "160000"
 
@@ -54,6 +60,11 @@ def evaluate_changes(changes: list[GitlinkChange]) -> list[str]:
         if not is_agent_email(change.author_email):
             continue  # humans outrank agents
         owner = SUBMODULE_OWNERS.get(change.path)
+        if owner is None:
+            for prefix, prefix_owner in PREFIX_OWNERS.items():
+                if change.path.startswith(prefix):
+                    owner = prefix_owner
+                    break
         if owner is None:
             violations.append(
                 f"{change.commit[:7]}: submodule '{change.path}' has no owner in "

@@ -95,15 +95,26 @@ what the ownership guard trusts). So:
       commit -s -m "..."
   ```
 
-**Every agent commit is signed off** (`commit -s`), producing
-`Signed-off-by: rfc-<role>-agent <<role>@agents.rfc>` from the identity in
-effect — so the trailer always names the role that actually committed, even
-in shared worktrees, and `git log --format='%ae %(trailers:key=Signed-off-by)'`
-shows who said what at a glance. A commit whose author and sign-off disagree,
-or an agent commit with no sign-off, is a contract violation —
-project-management flags these in its systems sweep. GitHub comments carry the
-same attribution: every agent-posted issue/PR comment ends with a
-`— <role> role` signature line.
+**Every agent commit is signed off and names its model.** Two trailers are
+mandatory on agent-authored commits:
+
+```bash
+git -C "$WT" commit -s --trailer "Model:<model-id>" -m "..."
+# produces:  Signed-off-by: rfc-design-agent <design@agents.rfc>
+#            Model: claude-fable-5
+```
+
+`commit -s` derives `Signed-off-by:` from the identity in effect, so the
+trailer names the role that actually committed even in shared worktrees; the
+`Model:` trailer records which model was driving the role (the same role may
+be run by different models — track who *and* what said what).
+`git log --format='%h %ae %(trailers:key=Signed-off-by,valueonly) %(trailers:key=Model,valueonly)'`
+shows full attribution at a glance. **Enforced by CI:**
+`scripts/check_agent_signoffs.py` fails any PR containing an agent-authored
+commit missing either trailer. Author/sign-off mismatches are flagged by
+project-management's sweep rather than auto-failed (they can be legitimate
+after a history rewrite). GitHub comments carry the same attribution: every
+agent-posted issue/PR comment ends with a `— <role> role` signature line.
 
 Anything *not* ending in `@agents.rfc` is a human, and humans outrank agents
 everywhere. (Future hardening: separate GitHub accounts and tokens per role;
@@ -122,6 +133,11 @@ see the `audit-robot-reports` skill for the robotmetrics/LFS quirks),
 | `results` | test-design |
 | `monitoring/logs` | project-management |
 | `.claude/skills/elons-algorithm` | design |
+| `vendor/skill-packs/*` (all external skill packs, see #447) | design |
+
+External resources follow the **fork-first policy**: never submodule an
+upstream you don't control — fork it under `tkarcheski/*` and submodule the
+fork, so upstream changes only land via a deliberate, reviewable pointer bump.
 
 For everyone else a dirty submodule pointer is **noise**: never `git add` it
 (beware `git add -A` / `git commit -a`, which swallow gitlinks silently). If

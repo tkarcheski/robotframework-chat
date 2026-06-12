@@ -30,7 +30,7 @@ jobs:
         run: uv run pytest --cov --cov-report=term-missing
 
   submodule-ownership:
-    name: Submodule Ownership Guard
+    name: Agent Git Contract Guard
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +44,9 @@ jobs:
         run: |
           git fetch origin "${{ github.base_ref }}"
           python3 scripts/check_submodule_ownership.py --base "origin/${{ github.base_ref }}"
+
+      - name: Check agent commit sign-offs and Model trailers
+        run: python3 scripts/check_agent_signoffs.py --base "origin/${{ github.base_ref }}"
 
   robot-dryrun:
     name: Robot Suite Validation (dry-run)
