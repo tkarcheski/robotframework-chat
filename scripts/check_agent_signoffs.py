@@ -106,12 +106,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {violation}", file=sys.stderr)
         return 1
 
-    agent_count = sum(
-        1 for c in commits if c.author_email.endswith(AGENT_EMAIL_DOMAIN)
-    )
+    agent_count = sum(1 for c in commits if c.author_email.endswith(AGENT_EMAIL_DOMAIN))
     print(
-        f"agent sign-offs: ok ({agent_count} agent commit(s) of "
-        f"{len(commits)} checked)"
+        f"agent sign-offs: ok ({agent_count} agent commit(s) of {len(commits)} checked)"
     )
     return 0
 
