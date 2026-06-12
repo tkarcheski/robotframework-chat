@@ -242,6 +242,11 @@ test_suites:
     path: "robot/agent_workflows/tests"
     description: "OpenClaw-style multi-turn agent workflow capture: tool-call schema validation, ordering assertions, error recovery, state snapshots, and live-LLM smoke"
 
+  harness-cli:
+    label: "Harness CLI"
+    path: "robot/harness"
+    description: "End-to-end tests for the rfc harness start|status|end session-bracketing CLI: sidecar lifecycle, DB row bracketing, cross-process attachment, and force-overwrite regression"
+
   context-window:
     label: "Context Window Stress"
     path: "robot/context_window/tests"
