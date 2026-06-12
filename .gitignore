@@ -40,6 +40,7 @@ venv.bak/
 # (github.com/tkarcheski/robotframework-chat-results). output.xml is LFS-tracked
 # there; heavy HTML / logs are ignored by the submodule's own .gitignore.
 *.log
+!pilots/**/*.log
 log.html
 report.html
 ci_metadata.json

@@ -55,19 +55,24 @@ class SWEBenchKeywords:
         self,
         split: str = "test",
         max_instances: int = 10,
+        dataset: str = _SWEBENCH_DATASET,
     ) -> List[SWEBenchInstance]:
         """Load SWE-bench instances from the HuggingFace dataset.
 
         Args:
             split: Dataset split (test, dev, train).
             max_instances: Maximum number of instances to load.
+            dataset: HuggingFace dataset name (e.g. princeton-nlp/SWE-bench_Lite).
 
         Returns:
             List of SWEBenchInstance objects.
         """
         max_instances = int(max_instances)
-        logger.info(f"Loading SWE-bench instances: split={split}, max={max_instances}")
-        rows = _load_dataset(_SWEBENCH_DATASET, split=split)
+        logger.info(
+            f"Loading SWE-bench instances: dataset={dataset}, "
+            f"split={split}, max={max_instances}"
+        )
+        rows = _load_dataset(dataset, split=split)
         instances = [SWEBenchInstance.from_dict(row) for row in rows[:max_instances]]
         logger.info(f"Loaded {len(instances)} SWE-bench instances")
         return instances
