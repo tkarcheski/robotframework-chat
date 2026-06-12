@@ -147,6 +147,41 @@ CREATE INDEX IF NOT EXISTS idx_dialog_turns_recording ON dialog_turns(recording_
 
 _SQLITE_MIGRATIONS: list[str] = []  # placeholder for future column adds
 
+# Canonical body of the ``agentic_sessions_full`` view (issue #353).
+#
+# Denormalizes ``agentic_harnesses`` and pre-pivots the EAV rows in
+# ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score)
+# into one row per harness session. The Superset bootstrap
+# (superset/bootstrap_dashboards.py) embeds a copy of this SQL in its DDL;
+# a drift-guard test in tests/test_bootstrap_dashboards.py keeps the two
+# in sync. Written in the portable subset shared by PostgreSQL and SQLite.
+AGENTIC_SESSIONS_FULL_VIEW_BODY: str = """\
+SELECT
+    h.session_id,
+    h.tool_name,
+    h.tool_version,
+    h.model_id,
+    h.rfc_version,
+    h.branch,
+    h.started_at,
+    CAST(h.started_at AS TIMESTAMP) AS started_ts,
+    h.ended_at,
+    h.outcome,
+    h.replay_of_recording_id,
+    SUM(CASE WHEN m.metric_key = 'tokens_in' THEN m.metric_value END)
+        AS tokens_in,
+    SUM(CASE WHEN m.metric_key = 'tokens_out' THEN m.metric_value END)
+        AS tokens_out,
+    AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
+        AS avg_latency_ms,
+    AVG(CASE WHEN m.metric_key = 'grader_score' THEN m.metric_value END)
+        AS avg_grader_score
+FROM agentic_harnesses h
+LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
+GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
+         h.rfc_version, h.branch, h.started_at, h.ended_at, h.outcome,
+         h.replay_of_recording_id"""
+
 
 def _decision_from_row(row: "Sequence[Any]") -> AgenticDecision:
     """Map a positional (id, session_id, test_name, hook_event, prompt_model,
