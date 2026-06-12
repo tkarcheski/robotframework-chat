@@ -187,9 +187,7 @@ class TestFlowRetry:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["retry"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         names = [t.name for t in executed]
         assert len(executed) == 3  # t1, retry copy, t2
         assert names[2] == "t2"
@@ -221,9 +219,7 @@ class TestFlowRetry:
 
 
 class TestFlowSkip:
-    def test_skip_marks_next_test_skipped_with_decision_id(
-        self, clean_env, tmp_path
-    ):
+    def test_skip_marks_next_test_skipped_with_decision_id(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["skip"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2", "t3"])
@@ -266,25 +262,31 @@ class TestFlowFork:
         provider = SyntheticProvider(responses=["fork"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
         executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
-        assert len(executed) == 4  # t1, fork x2, t2
+        assert len(executed) == 5  # t1, fork x2, model restore, t2
         forks = [t for t in executed if FORK_MARKER_TAG in t.tags]
-        assert len(forks) == 2
-        for fork, model in zip(forks, ["modelA", "modelB"]):
+        assert len(forks) == 3  # two model forks + the restore bracket
+        first = True
+        for fork, model in zip(forks[:2], ["modelA", "modelB"]):
             assert f"generative_fork:model:{model}" in fork.tags
+            body = list(fork.body)
+            if first:
+                # the pre-fork model is saved before the first switch
+                assert body[0].name == "Save LLM Model"
+                body = body[1:]
+                first = False
             # the copy is pointed at the alternate model before anything else
-            assert fork.body[0].name == "Set LLM Model"
-            assert fork.body[0].args == [model]
+            assert body[0].name == "Set LLM Model"
+            assert body[0].args == [model]
             # original body preserved after the model switch
-            assert fork.body[1].name == "Original Keyword"
+            assert body[1].name == "Original Keyword"
+        assert forks[-1].body[0].name == "Restore LLM Model"
         rows = db.get_decisions(SESSION, proposed_action="fork")
         assert len(rows) == 1
         assert rows[0].applied == 1
         # fork copies never re-prompt the LLM
         assert provider.calls == 1
 
-    def test_fork_without_configured_models_is_not_applied(
-        self, clean_env, tmp_path
-    ):
+    def test_fork_without_configured_models_is_not_applied(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["fork"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
@@ -301,9 +303,7 @@ class TestFlowFork:
 
 
 class TestFlowSafety:
-    def test_unparseable_response_is_recorded_not_applied(
-        self, clean_env, tmp_path
-    ):
+    def test_unparseable_response_is_recorded_not_applied(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["the moon is made of cheese"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
@@ -368,9 +368,7 @@ class TestFlowSafety:
         provider = SyntheticProvider(responses=["retry"])
         suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
         with caplog.at_level("WARNING"):
-            executed = _run_suite(
-                _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-            )
+            executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 2
         assert provider.calls == 0
         assert db.get_decisions(SESSION) == []
@@ -384,3 +382,110 @@ class TestFlowSafety:
         prompt = provider.prompts[0].lower()
         for word in ("skip", "retry", "fork", "none"):
             assert word in prompt
+
+
+# ---------------------------------------------------------------------------
+# Codex review findings on PR #480
+# ---------------------------------------------------------------------------
+
+
+class TestFlowScopedToOptedInTests:
+    """A flow tag in one child suite must not arm actions for siblings."""
+
+    def test_untagged_sibling_failure_takes_no_action(self, clean_env, tmp_path):
+        _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=["retry"])
+        listener = _listener(tmp_path, provider)
+        tagged = _suite([GENERATIVE_FLOW_TAG], ["tagged-test"])
+        untagged = _suite([], ["plain-test"])
+        top = SimpleNamespace(name="Top", tests=[], suites=[tagged, untagged])
+        listener.start_suite(top, SimpleNamespace())
+        failing = untagged.tests[0]
+        before = len(untagged.tests)
+        listener.end_test(
+            failing,
+            SimpleNamespace(status="FAIL", passed=False, message="boom"),
+        )
+        assert len(untagged.tests) == before, (
+            "failure in an untagged sibling suite must not be retried"
+        )
+
+
+class TestParseActionFirstLine:
+    def test_rationale_before_action_is_not_obeyed(self):
+        from rfc.generative_listener import _parse_action
+
+        assert _parse_action("Do not retry; choose none") == "none"
+        assert _parse_action("I would suggest fork here") == "none"
+
+    def test_first_line_word_with_decoration_parses(self):
+        from rfc.generative_listener import _parse_action
+
+        assert _parse_action("skip\nbecause the next test depends on this") == "skip"
+        assert _parse_action("**retry**") == "retry"
+        assert _parse_action("  Fork.\nrationale") == "fork"
+        assert _parse_action("") == "none"
+
+
+class TestPersistBeforeMutate:
+    def test_no_mutation_when_decision_cannot_be_persisted(self, clean_env, tmp_path):
+        _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=["retry"])
+        listener = _listener(tmp_path, provider)
+        suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
+        listener.start_suite(suite, SimpleNamespace())
+
+        class FailingDB:
+            def save_decision(self, decision):
+                raise RuntimeError("db down")
+
+            def get_harness(self, session_id):
+                return object()
+
+        listener._db = FailingDB()
+        before = len(suite.tests)
+        listener.end_test(
+            suite.tests[0],
+            SimpleNamespace(status="FAIL", passed=False, message="boom"),
+        )
+        assert len(suite.tests) == before, (
+            "run must not be mutated when the decision row cannot be persisted"
+        )
+
+
+class TestRetryByIdentity:
+    def test_same_named_tests_each_get_their_own_retry(self, clean_env, tmp_path):
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=["retry", "retry"])
+        listener = _listener(tmp_path, provider)
+        suite = _suite([GENERATIVE_FLOW_TAG], ["dup", "dup"])
+        outcomes = {"dup": "FAIL"}
+        executed = _run_suite(listener, suite, outcomes, default_outcome="PASS")
+        copies = [t for t in executed if RETRY_MARKER_TAG in t.tags]
+        assert len(copies) == 2, (
+            "each same-named original test deserves its own one retry"
+        )
+        assert db is not None
+
+
+class TestForkRestoresModel:
+    def test_fork_saves_then_restores_the_original_model(
+        self, clean_env, tmp_path, monkeypatch
+    ):
+        _seed_harness(tmp_path)
+        monkeypatch.setenv("RFC_GENERATIVE_FORK_MODELS", "m1,m2")
+        provider = SyntheticProvider(responses=["fork"])
+        listener = _listener(tmp_path, provider)
+        suite = _suite([GENERATIVE_FLOW_TAG], ["t1", "t2"])
+        outcomes = {"t1": "FAIL"}
+        executed = _run_suite(listener, suite, outcomes, default_outcome="PASS")
+        forks = [t for t in executed if FORK_MARKER_TAG in t.tags]
+        assert len(forks) == 3, "two model forks + one restore test"
+        first_fork = forks[0]
+        assert getattr(first_fork.body[0], "name", "") == "Save LLM Model", (
+            "the original model must be saved before the first fork switches it"
+        )
+        restore = forks[-1]
+        assert getattr(restore.body[0], "name", "") == "Restore LLM Model", (
+            "the original model must be restored after the fork copies"
+        )

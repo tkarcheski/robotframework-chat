@@ -131,14 +131,20 @@ def _test_has_tag(test: Any, tag: str) -> bool:
 
 
 def _parse_action(response: str) -> str:
-    """Extract the first flow action mentioned in the LLM response.
+    """Parse the declared action from the FIRST non-empty response line.
 
-    Anything that names none of the known actions maps to ``none``
-    (recorded, never applied) — an unparseable model can never steer
-    the run.
+    The prompt demands exactly one action word on the first line; only
+    that line is honoured so rationale text ('Do not retry; choose
+    none') can never steer the run. The word may carry markdown/
+    punctuation decoration. Anything else maps to ``none`` (recorded,
+    never applied).
     """
-    match = _ACTION_RE.search(response)
-    return match.group(1).lower() if match else "none"
+    for line in response.splitlines():
+        word = line.strip().strip("*_`'\".,!?:;()[]{}").strip()
+        if not word:
+            continue
+        return word.lower() if word.lower() in _FLOW_ACTIONS else "none"
+    return "none"
 
 
 def _add_tag(test: Any, tag: str) -> None:
@@ -195,7 +201,7 @@ class GenerativeListener(BaseListener):
         self._budget_exhausted = False
         self._persisted_count = 0
         self._pending_skip_id = ""  # decision id to stamp on the next test
-        self._retried_tests: set[str] = set()
+        self._retried_test_ids: set[int] = set()  # id(data): names may repeat
         self._suppressed_test_ids: set[int] = set()  # id(data) of skip targets
 
     @property
@@ -220,7 +226,7 @@ class GenerativeListener(BaseListener):
         self._budget_exhausted = False
         self._budget_tokens = self._read_budget()
         self._pending_skip_id = ""
-        self._retried_tests = set()
+        self._retried_test_ids = set()
         self._suppressed_test_ids = set()
         if _suite_has_tag(data, GENERATIVE_FLOW_TAG):
             self._mode = "flow"
@@ -291,6 +297,8 @@ class GenerativeListener(BaseListener):
             data, FORK_MARKER_TAG
         ):
             return  # copies we inserted never trigger further actions
+        if not _test_has_tag(data, GENERATIVE_FLOW_TAG):
+            return  # flow is per-test opt-in: untagged siblings stay static
         self._handle_flow_failure(data, result)
 
     # ------------------------------------------------------------------
@@ -417,14 +425,12 @@ class GenerativeListener(BaseListener):
             return
         action = _parse_action(response)
         decision_id = uuid4().hex  # pre-generated so skip can stamp it
-        applied = 0
-        if action == "skip":
-            applied = self._apply_skip(data, decision_id)
-        elif action == "retry":
-            applied = self._apply_retry(data, test_name)
-        elif action == "fork":
-            applied = self._apply_fork(data, test_name)
-        self._persist(
+        # Audit guarantee: the decision row is persisted BEFORE the run is
+        # mutated. Applicability is pre-checked so `applied` is recorded
+        # truthfully; if persistence fails the mutation is withheld —
+        # active flow control must never be unauditable.
+        applied = 1 if self._action_applicable(action, data) else 0
+        persisted = self._persist(
             AgenticDecision(
                 session_id=self._session_id,
                 hook_event="end_test",
@@ -439,6 +445,62 @@ class GenerativeListener(BaseListener):
                 id=decision_id,
             )
         )
+        if not persisted:
+            if applied:
+                logger.warning(
+                    "GenerativeListener: NOT applying %r for test %r — the "
+                    "decision row could not be persisted and active flow "
+                    "control must stay auditable.",
+                    action,
+                    test_name,
+                )
+            return
+        if not applied:
+            return
+        if action == "skip":
+            result_applied = self._apply_skip(data, decision_id)
+        elif action == "retry":
+            result_applied = self._apply_retry(data, test_name)
+        else:
+            result_applied = self._apply_fork(data, test_name)
+        if not result_applied:
+            logger.warning(
+                "GenerativeListener: decision %s recorded applied=1 but "
+                "applying %r to test %r failed after persistence.",
+                decision_id,
+                action,
+                test_name,
+            )
+
+    def _action_applicable(self, action: str, data: Any) -> bool:
+        """Pre-check whether *action* can be applied, without mutating."""
+        if action == "skip":
+            tests, index = self._suite_position(data)
+            return tests is not None and index + 1 < len(tests)
+        if action == "retry":
+            if id(data) in self._retried_test_ids:
+                return False
+            tests, _ = self._suite_position(data)
+            return tests is not None
+        if action == "fork":
+            if not self._fork_models():
+                logger.warning(
+                    "GenerativeListener: fork proposed for %r but "
+                    "RFC_GENERATIVE_FORK_MODELS is not configured; not applied.",
+                    getattr(data, "name", ""),
+                )
+                return False
+            tests, _ = self._suite_position(data)
+            return tests is not None
+        return False
+
+    @staticmethod
+    def _fork_models() -> list[str]:
+        return [
+            m.strip()
+            for m in os.getenv("RFC_GENERATIVE_FORK_MODELS", "").split(",")
+            if m.strip()
+        ]
 
     def _suite_position(self, data: Any) -> tuple[Any, int]:
         """Return ``(tests, index)`` for a running test, or ``(None, -1)``."""
@@ -466,8 +528,8 @@ class GenerativeListener(BaseListener):
 
     def _apply_retry(self, data: Any, test_name: str) -> int:
         """Insert one tagged copy of the failed test right after it."""
-        if test_name in self._retried_tests:
-            return 0  # at most one retry per test
+        if id(data) in self._retried_test_ids:
+            return 0  # at most one retry per original test (by identity)
         tests, index = self._suite_position(data)
         if tests is None:
             return 0
@@ -483,16 +545,14 @@ class GenerativeListener(BaseListener):
                 exc,
             )
             return 0
-        self._retried_tests.add(test_name)
+        self._retried_test_ids.add(id(data))
         return 1
 
     def _apply_fork(self, data: Any, test_name: str) -> int:
-        """Insert one tagged copy per configured fork model."""
-        models = [
-            m.strip()
-            for m in os.getenv("RFC_GENERATIVE_FORK_MODELS", "").split(",")
-            if m.strip()
-        ]
+        """Insert one tagged copy per configured fork model, bracketed by
+        ``Save LLM Model`` / ``Restore LLM Model`` so later original tests
+        keep running against the suite's pre-fork model."""
+        models = self._fork_models()
         if not models:
             logger.warning(
                 "GenerativeListener: fork proposed for %r but "
@@ -513,6 +573,10 @@ class GenerativeListener(BaseListener):
                 # Point the copy at the alternate model before anything else.
                 copy.body.create_keyword(name="Set LLM Model", args=[model])
                 copy.body.insert(0, copy.body.pop())
+                if inserted == 0:
+                    # Capture the pre-fork model before the first switch.
+                    copy.body.create_keyword(name="Save LLM Model", args=[])
+                    copy.body.insert(0, copy.body.pop())
                 tests.insert(index + offset, copy)
                 inserted += 1
             except Exception as exc:  # skip-and-log: never fail the run
@@ -520,6 +584,21 @@ class GenerativeListener(BaseListener):
                     "GenerativeListener: could not fork %r onto model %r: %s",
                     test_name,
                     model,
+                    exc,
+                )
+        if inserted:
+            try:
+                restore = _copy_test(data)
+                restore.name = f"{test_name} (generative fork: model restore)"
+                _add_tag(restore, FORK_MARKER_TAG)
+                restore.body.clear()
+                restore.body.create_keyword(name="Restore LLM Model", args=[])
+                tests.insert(index + inserted + 1, restore)
+            except Exception as exc:  # skip-and-log: never fail the run
+                logger.warning(
+                    "GenerativeListener: could not insert model-restore test "
+                    "after forking %r: %s",
+                    test_name,
                     exc,
                 )
         return 1 if inserted else 0
@@ -561,12 +640,15 @@ class GenerativeListener(BaseListener):
             return int(prompt_tokens or 0) + int(completion_tokens or 0)
         return max(1, (len(prompt) + len(response)) // 4)
 
-    def _persist(self, decision: AgenticDecision) -> None:
+    def _persist(self, decision: AgenticDecision) -> bool:
+        """Save a decision row; True on success (flow mutations gate on it)."""
         db = self._get_db()
         if db is None:
-            return
+            return False
         try:
             db.save_decision(decision)
             self._persisted_count += 1
+            return True
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning("GenerativeListener: decision persist failed: %s", exc)
+            return False
