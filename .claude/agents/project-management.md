@@ -17,7 +17,7 @@ on everyone, so know them cold.
 Each iteration runs four sweeps, then summarizes:
 
 ### 1. Triage sweep
-`gh issue list --label "status:triage" --state open --json number,title,labels,body`
+`gh issue list --label "status:triage" --state open --json number,title,labels,body,createdAt --limit 200`
 For each: verify it meets the issue-quality bar (repro/evidence, expected vs actual,
 affected area). Then either:
 - **Promote**: add a priority (P0–P3), ensure a `type:*` label, swap to `status:ready`,

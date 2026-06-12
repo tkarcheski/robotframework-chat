@@ -63,6 +63,8 @@ class AgenticHarnessListener(BaseListener):
         self._db: Optional[HarnessDatabase] = None
         self._session_id = ""
         self._persisted_count = 0
+        self._verified_session_id = ""
+        self._session_has_harness_row = False
 
     @property
     def persisted_count(self) -> int:
@@ -102,11 +104,37 @@ class AgenticHarnessListener(BaseListener):
                 len(metrics),
             )
             return
+        if not self._session_has_harness_row_once(db):
+            return
         try:
             db.save_metrics(metrics)
             self._persisted_count += len(metrics)
         except Exception as exc:  # skip-and-log: never fail the test
             logger.warning("AgenticHarnessListener: metric persist failed: %s", exc)
+
+    def _session_has_harness_row_once(self, db: HarnessDatabase) -> bool:
+        """Verify the session has an ``agentic_harnesses`` row, once per session.
+
+        The Makefile exports a fresh UUID as ``SESSION_ID`` when no harness
+        is active, so persisting against it would violate the foreign key on
+        every test (#419). Warn once and disable instead.
+        """
+        if self._session_id == self._verified_session_id:
+            return self._session_has_harness_row
+        self._verified_session_id = self._session_id
+        try:
+            self._session_has_harness_row = db.get_harness(self._session_id) is not None
+        except Exception as exc:  # skip-and-log: never fail the test
+            logger.warning("AgenticHarnessListener: harness lookup failed: %s", exc)
+            self._session_has_harness_row = False
+        if not self._session_has_harness_row:
+            logger.warning(
+                "AgenticHarnessListener: session %s has no agentic_harnesses "
+                "row (run started without `rfc harness start`?); metrics "
+                "will not be captured for this run.",
+                self._session_id,
+            )
+        return self._session_has_harness_row
 
     def _collect_metrics(self) -> list[AgenticMetric]:
         recorded_at = _utc_now()
