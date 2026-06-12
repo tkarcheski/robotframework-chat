@@ -1247,6 +1247,29 @@ class TestRunProviderSuites:
         )
         assert "sk-or-SECRET" not in capsys.readouterr().out
 
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_failed_job_does_not_abort_provider_sweep(
+        self, mock_run: MagicMock
+    ) -> None:
+        """A 429-exhausted (or otherwise failed) suite run is skip-and-log:
+        the remaining suites and models must still run (#507)."""
+        mock_run.side_effect = [
+            MagicMock(returncode=1),  # first job fails (e.g. exhausted 429)
+            MagicMock(returncode=0),
+            MagicMock(returncode=0),
+            MagicMock(returncode=0),
+        ]
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free", "c/d:free"],
+            sleep_fn=lambda _s: None,
+        )
+        assert mock_run.call_count == 4  # 2 models x 2 suites, no abort
+        assert [r.returncode for r in results] == [1, 0, 0, 0]
+        assert results[0].model == "openrouter/a/b:free"
+
 
 class TestRunProviderRuns:
     def test_no_providers_configured_is_noop(self) -> None:
@@ -1327,6 +1350,46 @@ class TestRunProviderRuns:
         run_provider_runs(config)
         models = mock_suites.call_args.args[3]
         assert models == ["a:free", "x/y", "b:free"]
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("rfc.providers.requests.get")
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_models_response_with_null_data_skips_and_logs(
+        self,
+        mock_get: MagicMock,
+        mock_suites: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A /models body of {"data": null} must skip-and-log, not crash (#507).
+
+        discover_free_models raises TypeError here (outside its documented
+        RequestException contract); the runner's broad discovery guard must
+        still contain it.
+        """
+        mock_get.return_value = MagicMock(
+            status_code=200, json=MagicMock(return_value={"data": None})
+        )
+        results = run_provider_runs(_provider_config())
+        assert results == []
+        mock_suites.assert_not_called()
+        out = capsys.readouterr().out
+        assert "free-pool discovery failed" in out
+        assert "skip" in out.lower()
+
+    @patch("scripts.run_local_models.run_provider_suites", return_value=[])
+    @patch("scripts.run_local_models.discover_free_models", return_value=[])
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_empty_free_pool_and_no_static_models_skips_provider(
+        self,
+        mock_discover: MagicMock,
+        mock_suites: MagicMock,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Discovery succeeds but the pool is empty: skip with a log line."""
+        results = run_provider_runs(_provider_config())
+        assert results == []
+        mock_suites.assert_not_called()
+        assert "no models to run" in capsys.readouterr().out
 
 
 class TestIterationLoopRunsProviders:

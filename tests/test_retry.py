@@ -116,6 +116,21 @@ class TestRetryOn429:
 
     @patch("rfc.retry.logger")
     @patch("rfc.retry.time.sleep")
+    def test_429_backoff_sequence_is_2_4_8(self, mock_sleep, mock_logger):
+        """PR #514 claims 2/4/8s backoff on 429; that needs max_retries=3.
+
+        Note: OpenAIClient's default max_retries=2 yields only 2/4 before
+        propagating — the full 2/4/8 sequence requires configuring
+        max_retries=3 on the client.
+        """
+        fn = MagicMock(side_effect=_http_error(429))
+        with pytest.raises(req_lib.exceptions.HTTPError):
+            retry_on_transient(fn, max_retries=3)
+        assert fn.call_count == 4
+        assert mock_sleep.call_args_list == [call(2), call(4), call(8)]
+
+    @patch("rfc.retry.logger")
+    @patch("rfc.retry.time.sleep")
     def test_non_429_http_error_propagates_immediately(self, mock_sleep, mock_logger):
         fn = MagicMock(side_effect=_http_error(500))
         with pytest.raises(req_lib.exceptions.HTTPError):

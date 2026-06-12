@@ -195,3 +195,19 @@ class TestSelectModelsWithinBudget:
             )
             == []
         )
+
+    def test_exact_budget_boundary_kept_then_dropped(self) -> None:
+        """The 1,000th estimated request fits; the 1,001st does not (#507).
+
+        Each model costs 2 suites x 100 req = 200. Budget 1000 admits exactly
+        five models (5 x 200 = 1000, equality allowed); a sixth would push
+        the total to 1200 and must be dropped.
+        """
+        models = [f"m{i}:free" for i in range(6)]
+        kept = select_models_within_budget(
+            models,
+            n_suites=2,
+            max_requests_per_day=1000,
+            requests_per_suite_estimate=100,
+        )
+        assert kept == models[:5]
