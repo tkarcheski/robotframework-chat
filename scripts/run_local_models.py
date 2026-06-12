@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 """Discover local Ollama nodes and run test suites against every model.
 
-Workflow:
-  1. Discover nodes (from config, env-var, or subnet scan)
-  2. Query each node for available models
-  3. For each (node, model) pair, run the test suites defined in
-     ``config/local_models.yaml``
+Two modes (issue #306):
+
+* ``--mode toml`` (default; ``make run-local-models``) — reads a curated
+  host inventory from ``host-config.toml`` at the repo root. Jobs are
+  scheduled across hosts in parallel, preferring models already loaded
+  in VRAM (per ``/api/ps``).
+* ``--mode external`` (``make run-all-external``) — legacy wide-net
+  discovery via ``OLLAMA_NODES_LIST`` / ``OLLAMA_ENDPOINT`` / subnet
+  scan; runs everything it finds through the same scheduler, with
+  ``execution.parallel`` from ``config/local_models.yaml`` as the
+  global concurrency cap (default 1 — sequential, like before).
 
 Usage::
 
-    # Run everything (discover + execute)
+    # Run against curated hosts (host-config.toml required)
     python scripts/run_local_models.py
 
-    # Discover nodes only (no test execution)
-    python scripts/run_local_models.py --discover-nodes
+    # Legacy wide-net discovery
+    python scripts/run_local_models.py --mode external
 
-    # Discover models on known nodes
-    python scripts/run_local_models.py --discover-models
+    # Discover nodes only (no model query, no test execution)
+    python scripts/run_local_models.py --discover-nodes --mode external
 
     # Dry-run — show what would be executed without running
     python scripts/run_local_models.py --dry-run
 
-Environment variables:
+Environment variables (external mode):
     OLLAMA_ENDPOINT   -- starting-point endpoint (default http://localhost:11434)
     DEFAULT_MODEL     -- fallback model name
     OLLAMA_NODES_LIST -- comma-separated hostnames to probe
@@ -32,15 +38,16 @@ from __future__ import annotations
 
 import argparse
 import os
-import random
 import re
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -52,13 +59,23 @@ _project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_project_root / "src"))
 sys.path.insert(0, str(_project_root))
 
+from rfc.host_scheduler import (  # noqa: E402
+    HostConfig,
+    HostSpec,
+    HostState,
+    Job,
+    load_host_config,
+    run_jobs,
+)
 from scripts.discover_ollama import (  # noqa: E402
     _probe_port,
+    _query_loaded_models,
     _query_models,
 )
 
 DEFAULT_CONFIG = _project_root / "config" / "local_models.yaml"
 TEST_SUITES_CONFIG = _project_root / "config" / "test_suites.yaml"
+HOST_CONFIG_PATH = _project_root / "host-config.toml"
 
 # Pseudo-suite name recorded when a model fails its preflight probe and its
 # real suites are skipped (issue #426).
@@ -144,12 +161,32 @@ def _load_node_list() -> list[dict[str, Any]]:
     # Fall back to the starting-point endpoint
     endpoint = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:11434")
     # Parse host:port from the URL
-    from urllib.parse import urlparse
-
     parsed = urlparse(endpoint)
     host = parsed.hostname or "localhost"
     port = parsed.port or 11434
     return [{"hostname": host, "port": port}]
+
+
+def _nodes_from_host_config(host_config: HostConfig) -> list[dict[str, Any]]:
+    """Convert curated host-config.toml entries into probe-able node dicts.
+
+    The scheduler fields (``name``, ``priority``, ``max_parallel``,
+    ``skip_models``) are carried through discovery untouched.
+    """
+    nodes: list[dict[str, Any]] = []
+    for spec in host_config.hosts:
+        parsed = urlparse(spec.endpoint)
+        nodes.append(
+            {
+                "hostname": parsed.hostname or spec.name,
+                "port": parsed.port or 11434,
+                "name": spec.name,
+                "priority": spec.priority,
+                "max_parallel": spec.max_parallel,
+                "skip_models": list(spec.skip_models),
+            }
+        )
+    return nodes
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +207,10 @@ def discover_local_models(
         max_workers: Max parallel workers.
 
     Returns:
-        List of dicts with ``hostname``, ``endpoint``, ``models`` keys.
-        Only online nodes are included.
+        List of dicts with ``hostname``, ``endpoint``, ``models``, and
+        ``loaded_models`` (per Ollama ``/api/ps``) keys. Scheduler fields
+        present on the input node (``name``, ``priority``, ``max_parallel``,
+        ``skip_models``) are carried through. Only online nodes are included.
     """
     if not nodes:
         return []
@@ -186,11 +225,16 @@ def discover_local_models(
         if not online:
             return None
         models = _query_models(endpoint)
-        return {
+        result = {
             "hostname": hostname,
             "endpoint": endpoint,
             "models": models,
+            "loaded_models": _query_loaded_models(endpoint),
         }
+        for key in ("name", "priority", "max_parallel", "skip_models"):
+            if key in node:
+                result[key] = node[key]
+        return result
 
     with ThreadPoolExecutor(max_workers=min(len(nodes), max_workers)) as pool:
         futures = {pool.submit(_probe, n): n for n in nodes}
@@ -305,125 +349,178 @@ def preflight_model(
 # ---------------------------------------------------------------------------
 
 
+def _host_states_from_nodes(
+    nodes_with_models: list[dict[str, Any]],
+) -> list[HostState]:
+    """Build scheduler host states from discovery output."""
+    states: list[HostState] = []
+    for node in nodes_with_models:
+        spec = HostSpec(
+            name=str(node.get("name", node["hostname"])),
+            endpoint=node["endpoint"],
+            priority=int(node.get("priority", 0)),
+            max_parallel=int(node.get("max_parallel", 1)),
+            skip_models=list(node.get("skip_models", [])),
+        )
+        states.append(
+            HostState(
+                spec=spec,
+                models=list(node.get("models", [])),
+                loaded_models=list(node.get("loaded_models", [])),
+            )
+        )
+    return states
+
+
+def _build_jobs(
+    config: dict[str, Any],
+    nodes_with_models: list[dict[str, Any]],
+) -> list[Job]:
+    """Build the global ``(model, suite)`` job queue.
+
+    Models are deduplicated across hosts (a model present on several hosts
+    runs once per suite, on whichever host claims it first). Jobs are
+    model-major so a host that claims a model tends to keep it loaded for
+    all its suites.
+    """
+    suites = config.get("test_suites", [])
+    seen: set[str] = set()
+    ordered_models: list[str] = []
+    for node in nodes_with_models:
+        for model in node.get("models", []):
+            if model not in seen:
+                seen.add(model)
+                ordered_models.append(model)
+
+    return [Job(model=m, suite=s) for m in ordered_models for s in suites]
+
+
 def run_model_suites(
     config: dict[str, Any],
     nodes_with_models: list[dict[str, Any]],
     *,
     dry_run: bool = False,
+    global_max_parallel: int = 1,
 ) -> list[RunResult]:
-    """Run configured test suites against every (node, model) pair.
+    """Run configured test suites against every discovered model.
+
+    Jobs form a global ``(model, suite)`` queue dispatched across hosts by
+    :func:`rfc.host_scheduler.run_jobs`: each host prefers jobs whose model
+    is already loaded (per ``/api/ps``), honors ``skip_models``, and runs at
+    most ``max_parallel`` jobs concurrently.
 
     Args:
         config: Parsed local_models.yaml.
         nodes_with_models: Output of :func:`discover_local_models`.
-        dry_run: If True, print commands without executing.
+        dry_run: If True, print commands without executing (sequential).
+        global_max_parallel: Cap on concurrent runs across all hosts.
 
     Returns:
         List of :class:`RunResult` objects.
     """
-    suites = config.get("test_suites", [])
     execution = config.get("execution", {})
     continue_on_failure = execution.get("continue_on_failure", True)
     preflight_enabled = execution.get("preflight", False)
     preflight_timeout = execution.get("preflight_timeout", DEFAULT_PREFLIGHT_TIMEOUT)
 
-    results: list[RunResult] = []
+    hosts = _host_states_from_nodes(nodes_with_models)
+    jobs = _build_jobs(config, nodes_with_models)
+    print_lock = threading.Lock()
 
-    for node_info in nodes_with_models:
-        endpoint = node_info["endpoint"]
-        hostname = node_info["hostname"]
-        models = list(node_info.get("models", []))
-        random.shuffle(models)
+    def _run(host: HostState, job: Job) -> RunResult:
+        node_name = host.spec.name
+        endpoint = host.spec.endpoint
 
-        if models:
-            print(f"  Model order (shuffled): {models}")
-
-        for model in models:
-            if preflight_enabled and not dry_run:
-                ok, reason = preflight_model(endpoint, model, timeout=preflight_timeout)
-                if not ok:
+        if preflight_enabled and not dry_run:
+            ok, reason = preflight_model(endpoint, job.model, timeout=preflight_timeout)
+            if not ok:
+                with print_lock:
                     print(
-                        f"\n  [preflight] SKIPPING {model}@{hostname}: {reason}\n"
+                        f"\n  [preflight] SKIPPING {job.model}@{node_name}: "
+                        f"{reason}\n"
                         f"  [preflight] Recording failure and continuing with "
                         f"the next model."
                     )
-                    results.append(
-                        RunResult(
-                            node=hostname,
-                            model=model,
-                            suite=PREFLIGHT_SUITE,
-                            returncode=1,
-                            output_dir="",
-                        )
-                    )
-                    continue
-
-            for suite in suites:
-                cmd = _build_robot_command(
-                    config=config,
-                    suite=suite,
-                    endpoint=endpoint,
-                    model=model,
-                    node_name=hostname,
+                return RunResult(
+                    node=node_name,
+                    model=job.model,
+                    suite=PREFLIGHT_SUITE,
+                    returncode=1,
+                    output_dir="",
                 )
 
-                output_dir = (
-                    config.get("execution", {})
-                    .get("output_dir", "results/local/{node}/{model}")
-                    .format(
-                        node=_sanitize_name(hostname),
-                        model=_sanitize_name(model),
-                    )
-                )
+        cmd = _build_robot_command(
+            config=config,
+            suite=job.suite,
+            endpoint=endpoint,
+            model=job.model,
+            node_name=node_name,
+        )
+        output_dir = execution.get("output_dir", "results/local/{node}/{model}").format(
+            node=_sanitize_name(node_name),
+            model=_sanitize_name(job.model),
+        )
 
-                if dry_run:
-                    print(f"[DRY-RUN] {' '.join(cmd)}")
-                    results.append(
-                        RunResult(
-                            node=hostname,
-                            model=model,
-                            suite=suite["name"],
-                            returncode=0,
-                            output_dir=output_dir,
-                        )
-                    )
-                    continue
+        if dry_run:
+            with print_lock:
+                print(f"[DRY-RUN] {' '.join(cmd)}")
+            return RunResult(
+                node=node_name,
+                model=job.model,
+                suite=job.suite["name"],
+                returncode=0,
+                output_dir=output_dir,
+            )
 
-                print(
-                    f"\n{'=' * 70}\n"
-                    f"  Node:  {hostname}\n"
-                    f"  Model: {model}\n"
-                    f"  Suite: {suite['name']}\n"
-                    f"{'=' * 70}\n"
-                )
-                print(f"  > {' '.join(cmd)}\n")
+        with print_lock:
+            print(
+                f"\n{'=' * 70}\n"
+                f"  Node:  {node_name}\n"
+                f"  Model: {job.model}\n"
+                f"  Suite: {job.suite['name']}\n"
+                f"{'=' * 70}\n"
+            )
+            print(f"  > {' '.join(cmd)}\n")
 
-                env = {
-                    **os.environ,
-                    "DEFAULT_MODEL": model,
-                    "OLLAMA_ENDPOINT": endpoint,
-                }
-                proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
+        env = {
+            **os.environ,
+            "DEFAULT_MODEL": job.model,
+            "OLLAMA_ENDPOINT": endpoint,
+        }
+        proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
-                results.append(
-                    RunResult(
-                        node=hostname,
-                        model=model,
-                        suite=suite["name"],
-                        returncode=proc.returncode,
-                        output_dir=output_dir,
-                    )
-                )
+        return RunResult(
+            node=node_name,
+            model=job.model,
+            suite=job.suite["name"],
+            returncode=proc.returncode,
+            output_dir=output_dir,
+        )
 
-                if proc.returncode != 0 and not continue_on_failure:
-                    print(
-                        f"\nSuite '{suite['name']}' failed for "
-                        f"{model}@{hostname} (rc={proc.returncode}). "
-                        f"Stopping (continue_on_failure=false)."
-                    )
-                    return results
+    outcome = run_jobs(
+        hosts,
+        jobs,
+        _run,
+        # Dry runs stay sequential so output is deterministic and readable.
+        global_max_parallel=1 if dry_run else global_max_parallel,
+        stop_on_failure=not continue_on_failure,
+    )
 
-    return results
+    if outcome.stopped_early:
+        failed = [r for r in outcome.results if r.returncode != 0]
+        if failed:
+            r = failed[0]
+            print(
+                f"\nSuite '{r.suite}' failed for {r.model}@{r.node} "
+                f"(rc={r.returncode}). Stopping (continue_on_failure=false)."
+            )
+
+    if outcome.unscheduled:
+        print("\n  WARNING: jobs no host could run (check skip_models):")
+        for job in outcome.unscheduled:
+            print(f"    - {job.suite['name']} | {job.model}")
+
+    return outcome.results
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +725,8 @@ def run_iteration_loop(
     iterations: int = 1,
     dry_run: bool = False,
     audit: bool = True,
+    mode: str = "external",
+    host_config: HostConfig | None = None,
 ) -> bool:
     """Run the full discover → test → summary cycle, optionally repeating.
 
@@ -641,14 +740,34 @@ def run_iteration_loop(
         dry_run: If True, print commands without executing.
         audit: If True (default), generate + commit the coverage report after
             the first pass that runs tests. See :func:`_maybe_audit`.
+        mode: ``"toml"`` (curated host-config.toml hosts) or ``"external"``
+            (legacy env-var / subnet discovery).
+        host_config: Parsed host-config.toml; required when ``mode="toml"``.
 
     Returns:
         True if any pass had a test failure, False otherwise.
     """
     discovery_cfg = config.get("discovery", {})
+    execution = config.get("execution", {})
     had_failure = False
     iteration = 0
     audited = False
+
+    if mode == "toml":
+        if host_config is None:
+            raise ValueError("mode='toml' requires a parsed host_config")
+        connect_timeout = host_config.defaults.connect_timeout
+        global_max_parallel = host_config.defaults.global_max_parallel
+        if "parallel" in execution:
+            print(
+                "WARNING: execution.parallel in config/local_models.yaml is "
+                "deprecated for `make run-local-models` — use "
+                "global_max_parallel in host-config.toml instead "
+                "(execution.parallel still applies to `make run-all-external`)."
+            )
+    else:
+        connect_timeout = discovery_cfg.get("connect_timeout", 2)
+        global_max_parallel = int(execution.get("parallel", 1))
 
     try:
         while True:
@@ -668,19 +787,23 @@ def run_iteration_loop(
             print(f"{'#' * 70}\n")
 
             # Re-discover each iteration (nodes may come/go)
-            node_list = _load_node_list()
+            if mode == "toml" and host_config is not None:
+                node_list = _nodes_from_host_config(host_config)
+            else:
+                node_list = _load_node_list()
             print(f"Probing {len(node_list)} node(s)...")
 
             nodes_with_models = discover_local_models(
                 node_list,
-                connect_timeout=discovery_cfg.get("connect_timeout", 2),
+                connect_timeout=connect_timeout,
                 max_workers=discovery_cfg.get("max_workers", 64),
             )
 
             _print_discovered_nodes(nodes_with_models)
 
             suites = config.get("test_suites", [])
-            total_models = sum(len(n["models"]) for n in nodes_with_models)
+            distinct_models = {m for n in nodes_with_models for m in n["models"]}
+            total_models = len(distinct_models)
             total_runs = total_models * len(suites)
 
             if total_runs == 0:
@@ -692,10 +815,16 @@ def run_iteration_loop(
 
             print(
                 f"Running {len(suites)} suite(s) x {total_models} model(s) = "
-                f"{total_runs} total run(s)\n"
+                f"{total_runs} total run(s) "
+                f"(global_max_parallel={global_max_parallel})\n"
             )
 
-            results = run_model_suites(config, nodes_with_models, dry_run=dry_run)
+            results = run_model_suites(
+                config,
+                nodes_with_models,
+                dry_run=dry_run,
+                global_max_parallel=global_max_parallel,
+            )
             _print_summary(results)
 
             # Verify data landed in the database.
@@ -742,8 +871,10 @@ def _print_discovered_nodes(nodes_with_models: list[dict[str, Any]]) -> None:
         print(
             f"  {node['hostname']:20s}  {node['endpoint']:30s}  {model_count} model(s)"
         )
+        loaded = set(node.get("loaded_models", []))
         for m in node["models"]:
-            print(f"    - {m}")
+            marker = "  [loaded]" if m in loaded else ""
+            print(f"    - {m}{marker}")
 
     print()
 
@@ -794,30 +925,62 @@ def main() -> None:
         action="store_true",
         help="Skip the coverage audit + commit after the first executed pass",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("toml", "external"),
+        default="toml",
+        help=(
+            "Host source: 'toml' reads curated hosts from host-config.toml "
+            "(default; `make run-local-models`), 'external' uses legacy "
+            "env-var/subnet discovery (`make run-all-external`)"
+        ),
+    )
+    parser.add_argument(
+        "--host-config",
+        default=str(HOST_CONFIG_PATH),
+        help=f"Path to host-config.toml (default: {HOST_CONFIG_PATH})",
+    )
     args = parser.parse_args()
 
     config = load_local_config(Path(args.config))
     discovery_cfg = config.get("discovery", {})
 
+    host_config: HostConfig | None = None
+    if args.mode == "toml":
+        try:
+            host_config = load_host_config(Path(args.host_config))
+        except (FileNotFoundError, ValueError) as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(2)
+
+    def _node_list() -> list[dict[str, Any]]:
+        if host_config is not None:
+            return _nodes_from_host_config(host_config)
+        return _load_node_list()
+
+    connect_timeout = (
+        host_config.defaults.connect_timeout
+        if host_config is not None
+        else discovery_cfg.get("connect_timeout", 2)
+    )
+
     if args.discover_nodes:
-        node_list = _load_node_list()
+        node_list = _node_list()
         print(f"Probing {len(node_list)} node(s)...")
         for node in node_list:
             hostname = node["hostname"]
             port = node.get("port", 11434)
-            online = _probe_port(
-                hostname, port, timeout=discovery_cfg.get("connect_timeout", 2)
-            )
+            online = _probe_port(hostname, port, timeout=connect_timeout)
             status = "ONLINE" if online else "OFFLINE"
             print(f"  {hostname}:{port}  {status}")
         return
 
     if args.discover_models:
-        node_list = _load_node_list()
+        node_list = _node_list()
         print(f"Probing {len(node_list)} node(s)...")
         nodes_with_models = discover_local_models(
             node_list,
-            connect_timeout=discovery_cfg.get("connect_timeout", 2),
+            connect_timeout=connect_timeout,
             max_workers=discovery_cfg.get("max_workers", 64),
         )
         _print_discovered_nodes(nodes_with_models)
@@ -829,6 +992,8 @@ def main() -> None:
         iterations=args.iterations,
         dry_run=args.dry_run,
         audit=not args.no_audit,
+        mode=args.mode,
+        host_config=host_config,
     )
 
     if had_failure:

@@ -1,0 +1,44 @@
+# Curated Ollama hosts for `make run-local-models` (issue #306).
+#
+# Copy to host-config.toml (git-ignored) and edit for your network:
+#
+#     cp host-config.toml.example host-config.toml
+#
+# `make run-local-models` reads this file and schedules a global
+# (model, suite) job queue across these hosts, preferring jobs whose
+# model is already loaded in VRAM (per Ollama's /api/ps).
+#
+# For ad-hoc wide-net discovery (OLLAMA_NODES_LIST / OLLAMA_SUBNET /
+# OLLAMA_ENDPOINT env vars), use `make run-all-external` instead.
+#
+# Per-host fields:
+#   name         — label used in output paths (results/local/{node}/{model})
+#   endpoint     — Ollama base URL (required)
+#   priority     — higher = preferred when multiple hosts have the model (default 0)
+#   max_parallel — concurrent Robot runs allowed on this host (default 1)
+#   skip_models  — model names to never schedule here (default [])
+
+[[hosts]]
+name         = "workstation"
+endpoint     = "http://192.168.1.10:11434"
+priority     = 10
+max_parallel = 1
+skip_models  = []
+
+[[hosts]]
+name         = "gpu-rig"
+endpoint     = "http://192.168.1.20:11434"
+priority     = 20
+max_parallel = 2
+skip_models  = ["llama3.3:70b"]   # too slow here
+
+[[hosts]]
+name         = "laptop"
+endpoint     = "http://127.0.0.1:11434"
+priority     = 1
+max_parallel = 1
+
+[defaults]
+connect_timeout     = 2   # TCP probe timeout per host (seconds)
+request_timeout     = 5   # HTTP /api/tags and /api/ps timeout (seconds)
+global_max_parallel = 4   # cap on concurrent runs across all hosts
