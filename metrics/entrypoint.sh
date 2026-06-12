@@ -164,6 +164,24 @@ generate_metrics() {
         label=$(suite_label "$rel_path")
 
         mkdir -p "$dest"
+
+        # Skip files that are still being written (run in progress).
+        local age_seconds fresh_secs
+        age_seconds=$(( $(date +%s) - $(stat -c %Y "$xml" 2>/dev/null || echo 0) ))
+        fresh_secs="${METRICS_FRESH_WINDOW_SECONDS:-120}"
+        if [ "$age_seconds" -lt "$fresh_secs" ]; then
+            echo "  INFO: Skipping '${label}' — output.xml modified ${age_seconds}s ago (run likely in progress)"
+            continue
+        fi
+
+        # Skip files that lack the </robot> closing tag — they are truncated or
+        # corrupt. A stale in-progress file (killed run) produces the same
+        # signature; both cases deserve a single WARNING rather than a traceback.
+        if ! tail -c 200 "$xml" | grep -q '</robot>'; then
+            echo "  WARNING: Skipping '${label}' — output.xml does not end with </robot> (truncated or corrupt)"
+            continue
+        fi
+
         echo "  Generating metrics for '${label}' from ${xml}..."
 
         # robotframework-metrics has no output-directory flag: it writes the
