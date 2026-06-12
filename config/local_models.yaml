@@ -234,6 +234,11 @@ test_suites:
     description: "Behavioral tests for the win-win-win-interview AgentSkill (LLM-as-judge)"
     timeout_seconds: 600
 
+  - name: "dialog"
+    path: "robot/dialog/tests/"
+    description: "End-to-end dialog recorder persistence against the DATABASE_URL backend (#437)"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------

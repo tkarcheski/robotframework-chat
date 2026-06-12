@@ -112,6 +112,11 @@ test_suites:
     path: "robot/superset"
     description: "PostgreSQL connectivity check and host info registration"
 
+  dialog:
+    label: "Dialog Recorder E2E"
+    path: "robot/dialog/tests"
+    description: "End-to-end dialog recorder persistence against the DATABASE_URL backend (#437)"
+
   ceo:
     label: "CEO Agent"
     path: "robot/ceo"
