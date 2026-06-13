@@ -65,7 +65,7 @@ dev = [
     "pre-commit",
     "python-dotenv",
     "ruff==0.14.10",
-    "mypy",
+    "mypy==1.10.0",
     "types-requests",
     "types-PyYAML",
     "types-docker",
