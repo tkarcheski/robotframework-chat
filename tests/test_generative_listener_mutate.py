@@ -30,6 +30,7 @@ from __future__ import annotations
 import copy as copy_module
 import re
 from types import SimpleNamespace
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -202,7 +203,7 @@ class TestMutateInsertsSibling:
         assert MUTATED_MARKER_TAG in mutated.tags
         # original body preserved, allow-listed assertion appended
         assert mutated.body[0].name == "Original Keyword"
-        assert mutated.body[-1].name == "Should Contain"
+        assert mutated.body[-1].name == "BuiltIn.Should Contain"
         assert mutated.body[-1].args == ["${answer}", "Paris"]
         rows = db.get_decisions(SESSION, proposed_action="mutate")
         assert len(rows) == 2
@@ -471,7 +472,7 @@ class TestPromptResource:
 
         monkeypatch.delenv("RFC_GENERATIVE_MUTATE_PROMPTS", raising=False)
         assert MUTATE_PROMPTS_RESOURCE.exists(), (
-            "robot/resources/generative_mutate_prompts.resource must ship in-repo"
+            "src/rfc/resources/generative_mutate_prompts.resource must ship in-repo"
         )
         prompts = _load_mutate_prompts()
         template = prompts["MUTATION_PROMPT_TEMPLATE"]
@@ -562,9 +563,9 @@ class TestParseMutation:
         )
 
     def test_case_insensitive_keyword_canonicalised(self):
-        assert _parse_mutation("should match regexp    ${answer}    \\d+") == (
-            "Should Match Regexp",
-            ["${answer}", "\\d+"],
+        assert _parse_mutation("should be equal    ${answer}    Paris") == (
+            "Should Be Equal",
+            ["${answer}", "Paris"],
         )
 
     def test_markdown_decoration_stripped(self):
@@ -611,8 +612,8 @@ class TestParseMutation:
         assert _parse_mutation("Should Contain    ${answer}    Paris") is not None
         assert _parse_mutation("Should Contain    ${LLM RESPONSE}    ok") is not None
         # literal braces that are NOT Robot variable syntax stay legal
-        assert _parse_mutation("Should Match Regexp    ${answer}    \\d{3}") == (
-            "Should Match Regexp",
+        assert _parse_mutation("Should Contain    ${answer}    \\d{3}") == (
+            "Should Contain",
             ["${answer}", "\\d{3}"],
         )
 
@@ -638,3 +639,46 @@ class TestAppliedTruthfulness:
         assert rows[0].applied == 0, (
             "decision must not claim applied=1 when the mutated copy could not be built"
         )
+
+
+# ---------------------------------------------------------------------------
+# post-merge hardening (#516, Codex round 3 on PR #501)
+# ---------------------------------------------------------------------------
+
+
+class TestPostMergeHardening501:
+    def test_inserted_assertion_is_builtin_qualified(self, clean_env, tmp_path):
+        """A user keyword named `Should Be Equal` would shadow the BuiltIn at
+        resolution time; the allow-list checks the name but cannot control
+        resolution order. Explicit `BuiltIn.` qualification closes the
+        code-execution bypass (Codex P1, #516)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        mutated = executed[1]
+        assert mutated.body[-1].name == "BuiltIn.Should Contain"
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
+
+    def test_should_match_regexp_is_not_allow_listed(self):
+        """The model controls the regex argument; a catastrophic pattern like
+        `(a+)+$` can hang the runner (ReDoS, Codex P2, #516)."""
+        from rfc.generative_listener import ALLOWED_MUTATION_KEYWORDS
+
+        assert "Should Match Regexp" not in ALLOWED_MUTATION_KEYWORDS
+
+    def test_parse_mutation_rejects_should_match_regexp(self):
+        from rfc.generative_listener import _parse_mutation
+
+        assert _parse_mutation("Should Match Regexp    ${answer}    (a+)+$") is None
+
+    def test_prompts_resource_ships_inside_package(self):
+        """The default template must resolve inside the installed `rfc`
+        package, not via repo-root-relative paths that do not exist in a
+        wheel deployment (Codex P2, #516)."""
+        import rfc
+        from rfc.generative_listener import MUTATE_PROMPTS_RESOURCE
+
+        package_dir = Path(rfc.__file__).resolve().parent
+        assert MUTATE_PROMPTS_RESOURCE.is_relative_to(package_dir)
+        assert MUTATE_PROMPTS_RESOURCE.exists()

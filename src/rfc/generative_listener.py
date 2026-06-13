@@ -43,7 +43,7 @@ tagged ``mutated:true`` (copies never re-mutate). Safety rails:
   because the keyword allow-list alone would not stop code execution
   smuggled through an argument.
 - mutation prompts are externalized to
-  ``robot/resources/generative_mutate_prompts.resource`` so reviewers
+  ``src/rfc/resources/generative_mutate_prompts.resource`` so reviewers
   can read and edit them (built-in fallback if unreadable).
 - a parallel grader (the ``Grade Answer`` core, same prompting model)
   scores each applied mutation's quality and writes it to
@@ -162,24 +162,23 @@ DEFAULT_BUDGET_TOKENS = 10_000
 
 # Deterministic BuiltIn assertions a mutation may use — anything else is
 # recorded (applied=0) but never executed. Deliberately excludes anything
-# that runs code, touches the OS, or sets state.
+# that runs code, touches the OS, or sets state — and `Should Match Regexp`,
+# whose model-controlled pattern is a ReDoS vector (#516).
 ALLOWED_MUTATION_KEYWORDS = (
     "Length Should Be",
     "Should Be Equal",
     "Should Be Equal As Numbers",
     "Should Be Equal As Strings",
     "Should Contain",
-    "Should Match Regexp",
     "Should Not Be Empty",
     "Should Not Contain",
 )
 _ALLOWED_MUTATION_LOOKUP = {k.lower(): k for k in ALLOWED_MUTATION_KEYWORDS}
 
+# Ships as package data so installed (wheel) deployments resolve it too,
+# not just repo checkouts (#516).
 MUTATE_PROMPTS_RESOURCE = (
-    Path(__file__).resolve().parents[2]
-    / "robot"
-    / "resources"
-    / "generative_mutate_prompts.resource"
+    Path(__file__).resolve().parent / "resources" / "generative_mutate_prompts.resource"
 )
 
 _FLOW_ACTIONS = ("skip", "retry", "fork", "none")
@@ -215,7 +214,7 @@ _FLOW_PROMPT_TEMPLATE = (
 
 
 # Built-in fallbacks, kept in sync with
-# robot/resources/generative_mutate_prompts.resource (the reviewable copy).
+# src/rfc/resources/generative_mutate_prompts.resource (the reviewable copy).
 _DEFAULT_MUTATE_PROMPTS = {
     "MUTATION_PROMPT_TEMPLATE": (
         "You are mutating a Robot Framework test (suite opted in via the "
@@ -1095,7 +1094,11 @@ class GenerativeListener(BaseListener):
             copy = _copy_test(data)
             copy.name = f"{test_name}::mutated::{short_hash}"
             _add_tag(copy, MUTATED_MARKER_TAG)
-            copy.body.create_keyword(name=keyword, args=list(args))
+            # Explicit BuiltIn. qualification: a user keyword named e.g.
+            # "Should Be Equal" would shadow the BuiltIn at resolution
+            # time, so the allow-listed name alone cannot guarantee which
+            # code runs (#516).
+            copy.body.create_keyword(name=f"BuiltIn.{keyword}", args=list(args))
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning(
                 "GenerativeListener: could not build mutated copy of %r: %s",
