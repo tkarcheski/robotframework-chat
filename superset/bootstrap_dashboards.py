@@ -1817,6 +1817,27 @@ _AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 
 
+def _agentic_dataset_is_current(
+    stored_sql: str | None,
+    stored_columns: "list[str]",
+    target_sql: str,
+    *,
+    required_column: str = "rfc_version",
+) -> bool:
+    """Whether an existing agentic virtual dataset needs no refresh.
+
+    A SQL match alone does not prove the dataset is current: ``fetch_metadata``
+    can fail independently of the SQL commit (it raises on empty virtual
+    datasets), so the stored columns can lag the SQL — leaving ``rfc_version``
+    absent and the native filter broken. The dataset is current only when its
+    SQL matches AND its stored columns include ``required_column``; otherwise
+    the next bootstrap must retry the metadata refresh (#508).
+    """
+    if (stored_sql or "").strip() != target_sql.strip():
+        return False
+    return required_column in set(stored_columns)
+
+
 def _probe_columns(database_uri: str, sql: str) -> list[str]:
     """Discover column names by running ``sql`` with LIMIT 0.
 
@@ -2522,20 +2543,27 @@ def _create_agentic_datasets(db_id: int) -> None:
             .first()
         )
         if existing:
-            if (existing.sql or "").strip() == vds_sql.strip():
+            stored_cols = [c.column_name for c in (existing.columns or [])]
+            if _agentic_dataset_is_current(existing.sql, stored_cols, vds_sql):
                 log.info(f"Agentic virtual dataset up to date: {vds_name}")
                 continue
-            # SQL changed in code (e.g. new rfc_version column, #483):
-            # update in place and refresh columns, or reruns of the
-            # bootstrap silently keep serving the stale dataset.
-            existing.sql = vds_sql
-            superset_db.session.commit()
+            # Either the SQL changed in code (e.g. new rfc_version column,
+            # #483) or a previous fetch_metadata failed and left the columns
+            # without rfc_version (#508). Commit any SQL change, then retry the
+            # metadata refresh — committing the SQL alone would mark the
+            # dataset "current" on the next run and never repopulate columns.
+            if (existing.sql or "").strip() != vds_sql.strip():
+                existing.sql = vds_sql
+                superset_db.session.commit()
             try:
                 existing.fetch_metadata()
                 superset_db.session.commit()
             except Exception as e:
-                log.warning(f"fetch_metadata failed for {vds_name}: {e}")
-            log.info(f"Updated agentic virtual dataset SQL: {vds_name}")
+                log.warning(
+                    f"fetch_metadata failed for {vds_name} (will retry on next "
+                    f"bootstrap until rfc_version columns populate): {e}"
+                )
+            log.info(f"Refreshed agentic virtual dataset: {vds_name}")
             continue
 
         dataset = SqlaTable(
