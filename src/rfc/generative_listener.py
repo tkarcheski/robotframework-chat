@@ -470,20 +470,38 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
     Robot resolves suite-file user keywords before explicit library names
     (``KeywordStore._get_runner`` tries them ahead of
     ``_get_explicit_runner``), so even ``BuiltIn.``-qualified insertion is
-    not safe if the suite defines a keyword with that literal name (#516).
-    Walks the suite parent chain; imported resources are outside the
-    running model and are not inspected — collisions there are the suite
-    author's responsibility.
+    not safe if the suite defines a keyword that resolves to the inserted
+    name (#516). Two ways a suite keyword can shadow it:
+
+    * a literal name that normalizes equal (case/space/underscore-insensitive
+      via Robot's own normalization); or
+    * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
+      pattern matches ``BuiltIn.Should Contain`` — these resolve any matching
+      call before the real library lookup.
+
+    Walks the suite parent chain; imported resources are outside the running
+    model and are not inspected — collisions there are the suite author's
+    responsibility.
     """
-    wanted = {
+    from robot.running.arguments.embedded import EmbeddedArguments
+
+    wanted_literal = {
         _normalize_keyword_name(keyword),
         _normalize_keyword_name(f"BuiltIn.{keyword}"),
     }
+    # Raw names (not normalized) for Robot's embedded-arg regex matching.
+    embedded_targets = (f"BuiltIn.{keyword}", keyword)
     node = getattr(data, "parent", None)
     while node is not None:
         resource = getattr(node, "resource", None)
         for kw in getattr(resource, "keywords", None) or []:
-            if _normalize_keyword_name(getattr(kw, "name", "") or "") in wanted:
+            name = getattr(kw, "name", "") or ""
+            if _normalize_keyword_name(name) in wanted_literal:
+                return True
+            embedded = EmbeddedArguments.from_name(name)
+            if embedded is not None and any(
+                embedded.name.fullmatch(target) for target in embedded_targets
+            ):
                 return True
         node = getattr(node, "parent", None)
     return False

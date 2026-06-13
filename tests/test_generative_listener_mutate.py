@@ -730,3 +730,34 @@ class TestPostMergeHardening501:
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 1
         assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+
+    def test_mutation_blocked_when_suite_has_embedded_arg_shadow(
+        self, clean_env, tmp_path
+    ):
+        """A suite keyword `BuiltIn.${x}` uses Robot embedded-argument matching
+        and resolves any `BuiltIn.<name>` call before the real library lookup,
+        so it hijacks the inserted `BuiltIn.Should Contain` (Codex P1 r4 #516)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[SimpleNamespace(name="BuiltIn.${anything}")]
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1  # nothing inserted
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+
+    def test_mutation_not_blocked_by_unrelated_embedded_keyword(
+        self, clean_env, tmp_path
+    ):
+        """An embedded-arg keyword that cannot match the inserted name must
+        NOT block the mutation (no false positives)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[SimpleNamespace(name="Select ${item} from menu")]
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2  # original + applied mutation
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
