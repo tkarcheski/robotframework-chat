@@ -340,8 +340,16 @@ def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
 
 
 def _normalize_keyword_name(name: str) -> str:
-    """Robot keyword-name normalization: case, spaces, underscores ignored."""
-    return name.replace(" ", "").replace("_", "").lower()
+    """Normalize a keyword name exactly as Robot resolves it.
+
+    Delegates to ``robot.utils.normalize`` (casefold + all-whitespace removal)
+    with underscores ignored, so the collision guard matches Robot's own
+    resolution — including Unicode case-folding like ``ſ`` → ``s`` that ASCII
+    ``lower()`` would miss (#516).
+    """
+    from robot.utils import normalize
+
+    return normalize(name, ignore=["_"])
 
 
 def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
