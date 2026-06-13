@@ -89,6 +89,14 @@ dashboards/alerts listed in CLAUDE.md. Anything degrading gets a `from:pm`,
 `type:monitoring` issue with the data attached. No alarm without evidence;
 no evidence ignored.
 
+Also check Superset server health each iteration (commands in CLAUDE.md § Monitoring & dashboards):
+- `docker ps --filter name=rfc-` — all RFC containers up and healthy
+- `curl -fsS localhost:8088/health` — Superset API alive
+- `psql $DATABASE_URL -c "SELECT MAX(created_at) FROM test_runs"` — data freshness (<48h when runs expected)
+- `make superset-diagnose` — deep connectivity + pipeline check (run on first degradation sign)
+
+Any failure → file a `from:pm`, `type:monitoring` issue immediately with the command output attached.
+
 Also audit git hygiene per `ai/GIT.md` (read-only):
 - `git worktree list` — worktrees whose branches have merged are stale; flag
   the creating role (or the human) to remove them.

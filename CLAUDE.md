@@ -166,6 +166,13 @@ prompt conflict, `ai/ROLES.md` wins.
 - CI: GitHub Actions — `gh run list` / `gh pr checks <number>`.
 - Test results are archived to SQL and visualized in Apache Superset dashboards
   (see `ai/agents.md`).
+- Superset health checks (run these when diagnosing a dashboard outage or in PM sweeps):
+  ```bash
+  docker ps --filter name=rfc-              # all RFC containers running and healthy
+  curl -fsS localhost:8088/health           # Superset API alive
+  psql $DATABASE_URL -c "SELECT MAX(created_at) FROM test_runs"  # data freshness (<48h when runs expected)
+  make superset-diagnose                    # deep connectivity + pipeline check
+  ```
 
 ---
 
