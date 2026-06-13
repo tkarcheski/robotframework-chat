@@ -229,15 +229,43 @@ _HEAD_MOVING_FRAGMENTS = (
 )
 
 
+def _is_trailing_background(cmd: AgentCommand) -> bool:
+    """True when the shell-wrapper inner command ends with a backgrounding ``&``.
+
+    ``uv run pytest &`` backgrounds the test: the list returns 0 immediately,
+    so a zero command status says nothing about whether the test passed. The
+    parser drops a trailing ``&`` (no subcommand follows it), so it is detected
+    here from the raw inner string. ``&&`` is excluded (it is an AND operator,
+    not a background terminator) (#503 round 8).
+    """
+    inner = cmd.inner_shell_command()
+    if inner is None:
+        return False
+    inner = inner.rstrip()
+    return inner.endswith("&") and not inner.endswith("&&")
+
+
 def _is_head_checkout(sub: str, sha: str) -> bool:
     """True when *sub* is a ``git checkout <sha>`` that moves HEAD to *sha*.
+
+    The subcommand must *be* a ``git checkout`` invocation (its leading tokens
+    are ``git checkout``), not merely contain that text: a substring match
+    accepts ``echo git checkout <sha>``, which prints the words and never moves
+    HEAD, so a following green test runs against the previous commit and cannot
+    certify this SHA (#503 round 8). Tokens are matched after splitting on
+    whitespace so the SHA is its own argument, not a prefix of a longer word.
 
     Excludes the pathspec form ``git checkout <sha> -- <path>``, which only
     restores files into the working tree without switching HEAD — tests run
     afterwards still execute the previous commit, so it cannot certify a
     replay (#503).
     """
-    return "git checkout" in sub and sha in sub and " -- " not in sub
+    tokens = sub.split()
+    if tokens[:2] != ["git", "checkout"]:
+        return False
+    if sha not in tokens[2:]:
+        return False
+    return " -- " not in sub
 
 
 def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
@@ -247,12 +275,13 @@ def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
 
     A subcommand's result is reflected in the command's returncode only when
     every operator AFTER it is ``&&`` (or it is the last subcommand). A
-    trailing ``||`` swallows its failure, a ``;`` discards its status, and a
-    ``|`` replaces it with the next stage's — so the command can exit 0 even
-    when the subcommand failed; those are ``"masked"``. The subcommand must
-    also be REACHABLE: a ``||`` anywhere before it means it runs only if a
-    prior command failed (``true || pytest`` skips the test), so its success
-    cannot be assumed from a zero exit either (#503).
+    trailing ``||`` swallows its failure, a ``;`` discards its status, a
+    ``|`` replaces it with the next stage's, and a ``&`` backgrounds it (the
+    list returns 0 immediately, before the test can finish) — so the command
+    can exit 0 even when the subcommand failed; those are ``"masked"``. The
+    subcommand must also be REACHABLE: a ``||`` anywhere before it means it
+    runs only if a prior command failed (``true || pytest`` skips the test),
+    so its success cannot be assumed from a zero exit either (#503).
     """
     pairs = cmd.shell_subcommands_with_operators()
     idx: int | None = None
@@ -264,6 +293,12 @@ def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
     ops_before = [pairs[j][0] for j in range(1, idx + 1)]
     if "||" in ops_before:
         return "masked"  # may have been short-circuited; reachability unknown
+    # A trailing ``&`` backgrounds the LAST subcommand: it is dropped by the
+    # parser (no subcommand follows it), so detect it from the raw inner. A
+    # backgrounded test never establishes green — the list exits 0 while the
+    # test is still running (#503 round 8).
+    if idx == len(pairs) - 1 and _is_trailing_background(cmd):
+        return "masked"
     ops_after = [pairs[j][0] for j in range(idx + 1, len(pairs))]
     if all(op == "&&" for op in ops_after):  # vacuously true when sub is last
         return "green" if cmd.returncode == 0 else "red"
@@ -425,13 +460,15 @@ def assert_no_commit_while_tests_red(
                     )
                 if all(op == "&&" for op in joining_ops):
                     continue  # AND-chain: commit only ran with green tests
-                # ';' chain: the in-chain test's status is discarded by the
-                # ';' and the commit ran ungated — it cannot be certified.
+                # ';' or '&' chain: the in-chain test's status is discarded — a
+                # ';' runs the commit regardless of the test, and a '&'
+                # backgrounds the test so the commit runs immediately without
+                # waiting for it. Either way the commit ran ungated (#503).
                 raise VerificationFailure(
-                    f"Commit {sub!r} follows a ';'-separated {test_needle!r} "
-                    f"whose result is masked ({cmd.joined()!r}): the command "
-                    "can exit 0 even when the test failed, so the commit is "
-                    "not gated on green tests"
+                    f"Commit {sub!r} follows a {test_needle!r} whose result is "
+                    f"masked by a ';' or background '&' ({cmd.joined()!r}): the "
+                    "command can exit 0 even when the test failed or is still "
+                    "running, so the commit is not gated on green tests"
                 )
             if last_test_status in ("red", "masked"):
                 detail = (

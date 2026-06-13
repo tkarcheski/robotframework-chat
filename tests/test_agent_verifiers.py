@@ -1081,3 +1081,96 @@ class TestReviewFindingsPr503Round6:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round8:
+    """Codex round-8 P1s on the shell verifiers.
+
+    1. A background list (``pytest & git commit``) backgrounds the test, so the
+       commit runs without waiting for (or gating on) the test result. The
+       single ``&`` is a control operator that splits a list just like ``;``,
+       and the part before it returns immediately with status 0 — its result
+       can never establish that the test was green.
+    2. The replay-checkout match was a substring check, so
+       ``echo git checkout <sha>`` was accepted as the checkpoint even though
+       ``echo`` never moves HEAD.
+    """
+
+    def test_backgrounded_test_does_not_gate_commit(self) -> None:
+        # `uv run pytest & git commit` backgrounds pytest; the commit runs
+        # immediately and is NOT gated on a green test. The `&` must split the
+        # list, and the backgrounded test (status discarded, async) must not
+        # certify the following commit.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest & git commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="masked|red|background|&"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_backgrounded_earlier_test_does_not_gate_later_commit(self) -> None:
+        # `pytest &` in one command, `git commit` in the next: the async test's
+        # status was never established (it ran in the background), so the later
+        # commit is not gated on green.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest &"),
+                    returncode=0,
+                ),
+                AgentCommand(
+                    argv=("git", "commit", "-m", "feat: x"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="masked|red|background"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_foreground_and_chain_still_passes(self) -> None:
+        # `pytest && git commit` (no `&`) is the legitimate gated form and must
+        # still pass — the `&` fix must not over-trigger on `&&`.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_echo_checkout_is_not_a_replay_checkpoint(self) -> None:
+        # `echo git checkout <sha>` prints text; it never moves HEAD, so the
+        # following green test ran against the previous commit and cannot
+        # certify this SHA.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "echo git checkout aaa1111 && uv run pytest",
+                    ),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="never replayed"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_real_checkout_command_still_certifies(self) -> None:
+        # A genuine leading `git checkout <sha>` must still be accepted.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
