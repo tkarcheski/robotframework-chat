@@ -746,3 +746,48 @@ class TestSaveRestoreLLMModel:
         kw.client.model = "original-model"
         assert kw.restore_llm_model() == ""
         assert kw.client.model == "original-model"
+
+
+class TestLLMKeywordsThroughCacheWrapper:
+    """The Ollama-management keywords must still reach the concrete client
+    when ANSWER_CACHE_ENABLED wraps it in a CachingProvider (#523)."""
+
+    @staticmethod
+    def _wrapped_ollama():
+        import fakeredis
+
+        from rfc.answer_cache import AnswerCache, CachingProvider
+
+        inner = MagicMock(spec=OllamaClient)
+        cache = AnswerCache(redis_client=fakeredis.FakeStrictRedis())
+        return inner, CachingProvider(inner, cache)
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_unload_model_reaches_wrapped_ollama(self, MockGrader, mock_create):
+        inner, wrapped = self._wrapped_ollama()
+        inner.unload_model.return_value = True
+        mock_create.return_value = wrapped
+        kw = LLMKeywords()
+        assert kw.unload_model() is True
+        inner.unload_model.assert_called_once_with(None)
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_wait_for_llm_reaches_wrapped_ollama(self, MockGrader, mock_create):
+        inner, wrapped = self._wrapped_ollama()
+        inner.wait_until_ready.return_value = True
+        mock_create.return_value = wrapped
+        kw = LLMKeywords()
+        assert kw.wait_for_llm(timeout=1, poll_interval=1) is True
+        inner.wait_until_ready.assert_called_once_with(1, 1)
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_llm_is_busy_reaches_wrapped_ollama(self, MockGrader, mock_create):
+        inner, wrapped = self._wrapped_ollama()
+        inner.is_busy.return_value = True
+        mock_create.return_value = wrapped
+        kw = LLMKeywords()
+        assert kw.llm_is_busy() is True
+        inner.is_busy.assert_called_once()

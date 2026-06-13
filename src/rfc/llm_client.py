@@ -103,4 +103,34 @@ def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
     return CachingProvider(client, cache)
 
 
-__all__ = ["LLMClient", "LLMProvider", "create_provider", "resolve_timeout"]
+def unwrap_provider(client: Any) -> Any:
+    """Return the underlying provider, peeling a caching wrapper if present.
+
+    A ``CachingProvider`` is a transparent proxy, so callers that need the
+    *concrete* provider type (rather than its structural interface) must
+    unwrap first. Non-wrapped clients return themselves (#523).
+    """
+    return getattr(client, "__wrapped__", client)
+
+
+def as_ollama(client: Any) -> Optional[OllamaClient]:
+    """Return *client* as an ``OllamaClient`` if it is one (through any cache
+    wrapper), else ``None``.
+
+    The Ollama-management keywords (Wait For LLM, Unload Model, Get Running
+    Models, LLM Is Busy, Set LLM Endpoint) need the concrete Ollama surface,
+    which a transparent proxy cannot satisfy by interface alone. Unwrapping
+    at the seam keeps the isinstance check honest and mypy-narrowable (#523).
+    """
+    inner = unwrap_provider(client)
+    return inner if isinstance(inner, OllamaClient) else None
+
+
+__all__ = [
+    "LLMClient",
+    "LLMProvider",
+    "as_ollama",
+    "create_provider",
+    "resolve_timeout",
+    "unwrap_provider",
+]

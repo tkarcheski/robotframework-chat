@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_REDIS_URL = "redis://localhost:6379/1"  # db 1, NOT Superset's db 0
 DEFAULT_TTL_SECONDS = 604800  # 7 days
 DEFAULT_VERSION = "v1"
+# Finite Redis timeouts (seconds): a down cache must degrade fast, not hang.
+DEFAULT_CONNECT_TIMEOUT = 1.0
+DEFAULT_SOCKET_TIMEOUT = 1.0
 _KEY_PREFIX = "rfc:answer_cache"
 
 # Attributes that affect model output and therefore the cache key. Missing any
@@ -101,16 +104,35 @@ class AnswerCache:
         self._version = version
         # Latch so we log a Redis outage once per process, not per call.
         self._logged_unreachable = False
+        # Once Redis fails, disable the cache for the rest of the run so we
+        # don't burn the socket timeout on every subsequent get/set (#523).
+        self._disabled = False
 
     @classmethod
     def from_env(cls) -> "AnswerCache":
-        """Build a cache from ``REDIS_URL`` / ``ANSWER_CACHE_*`` env vars."""
+        """Build a cache from ``REDIS_URL`` / ``ANSWER_CACHE_*`` env vars.
+
+        Finite socket timeouts are mandatory: redis-py defaults to blocking
+        sockets with no timeout, so an unresponsive host would hang the first
+        lookup forever and defeat the documented passthrough behaviour (#523).
+        """
         import redis
 
         url = os.getenv("REDIS_URL", DEFAULT_REDIS_URL)
         ttl = int(os.getenv("ANSWER_CACHE_TTL_SECONDS", str(DEFAULT_TTL_SECONDS)))
         version = os.getenv("ANSWER_CACHE_VERSION", DEFAULT_VERSION)
-        client = redis.Redis.from_url(url, decode_responses=True)
+        connect_timeout = float(
+            os.getenv("ANSWER_CACHE_CONNECT_TIMEOUT", str(DEFAULT_CONNECT_TIMEOUT))
+        )
+        socket_timeout = float(
+            os.getenv("ANSWER_CACHE_SOCKET_TIMEOUT", str(DEFAULT_SOCKET_TIMEOUT))
+        )
+        client = redis.Redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=connect_timeout,
+            socket_timeout=socket_timeout,
+        )
         return cls(redis_client=client, ttl_seconds=ttl, version=version)
 
     def make_key(self, client: _CacheableClient, prompt: str) -> str:
@@ -135,6 +157,8 @@ class AnswerCache:
 
     def get(self, key: str) -> Optional[str]:
         """Return the cached answer for *key*, or ``None`` on miss / outage."""
+        if self._disabled:
+            return None
         try:
             value = self._redis.get(key)
         except _redis_connection_errors() as exc:
@@ -148,18 +172,45 @@ class AnswerCache:
 
     def set(self, key: str, answer: str) -> None:
         """Store *answer* under *key* with the configured TTL (best-effort)."""
+        if self._disabled:
+            return
         try:
             self._redis.set(key, answer, ex=self._ttl)
         except _redis_connection_errors() as exc:
             self._note_unreachable(exc)
 
     def _note_unreachable(self, exc: BaseException) -> None:
+        # Disable for the rest of the run so we never pay the timeout twice.
+        self._disabled = True
         if not self._logged_unreachable:
             logger.warning(
                 "Answer cache unreachable (%s); bypassing cache for this run.",
                 exc,
             )
             self._logged_unreachable = True
+
+
+def _cache_hit_metrics(model: Optional[str]) -> Dict[str, Any]:
+    """Honest zero-cost metrics for a cache hit.
+
+    Mirrors the key set of ``rfc.ollama._extract_metrics`` /
+    ``rfc.openai_client._extract_metrics`` so a hit row is schema-identical
+    to a miss row. Counts are 0 (a hit did no model work) and rates are
+    ``None`` (division undefined) — never values inherited from a prior
+    fresh generation (#523).
+    """
+    return {
+        "model_name": model,
+        "cache_hit": True,
+        "total_duration_ns": 0,
+        "load_duration_ns": 0,
+        "prompt_eval_count": 0,
+        "prompt_eval_duration_ns": 0,
+        "prompt_eval_rate": None,
+        "eval_count": 0,
+        "eval_duration_ns": 0,
+        "eval_rate": None,
+    }
 
 
 def is_deterministic(client: _CacheableClient) -> bool:
@@ -198,6 +249,14 @@ class CachingProvider:
         object.__setattr__(
             self, "_cache_nondeterministic", bool(cache_nondeterministic)
         )
+        # Standard wrapper accessor (functools.wraps convention) so callers
+        # that need the concrete underlying type — e.g. the OllamaClient
+        # isinstance gates in keywords.py — can unwrap the proxy (#523).
+        object.__setattr__(self, "__wrapped__", client)
+
+    def unwrap(self) -> _CacheableClient:
+        """Return the wrapped client (peels exactly one cache layer)."""
+        return self._client
 
     def generate(self, prompt: str) -> str:
         client = self._client
@@ -220,13 +279,13 @@ class CachingProvider:
     def _record_hit(self, client: _CacheableClient) -> None:
         """Mark the replayed answer as a cache hit in ``last_metrics``.
 
-        A hit produces no fresh model metrics, so we synthesize a minimal
-        metrics dict carrying ``cache_hit=True`` — honest provenance that the
-        keyword layer surfaces into the results schema.
+        A hit performs zero model work, so its metrics must report zero —
+        never inherit the token counts / durations of the prior fresh call
+        (which would fabricate usage and wrongly drain token budgets, #523).
+        The synthesized dict mirrors ``_extract_metrics``'s key set so a hit
+        row has the same schema as a miss row.
         """
-        metrics = dict(client.last_metrics or {})
-        metrics["cache_hit"] = True
-        client.last_metrics = metrics
+        client.last_metrics = _cache_hit_metrics(getattr(client, "model", None))
 
     # ── Transparent proxying ────────────────────────────────────────────
 

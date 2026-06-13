@@ -324,18 +324,19 @@ def test_caching_provider_exposes_full_llm_provider_surface():
 
 
 def test_caching_provider_breaks_ollamaclient_isinstance():
-    """Characterization: a wrapped OllamaClient fails ``isinstance(.., OllamaClient)``.
+    """A wrapped OllamaClient is (correctly) NOT an ``OllamaClient`` itself.
 
-    ``keywords.py`` gates five keywords (Wait For LLM, Unload Model, Get Running
-    Models, LLM Is Busy, Set LLM Endpoint) on
-    ``isinstance(self.client, OllamaClient)`` — a *concrete-class* check, not a
-    structural one. Because ``CachingProvider`` proxies rather than subclasses,
-    those keywords silently degrade when ``ANSWER_CACHE_ENABLED=1`` wraps the
-    provider. This test pins that behavior so the fix (and any regression) is
-    visible. See the linked ``from:testing`` defect issue.
-
-    The transparency goal ("wrapping is invisible to callers") is therefore NOT
-    fully met today; the concrete-class isinstance is the leak, not the proxy.
+    ``CachingProvider`` proxies rather than subclasses, so a direct
+    ``isinstance(wrapped, OllamaClient)`` is False — by design. The five
+    Ollama-management keywords (Wait For LLM, Unload Model, Get Running
+    Models, LLM Is Busy, Set LLM Endpoint) used to gate on that direct check
+    and silently degraded when ``ANSWER_CACHE_ENABLED=1`` wrapped the
+    provider (#523, the linked ``from:testing`` defect). The fix unwraps at
+    the seam (``rfc.llm_client.as_ollama`` — see
+    ``test_as_ollama_sees_through_wrapper`` and the wrapper keyword tests in
+    ``test_keywords.py``), so the keywords now reach the concrete client
+    through the proxy. This test pins the proxy's intentional structural
+    distinction: unwrap, don't subclass.
     """
     from rfc.ollama import OllamaClient
 
@@ -343,8 +344,125 @@ def test_caching_provider_breaks_ollamaclient_isinstance():
     inner = OllamaClient(base_url="http://localhost:11434", model="m")
     wrapped = CachingProvider(inner, cache)
 
-    # Documents the defect: the wrapper is NOT seen as an OllamaClient, so
-    # concrete-class isinstance gates in keywords.py take their else-branch.
+    # The wrapper is deliberately NOT an OllamaClient; callers that need the
+    # concrete type unwrap via as_ollama() rather than relying on this check.
     assert not isinstance(wrapped, OllamaClient)
     # ...even though the underlying client is one (proxying is structural only).
     assert isinstance(wrapped._client, OllamaClient)
+
+
+# ── Finding 1: cache-hit metrics are honest, not inherited (#523) ────────
+
+
+def test_hit_metrics_are_zero_cost_not_inherited():
+    """A cache hit did zero model work, so its metrics must report zero —
+    never the token counts/durations of the prior fresh generation."""
+    cache = make_cache()
+    inner = FakeProvider(model="m", answer="cached")
+    wrapped = CachingProvider(inner, cache)
+
+    wrapped.generate("q")  # miss → inner.last_metrics = {model_name:m, eval_count:7}
+    wrapped.generate("q")  # hit
+
+    m = wrapped.last_metrics
+    assert m is not None
+    assert m["cache_hit"] is True
+    assert m["model_name"] == "m"
+    assert m["eval_count"] == 0  # NOT 7 from the prior fresh call
+    assert m["prompt_eval_count"] == 0
+    assert m["total_duration_ns"] == 0
+    assert m["eval_rate"] is None  # rate undefined, not fabricated
+
+
+def test_hit_metrics_schema_matches_miss_schema():
+    """A hit row carries the same keys as a miss row so result columns stay
+    populated."""
+    from rfc.ollama import _extract_metrics
+
+    miss_keys = set(_extract_metrics({}, "m")) | {"cache_hit"}
+    cache = make_cache()
+    wrapped = CachingProvider(FakeProvider(model="m"), cache)
+    wrapped.generate("q")
+    wrapped.generate("q")  # hit
+    assert set(wrapped.last_metrics) == miss_keys
+
+
+# ── Finding 2: Redis timeouts + outage latch (#523) ─────────────────────
+
+
+class CountingUnreachableRedis:
+    """Records how many times each op was attempted before failing."""
+
+    def __init__(self) -> None:
+        self.get_calls = 0
+        self.set_calls = 0
+
+    def get(self, *_a: Any, **_k: Any) -> Any:
+        import redis
+
+        self.get_calls += 1
+        raise redis.ConnectionError("redis down")
+
+    def set(self, *_a: Any, **_k: Any) -> Any:
+        import redis
+
+        self.set_calls += 1
+        raise redis.ConnectionError("redis down")
+
+
+def test_from_env_passes_finite_socket_timeouts(monkeypatch):
+    import redis
+
+    captured: Dict[str, Any] = {}
+
+    def fake_from_url(url: str, **kwargs: Any) -> Any:
+        captured["url"] = url
+        captured.update(kwargs)
+        return fakeredis.FakeStrictRedis()
+
+    monkeypatch.setattr(redis.Redis, "from_url", staticmethod(fake_from_url))
+    AnswerCache.from_env()
+    assert captured.get("socket_connect_timeout", 0) > 0
+    assert captured.get("socket_timeout", 0) > 0
+
+
+def test_redis_outage_latches_and_stops_reattempting():
+    redis_dbl = CountingUnreachableRedis()
+    cache = AnswerCache(redis_client=redis_dbl)
+
+    assert cache.get("k1") is None  # first attempt hits redis, fails, latches
+    assert cache.get("k2") is None  # short-circuited
+    cache.set("k3", "v")  # short-circuited
+
+    assert redis_dbl.get_calls == 1  # only the first lookup actually tried
+    assert redis_dbl.set_calls == 0  # cache disabled before set was attempted
+
+
+# ── Finding 3: unwrap-at-the-seam for isinstance gates (#523) ────────────
+
+
+def test_unwrap_provider_returns_inner_client():
+    from rfc.llm_client import unwrap_provider
+
+    inner = FakeProvider()
+    wrapped = CachingProvider(inner, make_cache())
+    assert unwrap_provider(wrapped) is inner
+    # a non-wrapped client unwraps to itself
+    assert unwrap_provider(inner) is inner
+
+
+def test_as_ollama_sees_through_wrapper():
+    from rfc.llm_client import as_ollama
+    from rfc.ollama import OllamaClient
+
+    inner = OllamaClient(base_url="http://localhost:11434", model="m")
+    wrapped = CachingProvider(inner, make_cache())
+    assert as_ollama(wrapped) is inner
+    assert as_ollama(inner) is inner
+
+
+def test_as_ollama_none_for_non_ollama_client():
+    from rfc.llm_client import as_ollama
+
+    wrapped = CachingProvider(FakeProvider(), make_cache())
+    assert as_ollama(wrapped) is None
