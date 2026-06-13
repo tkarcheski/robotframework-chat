@@ -79,3 +79,6 @@ uv.lock
 
 # Runtime per-provider daily request counter (#515)
 .rfc_provider_budget.json*
+
+# Cross-run deferred-jobs store (#510)
+.rfc_provider_leftover.json*

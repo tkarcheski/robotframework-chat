@@ -68,6 +68,14 @@ from rfc.host_scheduler import (  # noqa: E402
     load_host_config,
     run_jobs,
 )
+from rfc.budget_scheduler import (  # noqa: E402
+    Job as ProviderJob,
+)
+from rfc.budget_scheduler import (  # noqa: E402
+    LeftoverStore,
+    coverage_summary,
+    plan_within_budget,
+)
 from rfc.provider_budget import (  # noqa: E402
     BUDGET_FILE_ENV,
     PROVIDER_NAME_ENV,
@@ -85,6 +93,9 @@ from scripts.discover_ollama import (  # noqa: E402
     _query_loaded_models,
     _query_models,
 )
+
+#: Env var pointing at the cross-run leftover (deferred-jobs) store (#510).
+LEFTOVER_FILE_ENV = "RFC_PROVIDER_LEFTOVER_FILE"
 
 DEFAULT_CONFIG = _project_root / "config" / "local_models.yaml"
 TEST_SUITES_CONFIG = _project_root / "config" / "test_suites.yaml"
@@ -580,6 +591,7 @@ def run_provider_suites(
     *,
     dry_run: bool = False,
     sleep_fn: Any = time.sleep,
+    jobs: "list[ProviderJob] | None" = None,
 ) -> list[RunResult]:
     """Run every configured suite against each provider model, sequentially.
 
@@ -623,85 +635,93 @@ def run_provider_suites(
     )
     budget = ProviderBudget(budget_file)
 
+    # Normalize to an explicit (model, suite) run list. ``jobs`` (from the
+    # #510 planner) runs an exact, possibly partial, budget-planned subset;
+    # without it we run the full model × suite product (legacy behaviour).
+    suite_by_name = {s["name"]: s for s in suites}
+    if jobs is None:
+        run_list = [(model, suite) for model in models for suite in suites]
+    else:
+        run_list = [
+            (j.model, suite_by_name[j.suite]) for j in jobs if j.suite in suite_by_name
+        ]
+
     results: list[RunResult] = []
     prev_start: float | None = None
-    for model in models:
+    for model, suite in run_list:
         watermark = f"{provider.name}/{model}"
-        for suite in suites:
-            if budget.exhausted(provider.name, provider.max_requests_per_day):
-                print(
-                    f"  {tag} daily budget reached "
-                    f"({provider.max_requests_per_day} requests today) — "
-                    f"stopping further {provider.name} jobs (#515)."
-                )
-                return results
-            cmd = _build_provider_robot_command(
-                config=config, suite=suite, provider=provider, model=model
-            )
-            output_dir = execution.get(
-                "output_dir", "results/local/{node}/{model}"
-            ).format(
-                node=_sanitize_name(provider.name),
-                model=_sanitize_name(model),
-            )
-
-            if dry_run:
-                print(f"[DRY-RUN] {' '.join(cmd)}")
-                results.append(
-                    RunResult(
-                        node=provider.name,
-                        model=watermark,
-                        suite=suite["name"],
-                        returncode=0,
-                        output_dir=output_dir,
-                    )
-                )
-                continue
-
-            if prev_start is not None and pacing_gap > 0:
-                remaining = pacing_gap - (time.monotonic() - prev_start)
-                if remaining > 0:
-                    print(
-                        f"  {tag} pacing for rate budget "
-                        f"({provider.requests_per_minute} RPM): "
-                        f"sleeping {remaining:.0f}s"
-                    )
-                    sleep_fn(remaining)
-            prev_start = time.monotonic()
-
+        if budget.exhausted(provider.name, provider.max_requests_per_day):
             print(
-                f"\n{'=' * 70}\n"
-                f"  Provider: {provider.name}\n"
-                f"  Model:    {watermark}\n"
-                f"  Suite:    {suite['name']}\n"
-                f"{'=' * 70}\n"
+                f"  {tag} daily budget reached "
+                f"({provider.max_requests_per_day} requests today) — "
+                f"stopping further {provider.name} jobs (#515)."
             )
-            print(f"  > {' '.join(cmd)}\n")
+            return results
+        cmd = _build_provider_robot_command(
+            config=config, suite=suite, provider=provider, model=model
+        )
+        output_dir = execution.get("output_dir", "results/local/{node}/{model}").format(
+            node=_sanitize_name(provider.name),
+            model=_sanitize_name(model),
+        )
 
-            env = {
-                **os.environ,
-                "LLM_PROVIDER": "openai",
-                "OPENAI_BASE_URL": provider.base_url,
-                "OPENAI_API_KEY": api_key,
-                # Raw id for the API; prefixed watermark for attribution.
-                "DEFAULT_MODEL": model,
-                "RFC_MODEL_NAME": watermark,
-                # Shared runtime budget counter: the subprocess records each
-                # API request against this provider so the day's spend is
-                # capped at the source (#515).
-                BUDGET_FILE_ENV: budget_file,
-                PROVIDER_NAME_ENV: provider.name,
-            }
-            proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
+        if dry_run:
+            print(f"[DRY-RUN] {' '.join(cmd)}")
             results.append(
                 RunResult(
                     node=provider.name,
                     model=watermark,
                     suite=suite["name"],
-                    returncode=proc.returncode,
+                    returncode=0,
                     output_dir=output_dir,
                 )
             )
+            continue
+
+        if prev_start is not None and pacing_gap > 0:
+            remaining = pacing_gap - (time.monotonic() - prev_start)
+            if remaining > 0:
+                print(
+                    f"  {tag} pacing for rate budget "
+                    f"({provider.requests_per_minute} RPM): "
+                    f"sleeping {remaining:.0f}s"
+                )
+                sleep_fn(remaining)
+        prev_start = time.monotonic()
+
+        print(
+            f"\n{'=' * 70}\n"
+            f"  Provider: {provider.name}\n"
+            f"  Model:    {watermark}\n"
+            f"  Suite:    {suite['name']}\n"
+            f"{'=' * 70}\n"
+        )
+        print(f"  > {' '.join(cmd)}\n")
+
+        env = {
+            **os.environ,
+            "LLM_PROVIDER": "openai",
+            "OPENAI_BASE_URL": provider.base_url,
+            "OPENAI_API_KEY": api_key,
+            # Raw id for the API; prefixed watermark for attribution.
+            "DEFAULT_MODEL": model,
+            "RFC_MODEL_NAME": watermark,
+            # Shared runtime budget counter: the subprocess records each
+            # API request against this provider so the day's spend is
+            # capped at the source (#515).
+            BUDGET_FILE_ENV: budget_file,
+            PROVIDER_NAME_ENV: provider.name,
+        }
+        proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
+        results.append(
+            RunResult(
+                node=provider.name,
+                model=watermark,
+                suite=suite["name"],
+                returncode=proc.returncode,
+                output_dir=output_dir,
+            )
+        )
 
     return results
 
@@ -767,12 +787,53 @@ def run_provider_runs(
             print(f"{tag} budget allows no runs — skipping provider.")
             continue
 
-        print(
-            f"{tag} running {len(suites)} suite(s) x {len(kept)} model(s) "
-            f"via {provider.base_url}"
+        # #510: plan the (model, suite) matrix within the provider's *remaining*
+        # daily budget (from the #515 runtime counter), running yesterday's
+        # deferred jobs first, carrying today's overflow to the next run, and
+        # reporting coverage + ETA.
+        budget_file = os.getenv(BUDGET_FILE_ENV) or str(
+            _project_root / ".rfc_provider_budget.json"
         )
+        leftover_store = LeftoverStore(
+            os.getenv(LEFTOVER_FILE_ENV)
+            or str(_project_root / ".rfc_provider_leftover.json")
+        )
+        matrix = [ProviderJob(model=m, suite=s["name"]) for m in kept for s in suites]
+        matrix_set = set(matrix)
+        carried = [j for j in leftover_store.load(provider.name) if j in matrix_set]
+        carried_set = set(carried)
+        ordered = carried + [j for j in matrix if j not in carried_set]
+
+        remaining = ProviderBudget(budget_file).remaining(
+            provider.name, provider.max_requests_per_day
+        )
+        today_jobs, deferred = plan_within_budget(
+            ordered, remaining, provider.requests_per_suite_estimate
+        )
+        per_day = max(
+            1,
+            provider.max_requests_per_day
+            // max(1, provider.requests_per_suite_estimate),
+        )
+        print(
+            f"  {tag} "
+            + coverage_summary(
+                total=len(ordered),
+                planned_today=len(today_jobs),
+                remaining=len(deferred),
+                per_day=per_day,
+            )
+        )
+        leftover_store.save(provider.name, deferred)
+        if not today_jobs:
+            print(f"{tag} no budget remaining today — deferred {len(deferred)} job(s).")
+            continue
+
+        print(f"{tag} running {len(today_jobs)} planned job(s) via {provider.base_url}")
         results.extend(
-            run_provider_suites(config, provider, api_key, kept, dry_run=dry_run)
+            run_provider_suites(
+                config, provider, api_key, kept, jobs=today_jobs, dry_run=dry_run
+            )
         )
 
     return results

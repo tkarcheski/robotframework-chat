@@ -1492,3 +1492,39 @@ class TestProviderBudgetHardStop:
         env = mock_run.call_args.kwargs.get("env")
         assert env[BUDGET_FILE_ENV] == str(path)
         assert env[PROVIDER_NAME_ENV] == "openrouter"
+
+
+class TestProviderBudgetSchedulerIntegration:
+    """run_provider_runs plans within the remaining budget, carries deferred
+    jobs to the next run, and reports coverage (#510)."""
+
+    @patch("scripts.run_local_models.subprocess.run")
+    @patch("scripts.run_local_models.discover_free_models", return_value=[])
+    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
+    def test_overflow_is_deferred_to_leftover_store(
+        self, mock_discover, mock_run, tmp_path, capsys
+    ) -> None:
+        import os
+
+        from rfc.budget_scheduler import LeftoverStore
+        from rfc.provider_budget import BUDGET_FILE_ENV, ProviderBudget
+
+        mock_run.return_value = MagicMock(returncode=0)
+        budget_path = tmp_path / "budget.json"
+        leftover_path = tmp_path / "leftover.json"
+        # 2 models x 2 suites = 4 jobs x 15 = 60; spend 980 of 1000 leaves 20,
+        # so only 1 job (15) fits today and 3 are deferred.
+        ProviderBudget(budget_path).record("openrouter", 980)
+        config = _provider_config()
+        config["providers"][0]["models"] = ["a:free", "b:free"]
+        with patch.dict(
+            os.environ,
+            {
+                BUDGET_FILE_ENV: str(budget_path),
+                "RFC_PROVIDER_LEFTOVER_FILE": str(leftover_path),
+            },
+        ):
+            run_provider_runs(config)
+        deferred = LeftoverStore(leftover_path).load("openrouter")
+        assert len(deferred) == 3
+        assert "coverage" in capsys.readouterr().out.lower()
