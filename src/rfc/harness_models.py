@@ -75,7 +75,11 @@ class AgenticDecision:
 
     ``applied`` is 0 for observe-only suggestions (``generative:observe``,
     or flow suggestions that could not be applied); 1 when the generative
-    listener actually changed execution (``generative:flow``).
+    listener actually changed execution (``generative:flow``). Heal
+    decisions (``heal:suggest``, #361) are ALWAYS ``applied=0``: the fix
+    runs as a side experiment whose outcome lands in ``agentic_metrics``
+    as ``heal_passed``, and the original failure stays the official test
+    outcome.
     """
 
     session_id: str
