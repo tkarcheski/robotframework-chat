@@ -1541,6 +1541,7 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
             h.tool_name,
             h.model_id,
             h.outcome,
+            h.rfc_version,
             p.plugin_name,
             p.semver,
             LAG(p.semver) OVER (
@@ -1563,12 +1564,14 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
         SELECT
             sub.skill_name,
             sub.outcome,
+            sub.rfc_version,
             sub.sha_changed,
             COUNT(*) AS session_count
         FROM (
             SELECT
                 COALESCE(s.skill_name, s.skill_path) AS skill_name,
                 COALESCE(h.outcome, 'unknown') AS outcome,
+                h.rfc_version,
                 CASE
                     WHEN LAG(s.git_sha) OVER (
                         PARTITION BY s.skill_path ORDER BY s.recorded_at
@@ -1581,15 +1584,16 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
             FROM agentic_skills s
             JOIN agentic_harnesses h ON h.session_id = s.session_id
         ) sub
-        GROUP BY sub.skill_name, sub.outcome, sub.sha_changed
+        GROUP BY sub.skill_name, sub.outcome, sub.rfc_version, sub.sha_changed
     """,
     "agentic_outcome_funnel": """
         SELECT
             tool_name,
+            rfc_version,
             COALESCE(outcome, 'running') AS outcome,
             COUNT(*) AS session_count
         FROM agentic_harnesses
-        GROUP BY tool_name, COALESCE(outcome, 'running')
+        GROUP BY tool_name, rfc_version, COALESCE(outcome, 'running')
     """,
 }
 
@@ -1811,6 +1815,27 @@ _AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _agentic_dataset_is_current(
+    stored_sql: str | None,
+    stored_columns: "list[str]",
+    target_sql: str,
+    *,
+    required_column: str = "rfc_version",
+) -> bool:
+    """Whether an existing agentic virtual dataset needs no refresh.
+
+    A SQL match alone does not prove the dataset is current: ``fetch_metadata``
+    can fail independently of the SQL commit (it raises on empty virtual
+    datasets), so the stored columns can lag the SQL — leaving ``rfc_version``
+    absent and the native filter broken. The dataset is current only when its
+    SQL matches AND its stored columns include ``required_column``; otherwise
+    the next bootstrap must retry the metadata refresh (#508).
+    """
+    if (stored_sql or "").strip() != target_sql.strip():
+        return False
+    return required_column in set(stored_columns)
 
 
 def _probe_columns(database_uri: str, sql: str) -> list[str]:
@@ -2518,7 +2543,27 @@ def _create_agentic_datasets(db_id: int) -> None:
             .first()
         )
         if existing:
-            log.info(f"Agentic virtual dataset already exists: {vds_name}")
+            stored_cols = [c.column_name for c in (existing.columns or [])]
+            if _agentic_dataset_is_current(existing.sql, stored_cols, vds_sql):
+                log.info(f"Agentic virtual dataset up to date: {vds_name}")
+                continue
+            # Either the SQL changed in code (e.g. new rfc_version column,
+            # #483) or a previous fetch_metadata failed and left the columns
+            # without rfc_version (#508). Commit any SQL change, then retry the
+            # metadata refresh — committing the SQL alone would mark the
+            # dataset "current" on the next run and never repopulate columns.
+            if (existing.sql or "").strip() != vds_sql.strip():
+                existing.sql = vds_sql
+                superset_db.session.commit()
+            try:
+                existing.fetch_metadata()
+                superset_db.session.commit()
+            except Exception as e:
+                log.warning(
+                    f"fetch_metadata failed for {vds_name} (will retry on next "
+                    f"bootstrap until rfc_version columns populate): {e}"
+                )
+            log.info(f"Refreshed agentic virtual dataset: {vds_name}")
             continue
 
         dataset = SqlaTable(
