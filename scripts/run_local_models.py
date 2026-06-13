@@ -567,6 +567,39 @@ def _build_provider_robot_command(
     return cmd
 
 
+def _provider_suite_skip_reason(
+    suite: dict[str, Any], provider: ProviderConfig
+) -> str | None:
+    """Why *provider* cannot run *suite*, or ``None`` when it is eligible.
+
+    Eligibility is the single source of truth for both budget estimation and
+    execution (#525): privacy routing (#512) and the provider context cap
+    (#509). Unknown privacy values fail closed (treated as local-only).
+    """
+    privacy = str(suite.get("privacy", "public")).strip().lower()
+    if privacy != "public" and not provider.allow_local_only:
+        reason = (
+            "declares privacy 'local-only'"
+            if privacy == "local-only"
+            else f"has unknown privacy value '{privacy}' (failing closed)"
+        )
+        return f"{reason}; provider is not ZDR-allowlisted (#512)"
+    needed = int(suite.get("min_context_tokens", 0))
+    if 0 < provider.max_context_tokens < needed:
+        return (
+            f"needs {needed} context tokens, provider caps at "
+            f"{provider.max_context_tokens}"
+        )
+    return None
+
+
+def _eligible_suites(
+    suites: "list[dict[str, Any]]", provider: ProviderConfig
+) -> "list[dict[str, Any]]":
+    """Suites *provider* can actually run (privacy + context eligible)."""
+    return [s for s in suites if _provider_suite_skip_reason(s, provider) is None]
+
+
 def run_provider_suites(
     config: dict[str, Any],
     provider: ProviderConfig,
@@ -612,25 +645,9 @@ def run_provider_suites(
     for model in models:
         watermark = f"{provider.name}/{model}"
         for suite in suites:
-            privacy = str(suite.get("privacy", "public")).strip().lower()
-            if privacy != "public" and not provider.allow_local_only:
-                reason = (
-                    f"declares privacy '{privacy}'"
-                    if privacy == "local-only"
-                    else f"has unknown privacy value '{privacy}' (failing closed)"
-                )
-                print(
-                    f"  {tag} skipping suite '{suite['name']}': {reason}; "
-                    f"provider is not ZDR-allowlisted (#512)"
-                )
-                continue
-            needed = int(suite.get("min_context_tokens", 0))
-            if 0 < provider.max_context_tokens < needed:
-                print(
-                    f"  {tag} skipping suite '{suite['name']}': needs "
-                    f"{needed} context tokens, provider caps at "
-                    f"{provider.max_context_tokens}"
-                )
+            skip_reason = _provider_suite_skip_reason(suite, provider)
+            if skip_reason is not None:
+                print(f"  {tag} skipping suite '{suite['name']}': {skip_reason}")
                 continue
             cmd = _build_provider_robot_command(
                 config=config, suite=suite, provider=provider, model=model
@@ -744,9 +761,17 @@ def run_provider_runs(
             print(f"{tag} no models to run — skipping provider.")
             continue
 
+        # Budget by the suites this provider can actually run — counting
+        # privacy/context-ineligible suites would over-estimate cost and could
+        # drop models (or empty `kept`) even when the eligible set fits (#525).
+        eligible = _eligible_suites(suites, provider)
+        if not eligible:
+            print(f"{tag} no provider-eligible suites — skipping provider.")
+            continue
+
         kept = select_models_within_budget(
             models,
-            len(suites),
+            len(eligible),
             max_requests_per_day=provider.max_requests_per_day,
             requests_per_suite_estimate=provider.requests_per_suite_estimate,
         )
@@ -760,8 +785,8 @@ def run_provider_runs(
             continue
 
         print(
-            f"{tag} running {len(suites)} suite(s) x {len(kept)} model(s) "
-            f"via {provider.base_url}"
+            f"{tag} running {len(eligible)} eligible suite(s) x {len(kept)} "
+            f"model(s) via {provider.base_url}"
         )
         results.extend(
             run_provider_suites(config, provider, api_key, kept, dry_run=dry_run)

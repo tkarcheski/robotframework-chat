@@ -439,3 +439,37 @@ class TestAllowLocalOnly:
             }
         )
         assert providers[0].allow_local_only is True
+
+
+class TestStrictBoolParsing:
+    """allow_local_only is a security boundary; bool('false') is True, so a
+    quoted/templated false-looking value must fail closed (#525)."""
+
+    def _provider(self, value):
+        return load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "p",
+                        "base_url": "https://x/v1",
+                        "api_key_env": "K",
+                        "allow_local_only": value,
+                    }
+                ]
+            }
+        )[0]
+
+    @pytest.mark.parametrize("value", ["false", "False", "no", "0", "off", ""])
+    def test_falsey_strings_fail_closed(self, value: str) -> None:
+        assert self._provider(value).allow_local_only is False
+
+    @pytest.mark.parametrize("value", ["true", "True", "yes", "1", "on"])
+    def test_truthy_strings_enable(self, value: str) -> None:
+        assert self._provider(value).allow_local_only is True
+
+    def test_native_booleans_preserved(self) -> None:
+        assert self._provider(True).allow_local_only is True
+        assert self._provider(False).allow_local_only is False
+
+    def test_unknown_string_fails_closed(self) -> None:
+        assert self._provider("maybe").allow_local_only is False

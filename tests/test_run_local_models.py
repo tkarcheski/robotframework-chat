@@ -1525,3 +1525,47 @@ class TestPrivacyRoutingGuard:
             sleep_fn=lambda _s: None,
         )
         assert len(results) == 2
+
+
+class TestEligibleSuiteBudgeting:
+    """Budget by the suites the provider can actually run, not all of them —
+    counting ineligible (privacy/context-skipped) suites can wrongly drop
+    models or empty `kept` even when eligible suites fit the budget (#525)."""
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_budget_counts_only_eligible_suites(self, mock_run: MagicMock) -> None:
+        from scripts.run_local_models import run_provider_runs
+
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        # 2 suites: math (public) + secret (local-only, ineligible for a
+        # non-ZDR provider). Budget fits 1 eligible suite (15 req) but not 2.
+        config["test_suites"] = [
+            {"name": "math", "path": "robot/math/", "timeout_seconds": 300},
+            {
+                "name": "secret",
+                "path": "robot/secret/",
+                "timeout_seconds": 300,
+                "privacy": "local-only",
+            },
+        ]
+        config["providers"] = [
+            {
+                "name": "openrouter",
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key_env": "OPENROUTER_API_KEY",
+                "models": ["a/b:free"],
+                "max_requests_per_day": 20,  # fits 1 suite (15), not 2 (30)
+                "requests_per_suite_estimate": 15,
+            }
+        ]
+        import os
+
+        os.environ["OPENROUTER_API_KEY"] = "sk-or-test"
+        try:
+            results = run_provider_runs(config, dry_run=True)
+        finally:
+            del os.environ["OPENROUTER_API_KEY"]
+        # The model must run on the single eligible suite, not be dropped as
+        # if the budget had to cover both suites.
+        assert [r.suite for r in results] == ["math"]
