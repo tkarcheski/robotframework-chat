@@ -53,8 +53,8 @@ class TestOllamaTimestampListener:
             listener = OllamaTimestampListener()
         assert listener._model == "unknown"
         with patch("rfc.ollama_timestamp_listener.BuiltIn") as mock_builtin_cls:
-            mock_builtin_cls.return_value.get_variable_value.side_effect = (
-                lambda name: {
+            mock_builtin_cls.return_value.get_variable_value.side_effect = lambda name: (
+                {
                     "${DEFAULT_MODEL}": "llama3:70b",
                     "${OLLAMA_ENDPOINT}": "http://ai-node:11434",
                 }.get(name)
