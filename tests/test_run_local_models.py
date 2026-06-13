@@ -1464,3 +1464,64 @@ class TestProviderContextCap:
             config, _provider(), "sk-or-abc", ["a/b:free"], sleep_fn=lambda _s: None
         )
         assert len(results) == 2
+
+
+class TestPrivacyRoutingGuard:
+    """local-only suites must never reach external providers (#512).
+
+    Free endpoints may train on prompts; the guard is mechanical, not
+    memory. Unknown privacy values fail closed (treated as local-only)."""
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_local_only_suite_skipped_on_external_provider(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        config["test_suites"][0]["privacy"] = "local-only"  # math
+        results = run_provider_suites(
+            config, _provider(), "sk-or-abc", ["a/b:free"], sleep_fn=lambda _s: None
+        )
+        assert [r.suite for r in results] == ["safety"]
+        assert mock_run.call_count == 1
+        out = capsys.readouterr().out
+        assert "local-only" in out
+        assert "math" in out
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_zdr_allowlisted_provider_may_run_local_only(
+        self, mock_run: MagicMock
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        config["test_suites"][0]["privacy"] = "local-only"
+        provider = _provider(allow_local_only=True)
+        results = run_provider_suites(
+            config, provider, "sk-or-abc", ["a/b:free"], sleep_fn=lambda _s: None
+        )
+        assert len(results) == 2
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_unknown_privacy_value_fails_closed(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        config["test_suites"][0]["privacy"] = "locale-only"  # typo
+        results = run_provider_suites(
+            config, _provider(), "sk-or-abc", ["a/b:free"], sleep_fn=lambda _s: None
+        )
+        assert [r.suite for r in results] == ["safety"]
+        assert "unknown privacy" in capsys.readouterr().out.lower()
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_public_default_runs_everywhere(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        results = run_provider_suites(
+            _provider_config(),
+            _provider(),
+            "sk-or-abc",
+            ["a/b:free"],
+            sleep_fn=lambda _s: None,
+        )
+        assert len(results) == 2

@@ -408,3 +408,34 @@ class TestProviderQuotas521R4:
         # llama-3.1-8b-instant context window is 131072; the benchmark needs
         # 131584, so the cap must be set to skip it (not unlimited).
         assert 0 < groq.max_context_tokens <= 131072
+
+
+class TestAllowLocalOnly:
+    def test_default_false(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "groq",
+                        "base_url": "https://api.groq.com/openai/v1",
+                        "api_key_env": "GROQ_API_KEY",
+                    }
+                ]
+            }
+        )
+        assert providers[0].allow_local_only is False
+
+    def test_parses_explicit_allowlist_flag(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "paid-zdr",
+                        "base_url": "https://api.example.com/v1",
+                        "api_key_env": "ZDR_API_KEY",
+                        "allow_local_only": True,
+                    }
+                ]
+            }
+        )
+        assert providers[0].allow_local_only is True

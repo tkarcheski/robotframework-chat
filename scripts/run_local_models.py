@@ -612,6 +612,18 @@ def run_provider_suites(
     for model in models:
         watermark = f"{provider.name}/{model}"
         for suite in suites:
+            privacy = str(suite.get("privacy", "public")).strip().lower()
+            if privacy != "public" and not provider.allow_local_only:
+                reason = (
+                    f"declares privacy '{privacy}'"
+                    if privacy == "local-only"
+                    else f"has unknown privacy value '{privacy}' (failing closed)"
+                )
+                print(
+                    f"  {tag} skipping suite '{suite['name']}': {reason}; "
+                    f"provider is not ZDR-allowlisted (#512)"
+                )
+                continue
             needed = int(suite.get("min_context_tokens", 0))
             if 0 < provider.max_context_tokens < needed:
                 print(

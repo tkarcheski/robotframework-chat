@@ -54,6 +54,9 @@ class ProviderConfig:
     #: Provider-wide context window cap in tokens; 0 means unlimited.
     #: Suites declaring a larger ``min_context_tokens`` are skipped (#509).
     max_context_tokens: int = 0
+    #: ZDR allowlist: only providers with a zero-data-retention agreement
+    #: may run ``privacy: local-only`` suites (#512). Default deny.
+    allow_local_only: bool = False
 
 
 def load_providers(config: dict[str, Any]) -> list[ProviderConfig]:
@@ -103,6 +106,7 @@ def load_providers(config: dict[str, Any]) -> list[ProviderConfig]:
                     )
                 ),
                 max_context_tokens=int(entry.get("max_context_tokens", 0)),
+                allow_local_only=bool(entry.get("allow_local_only", False)),
             )
         )
     return providers
