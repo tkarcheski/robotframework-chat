@@ -7,6 +7,7 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .provider_budget import record_env_request
 from .retry import retry_on_transient
 
 
@@ -124,6 +125,9 @@ class OpenAIClient:
                 headers=headers,
                 timeout=self.timeout,
             )
+            # Count every attempt that reached the provider — including 429s
+            # that get retried — so the daily budget reflects real spend (#515).
+            record_env_request()
             response.raise_for_status()
             data = response.json()
             text = data["choices"][0]["message"]["content"].strip()

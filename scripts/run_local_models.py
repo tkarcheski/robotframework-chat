@@ -68,6 +68,11 @@ from rfc.host_scheduler import (  # noqa: E402
     load_host_config,
     run_jobs,
 )
+from rfc.provider_budget import (  # noqa: E402
+    BUDGET_FILE_ENV,
+    PROVIDER_NAME_ENV,
+    ProviderBudget,
+)
 from rfc.providers import (  # noqa: E402
     ProviderConfig,
     discover_free_models,
@@ -607,11 +612,29 @@ def run_provider_suites(
             60.0 / provider.requests_per_minute
         )
 
+    # Runtime daily-budget counter (#515): the subprocess increments it per
+    # API request; we re-read it before each (model, suite) job and hard-stop
+    # once the day's spend reaches the limit, catching real overshoot the
+    # upfront estimate misses (retries, 429 re-attempts). A default path keeps
+    # the counter active even when the env var is unset; budget_file is shared
+    # with the subprocess so its requests are counted.
+    budget_file = os.getenv(BUDGET_FILE_ENV) or str(
+        _project_root / ".rfc_provider_budget.json"
+    )
+    budget = ProviderBudget(budget_file)
+
     results: list[RunResult] = []
     prev_start: float | None = None
     for model in models:
         watermark = f"{provider.name}/{model}"
         for suite in suites:
+            if budget.exhausted(provider.name, provider.max_requests_per_day):
+                print(
+                    f"  {tag} daily budget reached "
+                    f"({provider.max_requests_per_day} requests today) — "
+                    f"stopping further {provider.name} jobs (#515)."
+                )
+                return results
             cmd = _build_provider_robot_command(
                 config=config, suite=suite, provider=provider, model=model
             )
@@ -663,6 +686,11 @@ def run_provider_suites(
                 # Raw id for the API; prefixed watermark for attribution.
                 "DEFAULT_MODEL": model,
                 "RFC_MODEL_NAME": watermark,
+                # Shared runtime budget counter: the subprocess records each
+                # API request against this provider so the day's spend is
+                # capped at the source (#515).
+                BUDGET_FILE_ENV: budget_file,
+                PROVIDER_NAME_ENV: provider.name,
             }
             proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
             results.append(

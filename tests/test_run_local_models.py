@@ -1432,3 +1432,63 @@ class TestIterationLoopRunsProviders:
         with patch("scripts.run_local_models.verify_db_results", return_value=True):
             had_failure = run_iteration_loop(config, iterations=1, audit=False)
         assert had_failure is True
+
+
+class TestProviderBudgetHardStop:
+    """run_provider_suites must hard-stop dispatching once the provider's
+    runtime daily budget is reached, not just rely on the upfront estimate
+    (#515)."""
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_no_dispatch_when_budget_already_exhausted(
+        self, mock_run: MagicMock, tmp_path, capsys
+    ) -> None:
+        import os
+
+        from rfc.provider_budget import (
+            BUDGET_FILE_ENV,
+            PROVIDER_NAME_ENV,
+            ProviderBudget,
+        )
+
+        mock_run.return_value = MagicMock(returncode=0)
+        path = tmp_path / "budget.json"
+        ProviderBudget(path).record("openrouter", 1000)  # at the day's limit
+
+        provider = _provider(max_requests_per_day=1000)
+        with patch.dict(
+            os.environ,
+            {BUDGET_FILE_ENV: str(path), PROVIDER_NAME_ENV: "openrouter"},
+        ):
+            results = run_provider_suites(
+                _provider_config(),
+                provider,
+                "sk-or-abc",
+                ["a/b:free"],
+                sleep_fn=lambda _s: None,
+            )
+        assert results == []
+        assert mock_run.call_count == 0
+        assert "budget" in capsys.readouterr().out.lower()
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_subprocess_env_carries_budget_file_and_provider(
+        self, mock_run: MagicMock, tmp_path
+    ) -> None:
+        import os
+
+        from rfc.provider_budget import BUDGET_FILE_ENV, PROVIDER_NAME_ENV
+
+        mock_run.return_value = MagicMock(returncode=0)
+        path = tmp_path / "budget.json"
+        with patch.dict(os.environ, {BUDGET_FILE_ENV: str(path)}):
+            run_provider_suites(
+                _provider_config(),
+                _provider(),
+                "sk-or-abc",
+                ["a/b:free"],
+                sleep_fn=lambda _s: None,
+            )
+        env = mock_run.call_args.kwargs.get("env")
+        assert env[BUDGET_FILE_ENV] == str(path)
+        assert env[PROVIDER_NAME_ENV] == "openrouter"

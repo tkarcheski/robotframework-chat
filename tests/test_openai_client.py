@@ -516,3 +516,52 @@ class TestOpenAIResponseFormat:
 
         payload = mock_post.call_args[1]["json"]
         assert "response_format" not in payload
+
+
+class TestOpenAIClientBudgetCounting:
+    """generate() records each request to the env-configured provider budget
+    so the scheduler can hard-stop at the daily limit (#515)."""
+
+    def _ok_response(self) -> MagicMock:
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {
+            "choices": [{"message": {"content": "hi"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }
+        return resp
+
+    @patch("rfc.openai_client.requests.post")
+    def test_generate_increments_budget_when_env_set(self, mock_post, tmp_path):
+        from rfc.provider_budget import (
+            BUDGET_FILE_ENV,
+            PROVIDER_NAME_ENV,
+            ProviderBudget,
+        )
+
+        mock_post.return_value = self._ok_response()
+        path = tmp_path / "budget.json"
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "sk-test",
+                BUDGET_FILE_ENV: str(path),
+                PROVIDER_NAME_ENV: "openrouter",
+            },
+        ):
+            client = OpenAIClient(base_url="https://x/v1", model="m")
+            client.generate("q")
+            client.generate("q")
+        assert ProviderBudget(path).spent("openrouter") == 2
+
+    @patch("rfc.openai_client.requests.post")
+    def test_generate_no_budget_when_env_absent(self, mock_post, tmp_path):
+        from rfc.provider_budget import ProviderBudget
+
+        mock_post.return_value = self._ok_response()
+        path = tmp_path / "budget.json"
+        env = {k: v for k, v in os.environ.items() if not k.startswith("RFC_PROVIDER")}
+        env["OPENAI_API_KEY"] = "sk-test"
+        with patch.dict(os.environ, env, clear=True):
+            OpenAIClient(base_url="https://x/v1", model="m").generate("q")
+        assert not path.exists()
+        assert ProviderBudget(path).spent("openrouter") == 0
