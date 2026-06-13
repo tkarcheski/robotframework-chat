@@ -450,6 +450,37 @@ def _parse_heal(response: str) -> Optional[tuple[int, str, list[str]]]:
     return line_number, keyword, args
 
 
+def _normalize_keyword_name(name: str) -> str:
+    """Robot keyword-name normalization: case, spaces, underscores ignored."""
+    return name.replace(" ", "").replace("_", "").lower()
+
+
+def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
+    """True when a user keyword in the suite hierarchy would hijack the
+    inserted assertion.
+
+    Robot resolves suite-file user keywords before explicit library names
+    (``KeywordStore._get_runner`` tries them ahead of
+    ``_get_explicit_runner``), so even ``BuiltIn.``-qualified insertion is
+    not safe if the suite defines a keyword with that literal name (#516).
+    Walks the suite parent chain; imported resources are outside the
+    running model and are not inspected — collisions there are the suite
+    author's responsibility.
+    """
+    wanted = {
+        _normalize_keyword_name(keyword),
+        _normalize_keyword_name(f"BuiltIn.{keyword}"),
+    }
+    node = getattr(data, "parent", None)
+    while node is not None:
+        resource = getattr(node, "resource", None)
+        for kw in getattr(resource, "keywords", None) or []:
+            if _normalize_keyword_name(getattr(kw, "name", "") or "") in wanted:
+                return True
+        node = getattr(node, "parent", None)
+    return False
+
+
 def _fill_template(template: str, **values: Any) -> str:
     """Substitute ``{placeholder}`` tokens without ``str.format``.
 
@@ -1088,6 +1119,15 @@ class GenerativeListener(BaseListener):
         All failable work (deepcopy, tagging, keyword creation) happens
         here so callers can persist a truthful ``applied`` before the
         trivial list insert (#501)."""
+        if _suite_shadows_keyword(data, keyword):
+            logger.warning(
+                "GenerativeListener: not mutating %r — suite defines a user "
+                "keyword shadowing %r; the inserted assertion could be "
+                "hijacked (#516)",
+                test_name,
+                keyword,
+            )
+            return None
         assertion_line = "    ".join([keyword, *args])
         short_hash = hashlib.sha1(assertion_line.encode("utf-8")).hexdigest()[:8]
         try:
