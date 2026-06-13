@@ -1595,6 +1595,31 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
         FROM agentic_harnesses
         GROUP BY tool_name, rfc_version, COALESCE(outcome, 'running')
     """,
+    # heal:suggest candidates (#361): suggestion-only heals whose side
+    # experiment PASSED (heal_passed metric id = decision id || '-heal')
+    # with grader quality >= 0.7 (mutation_quality metric id = decision
+    # id, the same join key mutate mode uses). "This week" is applied as
+    # a dashboard time filter on recorded_ts (CAST to TIMESTAMP so Superset
+    # discovers it as temporal), keeping the SQL portable.
+    "agentic_healing_candidates": """
+        SELECT
+            CAST(d.recorded_at AS TIMESTAMP) AS recorded_ts,
+            d.session_id,
+            d.test_name,
+            d.prompt_model,
+            d.response_text,
+            q.metric_value AS mutation_quality,
+            hp.metric_value AS heal_passed
+        FROM agentic_decisions d
+        JOIN agentic_metrics hp
+          ON hp.id = d.id || '-heal' AND hp.metric_key = 'heal_passed'
+        JOIN agentic_metrics q
+          ON q.id = d.id AND q.metric_key = 'mutation_quality'
+        WHERE d.proposed_action = 'heal'
+          AND hp.metric_value >= 1.0
+          AND q.metric_value >= 0.7
+        ORDER BY d.recorded_at DESC
+    """,
 }
 
 _AGENTIC_CHART_DEFS: list[dict[str, Any]] = [
@@ -1729,6 +1754,26 @@ _AGENTIC_CHART_DEFS: list[dict[str, Any]] = [
             "row_limit": 500,
         },
     },
+    {
+        "slice_name": "Healing Candidates This Week",
+        "viz_type": "table",
+        "datasource_id_key": "agentic_healing_candidates",
+        "params": {
+            "columns": [
+                "recorded_ts",
+                "test_name",
+                "prompt_model",
+                "mutation_quality",
+                "heal_passed",
+                "response_text",
+                "session_id",
+            ],
+            "order_desc": True,
+            "row_limit": 100,
+            "time_range": "Last week",
+            "granularity_sqla": "recorded_ts",
+        },
+    },
 ]
 
 _AGENTIC_FILTER_CONFIGS: list[dict[str, Any]] = [
@@ -1807,6 +1852,12 @@ _AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
         "charts": [
             {"name": "Plugin Drift", "width": 6, "height": 50},
             {"name": "Skill SHA Heatmap", "width": 6, "height": 50},
+        ],
+    },
+    {
+        "label": "Self-Healing",
+        "charts": [
+            {"name": "Healing Candidates This Week", "width": 12, "height": 50},
         ],
     },
 ]
