@@ -722,6 +722,7 @@ AGENTIC_CHART_NAMES = {
     "Token Burn Rate",
     "Outcome Funnel",
     "Latency vs Grader Score",
+    "Healing Candidates This Week",
 }
 
 
@@ -915,6 +916,7 @@ class TestAgenticVirtualDatasets:
         "agentic_plugin_drift",
         "agentic_skill_outcomes",
         "agentic_outcome_funnel",
+        "agentic_healing_candidates",
     }
 
     def test_all_expected_keys_present(self) -> None:
@@ -983,11 +985,87 @@ class TestAgenticVirtualDatasets:
         assert changed[0]["semver"] == "1.1.0"
         assert changed[0]["prev_semver"] == "1.0.0"
 
+    def test_healing_candidates_columns(self, agentic_db: str) -> None:
+        cols = _probe_columns(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+        )
+        for col in (
+            "recorded_at",
+            "session_id",
+            "test_name",
+            "prompt_model",
+            "response_text",
+            "mutation_quality",
+            "heal_passed",
+        ):
+            assert col in cols
+
+    def test_healing_candidates_filters_quality_and_outcome(
+        self, agentic_db: str
+    ) -> None:
+        """Only heal decisions whose experiment PASSED with quality >= 0.7
+        surface as candidates (issue #361)."""
+        import sqlite3
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) "
+                "VALUES ('s1', 'claude-code', '2026-06-12T00:00:00')"
+            )
+            decisions = [
+                # (id, test, action) — d1 qualifies; d2 low quality;
+                # d3 experiment failed; d4 not a heal decision
+                ("d1", "good test", "heal"),
+                ("d2", "weak test", "heal"),
+                ("d3", "failed test", "heal"),
+                ("d4", "mutated test", "mutate"),
+            ]
+            conn.executemany(
+                "INSERT INTO agentic_decisions "
+                "(id, session_id, hook_event, prompt_model, prompt_text, "
+                "test_name, proposed_action, applied, recorded_at) "
+                "VALUES (?, 's1', 'end_test', 'm', 'p', ?, ?, 0, "
+                "'2026-06-12T00:00:01')",
+                decisions,
+            )
+            metrics = [
+                ("d1", "mutation_quality", 0.9),
+                ("d1-heal", "heal_passed", 1.0),
+                ("d2", "mutation_quality", 0.2),
+                ("d2-heal", "heal_passed", 1.0),
+                ("d3", "mutation_quality", 0.9),
+                ("d3-heal", "heal_passed", 0.0),
+                ("d4", "mutation_quality", 0.9),
+            ]
+            conn.executemany(
+                "INSERT INTO agentic_metrics "
+                "(id, session_id, metric_key, metric_value, recorded_at) "
+                "VALUES (?, 's1', ?, ?, '2026-06-12T00:00:02')",
+                metrics,
+            )
+            rows = conn.execute(
+                _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+            ).fetchall()
+            cols = [
+                d[0]
+                for d in conn.execute(
+                    _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+                ).description
+            ]
+
+        records = [dict(zip(cols, r, strict=True)) for r in rows]
+        assert len(records) == 1
+        assert records[0]["test_name"] == "good test"
+        assert records[0]["mutation_quality"] == 0.9
+        assert records[0]["heal_passed"] == 1.0
+
 
 class TestAgenticChartDefs:
-    """Tests for the six Agentic Stack Tracker charts."""
+    """Tests for the Agentic Stack Tracker charts."""
 
-    def test_all_six_charts_present(self) -> None:
+    def test_all_expected_charts_present(self) -> None:
         names = {c["slice_name"] for c in _AGENTIC_CHART_DEFS}
         assert AGENTIC_CHART_NAMES <= names
 

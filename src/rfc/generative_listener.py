@@ -54,15 +54,45 @@ tagged ``mutated:true`` (copies never re-mutate). Safety rails:
   as a noise filter (e.g. Superset alert on ``mutation_quality < 0.5``),
   never as a pass/fail verdict.
 
+**Heal mode (#361, suggestion-only, explicit opt-in).** When a suite is
+tagged ``heal:suggest``, the listener prompts the LLM after each
+opted-in test FAILS with the numbered test body and the failure
+message, and asks for a proposed fix: the 1-based body line to replace
+plus ONE replacement assertion (same allow-list and argument safety
+rails as mutate). The fix runs as a *side experiment* — a sibling copy
+named ``<original>::healed::<short_hash>`` tagged ``healed:true`` with
+exactly that line replaced — and:
+
+- **the original failure remains the official test outcome**; the
+  decision row (``proposed_action='heal'``) is recorded with
+  ``applied=0`` ALWAYS — CI never silently passes due to LLM
+  intervention, and automatic write-back of healed values to
+  ``.robot`` files is explicitly out of scope (#361).
+- the experiment's outcome is written to ``agentic_metrics`` as
+  ``metric_key='heal_passed'`` (1.0/0.0) with metric id
+  ``<decision_id>-heal``.
+- a parallel grader scores the proposed fix as ``mutation_quality``
+  with metric id equal to the decision id (same join key as mutate),
+  so the Superset "Healing Candidates This Week" chart can surface
+  passing experiments with quality >= 0.7 for human triage.
+
+This is distinct from :mod:`rfc.self_healing_listener`, which passively
+records RFC_DATA emitted by the :func:`rfc.self_healing.self_healing`
+keyword-retry decorator; heal mode generates *new* fix candidates via
+LLM and records them in ``agentic_decisions``.
+
 Every applied action persists a decision row with ``applied=1``;
 suggestions that cannot be applied (no next test to skip, no fork
 models configured, unparseable LLM output, disallowed mutation
 keyword) persist with ``applied=0``. ``generative:observe`` semantics
 are unchanged — observe-tagged suites never have their execution
-modified, whatever the LLM says. If a suite carries both tags, flow
-wins over mutate (one mode per suite). Execution of ``generative:flow``
-and ``generative:mutate`` suites diverges from the static ``.robot``
-file; CI consumers should treat them as exploratory, not gating.
+modified, whatever the LLM says. One mode per suite; when a suite
+carries several tags the precedence is flow > mutate > heal > observe.
+Execution of ``generative:flow``, ``generative:mutate``, and
+``heal:suggest`` suites diverges from the static ``.robot`` file; CI
+consumers should treat them as exploratory, not gating (for heal the
+*official* outcomes are unchanged — the experiment merely appears as an
+extra sibling test).
 
 A hard per-suite token budget prevents recursion / runaway cost: once
 ``RFC_GENERATIVE_BUDGET_TOKENS`` (default 10_000) is consumed, the
@@ -113,11 +143,20 @@ logger = logging.getLogger(__name__)
 GENERATIVE_OBSERVE_TAG = "generative:observe"
 GENERATIVE_FLOW_TAG = "generative:flow"
 GENERATIVE_MUTATE_TAG = "generative:mutate"
+HEAL_SUGGEST_TAG = "heal:suggest"
 RETRY_MARKER_TAG = "generative:retried"
 FORK_MARKER_TAG = "generative_fork:true"
 FORK_MODEL_TAG_PREFIX = "generative_fork:model:"
 MUTATED_MARKER_TAG = "mutated:true"
+HEALED_MARKER_TAG = "healed:true"
 MUTATION_QUALITY_METRIC = "mutation_quality"
+HEAL_PASSED_METRIC = "heal_passed"
+# agentic_metrics.id is a PRIMARY KEY and mutation_quality already uses the
+# bare decision id, so the heal-outcome metric derives its id from the
+# decision id with this suffix (chart join: hp.id = d.id || '-heal').
+# Hyphen, not colon: SQLAlchemy ``text()`` would read ``:heal`` inside the
+# dataset SQL as a bind parameter.
+HEAL_METRIC_ID_SUFFIX = "-heal"
 DEFAULT_GENERATIVE_MODEL = "llama3.2:1b"
 DEFAULT_BUDGET_TOKENS = 10_000
 
@@ -209,6 +248,42 @@ _DEFAULT_MUTATE_PROMPTS = {
         "A strict, meaningful assertion that checks real test output and "
         "would fail on a genuine regression; not a tautology, not vacuously "
         "true, not so loose that any output passes."
+    ),
+    "HEAL_PROMPT_TEMPLATE": (
+        "You are proposing a fix for a failed Robot Framework test (suite "
+        "opted in via the heal:suggest tag). Your fix runs as a SIDE "
+        "EXPERIMENT only; the original failure remains the official "
+        "outcome.\n"
+        "Test '{test}' in suite '{suite}' FAILED with message:\n{message}\n"
+        "Captured run data: {rfc_data}\n"
+        "The test body, one numbered line per keyword (number, then the "
+        "keyword and its arguments, four-space separated):\n"
+        "{body}\n"
+        "Propose a fix by replacing ONE body line with ONE corrected "
+        "assertion (e.g. an updated expected value).\n"
+        "Reply with EXACTLY two lines and nothing else:\n"
+        "line 1: the number of the body line to replace\n"
+        "line 2: the replacement in Robot Framework syntax — the keyword, "
+        "then each argument, separated by four spaces.\n"
+        "You may only use one of these keywords: {allowed_keywords}.\n"
+        "Arguments may contain only plain values and simple scalar "
+        "variables created by the test body, referenced exactly as they "
+        "appear there; inline expressions, environment variables, and "
+        "list/dict variables are rejected."
+    ),
+    "HEAL_GRADER_QUESTION": (
+        "A self-healing agent was asked to fix the failed Robot Framework "
+        "test '{test}' (suite '{suite}', failure message: {message}) by "
+        "replacing one body line with a corrected assertion. Judge the "
+        "quality of the proposed fix below: does it plausibly address the "
+        "failure while still checking real behavior — or does it merely "
+        "weaken the test until anything passes?\n"
+        "Proposed fix: {assertion}"
+    ),
+    "HEAL_GRADER_EXPECTED": (
+        "A plausible, targeted fix that addresses the observed failure and "
+        "still asserts something meaningful about real test output; not a "
+        "tautology, not an assertion loosened until any output passes."
     ),
 }
 
@@ -327,17 +402,50 @@ def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
         line = line.strip().strip("`").strip()
         if not line:
             continue
-        cells = [c.strip() for c in re.split(r"\t+| {2,}", line) if c.strip()]
-        if len(cells) < 2:
-            return None
-        keyword = _ALLOWED_MUTATION_LOOKUP.get(cells[0].lower())
-        if keyword is None:
-            return None
-        args = cells[1:]
-        if not all(_safe_mutation_arg(a) for a in args):
-            return None
-        return keyword, args
+        return _parse_assertion_line(line)
     return None
+
+
+def _parse_assertion_line(line: str) -> Optional[tuple[str, list[str]]]:
+    """Parse one ``keyword    arg    arg`` cell line; None when unsafe."""
+    cells = [c.strip() for c in re.split(r"\t+| {2,}", line) if c.strip()]
+    if len(cells) < 2:
+        return None
+    keyword = _ALLOWED_MUTATION_LOOKUP.get(cells[0].lower())
+    if keyword is None:
+        return None
+    args = cells[1:]
+    if not all(_safe_mutation_arg(a) for a in args):
+        return None
+    return keyword, args
+
+
+def _parse_heal(response: str) -> Optional[tuple[int, str, list[str]]]:
+    """Parse ``(line_number, keyword, args)`` from a heal response.
+
+    The prompt demands exactly two lines: a 1-based body line number,
+    then one replacement assertion. Only the first two non-empty lines
+    are honoured (same trailing-prose defence as :func:`_parse_action`
+    / :func:`_parse_mutation`); the assertion obeys the mutate safety
+    rails (allow-listed keyword, safe arguments). Anything else returns
+    ``None`` (recorded, never run). Range-checking the line number
+    against the actual body happens at build time.
+    """
+    lines = [ln for ln in (raw.strip() for raw in response.splitlines()) if ln]
+    if len(lines) < 2:
+        return None
+    number_word = lines[0].strip("*_`'\".,!?:;()[]{}").strip()
+    try:
+        line_number = int(number_word)
+    except ValueError:
+        return None
+    if line_number < 1:
+        return None
+    assertion = _parse_assertion_line(lines[1].strip("`").strip())
+    if assertion is None:
+        return None
+    keyword, args = assertion
+    return line_number, keyword, args
 
 
 def _fill_template(template: str, **values: Any) -> str:
@@ -353,15 +461,19 @@ def _fill_template(template: str, **values: Any) -> str:
     return template
 
 
-def _render_body(test: Any) -> str:
-    """Render a test body as Robot-style lines for the mutation prompt,
-    so the LLM can see the keywords, arguments, and assigned variables."""
+def _render_body(test: Any, numbered: bool = False) -> str:
+    """Render a test body as Robot-style lines for the mutation/heal
+    prompts, so the LLM can see the keywords, arguments, and assigned
+    variables. ``numbered`` prefixes each line with its 1-based number
+    (heal mode asks the LLM to name the line it wants to replace)."""
     lines = []
-    for kw in getattr(test, "body", None) or []:
+    for index, kw in enumerate(getattr(test, "body", None) or [], start=1):
         assign = [str(a) for a in (getattr(kw, "assign", None) or [])]
         name = getattr(kw, "name", "") or ""
         args = [str(a) for a in (getattr(kw, "args", None) or [])]
         cells = (["    ".join(assign) + " ="] if assign else []) + [name] + args
+        if numbered:
+            cells.insert(0, str(index))
         lines.append("    ".join(c for c in cells if c))
     return "\n".join(lines) or "(empty)"
 
@@ -424,6 +536,7 @@ class GenerativeListener(BaseListener):
         self._pending_skip_id = ""  # decision id to stamp on the next test
         self._retried_test_ids: set[int] = set()  # id(data): names may repeat
         self._suppressed_test_ids: set[int] = set()  # id(data) of skip targets
+        self._heal_experiment_ids: dict[int, str] = {}  # id(copy) -> decision id
 
     @property
     def persisted_count(self) -> int:
@@ -449,10 +562,13 @@ class GenerativeListener(BaseListener):
         self._pending_skip_id = ""
         self._retried_test_ids = set()
         self._suppressed_test_ids = set()
+        self._heal_experiment_ids = {}
         if _suite_has_tag(data, GENERATIVE_FLOW_TAG):
-            self._mode = "flow"  # flow wins when a suite carries both tags
+            self._mode = "flow"  # one mode per suite: flow > mutate > heal > observe
         elif _suite_has_tag(data, GENERATIVE_MUTATE_TAG):
             self._mode = "mutate"
+        elif _suite_has_tag(data, HEAL_SUGGEST_TAG):
+            self._mode = "heal"
         elif _suite_has_tag(data, GENERATIVE_OBSERVE_TAG):
             self._mode = "observe"
         else:
@@ -461,6 +577,7 @@ class GenerativeListener(BaseListener):
         mode_tag = {
             "flow": GENERATIVE_FLOW_TAG,
             "mutate": GENERATIVE_MUTATE_TAG,
+            "heal": HEAL_SUGGEST_TAG,
             "observe": GENERATIVE_OBSERVE_TAG,
         }[self._mode]
         self._session_id = active_session_id() or os.getenv("SESSION_ID", "")
@@ -517,6 +634,9 @@ class GenerativeListener(BaseListener):
             return
         if self._mode == "mutate":
             self._handle_mutation(data, result)
+            return
+        if self._mode == "heal":
+            self._handle_heal(data, result)
             return
         if self._mode != "flow":
             return
@@ -1000,14 +1120,6 @@ class GenerativeListener(BaseListener):
         write ``metric_key='mutation_quality'`` to ``agentic_metrics``,
         reusing the decision id as the metric id (the join key). Advisory
         only: failures are logged and never block the recorded mutation."""
-        if self._budget_exhausted:
-            return
-        if self._tokens_used >= self._budget_tokens:
-            self._write_budget_exhausted("end_test", test_name)
-            return
-        provider = self._get_provider()
-        if provider is None:
-            return
         prompts = _load_mutate_prompts()
         assertion_line = "    ".join([keyword, *args])
         question = _fill_template(
@@ -1017,7 +1129,32 @@ class GenerativeListener(BaseListener):
             status=status,
             assertion=assertion_line,
         )
-        expected = prompts["MUTATION_GRADER_EXPECTED"]
+        self._grade_assertion(
+            decision_id,
+            test_name,
+            question,
+            prompts["MUTATION_GRADER_EXPECTED"],
+            assertion_line,
+        )
+
+    def _grade_assertion(
+        self,
+        decision_id: str,
+        test_name: str,
+        question: str,
+        expected: str,
+        assertion_line: str,
+    ) -> None:
+        """Shared grading core for mutate and heal: score one proposed
+        assertion and write ``mutation_quality`` keyed by the decision id."""
+        if self._budget_exhausted:
+            return
+        if self._tokens_used >= self._budget_tokens:
+            self._write_budget_exhausted("end_test", test_name)
+            return
+        provider = self._get_provider()
+        if provider is None:
+            return
         grade = None
         try:
             grade = Grader(provider).grade(question, expected, assertion_line)
@@ -1052,6 +1189,176 @@ class GenerativeListener(BaseListener):
             logger.warning(
                 "GenerativeListener: could not persist mutation_quality for "
                 "decision %s: %s",
+                decision_id,
+                exc,
+            )
+
+    # ------------------------------------------------------------------
+    # Heal mode (#361)
+    # ------------------------------------------------------------------
+
+    def _handle_heal(self, data: Any, result: Any) -> None:
+        """On an opted-in failure, record an LLM-proposed fix (applied=0
+        ALWAYS — the original failure stays the official outcome) and run
+        it as a side-experiment sibling test."""
+        experiment_decision_id = self._heal_experiment_ids.pop(id(data), "")
+        if experiment_decision_id:
+            self._record_heal_outcome(experiment_decision_id, data, result)
+            return
+        if not _test_failed(result):
+            return
+        if (
+            _test_has_tag(data, HEALED_MARKER_TAG)
+            or _test_has_tag(data, MUTATED_MARKER_TAG)
+            or _test_has_tag(data, RETRY_MARKER_TAG)
+            or _test_has_tag(data, FORK_MARKER_TAG)
+        ):
+            return  # copies we (or other modes) inserted never re-heal
+        if not _test_has_tag(data, HEAL_SUGGEST_TAG):
+            return  # heal is per-test opt-in: untagged siblings stay static
+        test_name = getattr(data, "name", "") or ""
+        prompts = _load_mutate_prompts()
+        prompt = _fill_template(
+            prompts["HEAL_PROMPT_TEMPLATE"],
+            test=test_name,
+            suite=self._suite_name,
+            message=getattr(result, "message", "") or "none",
+            rfc_data=dict(self._current_test_data) or "none",
+            body=_render_body(data, numbered=True),
+            allowed_keywords=", ".join(ALLOWED_MUTATION_KEYWORDS),
+        )
+        response = self._prompt_llm("end_test", test_name, prompt)
+        if not response:
+            return
+        heal = _parse_heal(response)
+        decision_id = uuid4().hex
+        # Audit guarantee (same as flow/mutate): the decision row is
+        # persisted BEFORE the experiment is inserted; if persistence
+        # fails the experiment is withheld. The failable construction
+        # happens pre-persist; only the plain list insert remains after
+        # the row is written. `applied` stays 0 either way: a heal never
+        # changes the official outcome — heal_passed (written when the
+        # experiment finishes) is the signal that the experiment ran.
+        staged = None
+        body_len = len(getattr(data, "body", None) or [])
+        if heal is not None and self._suite_position(data)[0] is not None:
+            line_number, keyword, args = heal
+            if 1 <= line_number <= body_len:
+                staged = self._build_heal_copy(
+                    data, test_name, line_number, keyword, args
+                )
+            else:
+                logger.warning(
+                    "GenerativeListener: heal for %r targeted body line %d "
+                    "of %d; recorded, not run.",
+                    test_name,
+                    line_number,
+                    body_len,
+                )
+        persisted = self._persist(
+            AgenticDecision(
+                session_id=self._session_id,
+                hook_event="end_test",
+                prompt_model=getattr(self._provider, "model", "") or "",
+                prompt_text=prompt,
+                recorded_at=_utc_now(),
+                test_name=test_name,
+                response_text=response,
+                proposed_action="heal",
+                applied=0,  # ALWAYS: suggestion-only, no silent green-washing
+                tokens_used=self._tokens_used,
+                id=decision_id,
+            )
+        )
+        if not persisted:
+            if staged is not None:
+                logger.warning(
+                    "GenerativeListener: NOT running heal experiment for "
+                    "test %r — the decision row could not be persisted and "
+                    "heal experiments must stay auditable.",
+                    test_name,
+                )
+            return
+        if staged is None:
+            if heal is None:
+                logger.warning(
+                    "GenerativeListener: heal response for %r was not a line "
+                    "number plus one allow-listed assertion; recorded, not run.",
+                    test_name,
+                )
+            return
+        if not self._insert_mutation_copy(data, staged):
+            return
+        self._heal_experiment_ids[id(staged)] = decision_id
+        line_number, keyword, args = heal  # type: ignore[misc]
+        question = _fill_template(
+            prompts["HEAL_GRADER_QUESTION"],
+            test=test_name,
+            suite=self._suite_name,
+            message=getattr(result, "message", "") or "none",
+            assertion="    ".join([keyword, *args]),
+        )
+        self._grade_assertion(
+            decision_id,
+            test_name,
+            question,
+            prompts["HEAL_GRADER_EXPECTED"],
+            "    ".join([keyword, *args]),
+        )
+
+    def _build_heal_copy(
+        self,
+        data: Any,
+        test_name: str,
+        line_number: int,
+        keyword: str,
+        args: list[str],
+    ) -> Any | None:
+        """Construct the ``<original>::healed::<short_hash>`` side
+        experiment: a deep copy with body line ``line_number`` (1-based)
+        replaced by the proposed assertion."""
+        assertion_line = "    ".join([keyword, *args])
+        short_hash = hashlib.sha1(
+            f"{line_number}:{assertion_line}".encode()
+        ).hexdigest()[:8]
+        try:
+            copy = _copy_test(data)
+            copy.name = f"{test_name}::healed::{short_hash}"
+            _add_tag(copy, HEALED_MARKER_TAG)
+            copy.body.create_keyword(name=keyword, args=list(args))
+            replacement = copy.body.pop()
+            copy.body[line_number - 1] = replacement
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not build heal experiment for %r: %s",
+                test_name,
+                exc,
+            )
+            return None
+        return copy
+
+    def _record_heal_outcome(self, decision_id: str, data: Any, result: Any) -> None:
+        """Write the side experiment's outcome to ``agentic_metrics`` as
+        ``heal_passed`` (1.0/0.0) with id ``<decision_id>-heal`` — the
+        Superset healing-candidates chart joins it back to the decision."""
+        status = str(getattr(result, "status", "") or "").upper()
+        passed = status == "PASS" if status else bool(getattr(result, "passed", False))
+        db = self._get_db()
+        if db is None:
+            return
+        try:
+            db.save_metric(
+                AgenticMetric(
+                    session_id=self._session_id,
+                    metric_key=HEAL_PASSED_METRIC,
+                    metric_value=1.0 if passed else 0.0,
+                    recorded_at=_utc_now(),
+                    id=f"{decision_id}{HEAL_METRIC_ID_SUFFIX}",
+                )
+            )
+        except Exception as exc:  # skip-and-log: never fail the run
+            logger.warning(
+                "GenerativeListener: could not persist heal_passed for decision %s: %s",
                 decision_id,
                 exc,
             )
