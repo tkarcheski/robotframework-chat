@@ -339,3 +339,30 @@ class TestCerebrasReviewFindings521:
             "Cerebras budget too small to schedule any model — the provider "
             "would be silently skipped on every run"
         )
+
+
+class TestProviderModelsCurrent521R3:
+    """Configured provider models must be currently available (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _provider(self, name: str):
+        return next(p for p in load_providers(self._config()) if p.name == name)
+
+    def test_google_model_is_not_shut_down_gemini_2_0(self) -> None:
+        # gemini-2.0-flash shut down 2026-06-01; use a current Flash model.
+        google = self._provider("google-ai-studio")
+        assert "gemini-2.0-flash" not in google.models
+        assert any("flash" in m for m in google.models)
+
+    def test_benchmark_suite_declares_context_requirement(self) -> None:
+        # The benchmark suite drives num_ctx up to 131584; without
+        # min_context_tokens the Cerebras 8K cap silently never skips it (#521).
+        cfg = self._config()
+        bench = next(s for s in cfg["test_suites"] if s["name"] == "benchmark")
+        assert bench.get("min_context_tokens", 0) > 8192

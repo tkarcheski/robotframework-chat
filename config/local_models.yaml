@@ -111,6 +111,10 @@ test_suites:
     path: "robot/benchmark/"
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
     timeout_seconds: 1800
+    # Drives num_ctx to max_tokens*2+512 = 131,584 at the 65,536-token level,
+    # so providers with a smaller context cap (e.g. Cerebras 8K) skip-and-log
+    # instead of failing every case (#521).
+    min_context_tokens: 131584
 
   - name: "creativity"
     path: "robot/creativity/"
@@ -301,13 +305,16 @@ providers:
     requests_per_suite_estimate: 15
     max_context_tokens: 8192
 
-  # Google AI Studio free tier: 1,500 req/day on Gemini Flash, 15 RPM,
-  # via the OpenAI-compatible endpoint (#509).
+  # Google AI Studio free tier: 1,500 req/day on Gemini Flash, 15 RPM, via the
+  # OpenAI-compatible endpoint. gemini-2.5-flash is the current GA free-tier
+  # Flash model — gemini-2.0-flash was shut down 2026-06-01
+  # (ai.google.dev/gemini-api/docs/deprecations), so scheduling it fails every
+  # suite instead of running (#521).
   - name: "google-ai-studio"
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
     api_key_env: "GOOGLE_AI_STUDIO_API_KEY"
     models:
-      - "gemini-2.0-flash"
+      - "gemini-2.5-flash"
     discover_free_pool: false
     max_requests_per_day: 1500
     requests_per_minute: 15
