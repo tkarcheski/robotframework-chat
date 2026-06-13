@@ -1185,6 +1185,36 @@ class TestAgenticFilters:
         json.dumps(_AGENTIC_FILTER_CONFIGS)
 
 
+class TestAgenticDatasetIsCurrent:
+    """A dataset is current only when its SQL matches AND its stored columns
+    include rfc_version — fetch_metadata can fail independently of the SQL
+    commit, leaving rfc_version missing and the native filter broken (#508)."""
+
+    SQL = "SELECT rfc_version, tool_name FROM agentic_harnesses"
+
+    def test_sql_match_with_rfc_version_is_current(self) -> None:
+        assert _agentic_dataset_is_current(
+            self.SQL, ["rfc_version", "tool_name"], self.SQL
+        )
+
+    def test_sql_match_but_missing_rfc_version_needs_refresh(self) -> None:
+        # The bug: prior fetch_metadata failed, columns lack rfc_version, but
+        # SQL matches — must NOT be treated as current.
+        assert not _agentic_dataset_is_current(self.SQL, ["tool_name"], self.SQL)
+
+    def test_empty_columns_needs_refresh(self) -> None:
+        assert not _agentic_dataset_is_current(self.SQL, [], self.SQL)
+
+    def test_sql_differs_needs_refresh(self) -> None:
+        assert not _agentic_dataset_is_current("SELECT 1", ["rfc_version"], self.SQL)
+
+    def test_whitespace_only_sql_difference_is_current(self) -> None:
+        assert _agentic_dataset_is_current(self.SQL + "  \n", ["rfc_version"], self.SQL)
+
+    def test_none_stored_sql_needs_refresh(self) -> None:
+        assert not _agentic_dataset_is_current(None, ["rfc_version"], self.SQL)
+
+
 class TestPluginDriftPartitionsByTool:
     """Interleaved tools at stable versions must show zero drift (#484)."""
 
