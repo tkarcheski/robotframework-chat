@@ -66,9 +66,8 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
     provider = provider.lower().strip()
 
     if provider == "ollama":
-        return OllamaClient(**kwargs)
-
-    if provider == "openai":
+        client: LLMProvider = OllamaClient(**kwargs)
+    elif provider == "openai":
         from .openai_client import OpenAIClient
 
         api_key = kwargs.pop("api_key", "") or os.getenv("OPENAI_API_KEY", "")
@@ -78,11 +77,60 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
             raise MissingProviderConfigError(
                 provider="openai", variable="OPENAI_API_KEY"
             )
-        return OpenAIClient(api_key=api_key, **kwargs)
+        client = OpenAIClient(api_key=api_key, **kwargs)
+    else:
+        raise ValueError(
+            f"Unknown LLM provider: {provider!r}. Supported: 'ollama', 'openai'."
+        )
 
-    raise ValueError(
-        f"Unknown LLM provider: {provider!r}. Supported: 'ollama', 'openai'."
-    )
+    return _maybe_wrap_with_cache(client)
 
 
-__all__ = ["LLMClient", "LLMProvider", "create_provider", "resolve_timeout"]
+def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
+    """Wrap *client* in a caching layer when ``ANSWER_CACHE_ENABLED=1`` (#522).
+
+    Opt-in by design: measurement runs leave the cache off so every answer is
+    a fresh measurement. When enabled, the wrapper memoizes deterministic
+    ``generate()`` calls in Redis and degrades to a passthrough if Redis is
+    unreachable — a down cache must never fail a test.
+    """
+    if os.getenv("ANSWER_CACHE_ENABLED", "") != "1":
+        return client
+
+    from .answer_cache import AnswerCache, CachingProvider
+
+    cache = AnswerCache.from_env()
+    return CachingProvider(client, cache)
+
+
+def unwrap_provider(client: Any) -> Any:
+    """Return the underlying provider, peeling a caching wrapper if present.
+
+    A ``CachingProvider`` is a transparent proxy, so callers that need the
+    *concrete* provider type (rather than its structural interface) must
+    unwrap first. Non-wrapped clients return themselves (#523).
+    """
+    return getattr(client, "__wrapped__", client)
+
+
+def as_ollama(client: Any) -> Optional[OllamaClient]:
+    """Return *client* as an ``OllamaClient`` if it is one (through any cache
+    wrapper), else ``None``.
+
+    The Ollama-management keywords (Wait For LLM, Unload Model, Get Running
+    Models, LLM Is Busy, Set LLM Endpoint) need the concrete Ollama surface,
+    which a transparent proxy cannot satisfy by interface alone. Unwrapping
+    at the seam keeps the isinstance check honest and mypy-narrowable (#523).
+    """
+    inner = unwrap_provider(client)
+    return inner if isinstance(inner, OllamaClient) else None
+
+
+__all__ = [
+    "LLMClient",
+    "LLMProvider",
+    "as_ollama",
+    "create_provider",
+    "resolve_timeout",
+    "unwrap_provider",
+]

@@ -712,6 +712,7 @@ from bootstrap_dashboards import (  # noqa: E402
     _AGENTIC_LAYOUT_SECTIONS,
     _AGENTIC_TABLE_DDL,
     _AGENTIC_VIRTUAL_DATASETS,
+    _agentic_dataset_is_current,
     _build_agentic_position_json,
 )
 
@@ -722,6 +723,7 @@ AGENTIC_CHART_NAMES = {
     "Token Burn Rate",
     "Outcome Funnel",
     "Latency vs Grader Score",
+    "Healing Candidates This Week",
 }
 
 
@@ -915,6 +917,7 @@ class TestAgenticVirtualDatasets:
         "agentic_plugin_drift",
         "agentic_skill_outcomes",
         "agentic_outcome_funnel",
+        "agentic_healing_candidates",
     }
 
     def test_all_expected_keys_present(self) -> None:
@@ -983,11 +986,90 @@ class TestAgenticVirtualDatasets:
         assert changed[0]["semver"] == "1.1.0"
         assert changed[0]["prev_semver"] == "1.0.0"
 
+    def test_healing_candidates_columns(self, agentic_db: str) -> None:
+        cols = _probe_columns(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+        )
+        for col in (
+            "recorded_ts",
+            "session_id",
+            "test_name",
+            "prompt_model",
+            "response_text",
+            "mutation_quality",
+            "heal_passed",
+        ):
+            assert col in cols
+        # raw TEXT column must not leak through: Superset needs the
+        # CAST(... AS TIMESTAMP) alias for temporal filtering (PR #518)
+        assert "recorded_at" not in cols
+
+    def test_healing_candidates_filters_quality_and_outcome(
+        self, agentic_db: str
+    ) -> None:
+        """Only heal decisions whose experiment PASSED with quality >= 0.7
+        surface as candidates (issue #361)."""
+        import sqlite3
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) "
+                "VALUES ('s1', 'claude-code', '2026-06-12T00:00:00')"
+            )
+            decisions = [
+                # (id, test, action) — d1 qualifies; d2 low quality;
+                # d3 experiment failed; d4 not a heal decision
+                ("d1", "good test", "heal"),
+                ("d2", "weak test", "heal"),
+                ("d3", "failed test", "heal"),
+                ("d4", "mutated test", "mutate"),
+            ]
+            conn.executemany(
+                "INSERT INTO agentic_decisions "
+                "(id, session_id, hook_event, prompt_model, prompt_text, "
+                "test_name, proposed_action, applied, recorded_at) "
+                "VALUES (?, 's1', 'end_test', 'm', 'p', ?, ?, 0, "
+                "'2026-06-12T00:00:01')",
+                decisions,
+            )
+            metrics = [
+                ("d1", "mutation_quality", 0.9),
+                ("d1-heal", "heal_passed", 1.0),
+                ("d2", "mutation_quality", 0.2),
+                ("d2-heal", "heal_passed", 1.0),
+                ("d3", "mutation_quality", 0.9),
+                ("d3-heal", "heal_passed", 0.0),
+                ("d4", "mutation_quality", 0.9),
+            ]
+            conn.executemany(
+                "INSERT INTO agentic_metrics "
+                "(id, session_id, metric_key, metric_value, recorded_at) "
+                "VALUES (?, 's1', ?, ?, '2026-06-12T00:00:02')",
+                metrics,
+            )
+            rows = conn.execute(
+                _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+            ).fetchall()
+            cols = [
+                d[0]
+                for d in conn.execute(
+                    _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+                ).description
+            ]
+
+        records = [dict(zip(cols, r, strict=True)) for r in rows]
+        assert len(records) == 1
+        assert records[0]["test_name"] == "good test"
+        assert records[0]["mutation_quality"] == 0.9
+        assert records[0]["heal_passed"] == 1.0
+
 
 class TestAgenticChartDefs:
-    """Tests for the six Agentic Stack Tracker charts."""
+    """Tests for the Agentic Stack Tracker charts."""
 
-    def test_all_six_charts_present(self) -> None:
+    def test_all_expected_charts_present(self) -> None:
         names = {c["slice_name"] for c in _AGENTIC_CHART_DEFS}
         assert AGENTIC_CHART_NAMES <= names
 
@@ -1101,3 +1183,50 @@ class TestAgenticFilters:
 
     def test_filters_are_json_serializable(self) -> None:
         json.dumps(_AGENTIC_FILTER_CONFIGS)
+
+
+class TestPluginDriftPartitionsByTool:
+    """Interleaved tools at stable versions must show zero drift (#484)."""
+
+    def test_interleaved_tools_no_false_version_changes(self, agentic_db: str) -> None:
+        import sqlite3
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) VALUES (?, ?, ?)",
+                [
+                    ("c1", "claude-code", "2026-06-10T00:00:00"),
+                    ("x1", "codex", "2026-06-10T01:00:00"),
+                    ("c2", "claude-code", "2026-06-10T02:00:00"),
+                    ("x2", "codex", "2026-06-10T03:00:00"),
+                ],
+            )
+            # Same plugin, per-tool versions are individually STABLE.
+            conn.executemany(
+                "INSERT INTO agentic_plugins "
+                "(id, session_id, plugin_name, semver, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("p1", "c1", "anthropic", "1.0.0", "2026-06-10T00:00:01"),
+                    ("p2", "x1", "anthropic", "2.0.0", "2026-06-10T01:00:01"),
+                    ("p3", "c2", "anthropic", "1.0.0", "2026-06-10T02:00:01"),
+                    ("p4", "x2", "anthropic", "2.0.0", "2026-06-10T03:00:01"),
+                ],
+            )
+            rows = conn.execute(
+                _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+            ).fetchall()
+            cols = [
+                d[0]
+                for d in conn.execute(
+                    _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"]
+                ).description
+            ]
+            records = [dict(zip(cols, r)) for r in rows]
+            changed = [r for r in records if r["version_changed"] == 1]
+            assert changed == [], (
+                "stable per-tool versions must not be flagged as drift when "
+                "sessions from different tools interleave"
+            )
