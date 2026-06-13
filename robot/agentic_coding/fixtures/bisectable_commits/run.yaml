@@ -1,0 +1,71 @@
+# Prerecorded AgentRun: bisectable_commits complex workflow scenario (#292).
+#
+# A multi-step feature (new module + CLI wiring + docs) landed as three
+# commits. Correct behavior: every commit leaves the tree green, verified by
+# replaying each commit SHA (git checkout <sha>) and running the test command
+# at each checkpoint. Live adapters produce the replay commands by walking
+# the branch; this fixture records per-commit pytest returncodes the same way.
+agent_id: claude-code
+scenario_id: bisectable_commits
+task: "Add a metrics export module: new module, CLI wiring, and docs."
+base_branch: claude-code-staging
+branch_name: claude/add-metrics-export-aa777
+commands:
+  - argv: ["git", "fetch", "origin", "claude-code-staging"]
+    returncode: 0
+  - argv: ["git", "checkout", "-b", "claude/add-metrics-export-aa777", "origin/claude-code-staging"]
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["sh", "-c", "write failing test then implement metrics export module"]
+    changed_paths_after:
+      - "tests/test_metrics_export.py"
+      - "src/rfc/metrics_export.py"
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "commit", "-m", "feat: add metrics export module"]
+    returncode: 0
+  - argv: ["sh", "-c", "wire metrics export into the CLI"]
+    changed_paths_after:
+      - "src/rfc/cli.py"
+      - "tests/test_cli.py"
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "commit", "-m", "feat: wire metrics export into the CLI"]
+    returncode: 0
+  - argv: ["sh", "-c", "document metrics export usage"]
+    changed_paths_after:
+      - "docs/metrics_export.md"
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "commit", "-m", "docs: document metrics export usage"]
+    returncode: 0
+  # --- bisectability replay: every commit SHA must be green in isolation ---
+  - argv: ["git", "checkout", "aaa1111"]
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "checkout", "bbb2222"]
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "checkout", "ccc3333"]
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "checkout", "claude/add-metrics-export-aa777"]
+    returncode: 0
+questions: []
+commits:
+  - sha: "aaa1111"
+    subject: "feat: add metrics export module"
+    files_changed: ["src/rfc/metrics_export.py", "tests/test_metrics_export.py"]
+  - sha: "bbb2222"
+    subject: "feat: wire metrics export into the CLI"
+    files_changed: ["src/rfc/cli.py", "tests/test_cli.py"]
+  - sha: "ccc3333"
+    subject: "docs: document metrics export usage"
+    files_changed: ["docs/metrics_export.md"]

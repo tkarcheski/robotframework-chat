@@ -8,8 +8,7 @@ from robot.api.deco import keyword
 
 from .exceptions import EmptyLLMResponseError
 from .grader import Grader
-from .llm_client import create_provider, resolve_timeout
-from .ollama import OllamaClient
+from .llm_client import as_ollama, create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 from .thinking import estimate_token_count, parse_thinking
 
@@ -42,8 +41,9 @@ class LLMKeywords:
         providers, updates the base_url used for API calls.
         """
         logger.info(endpoint)
-        if isinstance(self.client, OllamaClient):
-            self.client.endpoint = endpoint
+        ollama = as_ollama(self.client)
+        if ollama is not None:
+            ollama.endpoint = endpoint
         elif hasattr(self.client, "base_url"):
             self.client.base_url = endpoint.rstrip("/")  # type: ignore[attr-defined]
         else:
@@ -174,10 +174,11 @@ class LLMKeywords:
         Returns:
             True if unloaded successfully.
         """
-        if not isinstance(self.client, OllamaClient):
+        ollama = as_ollama(self.client)
+        if ollama is None:
             logger.warn("Unload Model is only supported for Ollama providers")
             return False
-        return self.client.unload_model(model)
+        return ollama.unload_model(model)
 
     # Hard ceiling: no retry should exceed this token count.
     _MAX_TOKEN_CEILING = 131072
@@ -301,7 +302,8 @@ class LLMKeywords:
             | Wait For LLM | timeout=60 |
             | ${answer}= | Ask LLM | What is 2 + 2? |
         """
-        if not isinstance(self.client, OllamaClient):
+        ollama = as_ollama(self.client)
+        if ollama is None:
             logger.info("Non-Ollama provider — skipping wait (always ready)")
             return True
         timeout = int(timeout)
@@ -310,7 +312,7 @@ class LLMKeywords:
             f"Waiting for Ollama to be ready (timeout={timeout}s, "
             f"poll={poll_interval}s)"
         )
-        return self.client.wait_until_ready(timeout, poll_interval)
+        return ollama.wait_until_ready(timeout, poll_interval)
 
     @keyword("Get Running Models")
     def get_running_models(self) -> List[Dict[str, Any]]:
@@ -326,10 +328,11 @@ class LLMKeywords:
             | ${models}= | Get Running Models |
             | Log | Currently running: ${models} |
         """
-        if not isinstance(self.client, OllamaClient):
+        ollama = as_ollama(self.client)
+        if ollama is None:
             logger.info("Non-Ollama provider — running models not available")
             return []
-        models = self.client.running_models()
+        models = ollama.running_models()
         logger.info(f"Running models: {models}")
         return models
 
@@ -347,9 +350,10 @@ class LLMKeywords:
             | ${busy}= | LLM Is Busy |
             | Run Keyword If | ${busy} | Wait For LLM |
         """
-        if not isinstance(self.client, OllamaClient):
+        ollama = as_ollama(self.client)
+        if ollama is None:
             logger.info("Non-Ollama provider — busy check not available")
             return False
-        busy = self.client.is_busy()
+        busy = ollama.is_busy()
         logger.info(f"Ollama busy: {busy}")
         return busy

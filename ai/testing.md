@@ -57,6 +57,32 @@ Simple Math Should Be Deterministic
 - **Tier 1 – Robot + Python**
   - Robot keywords may call Python functions.
   - Python must return clear pass/fail back to Robot.
+  - **`verify:python` checks STRUCTURE, not CONTENT (owner-confirmed scope cap).**
+    A tier:1 verifier reasons over a *normalized artifact* (e.g. an `AgentRun`:
+    command tokens, exit codes, changed *paths*). It guarantees STRUCTURAL
+    properties and nothing more. The complex-workflow verifiers in
+    `src/rfc/agent_verifiers.py` are the canonical example: they guarantee
+    **structural commit-gating** — operator-aware effective status (an
+    `&&`/`||`/`;`/`|`/`&` chain's exit code is interpreted, not assumed), a
+    drop-a-side fragment denylist for conflict resolutions, and tokenized
+    command identity for the load-bearing verbs (`git commit`,
+    `git checkout <sha>`).
+  - A tier:1 verifier is **not a shell interpreter and does not certify
+    worktree contents.** The following are explicitly OUT OF SCOPE at tier:1
+    and are deferred to the **tier:4 sandbox pilot (#390)**, which can diff the
+    actual worktree against the contract:
+    - arbitrary shell-grammar evasion — e.g. pathspec checkout without `--`,
+      `echo` of a gating needle, abbreviated/prefix revision resolution,
+      rebase-continuation tokenizing beyond the current denylist, background
+      `&` content effects;
+    - content-level claims — "both conflict sides were preserved", "the
+      upstream change was actually applied";
+    - live-runner per-command capture nuances — fixture wording for runners
+      that do not inject the scenario event.
+  - Rationale: widening a tier:1 denylist/tokenizer to chase arbitrary shell
+    grammar is a runaway loop with no fixed point. Structural commit-gating is
+    guaranteed at tier:1; content/grammar verification is a tier:4 (#390)
+    concern by design.
 
 - **Tier 2 – Robot + LLM**
   - One LLM grader receives model output and returns a grade.
