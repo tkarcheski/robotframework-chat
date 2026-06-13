@@ -329,3 +329,78 @@ class TestRunJobs:
         run_jobs([host], jobs, run_fn, global_max_parallel=1)
         # Both x jobs run back-to-back before y (affinity), regardless of queue order
         assert executed == ["x/s1", "x/s2", "y/s1"]
+
+
+# ---------------------------------------------------------------------------
+# Same-model serialization (#482)
+# ---------------------------------------------------------------------------
+
+
+class TestSameModelSerialization:
+    """Two jobs targeting the same model must never overlap on one host.
+
+    Residency in ``/api/ps`` does not mean idle (#482): if the scheduler
+    dispatches two same-model suites to one host, both pass
+    ``wait_until_ready`` and generate concurrently. The scheduler is the
+    layer that must serialize them.
+    """
+
+    def test_same_model_jobs_never_overlap_on_one_host(self) -> None:
+        host = _host(models=["a"], max_parallel=2)
+        jobs = _jobs("a", "a", "a")
+        lock = threading.Lock()
+        active_a = 0
+        max_active_a = 0
+
+        def run_fn(h: HostState, j: Job) -> dict[str, Any]:
+            nonlocal active_a, max_active_a
+            with lock:
+                active_a += 1
+                max_active_a = max(max_active_a, active_a)
+            threading.Event().wait(0.02)
+            with lock:
+                active_a -= 1
+            return {"returncode": 0}
+
+        outcome = run_jobs([host], jobs, run_fn, global_max_parallel=8)
+        assert len(outcome.results) == 3
+        assert outcome.unscheduled == []
+        assert max_active_a == 1
+
+    def test_distinct_models_still_run_concurrently_on_one_host(self) -> None:
+        host = _host(models=["a", "b"], max_parallel=2)
+        jobs = _jobs("a", "b")
+        barrier = threading.Barrier(2, timeout=5)
+
+        def run_fn(h: HostState, j: Job) -> dict[str, Any]:
+            barrier.wait()  # deadlocks (and times out) unless both run at once
+            return {"returncode": 0}
+
+        outcome = run_jobs([host], jobs, run_fn, global_max_parallel=4)
+        assert len(outcome.results) == 2
+
+    def test_same_model_jobs_run_concurrently_on_distinct_hosts(self) -> None:
+        h1 = _host("h1", models=["a"])
+        h2 = _host("h2", models=["a"])
+        jobs = _jobs("a", "a")
+        barrier = threading.Barrier(2, timeout=5)
+
+        def run_fn(h: HostState, j: Job) -> dict[str, Any]:
+            barrier.wait()
+            return {"returncode": 0}
+
+        outcome = run_jobs([h1, h2], jobs, run_fn, global_max_parallel=4)
+        assert len(outcome.results) == 2
+
+    def test_pick_next_job_skips_model_already_in_flight(self) -> None:
+        host = _host(models=["a", "b"], max_parallel=2)
+        host.active_models["a"] += 1
+        jobs = _jobs("a", "b")
+        idx = pick_next_job(host, jobs)
+        assert idx is not None
+        assert jobs[idx].model == "b"
+
+    def test_pick_next_job_returns_none_when_only_busy_model_pending(self) -> None:
+        host = _host(models=["a"], max_parallel=2)
+        host.active_models["a"] += 1
+        assert pick_next_job(host, _jobs("a", "a")) is None
