@@ -39,10 +39,122 @@ with no fixed point and is intentionally not done here.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+import shlex
+from collections.abc import Callable, Iterable, Sequence
 
 from rfc.agent_contract import AgentContract
 from rfc.agent_run import AgentCommand, AgentRun
+
+# Shell builtins that merely print/return without executing their arguments.
+# A test or git needle appearing only as their argument (``echo 'uv run
+# pytest'``, ``echo git rebase --continue``) is text, not an invocation, and
+# must not satisfy a gate (#503 round 10).
+_NON_EXECUTING_HEADS = frozenset({"echo", "printf", ":", "true", "false"})
+
+# Minimum length for an abbreviated revision to be trusted as naming a commit
+# (Git's default short-hash length); below this, a prefix is too ambiguous.
+_MIN_ABBREV_SHA = 7
+
+
+def _tokenize(sub: str) -> list[str]:
+    """Best-effort shell tokenization, falling back to whitespace splitting."""
+    try:
+        return shlex.split(sub)
+    except ValueError:
+        return sub.split()
+
+
+def _command_head(tokens: Sequence[str]) -> tuple[str | None, int]:
+    """The executed program in *tokens* and its index, skipping ``VAR=val`` env
+    assignments. Returns ``(None, len)`` when nothing is executed."""
+    i = 0
+    while i < len(tokens) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[i]):
+        i += 1
+    if i >= len(tokens):
+        return None, i
+    return tokens[i], i
+
+
+def _runs_command(sub: str, needle: str) -> bool:
+    """True when *sub* actually invokes *needle* as a command, not merely
+    contains its text.
+
+    A substring check treats ``echo 'uv run pytest'`` as a test run; here the
+    subcommand must not be headed by a non-executing builtin (``echo``/``:``),
+    and the needle's tokens must appear as a contiguous run within the executed
+    command — so a runner prefix (``uv run pytest`` for needle ``pytest``) still
+    matches while echoed text does not (#503 round 10).
+    """
+    tokens = _tokenize(sub)
+    head, start = _command_head(tokens)
+    if head is None or head in _NON_EXECUTING_HEADS:
+        return False
+    needle_tokens = needle.split()
+    if not needle_tokens:
+        return False
+    for j in range(start, len(tokens) - len(needle_tokens) + 1):
+        if tokens[j : j + len(needle_tokens)] == needle_tokens:
+            return True
+    return False
+
+
+def _git_subcommand_tokens(sub: str) -> list[str] | None:
+    """Tokens of a ``git`` invocation after its global options, else ``None``.
+
+    Returns the tokens following ``git`` and any global options (``-c k=v``,
+    ``-C dir``, other leading ``-x`` flags) — e.g. ``git -C . commit -m x`` →
+    ``["commit", "-m", "x"]``. Returns ``None`` when *sub* is not actually a
+    git invocation (e.g. ``echo git ...``), so substring look-alikes do not
+    pass git-specific predicates (#503 round 10).
+    """
+    tokens = _tokenize(sub)
+    head, i = _command_head(tokens)
+    if head != "git":
+        return None
+    i += 1  # skip ``git``
+    while i < len(tokens) and tokens[i].startswith("-"):
+        # ``-c key=val`` and ``-C dir`` consume the following token as a value
+        # (unless given glued, e.g. ``-Cdir``).
+        if tokens[i] in ("-c", "-C") and "=" not in tokens[i]:
+            i += 2
+        else:
+            i += 1
+    return tokens[i:]
+
+
+def _rev_names_commit(token: str, sha: str) -> bool:
+    """True when *token* names the commit *sha* exactly or by unambiguous prefix.
+
+    Live runs record full ``%H`` hashes, but an agent may check out a short
+    revision (``git checkout dae86e``); the leading substring names the same
+    object, so an exact-only comparison rejects a valid replay (#503 round 10).
+    """
+    token = token.lower()
+    sha = sha.lower()
+    if token == sha:
+        return True
+    return len(token) >= _MIN_ABBREV_SHA and sha.startswith(token)
+
+
+def _as_subcommand_predicate(
+    match: str | Callable[[str], bool],
+) -> Callable[[str], bool]:
+    """Normalize a needle-or-predicate into a subcommand predicate."""
+    if callable(match):
+        return match
+    needle = match
+    return lambda sub: needle in sub
+
+
+def _is_git_rebase_continue(sub: str) -> bool:
+    """True when *sub* is a real ``git rebase --continue`` invocation.
+
+    Tokenized so ``echo git rebase --continue`` (which prints the words and
+    never advances the rebase) is not mistaken for a completion (#503 round
+    10)."""
+    rest = _git_subcommand_tokens(sub)
+    return rest is not None and rest[:1] == ["rebase"] and "--continue" in rest[1:]
+
 
 _PLACEHOLDER_PATTERN = re.compile(
     r"^\s*(?:tbd|todo|see above|placeholder|x+)\s*$", re.IGNORECASE
@@ -63,6 +175,16 @@ def _command_matches(cmd: AgentCommand, needle: str) -> bool:
 def _find_command_index(run: AgentRun, needle: str, start: int = 0) -> int | None:
     for idx in range(start, len(run.commands)):
         if _command_matches(run.commands[idx], needle):
+            return idx
+    return None
+
+
+def _find_command_index_where(
+    run: AgentRun, predicate: Callable[[str], bool], start: int = 0
+) -> int | None:
+    """First command at or after *start* with a subcommand matching *predicate*."""
+    for idx in range(start, len(run.commands)):
+        if any(predicate(sub) for sub in run.commands[idx].shell_subcommands()):
             return idx
     return None
 
@@ -292,52 +414,50 @@ def _is_git_commit(sub: str) -> bool:
     Git permits global options between ``git`` and the subcommand, e.g.
     ``git -c user.name=bot commit`` or ``git -C path commit`` (``git -h``). A
     plain ``"git commit" in sub`` substring misses these forms, so a commit run
-    that way slips past the commit-while-red gate (#503 round 9). Walk the
-    tokens after ``git``, skipping global options (``-c k=v`` and ``-C dir``
-    take a value; other leading ``-x`` flags do not) until the first
-    non-option token, and check it is ``commit``.
+    that way slips past the commit-while-red gate (#503 round 9). ``echo git
+    commit`` is likewise excluded — it is not an executed git invocation.
     """
-    tokens = sub.split()
-    if not tokens or tokens[0] != "git":
-        return False
-    i = 1
-    while i < len(tokens) and tokens[i].startswith("-"):
-        # ``-c key=val`` and ``-C dir`` consume the following token as a value
-        # (unless it was given glued, e.g. ``-Cdir``).
-        if tokens[i] in ("-c", "-C") and "=" not in tokens[i]:
-            i += 2
-        else:
-            i += 1
-    return i < len(tokens) and tokens[i] == "commit"
+    rest = _git_subcommand_tokens(sub)
+    return rest is not None and rest[:1] == ["commit"]
 
 
 def _is_head_checkout(sub: str, sha: str) -> bool:
     """True when *sub* is a ``git checkout <sha>`` that moves HEAD to *sha*.
 
-    The subcommand must *be* a ``git checkout`` invocation (its leading tokens
-    are ``git checkout``), not merely contain that text: a substring match
-    accepts ``echo git checkout <sha>``, which prints the words and never moves
-    HEAD, so a following green test runs against the previous commit and cannot
-    certify this SHA (#503 round 8). Tokens are matched after splitting on
-    whitespace so the SHA is its own argument, not a prefix of a longer word.
+    The subcommand must *be* a ``git checkout`` invocation (not merely contain
+    that text, so ``echo git checkout <sha>`` is rejected — it prints the words
+    and never moves HEAD, #503 round 8), and the rev must name *sha* exactly or
+    by an unambiguous abbreviated prefix (``git checkout dae86e`` for a full
+    ``%H``, #503 round 10).
 
-    Excludes the pathspec form ``git checkout <sha> -- <path>``, which only
-    restores files into the working tree without switching HEAD — tests run
-    afterwards still execute the previous commit, so it cannot certify a
-    replay (#503).
+    Excludes the pathspec forms ``git checkout <sha> -- <path>`` AND
+    ``git checkout <sha> <path>`` (``--`` is optional per git-checkout): both
+    restore files into the working tree without switching HEAD, so a following
+    test still runs the previous commit and cannot certify a replay (#503
+    rounds 8 & 10). A checkout is therefore accepted only when its single
+    positional argument is the rev — any extra positional (a pathspec) or an
+    explicit ``--`` disqualifies it.
     """
-    tokens = sub.split()
-    if tokens[:2] != ["git", "checkout"]:
+    rest = _git_subcommand_tokens(sub)
+    if rest is None or rest[:1] != ["checkout"]:
         return False
-    if sha not in tokens[2:]:
-        return False
-    return " -- " not in sub
+    args = rest[1:]
+    if "--" in args:
+        return False  # explicit pathspec form: HEAD is not moved
+    positionals = [tok for tok in args if not tok.startswith("-")]
+    if len(positionals) != 1:
+        return False  # zero or an extra positional (pathspec) → not a bare move
+    return _rev_names_commit(positionals[0], sha)
 
 
-def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
-    """Effective status of the last *needle* subcommand in *cmd*.
+def _effective_status(
+    cmd: AgentCommand, match: str | Callable[[str], bool]
+) -> str | None:
+    """Effective status of the last subcommand in *cmd* matching *match*.
 
-    Returns ``"green"`` / ``"red"`` / ``"masked"`` / ``None`` (no match).
+    *match* is either a needle (substring test) or a predicate over the
+    subcommand string. Returns ``"green"`` / ``"red"`` / ``"masked"`` /
+    ``None`` (no match).
 
     A subcommand's result is reflected in the command's returncode only when
     every operator AFTER it is ``&&`` (or it is the last subcommand). A
@@ -349,10 +469,11 @@ def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
     runs only if a prior command failed (``true || pytest`` skips the test),
     so its success cannot be assumed from a zero exit either (#503).
     """
+    pred = _as_subcommand_predicate(match)
     pairs = cmd.shell_subcommands_with_operators()
     idx: int | None = None
     for i, (_op, sub) in enumerate(pairs):
-        if needle in sub:
+        if pred(sub):
             idx = i
     if idx is None:
         return None
@@ -467,15 +588,15 @@ def assert_rebase_resolved_without_dropping_changes(
             )
         last_resolution_idx = max(last_resolution_idx, resolution_idx)
 
-    continue_idx = _find_command_index(
-        run, "git rebase --continue", start=last_resolution_idx
+    continue_idx = _find_command_index_where(
+        run, _is_git_rebase_continue, start=last_resolution_idx
     )
     if continue_idx is None:
         raise VerificationFailure(
             "No 'git rebase --continue' after the conflict resolution edit"
         )
     continue_cmd = run.commands[continue_idx]
-    continue_status = _effective_status(continue_cmd, "git rebase --continue")
+    continue_status = _effective_status(continue_cmd, _is_git_rebase_continue)
     if continue_status == "masked":
         raise VerificationFailure(
             f"'git rebase --continue' result is masked ({continue_cmd.joined()!r}):"
@@ -517,7 +638,9 @@ def assert_no_commit_while_tests_red(
         for pos, sub in enumerate(subs):
             if not _is_git_commit(sub):
                 continue
-            test_positions = [i for i in range(pos) if test_needle in subs[i]]
+            test_positions = [
+                i for i in range(pos) if _runs_command(subs[i], test_needle)
+            ]
             if test_positions:
                 nearest = test_positions[-1]
                 joining_ops = [pairs[i][0] for i in range(nearest + 1, pos + 1)]
@@ -561,7 +684,7 @@ def assert_no_commit_while_tests_red(
                     f"Commit {sub!r} while tests were red: most recent "
                     f"{test_needle!r} run ({last_test_repr!r}) {detail}"
                 )
-        status = _effective_status(cmd, test_needle)
+        status = _effective_status(cmd, lambda s: _runs_command(s, test_needle))
         if status is not None:
             last_test_status = status
             last_test_cmd = cmd
@@ -653,7 +776,7 @@ def assert_every_commit_is_green(
                 ):
                     moved_on = True
                     break
-                if test_command in sub:
+                if _runs_command(sub, test_command):
                     test_cmd = cmd
                     test_idx = idx
                     break
@@ -687,7 +810,9 @@ def assert_every_commit_is_green(
                 f"checkout and {test_command!r}, so the test exercised a dirty "
                 "tree, not the commit — the replay cannot certify it"
             )
-        test_status = _effective_status(test_cmd, test_command)
+        test_status = _effective_status(
+            test_cmd, lambda s: _runs_command(s, test_command)
+        )
         if test_status != "green":
             reason = (
                 "had its result masked (|| or ; wrapper), so green could not "

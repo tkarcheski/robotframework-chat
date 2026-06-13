@@ -1256,7 +1256,10 @@ class TestReviewFindingsPr503Round9:
 class TestReviewFindingsPr503Round9AnchorEdit:
     """Codex round-9: an edit bundled into the replay-boundary (anchor)
     command — `git checkout <sha> && sed ...` with the test in a LATER
-    command — left the worktree dirty but was not counted (#503)."""
+    command — left the worktree dirty but was not counted (#503).
+
+    (Renamed from a second ``...Round9`` class that shadowed the first; both
+    sets of round-9 tests now collect.)"""
 
     def test_anchor_edit_with_test_in_later_command_invalidates(self) -> None:
         run = _minimal_run(
@@ -1333,3 +1336,118 @@ class TestReviewFindingsPr503Round10HeadMovers:
         )
         with pytest.raises(VerificationFailure, match="after its replay checkout"):
             assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round10:
+    """Codex round-10 — substring matches that an ``echo`` (or a pathspec
+    checkout) defeats, plus an over-strict full-SHA comparison:
+
+    * ``git checkout <sha> src/x.py`` (pathspec WITHOUT ``--``) restores a file
+      and leaves HEAD put, yet was accepted as a replay checkpoint (the guard
+      rejected only the ``--`` form).
+    * ``echo 'uv run pytest' && git commit`` — the ``echo`` merely prints the
+      test text; it must not satisfy the green-test gate that excuses a commit.
+    * ``echo git rebase --continue`` — likewise prints text; it must not be
+      accepted as a completed rebase continuation.
+    * Abbreviated revisions: an agent may ``git checkout dae86e`` while the
+      recorded commit SHA is the full 40-char ``%H``; the unambiguous prefix
+      names the same object and must still certify the replay.
+    """
+
+    _FULL_SHA = "dae86e1f2a3b4c5d6e7f8091a2b3c4d5e6f70819"
+
+    def test_pathspec_checkout_without_dashes_is_not_a_checkpoint(self) -> None:
+        # `git checkout <sha> src/module.py` restores one file; HEAD never
+        # moves, so a following green test ran against the previous commit.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 src/module.py"),
+                    returncode=0,
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="never replayed"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_pathspec_checkout_with_dashes_is_not_a_checkpoint(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 -- src/module.py"),
+                    returncode=0,
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="never replayed"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_abbreviated_sha_checkout_certifies(self) -> None:
+        # `git checkout dae86e1` names the full SHA; the replay must be accepted.
+        run = _minimal_run(
+            commits=(AgentCommit(sha=self._FULL_SHA, subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "dae86e1"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_echoed_test_does_not_excuse_commit_while_red(self) -> None:
+        # A real `uv run pytest` was red; the next command only ECHOES the test
+        # text before committing, so the commit is still on red.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "echo 'uv run pytest' && git commit -m 'feat: x'",
+                    ),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_real_in_chain_test_still_excuses_commit(self) -> None:
+        # Guard: a genuine `uv run pytest && git commit` chain must still pass.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_echoed_rebase_continue_is_not_a_completion(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("bash", "-lc", "sed -i s/a/b/ src/rfc/config.py"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(
+                argv=("bash", "-lc", "echo git rebase --continue"),
+                returncode=0,
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="rebase --continue"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_real_rebase_continue_still_completes(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("bash", "-lc", "sed -i s/a/b/ src/rfc/config.py"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        assert_rebase_resolved_without_dropping_changes(run)
