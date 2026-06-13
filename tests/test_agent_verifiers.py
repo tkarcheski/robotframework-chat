@@ -999,3 +999,51 @@ class TestReviewFindingsPr503Round4:
         )
         with pytest.raises(VerificationFailure, match="mask"):
             assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+
+class TestReviewFindingsPr503Round6:
+    """Codex round-6 P1s on the replay verifier: a pathspec checkout does not
+    move HEAD, and an edit between checkout and test certifies a dirty tree."""
+
+    def test_pathspec_checkout_does_not_count_as_replay(self) -> None:
+        # `git checkout <sha> -- path` restores files without moving HEAD, so
+        # the following test runs on the previous commit.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 -- src/module.py"),
+                    returncode=0,
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="never replayed"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_edit_between_checkout_and_test_invalidates_replay(self) -> None:
+        # checkout → edit a file → green test certifies a repaired/dirty tree,
+        # not the commit itself.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("sh", "-c", "patch src/rfc/x.py"),
+                    changed_paths_after=("src/rfc/x.py",),
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="modified|dirty|worktree"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_clean_replay_still_passes(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")

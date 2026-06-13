@@ -229,6 +229,17 @@ _HEAD_MOVING_FRAGMENTS = (
 )
 
 
+def _is_head_checkout(sub: str, sha: str) -> bool:
+    """True when *sub* is a ``git checkout <sha>`` that moves HEAD to *sha*.
+
+    Excludes the pathspec form ``git checkout <sha> -- <path>``, which only
+    restores files into the working tree without switching HEAD — tests run
+    afterwards still execute the previous commit, so it cannot certify a
+    replay (#503).
+    """
+    return "git checkout" in sub and sha in sub and " -- " not in sub
+
+
 def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
     """Effective status of the last *needle* subcommand in *cmd*.
 
@@ -461,8 +472,7 @@ def assert_every_commit_is_green(
         checkout_idx = None
         for idx, cmd in enumerate(run.commands):
             if any(
-                "git checkout" in sub and commit.sha in sub
-                for sub in cmd.shell_subcommands()
+                _is_head_checkout(sub, commit.sha) for sub in cmd.shell_subcommands()
             ):
                 checkout_idx = idx
                 break
@@ -493,6 +503,7 @@ def assert_every_commit_is_green(
 
         test_cmd: AgentCommand | None = None
         moved_on = False
+        dirty_edit: AgentCommand | None = None
         for idx in range(checkout_idx, len(run.commands)):
             cmd = run.commands[idx]
             subs = cmd.shell_subcommands()
@@ -504,11 +515,15 @@ def assert_every_commit_is_green(
                 co_pos = next(
                     i
                     for i, sub in enumerate(subs)
-                    if "git checkout" in sub and commit.sha in sub
+                    if _is_head_checkout(sub, commit.sha)
                 )
                 scan = list(enumerate(subs))[co_pos + 1 :]
             else:
                 scan = list(enumerate(subs))
+            # A worktree edit after the checkout but before the test means the
+            # test exercised a modified/repaired tree, not the commit (#503).
+            if idx > checkout_idx and cmd.changed_paths_after:
+                dirty_edit = cmd
             for spos, sub in scan:
                 # A HEAD-moving command after the checkout ends the checkpoint
                 # (git checkout/switch/reset --hard all move HEAD off the
@@ -527,6 +542,13 @@ def assert_every_commit_is_green(
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}): no {test_command!r} "
                 f"recorded after its replay checkout"
+            )
+        if dirty_edit is not None:
+            raise VerificationFailure(
+                f"Commit {commit.sha} ({commit.subject!r}): the worktree was "
+                f"modified ({dirty_edit.changed_paths_after}) between the replay "
+                f"checkout and {test_command!r}, so the test exercised a dirty "
+                "tree, not the commit — the replay cannot certify it"
             )
         test_status = _effective_status(test_cmd, test_command)
         if test_status != "green":
