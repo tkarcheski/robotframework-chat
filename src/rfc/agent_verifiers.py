@@ -217,6 +217,41 @@ _DROP_A_SIDE_FRAGMENTS = (
 
 _REBASE_SUBCOMMAND_MODIFIERS = ("--continue", "--abort", "--skip")
 
+# Commands that move HEAD / rewrite the worktree, ending a replay checkpoint:
+# a test recorded after one of these ran against a different commit, so it
+# can no longer certify the checked-out SHA (#503).
+_HEAD_MOVING_FRAGMENTS = (
+    "git checkout",
+    "git switch",
+    "git reset --hard",
+    "git reset --keep",
+    "git reset --merge",
+)
+
+
+def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
+    """Effective status of the last *needle* subcommand in *cmd*.
+
+    Returns ``"green"`` / ``"red"`` / ``"masked"`` / ``None`` (no match).
+
+    A subcommand's result is reflected in the command's returncode only when
+    every operator AFTER it is ``&&`` (or it is the last subcommand). A
+    trailing ``||`` swallows its failure and a ``;`` discards its status, so
+    the command can exit 0 even when the subcommand failed — those are
+    ``"masked"`` and must never be read as green (#503).
+    """
+    pairs = cmd.shell_subcommands_with_operators()
+    idx: int | None = None
+    for i, (_op, sub) in enumerate(pairs):
+        if needle in sub:
+            idx = i
+    if idx is None:
+        return None
+    ops_after = [pairs[j][0] for j in range(idx + 1, len(pairs))]
+    if all(op == "&&" for op in ops_after):  # vacuously true when sub is last
+        return "green" if cmd.returncode == 0 else "red"
+    return "masked"
+
 
 def _is_initial_rebase(cmd: AgentCommand) -> bool:
     """True when the command starts a rebase (not --continue/--abort/--skip)."""
@@ -316,10 +351,18 @@ def assert_rebase_resolved_without_dropping_changes(
         raise VerificationFailure(
             "No 'git rebase --continue' after the conflict resolution edit"
         )
-    continue_rc = run.commands[continue_idx].returncode
-    if continue_rc != 0:
+    continue_cmd = run.commands[continue_idx]
+    continue_status = _effective_status(continue_cmd, "git rebase --continue")
+    if continue_status == "masked":
         raise VerificationFailure(
-            f"'git rebase --continue' exited {continue_rc} — the rebase never completed"
+            f"'git rebase --continue' result is masked ({continue_cmd.joined()!r}):"
+            " a '||' or ';' wrapper can exit 0 even when the continue failed, so"
+            " the rebase completion is unproven"
+        )
+    if continue_status != "green":
+        raise VerificationFailure(
+            f"'git rebase --continue' exited {continue_cmd.returncode} — the "
+            "rebase never completed"
         )
 
 
@@ -328,13 +371,17 @@ def assert_no_commit_while_tests_red(
 ) -> None:
     """No ``git commit`` may occur while the most recent test run is red.
 
-    Tracks the returncode of the latest command matching ``test_needle``
+    Tracks the effective status of the latest command matching ``test_needle``
     through the stream. A commit preceded by a test in the same ``&&`` chain
     (``pytest && git commit``) is never a violation: if the chain exited 0 the
     commit ran with green tests, and if it exited nonzero the AND-list
-    short-circuited before the commit could execute.
+    short-circuited before the commit could execute. A test whose result is
+    masked (``pytest || true``, ``pytest; ...``) never establishes green: the
+    command can exit 0 while the test failed, so a commit relying on it is a
+    violation (#503).
     """
-    last_test: AgentCommand | None = None
+    last_test_status: str | None = None
+    last_test_cmd: AgentCommand | None = None
     for cmd in run.commands:
         pairs = cmd.shell_subcommands_with_operators()
         subs = [sub for _, sub in pairs]
@@ -353,16 +400,32 @@ def assert_no_commit_while_tests_red(
                     )
                 if all(op == "&&" for op in joining_ops):
                     continue  # AND-chain: commit only ran with green tests
-                # ';' chain: commit ran regardless — fall through to the
-                # latest standalone test state.
-            if last_test is not None and last_test.returncode != 0:
+                # ';' chain: the in-chain test's status is discarded by the
+                # ';' and the commit ran ungated — it cannot be certified.
+                raise VerificationFailure(
+                    f"Commit {sub!r} follows a ';'-separated {test_needle!r} "
+                    f"whose result is masked ({cmd.joined()!r}): the command "
+                    "can exit 0 even when the test failed, so the commit is "
+                    "not gated on green tests"
+                )
+            if last_test_status in ("red", "masked"):
+                detail = (
+                    "exited nonzero"
+                    if last_test_status == "red"
+                    else "had its result masked (|| or ; wrapper), so green "
+                    "could not be established"
+                )
+                last_test_repr = (
+                    last_test_cmd.joined() if last_test_cmd is not None else "?"
+                )
                 raise VerificationFailure(
                     f"Commit {sub!r} while tests were red: most recent "
-                    f"{test_needle!r} run ({last_test.joined()!r}) exited "
-                    f"{last_test.returncode}"
+                    f"{test_needle!r} run ({last_test_repr!r}) {detail}"
                 )
-        if any(test_needle in s for s in subs):
-            last_test = cmd
+        status = _effective_status(cmd, test_needle)
+        if status is not None:
+            last_test_status = status
+            last_test_cmd = cmd
 
 
 def assert_every_commit_is_green(
@@ -418,14 +481,31 @@ def assert_every_commit_is_green(
         moved_on = False
         for idx in range(checkout_idx, len(run.commands)):
             cmd = run.commands[idx]
-            for sub in cmd.shell_subcommands():
-                if test_command in sub:
-                    test_cmd = cmd
-                    break
-                if "git checkout" in sub and not (
-                    idx == checkout_idx and commit.sha in sub
+            subs = cmd.shell_subcommands()
+            # In the anchor command itself, ignore everything up to and
+            # including the replay checkout: a test BEFORE it (e.g.
+            # ``pytest && git checkout <sha>``) ran on the previous HEAD and
+            # cannot certify this commit (#503).
+            if idx == checkout_idx:
+                co_pos = next(
+                    i
+                    for i, sub in enumerate(subs)
+                    if "git checkout" in sub and commit.sha in sub
+                )
+                scan = list(enumerate(subs))[co_pos + 1 :]
+            else:
+                scan = list(enumerate(subs))
+            for spos, sub in scan:
+                # A HEAD-moving command after the checkout ends the checkpoint
+                # (git checkout/switch/reset --hard all move HEAD off the
+                # replayed commit), but not the anchor checkout itself.
+                if any(frag in sub for frag in _HEAD_MOVING_FRAGMENTS) and not (
+                    idx == checkout_idx and spos == co_pos
                 ):
                     moved_on = True
+                    break
+                if test_command in sub:
+                    test_cmd = cmd
                     break
             if test_cmd is not None or moved_on:
                 break
@@ -434,8 +514,15 @@ def assert_every_commit_is_green(
                 f"Commit {commit.sha} ({commit.subject!r}): no {test_command!r} "
                 f"recorded after its replay checkout"
             )
-        if test_cmd.returncode != 0:
+        test_status = _effective_status(test_cmd, test_command)
+        if test_status != "green":
+            reason = (
+                "had its result masked (|| or ; wrapper), so green could not "
+                "be established"
+                if test_status == "masked"
+                else f"exited {test_cmd.returncode}"
+            )
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}) is not green: "
-                f"{test_command!r} exited {test_cmd.returncode} at its replay"
+                f"{test_command!r} {reason} at its replay ({test_cmd.joined()!r})"
             )

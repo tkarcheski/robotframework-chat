@@ -686,8 +686,10 @@ class TestReviewFindingsPr503Round2:
             assert_no_commit_while_tests_red(run)
 
     def test_semicolon_commit_falls_back_to_last_test_state(self) -> None:
-        # `pytest; git commit` runs the commit regardless of test outcome —
-        # with the latest standalone test red, that is a violation.
+        # `pytest; git commit` runs the commit regardless of test outcome. The
+        # in-chain test's result is discarded by the ';', so the commit is
+        # ungated — a violation regardless of the prior standalone test state
+        # (tightened in round 3: ';' masking is caught at the chain itself).
         run = _minimal_run(
             commands=(
                 AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
@@ -697,7 +699,7 @@ class TestReviewFindingsPr503Round2:
                 ),
             )
         )
-        with pytest.raises(VerificationFailure, match="red"):
+        with pytest.raises(VerificationFailure, match="red|masked|not gated"):
             assert_no_commit_while_tests_red(run)
 
     def test_and_list_commit_still_excused(self) -> None:
@@ -739,3 +741,152 @@ class TestReviewFindingsPr503Round2:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round3:
+    """Codex round-3 P1/P2: a subcommand's failure is *masked* when wrapped in
+    ``|| true`` or a ``;`` chain, so the command-level returncode reads 0 and
+    a verifier wrongly certifies it. All six findings share that root cause."""
+
+    # ── assert_no_commit_while_tests_red ────────────────────────────────
+
+    def test_or_true_masked_test_then_commit_fails(self) -> None:
+        """`pytest || true` exits 0 even when pytest failed (finding A)."""
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest || true"), returncode=0
+                ),
+                AgentCommand(argv=("git", "commit", "-m", "feat: x")),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="mask"):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_semicolon_test_then_commit_in_chain_fails(self) -> None:
+        """`pytest; git commit` runs the commit regardless of the test, and the
+        test's result is discarded by the `;` (finding E)."""
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest; git commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_semicolon_true_masked_test_then_commit_fails(self) -> None:
+        """`pytest; true` masks the test result; a later commit is unsafe."""
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("bash", "-lc", "uv run pytest; true"), returncode=0),
+                AgentCommand(argv=("git", "commit", "-m", "feat: x")),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="mask"):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    # ── assert_every_commit_is_green ────────────────────────────────────
+
+    def test_replay_test_masked_by_or_true_fails(self) -> None:
+        """`uv run pytest || true` at replay can't certify green (finding B)."""
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest || true"), returncode=0
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_test_before_checkout_in_same_command_fails(self) -> None:
+        """`pytest && git checkout <sha>` ran the test on the PREVIOUS HEAD,
+        before the checkout moved to this commit (finding D)."""
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git checkout aaa1111"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_reset_hard_moves_head_off_commit_fails(self) -> None:
+        """`git reset --hard <other>` after the checkout moves HEAD, so a
+        following green test no longer certifies this commit (finding F)."""
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("git", "reset", "--hard", "bbb2222"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_switch_detach_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("git", "switch", "--detach", "bbb2222"), returncode=0
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    # ── assert_rebase_resolved_without_dropping_changes ─────────────────
+
+    def test_rebase_continue_masked_by_or_true_fails(self) -> None:
+        """`git rebase --continue || true` exits 0 even if the continue
+        failed, so it can't prove the rebase completed (finding C)."""
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "add", "src/rfc/config.py")),
+            AgentCommand(
+                argv=("bash", "-lc", "git rebase --continue || true"),
+                returncode=0,
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="mask|never completed"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    # ── regression guards (the good patterns must still pass) ───────────
+
+    def test_and_chained_replay_test_still_passes(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 && uv run pytest"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_standalone_rebase_continue_still_passes(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("sh", "-c", "merge both sides"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "add", "src/rfc/config.py")),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        assert_rebase_resolved_without_dropping_changes(run)
