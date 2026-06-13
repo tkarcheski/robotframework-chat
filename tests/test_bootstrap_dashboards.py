@@ -990,7 +990,7 @@ class TestAgenticVirtualDatasets:
             agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
         )
         for col in (
-            "recorded_at",
+            "recorded_ts",
             "session_id",
             "test_name",
             "prompt_model",
@@ -999,6 +999,9 @@ class TestAgenticVirtualDatasets:
             "heal_passed",
         ):
             assert col in cols
+        # raw TEXT column must not leak through: Superset needs the
+        # CAST(... AS TIMESTAMP) alias for temporal filtering (PR #518)
+        assert "recorded_at" not in cols
 
     def test_healing_candidates_filters_quality_and_outcome(
         self, agentic_db: str

@@ -1595,10 +1595,11 @@ _AGENTIC_VIRTUAL_DATASETS: dict[str, str] = {
     # experiment PASSED (heal_passed metric id = decision id || '-heal')
     # with grader quality >= 0.7 (mutation_quality metric id = decision
     # id, the same join key mutate mode uses). "This week" is applied as
-    # a dashboard time filter on recorded_at, keeping the SQL portable.
+    # a dashboard time filter on recorded_ts (CAST to TIMESTAMP so Superset
+    # discovers it as temporal), keeping the SQL portable.
     "agentic_healing_candidates": """
         SELECT
-            d.recorded_at,
+            CAST(d.recorded_at AS TIMESTAMP) AS recorded_ts,
             d.session_id,
             d.test_name,
             d.prompt_model,
@@ -1755,7 +1756,7 @@ _AGENTIC_CHART_DEFS: list[dict[str, Any]] = [
         "datasource_id_key": "agentic_healing_candidates",
         "params": {
             "columns": [
-                "recorded_at",
+                "recorded_ts",
                 "test_name",
                 "prompt_model",
                 "mutation_quality",
@@ -1766,7 +1767,7 @@ _AGENTIC_CHART_DEFS: list[dict[str, Any]] = [
             "order_desc": True,
             "row_limit": 100,
             "time_range": "Last week",
-            "granularity_sqla": "recorded_at",
+            "granularity_sqla": "recorded_ts",
         },
     },
 ]
