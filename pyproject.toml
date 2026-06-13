@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "1.16.1"
+version = "1.16.2"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 license = "Apache-2.0"
 readme = "readme.md"
