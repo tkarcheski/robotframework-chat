@@ -18,6 +18,7 @@ that performs the actual Robot Framework run and returns a result object.
 from __future__ import annotations
 
 import tomllib
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
@@ -141,10 +142,21 @@ class HostState:
     loaded_models: list[str] = field(default_factory=list)
     last_loaded: str | None = None
     running: int = 0
+    active_models: Counter[str] = field(default_factory=Counter)
 
     def eligible(self, job: Job) -> bool:
         """Whether this host can run *job* at all."""
         return job.model in self.models and job.model not in self.spec.skip_models
+
+    def can_start(self, job: Job) -> bool:
+        """Whether *job* may be dispatched here right now.
+
+        Eligible, and no same-model job already in flight on this host:
+        Ollama residency in ``/api/ps`` does not imply idleness, so two
+        concurrent same-model runs would both pass ``wait_until_ready``
+        and contend for the model (#482).
+        """
+        return self.eligible(job) and self.active_models[job.model] == 0
 
     def prefers(self, job: Job) -> bool:
         """Whether *job*'s model is (believed) resident in VRAM on this host.
@@ -164,12 +176,15 @@ def pick_next_job(host: HostState, pending: list[Job]) -> int | None:
       1. First job whose model is already loaded on this host (affinity).
       2. First job whose model is merely available on this host.
 
+    Jobs whose model already has a run in flight on this host are skipped
+    entirely — same-model jobs are serialized per host (#482).
+
     Returns:
-        Index into *pending*, or ``None`` if no pending job is eligible.
+        Index into *pending*, or ``None`` if no pending job is dispatchable.
     """
     fallback: int | None = None
     for idx, job in enumerate(pending):
-        if not host.eligible(job):
+        if not host.can_start(job):
             continue
         if host.prefers(job):
             return idx
@@ -219,43 +234,54 @@ def run_jobs(
     global_cap = max(1, global_max_parallel)
     pending = list(jobs)
     results: list[Any] = []
-    in_flight: dict[Future[Any], HostState] = {}
+    in_flight: dict[Future[Any], tuple[HostState, Job]] = {}
     stopped_early = False
     # Higher priority hosts get first pick each dispatch round.
     hosts_by_priority = sorted(hosts, key=lambda h: -h.spec.priority)
 
-    with ThreadPoolExecutor(max_workers=global_cap) as pool:
-        while True:
-            # Dispatch as much as caps and eligibility allow.
-            if not stopped_early:
-                dispatched = True
-                while dispatched and pending and len(in_flight) < global_cap:
-                    dispatched = False
-                    for host in hosts_by_priority:
-                        if len(in_flight) >= global_cap:
-                            break
-                        if host.running >= host.spec.max_parallel:
-                            continue
-                        idx = pick_next_job(host, pending)
-                        if idx is None:
-                            continue
-                        job = pending.pop(idx)
-                        host.running += 1
-                        host.last_loaded = job.model
-                        in_flight[pool.submit(run_fn, host, job)] = host
-                        dispatched = True
+    try:
+        with ThreadPoolExecutor(max_workers=global_cap) as pool:
+            while True:
+                # Dispatch as much as caps and eligibility allow.
+                if not stopped_early:
+                    dispatched = True
+                    while dispatched and pending and len(in_flight) < global_cap:
+                        dispatched = False
+                        for host in hosts_by_priority:
+                            if len(in_flight) >= global_cap:
+                                break
+                            if host.running >= host.spec.max_parallel:
+                                continue
+                            idx = pick_next_job(host, pending)
+                            if idx is None:
+                                continue
+                            job = pending.pop(idx)
+                            host.running += 1
+                            host.active_models[job.model] += 1
+                            host.last_loaded = job.model
+                            in_flight[pool.submit(run_fn, host, job)] = (host, job)
+                            dispatched = True
 
-            if not in_flight:
-                break  # nothing running and nothing dispatchable
+                if not in_flight:
+                    break  # nothing running and nothing dispatchable
 
-            done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
-            for future in done:
-                host = in_flight.pop(future)
-                host.running -= 1
-                result = future.result()
-                results.append(result)
-                if stop_on_failure and failure_of(result):
-                    stopped_early = True
+                done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+                for future in done:
+                    host, job = in_flight.pop(future)
+                    host.running -= 1
+                    host.active_models[job.model] -= 1
+                    result = future.result()
+                    results.append(result)
+                    if stop_on_failure and failure_of(result):
+                        stopped_early = True
+    finally:
+        # A worker exception propagates out of future.result() above; the
+        # executor drains remaining workers on shutdown, but their entries
+        # would otherwise leave running/active_models permanently inflated
+        # on a reused HostState (Codex P2, PR #519).
+        for host, job in in_flight.values():
+            host.running -= 1
+            host.active_models[job.model] -= 1
 
     return ScheduleOutcome(
         results=results,

@@ -246,3 +246,136 @@ class TestModelHarnessColumn:
                 "SELECT model_harness FROM test_results_full WHERE test_name = 't1'"
             ).fetchone()
         assert row[0] == "claude-opus-4-7[1m]"
+
+
+# A test_results table predating the cache_hit provenance column (#524).
+_PRE_CACHE_HIT_TEST_RESULTS_DDL = """
+CREATE TABLE test_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    test_name TEXT NOT NULL,
+    test_status TEXT NOT NULL,
+    score REAL,
+    tags TEXT,
+    tag_severity TEXT,
+    tag_tier INTEGER,
+    tag_verify TEXT,
+    eval_count INTEGER,
+    thinking_tokens INTEGER
+)
+"""
+
+
+class TestCacheHitColumn:
+    """The answer cache (#522) records provenance on a hit; that flag must be
+    persisted so a replayed answer is queryable, never mistaken for a fresh
+    zero-token measurement (#524)."""
+
+    def test_fresh_db_has_cache_hit_column(self, tmp_path):
+        db_file = tmp_path / "test.db"
+        TestDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(test_results)")}
+        assert "cache_hit" in cols
+
+    def test_cache_hit_added_to_existing_pre_migration_db(self, tmp_path):
+        db_file = tmp_path / "test.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(_PRE_MIGRATION_TEST_RUNS_DDL)
+            conn.execute(_PRE_CACHE_HIT_TEST_RESULTS_DDL)
+            conn.execute(
+                "INSERT INTO test_runs (timestamp, model_name, test_suite) "
+                "VALUES (?, ?, ?)",
+                ("2026-01-01T00:00:00", "llama3", "math"),
+            )
+            conn.execute(
+                "INSERT INTO test_results (run_id, test_name, test_status) "
+                "VALUES (?, ?, ?)",
+                (1, "t1", "PASS"),
+            )
+        TestDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(test_results)")}
+            row = conn.execute(
+                "SELECT cache_hit FROM test_results WHERE test_name = 't1'"
+            ).fetchone()
+        assert "cache_hit" in cols
+        # Pre-existing rows default to "not a cache hit", not NULL/unknown.
+        assert row[0] in (0, False, None)
+
+    def test_round_trip_persists_cache_hit(self, tmp_path):
+        db_file = tmp_path / "test.db"
+        db = TestDatabase(db_path=str(db_file))
+        run = TestRun(
+            timestamp=datetime(2026, 5, 9, 0, 0, 0),
+            model_name="llama3",
+            test_suite="math",
+            total_tests=1,
+            passed=1,
+            failed=0,
+            skipped=0,
+            duration_seconds=1.0,
+        )
+        run_id = db.add_test_run(run)
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id, test_name="hit", test_status="PASS", cache_hit=True
+                ),
+                TestResult(run_id=run_id, test_name="miss", test_status="PASS"),
+            ]
+        )
+        with sqlite3.connect(str(db_file)) as conn:
+            hit = conn.execute(
+                "SELECT cache_hit FROM test_results WHERE test_name = 'hit'"
+            ).fetchone()
+            miss = conn.execute(
+                "SELECT cache_hit FROM test_results WHERE test_name = 'miss'"
+            ).fetchone()
+        assert hit[0] in (1, True)
+        assert miss[0] in (0, False)
+
+    def test_view_exposes_cache_hit(self, tmp_path):
+        db_file = tmp_path / "test.db"
+        db = TestDatabase(db_path=str(db_file))
+        run = TestRun(
+            timestamp=datetime(2026, 5, 9, 0, 0, 0),
+            model_name="llama3",
+            test_suite="math",
+            total_tests=1,
+            passed=1,
+            failed=0,
+            skipped=0,
+            duration_seconds=1.0,
+        )
+        run_id = db.add_test_run(run)
+        db.add_test_results(
+            [
+                TestResult(
+                    run_id=run_id, test_name="t1", test_status="PASS", cache_hit=True
+                )
+            ]
+        )
+        with sqlite3.connect(str(db_file)) as conn:
+            row = conn.execute(
+                "SELECT cache_hit FROM test_results_full WHERE test_name = 't1'"
+            ).fetchone()
+        assert row[0] in (1, True)
+
+    def test_cache_hit_dataclass_default_is_false(self):
+        r = TestResult(run_id=1, test_name="t", test_status="PASS")
+        assert r.cache_hit is False
+
+    def test_pg_migrations_add_cache_hit_before_view(self):
+        migrations = _SQLAlchemyBackend._PG_MIGRATIONS
+        add_idx = next(
+            i
+            for i, sql in enumerate(migrations)
+            if "ADD COLUMN IF NOT EXISTS cache_hit" in sql
+        )
+        view_idx = next(
+            i
+            for i, sql in enumerate(migrations)
+            if "CREATE VIEW test_results_full" in sql
+        )
+        assert add_idx < view_idx
