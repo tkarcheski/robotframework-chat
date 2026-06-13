@@ -565,3 +565,39 @@ class TestOpenAIClientBudgetCounting:
             OpenAIClient(base_url="https://x/v1", model="m").generate("q")
         assert not path.exists()
         assert ProviderBudget(path).spent("openrouter") == 0
+
+
+class TestOpenAIClientBudgetCountsAttempts:
+    """A transient failure that gets retried still hit the provider, so each
+    attempt must be counted before it can raise (#515 review)."""
+
+    @patch("rfc.openai_client.requests.post")
+    def test_retried_attempt_is_counted(self, mock_post, tmp_path):
+        import requests as req
+
+        from rfc.provider_budget import (
+            BUDGET_FILE_ENV,
+            PROVIDER_NAME_ENV,
+            ProviderBudget,
+        )
+
+        ok = MagicMock(status_code=200)
+        ok.json.return_value = {
+            "choices": [{"message": {"content": "hi"}}],
+            "usage": {},
+        }
+        # first attempt times out (already reached the provider), then succeeds
+        mock_post.side_effect = [req.exceptions.ReadTimeout("slow"), ok]
+        path = tmp_path / "b.json"
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "sk-test",
+                BUDGET_FILE_ENV: str(path),
+                PROVIDER_NAME_ENV: "openrouter",
+            },
+        ):
+            OpenAIClient(base_url="https://x/v1", model="m", max_retries=2).generate(
+                "q"
+            )
+        assert ProviderBudget(path).spent("openrouter") == 2

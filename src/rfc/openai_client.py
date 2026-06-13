@@ -119,15 +119,17 @@ class OpenAIClient:
         self.last_metrics = None
 
         def _do_request() -> str:
+            # Count BEFORE the call so an attempt that raises (ReadTimeout
+            # after the request reached the provider, a 429 that retry_on_
+            # transient retries) still counts toward the daily budget — those
+            # all consume the provider's allowance (#515).
+            record_env_request()
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 headers=headers,
                 timeout=self.timeout,
             )
-            # Count every attempt that reached the provider — including 429s
-            # that get retried — so the daily budget reflects real spend (#515).
-            record_env_request()
             response.raise_for_status()
             data = response.json()
             text = data["choices"][0]["message"]["content"].strip()

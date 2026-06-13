@@ -20,11 +20,18 @@ remain as backstops.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+
+try:
+    import fcntl  # POSIX advisory file locking
+except ImportError:  # pragma: no cover - non-POSIX fallback
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +56,28 @@ class ProviderBudget:
         create_parents: bool = True,
     ) -> None:
         self._path = Path(path)
-        self._today = today or _utc_today()
+        # An explicit ``today`` is frozen (tests); otherwise resolve the UTC
+        # day on every read/write so a long sweep that crosses midnight sees
+        # the count reset rather than freezing the construction-time date.
+        self._today_override = today
         self._create_parents = create_parents
 
+    def _day(self) -> str:
+        return self._today_override or _utc_today()
+
     # ── reads ───────────────────────────────────────────────────────────
+
+    def _parse(self, raw: str) -> dict[str, int]:
+        """Today's counts from a raw file body (empty on new day / corrupt)."""
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning("Provider budget file corrupt; treating as empty.")
+            return {}
+        if not isinstance(data, dict) or data.get("date") != self._day():
+            return {}  # stale day (or malformed) -> fresh
+        counts = data.get("counts")
+        return counts if isinstance(counts, dict) else {}
 
     def _load_counts(self) -> dict[str, int]:
         """Return today's counts, or an empty dict on a new day / any error."""
@@ -63,15 +88,7 @@ class ProviderBudget:
         except OSError as exc:  # unreadable -> fail-open
             logger.warning("Provider budget unreadable (%s); treating as empty.", exc)
             return {}
-        try:
-            data = json.loads(raw)
-        except (ValueError, TypeError):
-            logger.warning("Provider budget file corrupt; treating as empty.")
-            return {}
-        if not isinstance(data, dict) or data.get("date") != self._today:
-            return {}  # stale day (or malformed) -> fresh
-        counts = data.get("counts")
-        return counts if isinstance(counts, dict) else {}
+        return self._parse(raw)
 
     def spent(self, provider: str) -> int:
         """Requests recorded for *provider* today (0 if none / unreadable)."""
@@ -91,20 +108,43 @@ class ProviderBudget:
 
     # ── writes ──────────────────────────────────────────────────────────
 
+    @contextlib.contextmanager
+    def _exclusive_lock(self) -> Iterator[None]:
+        """Hold an exclusive cross-process lock for a read-modify-write.
+
+        Without it, two subprocesses (or the scheduler + a subprocess) can both
+        read the same count and write the same +1, losing an increment. A
+        sidecar ``.lock`` file is flocked so the data file's atomic replace is
+        preserved. No-ops where ``fcntl`` is unavailable (non-POSIX).
+        """
+        if fcntl is None:  # pragma: no cover - non-POSIX
+            yield
+            return
+        lock_path = self._path.with_suffix(self._path.suffix + ".lock")
+        with open(lock_path, "w") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
     def record(self, provider: str, n: int = 1) -> None:
         """Add *n* requests to *provider*'s count for today (best-effort)."""
         if n <= 0:
             return
-        counts = self._load_counts()
-        counts[provider] = counts.get(provider, 0) + n
-        payload = json.dumps({"date": self._today, "counts": counts})
         try:
             if self._create_parents:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
-            # Write-then-replace so a concurrent reader never sees a partial file.
-            tmp = self._path.with_suffix(self._path.suffix + ".tmp")
-            tmp.write_text(payload)
-            os.replace(tmp, self._path)
+            with self._exclusive_lock():
+                # Re-read inside the lock so concurrent writers serialize and
+                # no increment is lost.
+                counts = self._load_counts()
+                counts[provider] = counts.get(provider, 0) + n
+                payload = json.dumps({"date": self._day(), "counts": counts})
+                # Write-then-replace so a reader never sees a partial file.
+                tmp = self._path.with_suffix(self._path.suffix + ".tmp")
+                tmp.write_text(payload)
+                os.replace(tmp, self._path)
         except OSError as exc:  # unwritable -> fail-open (no cap, logged once)
             logger.warning("Provider budget unwritable (%s); not counting.", exc)
 

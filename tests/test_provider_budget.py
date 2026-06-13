@@ -79,3 +79,40 @@ def test_corrupt_state_file_treated_as_empty(tmp_path: Path) -> None:
     assert budget.spent("openrouter") == 0
     budget.record("openrouter", 2)  # recovers and overwrites
     assert budget.spent("openrouter") == 2
+
+
+def test_uses_current_utc_day_when_not_overridden(tmp_path, monkeypatch):
+    # A long-running scheduler instance must see the date roll over at UTC
+    # midnight, not freeze the date captured at construction (#515 review).
+    import rfc.provider_budget as pb
+
+    path = tmp_path / "b.json"
+    budget = pb.ProviderBudget(path)  # no explicit today
+    monkeypatch.setattr(pb, "_utc_today", lambda: "2026-06-13")
+    budget.record("openrouter", 4)
+    assert budget.spent("openrouter") == 4
+    # clock crosses midnight -> the same instance now reads the new day fresh
+    monkeypatch.setattr(pb, "_utc_today", lambda: "2026-06-14")
+    assert budget.spent("openrouter") == 0
+
+
+def test_concurrent_records_do_not_lose_updates(tmp_path):
+    # Two writers racing on the shared file must not clobber each other's
+    # increment (#515 review). flock serializes the read-modify-write.
+    import threading
+
+    path = tmp_path / "b.json"
+    barrier = threading.Barrier(8)
+
+    def worker():
+        b = ProviderBudget(path, today="2026-06-13")
+        barrier.wait()
+        for _ in range(25):
+            b.record("openrouter")
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert ProviderBudget(path, today="2026-06-13").spent("openrouter") == 200

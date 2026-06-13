@@ -78,4 +78,4 @@ uv.lock
 *.local
 
 # Runtime per-provider daily request counter (#515)
-.rfc_provider_budget.json
+.rfc_provider_budget.json*
