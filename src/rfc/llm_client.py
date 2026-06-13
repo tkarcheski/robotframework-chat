@@ -66,9 +66,8 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
     provider = provider.lower().strip()
 
     if provider == "ollama":
-        return OllamaClient(**kwargs)
-
-    if provider == "openai":
+        client: LLMProvider = OllamaClient(**kwargs)
+    elif provider == "openai":
         from .openai_client import OpenAIClient
 
         api_key = kwargs.pop("api_key", "") or os.getenv("OPENAI_API_KEY", "")
@@ -78,11 +77,30 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
             raise MissingProviderConfigError(
                 provider="openai", variable="OPENAI_API_KEY"
             )
-        return OpenAIClient(api_key=api_key, **kwargs)
+        client = OpenAIClient(api_key=api_key, **kwargs)
+    else:
+        raise ValueError(
+            f"Unknown LLM provider: {provider!r}. Supported: 'ollama', 'openai'."
+        )
 
-    raise ValueError(
-        f"Unknown LLM provider: {provider!r}. Supported: 'ollama', 'openai'."
-    )
+    return _maybe_wrap_with_cache(client)
+
+
+def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
+    """Wrap *client* in a caching layer when ``ANSWER_CACHE_ENABLED=1`` (#522).
+
+    Opt-in by design: measurement runs leave the cache off so every answer is
+    a fresh measurement. When enabled, the wrapper memoizes deterministic
+    ``generate()`` calls in Redis and degrades to a passthrough if Redis is
+    unreachable — a down cache must never fail a test.
+    """
+    if os.getenv("ANSWER_CACHE_ENABLED", "") != "1":
+        return client
+
+    from .answer_cache import AnswerCache, CachingProvider
+
+    cache = AnswerCache.from_env()
+    return CachingProvider(client, cache)
 
 
 __all__ = ["LLMClient", "LLMProvider", "create_provider", "resolve_timeout"]
