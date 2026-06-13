@@ -14,7 +14,7 @@ Covers:
   the original (failed) test is never modified
 - side experiment: sibling copy with exactly one body line replaced by
   the proposed assertion; outcome recorded in ``agentic_metrics`` as
-  ``metric_key='heal_passed'`` with id ``<decision_id>:heal``
+  ``metric_key='heal_passed'`` with id ``<decision_id>-heal``
 - quality grading: ``mutation_quality`` metric with id == decision id
   (same join key as mutate), so the Superset "healing candidates"
   chart can filter on quality >= 0.7
@@ -198,9 +198,7 @@ class TestHealRunsSideExperiment:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 2  # original + side experiment
         experiment = executed[1]
         assert HEALED_NAME_RE.match(experiment.name), experiment.name
@@ -300,9 +298,7 @@ class TestHealQualityGrading:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, "not json at all"])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 2  # experiment still ran
         assert db.get_metrics(SESSION, metric_key=MUTATION_QUALITY_METRIC) == []
         # heal outcome still recorded
@@ -329,9 +325,7 @@ class TestHealSafety:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "SKIP"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "SKIP"})
         assert len(executed) == 1
         assert provider.calls == 0
         assert db.get_decisions(SESSION) == []
@@ -340,9 +334,7 @@ class TestHealSafety:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["1\nRun Process    rm    -rf    /"])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1  # no experiment inserted
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1
@@ -355,9 +347,7 @@ class TestHealSafety:
             responses=["1\nShould Be Equal    ${{__import__('os').getcwd()}}    x"]
         )
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1
@@ -369,9 +359,7 @@ class TestHealSafety:
             responses=["99\nShould Be Equal    ${answer}    Paris"]
         )
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])  # body has 1 line
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1
@@ -381,9 +369,7 @@ class TestHealSafety:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=["the test is probably flaky"])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1
@@ -398,16 +384,12 @@ class TestHealSafety:
             FakeTest("t1", [HEAL_SUGGEST_TAG], parent=suite),
             FakeTest("u1", ["tier:0"], parent=suite),
         ]
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"u1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"u1": "FAIL"})
         assert len(executed) == 2  # u1 failed but is untagged: no experiment
         assert provider.calls == 0
         assert db.get_decisions(SESSION) == []
 
-    def test_no_experiment_when_decision_cannot_be_persisted(
-        self, clean_env, tmp_path
-    ):
+    def test_no_experiment_when_decision_cannot_be_persisted(self, clean_env, tmp_path):
         _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         listener = _listener(tmp_path, provider)
@@ -431,9 +413,7 @@ class TestHealSafety:
             "experiment must be withheld when the decision row cannot be persisted"
         )
 
-    def test_copy_build_failure_inserts_nothing(
-        self, clean_env, tmp_path, monkeypatch
-    ):
+    def test_copy_build_failure_inserts_nothing(self, clean_env, tmp_path, monkeypatch):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
@@ -442,18 +422,14 @@ class TestHealSafety:
             raise RuntimeError("deepcopy exploded")
 
         monkeypatch.setattr(FakeTest, "deepcopy", broken_deepcopy)
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1  # nothing inserted
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1  # suggestion still recorded
         assert rows[0].applied == 0
         assert db.get_metrics(SESSION, metric_key=HEAL_PASSED_METRIC) == []
 
-    def test_budget_exhaustion_silences_healing(
-        self, clean_env, tmp_path, monkeypatch
-    ):
+    def test_budget_exhaustion_silences_healing(self, clean_env, tmp_path, monkeypatch):
         monkeypatch.setenv("RFC_GENERATIVE_BUDGET_TOKENS", "100")
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(
@@ -475,9 +451,7 @@ class TestHealSafety:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite(["tier:0"], ["t1", "t2"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 2
         assert provider.calls == 0
         assert db.get_decisions(SESSION) == []
@@ -486,9 +460,7 @@ class TestHealSafety:
         db = HarnessDatabase(database_url=_db_url(tmp_path))  # no seeded row
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         assert provider.calls == 0
         assert db.get_decisions(SESSION) == []
@@ -518,9 +490,7 @@ class TestModePrecedence:
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([GENERATIVE_MUTATE_TAG, HEAL_SUGGEST_TAG], ["t1"])
         # mutate mode ignores failures entirely; heal must not kick in
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         assert db.get_decisions(SESSION, proposed_action="heal") == []
 
@@ -541,9 +511,7 @@ class TestModePrecedence:
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[HEAL_RESPONSE, GRADE_OK])
         suite = _suite([GENERATIVE_OBSERVE_TAG], ["t1", "t2"])
-        executed = _run_suite(
-            _listener(tmp_path, provider), suite, {"t1": "FAIL"}
-        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 2  # nothing inserted
         rows = db.get_decisions(SESSION)
         assert rows
