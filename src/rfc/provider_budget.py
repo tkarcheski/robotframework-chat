@@ -77,7 +77,19 @@ class ProviderBudget:
         if not isinstance(data, dict) or data.get("date") != self._day():
             return {}  # stale day (or malformed) -> fresh
         counts = data.get("counts")
-        return counts if isinstance(counts, dict) else {}
+        if not isinstance(counts, dict):
+            return {}
+        # Keep only well-formed integer counts. A malformed value (e.g. a
+        # string in a hand-edited or corrupted file, ``{"openrouter": "oops"}``)
+        # is dropped rather than propagated: otherwise ``record()``'s
+        # ``count + n`` raises TypeError outside the OSError fail-open handler,
+        # and since the client records before its HTTP call, every generation
+        # would then fail without ever reaching the provider (#515).
+        return {
+            provider: value
+            for provider, value in counts.items()
+            if isinstance(value, int) and not isinstance(value, bool)
+        }
 
     def _load_counts(self) -> dict[str, int]:
         """Return today's counts, or an empty dict on a new day / any error."""

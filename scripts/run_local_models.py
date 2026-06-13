@@ -99,6 +99,28 @@ PREFLIGHT_SUITE = "<preflight>"
 # must be generous; override with execution.preflight_timeout.
 DEFAULT_PREFLIGHT_TIMEOUT = 1800
 
+# Idle pause before re-looping an infinite/stop-on-error run that produced no
+# results (no local models AND the provider budget exhausted). Without it the
+# loop busy-spins discovery and the provider's /models endpoint with no delay
+# until the UTC day resets the budget — sustained traffic and log spam (#515).
+_EMPTY_ITERATION_IDLE_SECONDS = 60
+
+
+def _resolve_budget_file() -> str:
+    """Absolute path to the shared per-provider budget counter file (#515).
+
+    The scheduler reads this file from the caller's working directory while the
+    subprocess it launches runs with ``cwd=_project_root``. A relative
+    ``RFC_PROVIDER_BUDGET_FILE`` would therefore resolve to two different files,
+    so the scheduler would never observe the child's increments and could not
+    hard-stop. Resolving to an absolute path up front keeps both sides pointed
+    at one file.
+    """
+    configured = os.getenv(BUDGET_FILE_ENV) or str(
+        _project_root / ".rfc_provider_budget.json"
+    )
+    return str(Path(configured).resolve())
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -618,9 +640,7 @@ def run_provider_suites(
     # upfront estimate misses (retries, 429 re-attempts). A default path keeps
     # the counter active even when the env var is unset; budget_file is shared
     # with the subprocess so its requests are counted.
-    budget_file = os.getenv(BUDGET_FILE_ENV) or str(
-        _project_root / ".rfc_provider_budget.json"
-    )
+    budget_file = _resolve_budget_file()
     budget = ProviderBudget(budget_file)
 
     results: list[RunResult] = []
@@ -1083,7 +1103,14 @@ def run_iteration_loop(
 
             if not results:
                 print("No models discovered — nothing to run.")
-                # For infinite/stop-on-error, keep trying
+                # For infinite/stop-on-error runs, idle before retrying. An
+                # empty pass means no local models AND the provider budget is
+                # exhausted; continuing immediately would busy-loop discovery
+                # and the provider's /models endpoint with no delay until the
+                # UTC day resets the budget (#515). Finite runs (>0) just fall
+                # through and terminate on their own.
+                if iterations <= 0:
+                    time.sleep(_EMPTY_ITERATION_IDLE_SECONDS)
                 continue
 
             _print_summary(results)

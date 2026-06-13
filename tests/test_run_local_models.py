@@ -11,11 +11,13 @@ import yaml
 
 from rfc.host_scheduler import HostConfig, HostSpec, SchedulerDefaults
 from scripts.run_local_models import (
+    _EMPTY_ITERATION_IDLE_SECONDS,
     PREFLIGHT_SUITE,
     RunResult,
     _build_robot_command,
     _maybe_audit,
     _nodes_from_host_config,
+    _resolve_budget_file,
     _sanitize_name,
     discover_local_models,
     load_local_config,
@@ -1492,3 +1494,35 @@ class TestProviderBudgetHardStop:
         env = mock_run.call_args.kwargs.get("env")
         assert env[BUDGET_FILE_ENV] == str(path)
         assert env[PROVIDER_NAME_ENV] == "openrouter"
+
+
+class TestProviderBudgetSchedulerIntegration:
+    """Codex #530 review: budget-path resolution and forever-run idling."""
+
+    def test_resolve_budget_file_makes_relative_env_absolute(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The scheduler reads from the caller's cwd while the subprocess runs
+        # with cwd=_project_root; a relative path would split them onto two
+        # files. _resolve_budget_file must hand back an absolute path (#515).
+        monkeypatch.setenv("RFC_PROVIDER_BUDGET_FILE", "rel/budget.json")
+        resolved = _resolve_budget_file()
+        assert Path(resolved).is_absolute()
+        assert resolved.endswith("/rel/budget.json")
+
+    @patch("scripts.run_local_models.time.sleep", side_effect=KeyboardInterrupt)
+    @patch("scripts.run_local_models.run_provider_runs", return_value=[])
+    @patch("scripts.run_local_models.discover_local_models", return_value=[])
+    @patch("scripts.run_local_models._load_node_list", return_value=_ITER_NODES)
+    def test_forever_run_idles_instead_of_busy_looping_when_empty(
+        self,
+        mock_nodes: MagicMock,
+        mock_discover: MagicMock,
+        mock_provider: MagicMock,
+        mock_sleep: MagicMock,
+    ) -> None:
+        # No local models and an exhausted provider budget -> an empty pass.
+        # An infinite run must idle (sleep) before retrying, not busy-loop with
+        # zero delay (#515). The patched sleep raises to break the loop.
+        run_iteration_loop(_ITER_CONFIG, iterations=-1)
+        mock_sleep.assert_called_once_with(_EMPTY_ITERATION_IDLE_SECONDS)
