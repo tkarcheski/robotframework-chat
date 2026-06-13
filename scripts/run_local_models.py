@@ -612,6 +612,14 @@ def run_provider_suites(
     for model in models:
         watermark = f"{provider.name}/{model}"
         for suite in suites:
+            needed = int(suite.get("min_context_tokens", 0))
+            if 0 < provider.max_context_tokens < needed:
+                print(
+                    f"  {tag} skipping suite '{suite['name']}': needs "
+                    f"{needed} context tokens, provider caps at "
+                    f"{provider.max_context_tokens}"
+                )
+                continue
             cmd = _build_provider_robot_command(
                 config=config, suite=suite, provider=provider, model=model
             )

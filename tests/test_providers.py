@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -211,3 +212,65 @@ class TestSelectModelsWithinBudget:
             requests_per_suite_estimate=100,
         )
         assert kept == models[:5]
+
+
+class TestMaxContextTokens:
+    def test_default_is_unlimited(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "groq",
+                        "base_url": "https://api.groq.com/openai/v1",
+                        "api_key_env": "GROQ_API_KEY",
+                    }
+                ]
+            }
+        )
+        assert providers[0].max_context_tokens == 0
+
+    def test_parses_explicit_cap(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "cerebras",
+                        "base_url": "https://api.cerebras.ai/v1",
+                        "api_key_env": "CEREBRAS_API_KEY",
+                        "max_context_tokens": 8192,
+                    }
+                ]
+            }
+        )
+        assert providers[0].max_context_tokens == 8192
+
+
+class TestConfiguredFreeTierProviders:
+    """The committed config must declare the free-tier providers (#509)."""
+
+    @staticmethod
+    def _real_providers() -> dict[str, "ProviderConfig"]:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        config = yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+        return {p.name: p for p in load_providers(config)}
+
+    def test_groq_cerebras_google_declared(self) -> None:
+        providers = self._real_providers()
+        assert providers["groq"].api_key_env == "GROQ_API_KEY"
+        assert providers["cerebras"].api_key_env == "CEREBRAS_API_KEY"
+        assert providers["google-ai-studio"].api_key_env == "GOOGLE_AI_STUDIO_API_KEY"
+        # static model lists, no ":free" discovery convention on these APIs
+        for name in ("groq", "cerebras", "google-ai-studio"):
+            assert providers[name].models, f"{name} needs a static model list"
+            assert not providers[name].discover_free_pool
+
+    def test_cerebras_context_cap_declared(self) -> None:
+        assert self._real_providers()["cerebras"].max_context_tokens == 8192
+
+    def test_env_example_documents_all_keys(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        env_example = (root / ".env.example").read_text()
+        for key in ("GROQ_API_KEY", "CEREBRAS_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"):
+            assert key in env_example

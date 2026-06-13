@@ -1432,3 +1432,35 @@ class TestIterationLoopRunsProviders:
         with patch("scripts.run_local_models.verify_db_results", return_value=True):
             had_failure = run_iteration_loop(config, iterations=1, audit=False)
         assert had_failure is True
+
+
+class TestProviderContextCap:
+    """Suites that need more context than the provider offers are skipped
+    with a log line, not run (#509, Cerebras 8K cap)."""
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_suites_exceeding_provider_context_are_skipped(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        config["test_suites"][0]["min_context_tokens"] = 16000  # math: too big
+        provider = _provider(name="cerebras", max_context_tokens=8192)
+        results = run_provider_suites(
+            config, provider, "csk-abc", ["llama3.1-8b"], sleep_fn=lambda _s: None
+        )
+        assert [r.suite for r in results] == ["safety"]
+        assert mock_run.call_count == 1
+        out = capsys.readouterr().out
+        assert "skip" in out.lower()
+        assert "math" in out
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_unlimited_provider_runs_everything(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = MagicMock(returncode=0)
+        config = _provider_config()
+        config["test_suites"][0]["min_context_tokens"] = 16000
+        results = run_provider_suites(
+            config, _provider(), "sk-or-abc", ["a/b:free"], sleep_fn=lambda _s: None
+        )
+        assert len(results) == 2

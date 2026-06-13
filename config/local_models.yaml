@@ -266,6 +266,47 @@ providers:
     # ~LLM calls one (model, suite) run makes; used for budget/pacing math.
     requests_per_suite_estimate: 15
 
+  # Groq free tier: 1,000 req/day on llama-3.3-70b-versatile (14,400/day on
+  # llama-3.1-8b-instant), 30 RPM. Budget set to the stricter 70b limit so a
+  # mixed sweep can never exhaust the smaller pool (#509).
+  - name: "groq"
+    base_url: "https://api.groq.com/openai/v1"
+    api_key_env: "GROQ_API_KEY"
+    models:
+      - "llama-3.3-70b-versatile"
+      - "llama-3.1-8b-instant"
+    discover_free_pool: false
+    max_requests_per_day: 1000
+    requests_per_minute: 30
+    requests_per_suite_estimate: 15
+
+  # Cerebras free tier: 1M tokens/day with an 8K context cap. The daily
+  # request budget approximates 1M tokens at ~4K tokens per request; suites
+  # declaring min_context_tokens > 8192 are skipped with a log line (#509).
+  - name: "cerebras"
+    base_url: "https://api.cerebras.ai/v1"
+    api_key_env: "CEREBRAS_API_KEY"
+    models:
+      - "llama3.1-8b"
+      - "llama-3.3-70b"
+    discover_free_pool: false
+    max_requests_per_day: 250
+    requests_per_minute: 30
+    requests_per_suite_estimate: 15
+    max_context_tokens: 8192
+
+  # Google AI Studio free tier: 1,500 req/day on Gemini Flash, 15 RPM,
+  # via the OpenAI-compatible endpoint (#509).
+  - name: "google-ai-studio"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+    api_key_env: "GOOGLE_AI_STUDIO_API_KEY"
+    models:
+      - "gemini-2.0-flash"
+    discover_free_pool: false
+    max_requests_per_day: 1500
+    requests_per_minute: 15
+    requests_per_suite_estimate: 15
+
 # ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
