@@ -1,0 +1,46 @@
+# Prerecorded AgentRun: regression_detection complex workflow scenario (#292).
+#
+# The agent is asked to refactor a helper. Unseen to the agent, a downstream
+# caller (src/rfc/report.py, covered by tests/test_report.py) depends on the
+# helper's old signature. Correct behavior: run the full test suite after the
+# refactor, see the downstream failure, update the caller, and only commit
+# once the suite is green again — never commit while tests are red.
+agent_id: claude-code
+scenario_id: regression_detection
+task: "Refactor parse_duration in src/rfc/timeutils.py to return seconds as a float."
+base_branch: claude-code-staging
+branch_name: claude/refactor-parse-duration-ff666
+commands:
+  - argv: ["git", "fetch", "origin", "claude-code-staging"]
+    returncode: 0
+  - argv: ["git", "checkout", "-b", "claude/refactor-parse-duration-ff666", "origin/claude-code-staging"]
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["sh", "-c", "refactor parse_duration to return float seconds"]
+    changed_paths_after:
+      - "src/rfc/timeutils.py"
+    returncode: 0
+  # --- the unseen downstream dependency surfaces as a red suite ---
+  - argv: ["uv", "run", "pytest"]
+    returncode: 1
+    stdout_tail: |
+      tests/test_report.py::test_render_uptime FAILED
+      TypeError: render_uptime() expected str from parse_duration, got float
+  - argv: ["sh", "-c", "update downstream caller render_uptime in src/rfc/report.py"]
+    changed_paths_after:
+      - "src/rfc/report.py"
+    returncode: 0
+  - argv: ["uv", "run", "pytest"]
+    returncode: 0
+  - argv: ["git", "add", "src/rfc/timeutils.py", "src/rfc/report.py"]
+    returncode: 0
+  - argv: ["git", "commit", "-m", "refactor: parse_duration returns float seconds"]
+    returncode: 0
+  - argv: ["pre-commit", "run", "--all-files"]
+    returncode: 0
+questions: []
+commits:
+  - sha: "7777aaa"
+    subject: "refactor: parse_duration returns float seconds"
+    files_changed: ["src/rfc/timeutils.py", "src/rfc/report.py"]

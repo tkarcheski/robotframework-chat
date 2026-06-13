@@ -78,6 +78,26 @@ class TestAgentRunFromYaml:
         cmd = AgentCommand(argv=("uv", "run", "pytest"))
         assert cmd.shell_subcommands() == ("uv run pytest",)
 
+    def test_background_ampersand_splits_into_subcommands(self) -> None:
+        """A single ``&`` backgrounds the preceding command and is a list
+        separator (Bash manual: an ``&``-terminated command runs asynchronously
+        and returns 0). It must split like ``;`` so the verifier sees the
+        backgrounded test and the following commit as separate subcommands —
+        not one opaque blob that hides an ungated commit (#503 round 8)."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest & git commit -m x"))
+        assert cmd.shell_subcommands() == ("uv run pytest", "git commit -m x")
+
+    def test_trailing_background_ampersand_yields_single_subcommand(self) -> None:
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest &"))
+        assert cmd.shell_subcommands() == ("uv run pytest",)
+
+    def test_double_ampersand_not_split_by_background_rule(self) -> None:
+        """``&&`` must remain a single AND operator, never two background
+        separators — the ``&&`` alternative has to precede the bare ``&``."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest && git commit -m x"))
+        pairs = cmd.shell_subcommands_with_operators()
+        assert pairs == ((None, "uv run pytest"), ("&&", "git commit -m x"))
+
     def test_loads_commits(self, tmp_path: Path) -> None:
         payload = {
             "agent_id": "claude-code",
