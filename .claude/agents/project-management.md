@@ -90,9 +90,9 @@ dashboards/alerts listed in CLAUDE.md. Anything degrading gets a `from:pm`,
 no evidence ignored.
 
 Also check Superset server health each iteration (commands in CLAUDE.md § Monitoring & dashboards):
-- `docker ps --filter name=rfc-` — all RFC containers up and healthy
-- `curl -fsS localhost:8088/health` — Superset API alive
-- `psql $DATABASE_URL -c "SELECT MAX(created_at) FROM test_runs"` — data freshness (<48h when runs expected)
+- `docker compose ps --all` — all stack services; check `State`/`Status` for any stopped or unhealthy service (`docker ps` alone hides stopped containers, and Compose names are project-prefixed, not `rfc-`)
+- `curl -fsS "localhost:${SUPERSET_PORT:-8088}/health"` — Superset API alive (honors `SUPERSET_PORT`)
+- `psql $DATABASE_URL -c "SELECT MAX(timestamp) FROM test_runs"` — data freshness (<48h when runs expected)
 - `make superset-diagnose` — deep connectivity + pipeline check (run on first degradation sign)
 
 Any failure → file a `from:pm`, `type:monitoring` issue immediately with the command output attached.

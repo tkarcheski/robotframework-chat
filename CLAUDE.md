@@ -168,9 +168,9 @@ prompt conflict, `ai/ROLES.md` wins.
   (see `ai/agents.md`).
 - Superset health checks (run these when diagnosing a dashboard outage or in PM sweeps):
   ```bash
-  docker ps --filter name=rfc-              # all RFC containers running and healthy
-  curl -fsS localhost:8088/health           # Superset API alive
-  psql $DATABASE_URL -c "SELECT MAX(created_at) FROM test_runs"  # data freshness (<48h when runs expected)
+  docker compose ps --all                   # all stack services — check State/Status for stopped/unhealthy
+  curl -fsS "localhost:${SUPERSET_PORT:-8088}/health"  # Superset API alive (honors SUPERSET_PORT)
+  psql $DATABASE_URL -c "SELECT MAX(timestamp) FROM test_runs"  # data freshness (<48h when runs expected)
   make superset-diagnose                    # deep connectivity + pipeline check
   ```
 
