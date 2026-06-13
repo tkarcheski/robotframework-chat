@@ -126,6 +126,24 @@ When the `AgentWorkflowListener` is attached, finalised workflows are
 persisted to the configured database so historic agent runs become
 queryable alongside test results.
 
+## Suite Privacy Routing (#512)
+
+Every suite entry in `config/local_models.yaml` may declare a `privacy`
+field: `public` (the default when absent) or `local-only`.
+
+- `public` suites may be scheduled anywhere, including free external
+  providers (OpenRouter `:free`, Groq, Cerebras, Google AI Studio).
+- `local-only` suites never reach an external provider unless that
+  provider sets `allow_local_only: true` — reserved for paid endpoints
+  with a zero-data-retention agreement. Violations are a hard skip with
+  a log line, not a failure.
+- Unknown `privacy` values fail closed: the suite is treated as
+  local-only, so a typo can never leak a proprietary suite to a
+  train-on-data endpoint.
+
+Mark a suite `local-only` the moment proprietary content enters it —
+the guard is mechanical protection, not memory.
+
 ---
 
 For Make targets and local workflows, see `humans/MAKE.md`.
