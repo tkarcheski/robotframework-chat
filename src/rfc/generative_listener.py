@@ -467,17 +467,17 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
     """True when a user keyword in the suite hierarchy would hijack the
     inserted assertion.
 
-    Robot resolves suite-file user keywords before explicit library names
-    (``KeywordStore._get_runner`` tries them ahead of
-    ``_get_explicit_runner``), so even ``BuiltIn.``-qualified insertion is
-    not safe if the suite defines a keyword that resolves to the inserted
-    name (#516). Two ways a suite keyword can shadow it:
+    The assertion is inserted as the explicit ``BuiltIn.<keyword>`` call, and
+    Robot resolves a *qualified* call against suite keywords by their full
+    name before the library lookup. So only a suite keyword that resolves to
+    ``BuiltIn.<keyword>`` can hijack it (#516) — a bare ``Should Contain``
+    user keyword shadows the *unqualified* call, not our qualified one, and
+    must not block the mutation. Two ways to shadow the qualified call:
 
-    * a literal name that normalizes equal (case/space/underscore-insensitive
-      via Robot's own normalization); or
+    * a literal name that normalizes equal to ``BuiltIn.<keyword>``
+      (case/space/underscore-insensitive via Robot's own normalization); or
     * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
-      pattern matches ``BuiltIn.Should Contain`` — these resolve any matching
-      call before the real library lookup.
+      pattern matches ``BuiltIn.Should Contain``.
 
     Walks the suite parent chain; imported resources are outside the running
     model and are not inspected — collisions there are the suite author's
@@ -485,12 +485,10 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
     """
     from robot.running.arguments.embedded import EmbeddedArguments
 
-    wanted_literal = {
-        _normalize_keyword_name(keyword),
-        _normalize_keyword_name(f"BuiltIn.{keyword}"),
-    }
-    # Raw names (not normalized) for Robot's embedded-arg regex matching.
-    embedded_targets = (f"BuiltIn.{keyword}", keyword)
+    qualified = f"BuiltIn.{keyword}"
+    wanted_literal = {_normalize_keyword_name(qualified)}
+    # Raw name (not normalized) for Robot's embedded-arg regex matching.
+    embedded_targets = (qualified,)
     node = getattr(data, "parent", None)
     while node is not None:
         resource = getattr(node, "resource", None)
