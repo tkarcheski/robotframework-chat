@@ -274,3 +274,41 @@ class TestConfiguredFreeTierProviders:
         env_example = (root / ".env.example").read_text()
         for key in ("GROQ_API_KEY", "CEREBRAS_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"):
             assert key in env_example
+
+
+class TestCerebrasReviewFindings521:
+    """Cerebras config must be runnable: a valid model id and a budget big
+    enough to schedule at least one model across the suite set (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _cerebras(self):
+        return next(p for p in load_providers(self._config()) if p.name == "cerebras")
+
+    def test_drops_deprecated_llama_3_3_70b(self) -> None:
+        # Cerebras deprecated Llama 3.3 70B on 2026-02-16; scheduling it would
+        # record every suite as a failure rather than a skip.
+        cerebras = self._cerebras()
+        assert "llama-3.3-70b" not in cerebras.models
+        assert "llama3.1-8b" in cerebras.models
+
+    def test_budget_schedules_at_least_one_model(self) -> None:
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        cerebras = self._cerebras()
+        kept = select_models_within_budget(
+            list(cerebras.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=cerebras.max_requests_per_day,
+            requests_per_suite_estimate=cerebras.requests_per_suite_estimate,
+        )
+        assert kept, (
+            "Cerebras budget too small to schedule any model — the provider "
+            "would be silently skipped on every run"
+        )

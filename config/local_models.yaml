@@ -280,17 +280,22 @@ providers:
     requests_per_minute: 30
     requests_per_suite_estimate: 15
 
-  # Cerebras free tier: 1M tokens/day with an 8K context cap. The daily
-  # request budget approximates 1M tokens at ~4K tokens per request; suites
-  # declaring min_context_tokens > 8192 are skipped with a log line (#509).
+  # Cerebras free tier: 1M tokens/day, 30 RPM, 8K context cap. Model ids are
+  # current as of 2026-06 — Llama 3.3 70B / Qwen 3 32B were deprecated
+  # 2026-02-16, so scheduling them would fail every suite instead of skipping.
+  # Budget: at ~1.4K tokens per small eval request (8K-ctx cap, 256 default
+  # max_tokens), 1M tokens/day ≈ 700 requests — enough to run one model across
+  # the full suite set (42 suites x 15 ≈ 630). The second model is dropped with
+  # a log line until the budget or suite set allows it. Suites declaring
+  # min_context_tokens > 8192 are skipped with a log line (#509).
   - name: "cerebras"
     base_url: "https://api.cerebras.ai/v1"
     api_key_env: "CEREBRAS_API_KEY"
     models:
       - "llama3.1-8b"
-      - "llama-3.3-70b"
+      - "gpt-oss-120b"
     discover_free_pool: false
-    max_requests_per_day: 250
+    max_requests_per_day: 700
     requests_per_minute: 30
     requests_per_suite_estimate: 15
     max_context_tokens: 8192
