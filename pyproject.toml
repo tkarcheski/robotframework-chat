@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robotframework-chat"
-version = "1.17.4"
+version = "1.16.1"
 description = "Robot Framework-based test harness for systematically testing LLMs"
 license = "Apache-2.0"
 readme = "readme.md"
@@ -33,6 +33,7 @@ dependencies = [
     "pytest==9.0.2",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    "redis>=5.0",
     "requests==2.32.5",
     "robotframework==7.4.1",
     "robotframework-lint==1.1",
@@ -73,6 +74,7 @@ dev = [
     "pip-audit",
     "build",
     "twine",
+    "fakeredis>=2.20",
 ]
 
 [tool.pytest.ini_options]
@@ -126,6 +128,15 @@ module = [
     "swebench.*",
     "datasets",
     "datasets.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "redis",
+    "redis.*",
+    "fakeredis",
+    "fakeredis.*",
 ]
 ignore_missing_imports = true
 

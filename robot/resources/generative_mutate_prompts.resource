@@ -1,5 +1,5 @@
 *** Settings ***
-Documentation    Prompts for the generative listener's mutate mode (#360).
+Documentation    Prompts for the generative listener's mutate (#360) and heal (#361) modes.
 ...
 ...    These are the exact texts the GenerativeListener sends to the LLM
 ...    when a suite is tagged generative:mutate. They live here — not in
@@ -43,3 +43,39 @@ ${MUTATION_GRADER_EXPECTED}    SEPARATOR=\n
 ...    A strict, meaningful assertion that checks real test output and would
 ...    fail on a genuine regression; not a tautology, not vacuously true, not
 ...    so loose that any output passes.
+
+${HEAL_PROMPT_TEMPLATE}    SEPARATOR=\n
+...    You are proposing a fix for a failed Robot Framework test (suite opted in
+...    via the heal:suggest tag). Your fix runs as a SIDE EXPERIMENT only; the
+...    original failure remains the official outcome.
+...    Test '{test}' in suite '{suite}' FAILED with message:
+...    {message}
+...    Captured run data: {rfc_data}
+...    The test body, one numbered line per keyword (number, then the keyword and
+...    its arguments, four-space separated):
+...    {body}
+...    Propose a fix by replacing ONE body line with ONE corrected assertion
+...    (e.g. an updated expected value).
+...    You may only target a line that is itself an assertion (its keyword name
+...    contains 'Should'); never replace the action that produced the output.
+...    Reply with EXACTLY two lines and nothing else:
+...    line 1: the number of the body line to replace
+...    line 2: the replacement in Robot Framework syntax — the keyword, then each
+...    argument, separated by four spaces.
+...    You may only use one of these keywords: {allowed_keywords}.
+...    Arguments may contain only plain values and simple scalar variables created
+...    by the test body, referenced exactly as they appear there; inline expressions,
+...    environment variables, and list/dict variables are rejected.
+
+${HEAL_GRADER_QUESTION}    SEPARATOR=\n
+...    A self-healing agent was asked to fix the failed Robot Framework test
+...    '{test}' (suite '{suite}', failure message: {message}) by replacing one
+...    body line with a corrected assertion. Judge the quality of the proposed
+...    fix below: does it plausibly address the failure while still checking real
+...    behavior — or does it merely weaken the test until anything passes?
+...    Proposed fix: {assertion}
+
+${HEAL_GRADER_EXPECTED}    SEPARATOR=\n
+...    A plausible, targeted fix that addresses the observed failure and still
+...    asserts something meaningful about real test output; not a tautology, not
+...    an assertion loosened until any output passes.
