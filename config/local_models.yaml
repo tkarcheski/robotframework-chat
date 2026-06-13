@@ -285,6 +285,11 @@ providers:
     max_requests_per_day: 1000
     requests_per_minute: 30
     requests_per_suite_estimate: 15
+    # llama-3.1-8b-instant context window is 131,072 (output cap 8,192), so the
+    # benchmark suite (num_ctx 131,584) is skipped here via the context cap.
+    # Groq's free 6K tokens/min still can't sustain token-heavy suites; precise
+    # per-minute-token pacing is tracked in #515.
+    max_context_tokens: 131072
 
   # Cerebras free tier: 1M tokens/day, 30 RPM, 8K context cap. gpt-oss-120b is
   # the only current production model here — every Llama (incl. llama3.1-8b,
@@ -305,18 +310,19 @@ providers:
     requests_per_suite_estimate: 15
     max_context_tokens: 8192
 
-  # Google AI Studio free tier: 1,500 req/day on Gemini Flash, 15 RPM, via the
-  # OpenAI-compatible endpoint. gemini-2.5-flash is the current GA free-tier
-  # Flash model — gemini-2.0-flash was shut down 2026-06-01
-  # (ai.google.dev/gemini-api/docs/deprecations), so scheduling it fails every
-  # suite instead of running (#521).
+  # Google AI Studio free tier via the OpenAI-compatible endpoint.
+  # gemini-2.5-flash-lite is the current GA Flash model whose free-tier quota
+  # (15 RPM / 1,000 RPD) can actually sustain a full sweep — gemini-2.5-flash
+  # is only 10 RPM / 250 RPD (too low for ~630 requests) and gemini-2.0-flash
+  # was shut down 2026-06-01 (ai.google.dev/gemini-api/docs/rate-limits,
+  # /docs/deprecations) (#521).
   - name: "google-ai-studio"
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
     api_key_env: "GOOGLE_AI_STUDIO_API_KEY"
     models:
-      - "gemini-2.5-flash"
+      - "gemini-2.5-flash-lite"
     discover_free_pool: false
-    max_requests_per_day: 1500
+    max_requests_per_day: 1000
     requests_per_minute: 15
     requests_per_suite_estimate: 15
 

@@ -366,3 +366,45 @@ class TestProviderModelsCurrent521R3:
         cfg = self._config()
         bench = next(s for s in cfg["test_suites"] if s["name"] == "benchmark")
         assert bench.get("min_context_tokens", 0) > 8192
+
+
+class TestProviderQuotas521R4:
+    """Free-tier quotas must match the chosen model so the sweep doesn't
+    429: Gemini 2.5 Flash is 10 RPM/250 RPD (too low to sweep) — use
+    Flash-Lite (15 RPM/1000 RPD); Groq's 8B context is 131072, so the
+    benchmark (131584 num_ctx) is skipped via the context cap (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _provider(self, name: str):
+        return next(p for p in load_providers(self._config()) if p.name == name)
+
+    def test_google_uses_sweep_capable_flash_lite_quotas(self) -> None:
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        google = self._provider("google-ai-studio")
+        # Gemini 2.5 Flash free tier is only 10 RPM / 250 RPD — too low to
+        # sweep — so the config must use Flash-Lite (15 RPM / 1000 RPD) with
+        # quotas within its real published limits.
+        assert any("flash-lite" in m for m in google.models), google.models
+        assert google.requests_per_minute <= 15
+        assert google.max_requests_per_day <= 1000
+        kept = select_models_within_budget(
+            list(google.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=google.max_requests_per_day,
+            requests_per_suite_estimate=google.requests_per_suite_estimate,
+        )
+        assert kept, "Google budget must schedule at least one model"
+
+    def test_groq_declares_context_cap_to_skip_benchmark(self) -> None:
+        groq = self._provider("groq")
+        # llama-3.1-8b-instant context window is 131072; the benchmark needs
+        # 131584, so the cap must be set to skip it (not unlimited).
+        assert 0 < groq.max_context_tokens <= 131072
