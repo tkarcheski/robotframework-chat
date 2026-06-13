@@ -239,40 +239,49 @@ def run_jobs(
     # Higher priority hosts get first pick each dispatch round.
     hosts_by_priority = sorted(hosts, key=lambda h: -h.spec.priority)
 
-    with ThreadPoolExecutor(max_workers=global_cap) as pool:
-        while True:
-            # Dispatch as much as caps and eligibility allow.
-            if not stopped_early:
-                dispatched = True
-                while dispatched and pending and len(in_flight) < global_cap:
-                    dispatched = False
-                    for host in hosts_by_priority:
-                        if len(in_flight) >= global_cap:
-                            break
-                        if host.running >= host.spec.max_parallel:
-                            continue
-                        idx = pick_next_job(host, pending)
-                        if idx is None:
-                            continue
-                        job = pending.pop(idx)
-                        host.running += 1
-                        host.active_models[job.model] += 1
-                        host.last_loaded = job.model
-                        in_flight[pool.submit(run_fn, host, job)] = (host, job)
-                        dispatched = True
+    try:
+        with ThreadPoolExecutor(max_workers=global_cap) as pool:
+            while True:
+                # Dispatch as much as caps and eligibility allow.
+                if not stopped_early:
+                    dispatched = True
+                    while dispatched and pending and len(in_flight) < global_cap:
+                        dispatched = False
+                        for host in hosts_by_priority:
+                            if len(in_flight) >= global_cap:
+                                break
+                            if host.running >= host.spec.max_parallel:
+                                continue
+                            idx = pick_next_job(host, pending)
+                            if idx is None:
+                                continue
+                            job = pending.pop(idx)
+                            host.running += 1
+                            host.active_models[job.model] += 1
+                            host.last_loaded = job.model
+                            in_flight[pool.submit(run_fn, host, job)] = (host, job)
+                            dispatched = True
 
-            if not in_flight:
-                break  # nothing running and nothing dispatchable
+                if not in_flight:
+                    break  # nothing running and nothing dispatchable
 
-            done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
-            for future in done:
-                host, job = in_flight.pop(future)
-                host.running -= 1
-                host.active_models[job.model] -= 1
-                result = future.result()
-                results.append(result)
-                if stop_on_failure and failure_of(result):
-                    stopped_early = True
+                done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+                for future in done:
+                    host, job = in_flight.pop(future)
+                    host.running -= 1
+                    host.active_models[job.model] -= 1
+                    result = future.result()
+                    results.append(result)
+                    if stop_on_failure and failure_of(result):
+                        stopped_early = True
+    finally:
+        # A worker exception propagates out of future.result() above; the
+        # executor drains remaining workers on shutdown, but their entries
+        # would otherwise leave running/active_models permanently inflated
+        # on a reused HostState (Codex P2, PR #519).
+        for host, job in in_flight.values():
+            host.running -= 1
+            host.active_models[job.model] -= 1
 
     return ScheduleOutcome(
         results=results,

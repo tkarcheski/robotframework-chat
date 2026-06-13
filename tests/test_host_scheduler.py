@@ -404,3 +404,23 @@ class TestSameModelSerialization:
         host = _host(models=["a"], max_parallel=2)
         host.active_models["a"] += 1
         assert pick_next_job(host, _jobs("a", "a")) is None
+
+    def test_bookkeeping_cleared_when_run_fn_raises(self) -> None:
+        """A worker exception must not leave running/active_models counts
+        stale on a reused HostState (Codex P2 on PR #519)."""
+        host = _host(models=["a", "b"], max_parallel=2)
+        release = threading.Event()
+
+        def run_fn(h: HostState, j: Job) -> dict[str, Any]:
+            if j.model == "a":
+                raise RuntimeError("boom")
+            release.wait(5)
+            return {"returncode": 0}
+
+        with pytest.raises(RuntimeError):
+            try:
+                run_jobs([host], _jobs("b", "a"), run_fn, global_max_parallel=4)
+            finally:
+                release.set()
+        assert host.running == 0
+        assert all(v == 0 for v in host.active_models.values())
