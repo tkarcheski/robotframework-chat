@@ -682,3 +682,35 @@ class TestPostMergeHardening501:
         package_dir = Path(rfc.__file__).resolve().parent
         assert MUTATE_PROMPTS_RESOURCE.is_relative_to(package_dir)
         assert MUTATE_PROMPTS_RESOURCE.exists()
+
+    def test_mutation_blocked_when_suite_shadows_qualified_builtin(
+        self, clean_env, tmp_path
+    ):
+        """RF resolves suite-file user keywords before explicit library
+        names, so a user keyword literally named `BuiltIn.Should Contain`
+        would still hijack the qualified call (Codex P1 round 2, #516).
+        Such collisions must record applied=0 and insert nothing."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[SimpleNamespace(name="BuiltIn.Should Contain")]
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1  # no sibling inserted
+        rows = db.get_decisions(SESSION, proposed_action="mutate")
+        assert len(rows) == 1
+        assert rows[0].applied == 0
+
+    def test_mutation_blocked_when_suite_shadows_bare_name(self, clean_env, tmp_path):
+        """Same for the unqualified name, matched with Robot's keyword-name
+        normalization (case/space/underscore insensitive)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[SimpleNamespace(name="should_CONTAIN")]
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
