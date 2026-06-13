@@ -702,9 +702,12 @@ class TestPostMergeHardening501:
         assert len(rows) == 1
         assert rows[0].applied == 0
 
-    def test_mutation_blocked_when_suite_shadows_bare_name(self, clean_env, tmp_path):
-        """Same for the unqualified name, matched with Robot's keyword-name
-        normalization (case/space/underscore insensitive)."""
+    def test_bare_user_keyword_does_not_block_qualified_mutation(
+        self, clean_env, tmp_path
+    ):
+        """A bare `Should Contain` user keyword shadows the *unqualified* call,
+        not the explicit `BuiltIn.Should Contain` the listener inserts, so it
+        must NOT block the mutation (Codex P2 r4 #516 — no false positives)."""
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
         suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
@@ -712,20 +715,21 @@ class TestPostMergeHardening501:
             keywords=[SimpleNamespace(name="should_CONTAIN")]
         )
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
-        assert len(executed) == 1
-        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+        assert len(executed) == 2  # original + applied mutation
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
 
     def test_mutation_blocked_when_suite_shadows_with_unicode_casefold(
         self, clean_env, tmp_path
     ):
         """Robot normalizes keyword names with casefold (not ASCII lower), so
-        `ſhould Contain` folds to `should contain` and resolves to the user
-        keyword. The guard must use the same normalization (Codex P1 r3 #516)."""
+        the qualified `BuiltIn.ſhould Contain` folds to `builtin.should contain`
+        and resolves to the user keyword. The guard must use the same
+        normalization (Codex P1 r3 #516)."""
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
         suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
         suite.resource = SimpleNamespace(
-            keywords=[SimpleNamespace(name="ſhould Contain")]
+            keywords=[SimpleNamespace(name="BuiltIn.ſhould Contain")]
         )
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 1
