@@ -86,7 +86,6 @@ from rfc.providers import (  # noqa: E402
     discover_free_models,
     load_providers,
     resolve_api_key,
-    select_models_within_budget,
 )
 from scripts.discover_ollama import (  # noqa: E402
     _probe_port,
@@ -772,37 +771,29 @@ def run_provider_runs(
             print(f"{tag} no models to run — skipping provider.")
             continue
 
-        kept = select_models_within_budget(
-            models,
-            len(suites),
-            max_requests_per_day=provider.max_requests_per_day,
-            requests_per_suite_estimate=provider.requests_per_suite_estimate,
-        )
-        if len(kept) < len(models):
-            print(
-                f"{tag} daily budget ({provider.max_requests_per_day} requests): "
-                f"running {len(kept)} of {len(models)} model(s)."
-            )
-        if not kept:
-            print(f"{tag} budget allows no runs — skipping provider.")
-            continue
-
-        # #510: plan the (model, suite) matrix within the provider's *remaining*
-        # daily budget (from the #515 runtime counter), running yesterday's
-        # deferred jobs first, carrying today's overflow to the next run, and
-        # reporting coverage + ETA.
-        budget_file = os.getenv(BUDGET_FILE_ENV) or str(
-            _project_root / ".rfc_provider_budget.json"
+        # #510: the planner — not an upfront model truncation — decides what
+        # runs today within the provider's *remaining* daily budget (from the
+        # #515 counter). Building the matrix from ALL discovered models (rather
+        # than a budget-capped subset) ensures later models are *deferred*, not
+        # dropped forever (#510 review): yesterday's deferred jobs run first,
+        # today's overflow carries to the next run.
+        budget_file = str(
+            Path(
+                os.getenv(BUDGET_FILE_ENV)
+                or (_project_root / ".rfc_provider_budget.json")
+            ).resolve()
         )
         leftover_store = LeftoverStore(
             os.getenv(LEFTOVER_FILE_ENV)
             or str(_project_root / ".rfc_provider_leftover.json")
         )
-        matrix = [ProviderJob(model=m, suite=s["name"]) for m in kept for s in suites]
+        matrix = [ProviderJob(model=m, suite=s["name"]) for m in models for s in suites]
         matrix_set = set(matrix)
         carried = [j for j in leftover_store.load(provider.name) if j in matrix_set]
-        carried_set = set(carried)
-        ordered = carried + [j for j in matrix if j not in carried_set]
+        # Continue an in-progress coverage cycle (run only what's left) before
+        # starting a fresh full matrix — re-adding already-completed cells would
+        # peg coverage below 100% forever (#510 review).
+        ordered = carried if carried else matrix
 
         remaining = ProviderBudget(budget_file).remaining(
             provider.name, provider.max_requests_per_day
@@ -824,7 +815,10 @@ def run_provider_runs(
                 per_day=per_day,
             )
         )
-        leftover_store.save(provider.name, deferred)
+        # A dry run previews only — it must not rewrite the real carry-over set
+        # that decides which jobs run first next time (#510 review).
+        if not dry_run:
+            leftover_store.save(provider.name, deferred)
         if not today_jobs:
             print(f"{tag} no budget remaining today — deferred {len(deferred)} job(s).")
             continue
@@ -832,7 +826,7 @@ def run_provider_runs(
         print(f"{tag} running {len(today_jobs)} planned job(s) via {provider.base_url}")
         results.extend(
             run_provider_suites(
-                config, provider, api_key, kept, jobs=today_jobs, dry_run=dry_run
+                config, provider, api_key, models, jobs=today_jobs, dry_run=dry_run
             )
         )
 

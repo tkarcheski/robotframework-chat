@@ -1325,18 +1325,36 @@ class TestRunProviderRuns:
 
     @patch("scripts.run_local_models.run_provider_suites", return_value=[])
     @patch("scripts.run_local_models.discover_free_models")
-    @patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-or-abc"})
-    def test_budget_caps_scheduled_models(
-        self, mock_discover: MagicMock, mock_suites: MagicMock
+    def test_budget_plans_jobs_and_defers_overflow(
+        self, mock_discover: MagicMock, mock_suites: MagicMock, tmp_path
     ) -> None:
-        # 3 models x 2 suites x 100 req/suite = 600; budget 400 -> 2 models
+        # 3 models x 2 suites = 6 jobs x 100 req = 600; budget 400 -> the
+        # planner runs 4 jobs today and defers 2 (all 3 models represented in
+        # the matrix, not truncated upfront) (#510).
+        import os
+
+        from rfc.budget_scheduler import LeftoverStore
+        from rfc.provider_budget import BUDGET_FILE_ENV
+
         mock_discover.return_value = ["a:free", "b:free", "c:free"]
         config = _provider_config()
         config["providers"][0]["max_requests_per_day"] = 400
         config["providers"][0]["requests_per_suite_estimate"] = 100
-        run_provider_runs(config)
-        models = mock_suites.call_args.args[3]
-        assert models == ["a:free", "b:free"]
+        leftover = tmp_path / "leftover.json"
+        with patch.dict(
+            os.environ,
+            {
+                "OPENROUTER_API_KEY": "sk-or-abc",
+                BUDGET_FILE_ENV: str(tmp_path / "budget.json"),
+                "RFC_PROVIDER_LEFTOVER_FILE": str(leftover),
+            },
+        ):
+            run_provider_runs(config)
+        # All 3 models reach run_provider_suites (positional), and exactly 4
+        # jobs are planned for today; the other 2 are deferred.
+        assert mock_suites.call_args.args[3] == ["a:free", "b:free", "c:free"]
+        assert len(mock_suites.call_args.kwargs["jobs"]) == 4
+        assert len(LeftoverStore(leftover).load("openrouter")) == 2
 
     @patch("scripts.run_local_models.run_provider_suites", return_value=[])
     @patch("scripts.run_local_models.discover_free_models")
