@@ -111,6 +111,10 @@ test_suites:
     path: "robot/benchmark/"
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
     timeout_seconds: 1800
+    # Drives num_ctx to max_tokens*2+512 = 131,584 at the 65,536-token level,
+    # so providers with a smaller context cap (e.g. Cerebras 8K) skip-and-log
+    # instead of failing every case (#521).
+    min_context_tokens: 131584
 
   - name: "creativity"
     path: "robot/creativity/"
@@ -264,6 +268,62 @@ providers:
     max_requests_per_day: 1000
     requests_per_minute: 20
     # ~LLM calls one (model, suite) run makes; used for budget/pacing math.
+    requests_per_suite_estimate: 15
+
+  # Groq free tier, 30 RPM. llama-3.1-8b-instant is the scheduled (first)
+  # model: 14,400 req/day and a token/day budget large enough to complete a
+  # full sweep. llama-3.3-70b-versatile is intentionally NOT scheduled here —
+  # its free-plan cap is 100K tokens/day (≈100 calls), far below a 42-suite
+  # sweep (~630 calls), so it would 429 partway through (#521). Token-aware
+  # budgeting that could safely mix both models is tracked in #515.
+  - name: "groq"
+    base_url: "https://api.groq.com/openai/v1"
+    api_key_env: "GROQ_API_KEY"
+    models:
+      - "llama-3.1-8b-instant"
+    discover_free_pool: false
+    max_requests_per_day: 1000
+    requests_per_minute: 30
+    requests_per_suite_estimate: 15
+    # llama-3.1-8b-instant context window is 131,072 (output cap 8,192), so the
+    # benchmark suite (num_ctx 131,584) is skipped here via the context cap.
+    # Groq's free 6K tokens/min still can't sustain token-heavy suites; precise
+    # per-minute-token pacing is tracked in #515.
+    max_context_tokens: 131072
+
+  # Cerebras free tier: 1M tokens/day, 30 RPM, 8K context cap. gpt-oss-120b is
+  # the only current production model here — every Llama (incl. llama3.1-8b,
+  # deprecated 2026-05-27) and the older Qwen 3 32B have been retired
+  # (inference-docs.cerebras.ai/support/deprecation), and scheduling a retired
+  # id fails every suite instead of skipping. Budget: at ~1.4K tokens per small
+  # eval request (8K-ctx cap, 256 default max_tokens), 1M tokens/day ≈ 700
+  # requests — enough for one model across the full suite set (42 x 15 ≈ 630).
+  # Suites declaring min_context_tokens > 8192 are skipped with a log (#509).
+  - name: "cerebras"
+    base_url: "https://api.cerebras.ai/v1"
+    api_key_env: "CEREBRAS_API_KEY"
+    models:
+      - "gpt-oss-120b"
+    discover_free_pool: false
+    max_requests_per_day: 700
+    requests_per_minute: 30
+    requests_per_suite_estimate: 15
+    max_context_tokens: 8192
+
+  # Google AI Studio free tier via the OpenAI-compatible endpoint.
+  # gemini-2.5-flash-lite is the current GA Flash model whose free-tier quota
+  # (15 RPM / 1,000 RPD) can actually sustain a full sweep — gemini-2.5-flash
+  # is only 10 RPM / 250 RPD (too low for ~630 requests) and gemini-2.0-flash
+  # was shut down 2026-06-01 (ai.google.dev/gemini-api/docs/rate-limits,
+  # /docs/deprecations) (#521).
+  - name: "google-ai-studio"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai"
+    api_key_env: "GOOGLE_AI_STUDIO_API_KEY"
+    models:
+      - "gemini-2.5-flash-lite"
+    discover_free_pool: false
+    max_requests_per_day: 1000
+    requests_per_minute: 15
     requests_per_suite_estimate: 15
 
 # ---------------------------------------------------------------------------

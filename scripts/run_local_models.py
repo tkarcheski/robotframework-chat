@@ -582,6 +582,39 @@ def _build_provider_robot_command(
     return cmd
 
 
+def _provider_suite_skip_reason(
+    suite: dict[str, Any], provider: ProviderConfig
+) -> str | None:
+    """Why *provider* cannot run *suite*, or ``None`` when it is eligible.
+
+    Eligibility is the single source of truth for both budget estimation and
+    execution (#525): privacy routing (#512) and the provider context cap
+    (#509). Unknown privacy values fail closed (treated as local-only).
+    """
+    privacy = str(suite.get("privacy", "public")).strip().lower()
+    if privacy != "public" and not provider.allow_local_only:
+        reason = (
+            "declares privacy 'local-only'"
+            if privacy == "local-only"
+            else f"has unknown privacy value '{privacy}' (failing closed)"
+        )
+        return f"{reason}; provider is not ZDR-allowlisted (#512)"
+    needed = int(suite.get("min_context_tokens", 0))
+    if 0 < provider.max_context_tokens < needed:
+        return (
+            f"needs {needed} context tokens, provider caps at "
+            f"{provider.max_context_tokens}"
+        )
+    return None
+
+
+def _eligible_suites(
+    suites: "list[dict[str, Any]]", provider: ProviderConfig
+) -> "list[dict[str, Any]]":
+    """Suites *provider* can actually run (privacy + context eligible)."""
+    return [s for s in suites if _provider_suite_skip_reason(s, provider) is None]
+
+
 def run_provider_suites(
     config: dict[str, Any],
     provider: ProviderConfig,
@@ -649,7 +682,45 @@ def run_provider_suites(
     prev_start: float | None = None
     for model, suite in run_list:
         watermark = f"{provider.name}/{model}"
-        if budget.exhausted(provider.name, provider.max_requests_per_day):
+        for suite in suites:
+            skip_reason = _provider_suite_skip_reason(suite, provider)
+            if skip_reason is not None:
+                print(f"  {tag} skipping suite '{suite['name']}': {skip_reason}")
+                continue
+            cmd = _build_provider_robot_command(
+                config=config, suite=suite, provider=provider, model=model
+            )
+            output_dir = execution.get(
+                "output_dir", "results/local/{node}/{model}"
+            ).format(
+                node=_sanitize_name(provider.name),
+                model=_sanitize_name(model),
+            )
+
+            if dry_run:
+                print(f"[DRY-RUN] {' '.join(cmd)}")
+                results.append(
+                    RunResult(
+                        node=provider.name,
+                        model=watermark,
+                        suite=suite["name"],
+                        returncode=0,
+                        output_dir=output_dir,
+                    )
+                )
+                continue
+
+            if prev_start is not None and pacing_gap > 0:
+                remaining = pacing_gap - (time.monotonic() - prev_start)
+                if remaining > 0:
+                    print(
+                        f"  {tag} pacing for rate budget "
+                        f"({provider.requests_per_minute} RPM): "
+                        f"sleeping {remaining:.0f}s"
+                    )
+                    sleep_fn(remaining)
+            prev_start = time.monotonic()
+
             print(
                 f"  {tag} daily budget reached "
                 f"({provider.max_requests_per_day} requests today) — "
@@ -771,17 +842,19 @@ def run_provider_runs(
             print(f"{tag} no models to run — skipping provider.")
             continue
 
-        # #510: the planner — not an upfront model truncation — decides what
-        # runs today within the provider's *remaining* daily budget (from the
-        # #515 counter). Building the matrix from ALL discovered models (rather
-        # than a budget-capped subset) ensures later models are *deferred*, not
-        # dropped forever (#510 review): yesterday's deferred jobs run first,
-        # today's overflow carries to the next run.
-        budget_file = str(
-            Path(
-                os.getenv(BUDGET_FILE_ENV)
-                or (_project_root / ".rfc_provider_budget.json")
-            ).resolve()
+        # Budget by the suites this provider can actually run — counting
+        # privacy/context-ineligible suites would over-estimate cost and could
+        # drop models (or empty `kept`) even when the eligible set fits (#525).
+        eligible = _eligible_suites(suites, provider)
+        if not eligible:
+            print(f"{tag} no provider-eligible suites — skipping provider.")
+            continue
+
+        kept = select_models_within_budget(
+            models,
+            len(eligible),
+            max_requests_per_day=provider.max_requests_per_day,
+            requests_per_suite_estimate=provider.requests_per_suite_estimate,
         )
         leftover_store = LeftoverStore(
             os.getenv(LEFTOVER_FILE_ENV)
@@ -823,7 +896,10 @@ def run_provider_runs(
             print(f"{tag} no budget remaining today — deferred {len(deferred)} job(s).")
             continue
 
-        print(f"{tag} running {len(today_jobs)} planned job(s) via {provider.base_url}")
+        print(
+            f"{tag} running {len(eligible)} eligible suite(s) x {len(kept)} "
+            f"model(s) via {provider.base_url}"
+        )
         results.extend(
             run_provider_suites(
                 config, provider, api_key, models, jobs=today_jobs, dry_run=dry_run

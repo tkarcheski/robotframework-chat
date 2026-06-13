@@ -12,6 +12,7 @@ APIs declared under a ``providers:`` list in ``config/local_models.yaml``::
         max_requests_per_day: 1000      # free-pool daily budget
         requests_per_minute: 20         # free-pool rate limit
         requests_per_suite_estimate: 15 # ~calls one suite run makes
+        max_context_tokens: 8192        # 0 = unlimited; bigger suites skip
 
 Requests are served by the existing :class:`rfc.openai_client.OpenAIClient`
 (via ``LLM_PROVIDER=openai``) — no provider-specific client exists or should.
@@ -37,6 +38,27 @@ DEFAULT_REQUESTS_PER_SUITE_ESTIMATE = 15
 
 _DISCOVERY_TIMEOUT = 30
 
+#: Strings that count as ``True``; everything else is ``False`` (fail-closed).
+_TRUE_STRINGS = frozenset({"true", "1", "yes", "on"})
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Parse a config value as a boolean, failing closed.
+
+    ``bool("false")`` is ``True`` in Python, so a quoted/templated
+    false-looking YAML value would silently enable a security-sensitive flag
+    like ``allow_local_only``. Only an explicit ``True`` or an affirmative
+    string (true/1/yes/on) enables; everything else — ``"false"``, ``"0"``,
+    unknown strings, ``None`` — stays ``False`` (#525).
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUE_STRINGS
+    return False
+
 
 @dataclass(frozen=True)
 class ProviderConfig:
@@ -50,6 +72,12 @@ class ProviderConfig:
     max_requests_per_day: int = DEFAULT_MAX_REQUESTS_PER_DAY
     requests_per_minute: int = DEFAULT_REQUESTS_PER_MINUTE
     requests_per_suite_estimate: int = DEFAULT_REQUESTS_PER_SUITE_ESTIMATE
+    #: Provider-wide context window cap in tokens; 0 means unlimited.
+    #: Suites declaring a larger ``min_context_tokens`` are skipped (#509).
+    max_context_tokens: int = 0
+    #: ZDR allowlist: only providers with a zero-data-retention agreement
+    #: may run ``privacy: local-only`` suites (#512). Default deny.
+    allow_local_only: bool = False
 
 
 def load_providers(config: dict[str, Any]) -> list[ProviderConfig]:
@@ -85,7 +113,7 @@ def load_providers(config: dict[str, Any]) -> list[ProviderConfig]:
                 base_url=str(entry["base_url"]).rstrip("/"),
                 api_key_env=str(entry["api_key_env"]),
                 models=tuple(entry.get("models") or ()),
-                discover_free_pool=bool(entry.get("discover_free_pool", False)),
+                discover_free_pool=_coerce_bool(entry.get("discover_free_pool")),
                 max_requests_per_day=int(
                     entry.get("max_requests_per_day", DEFAULT_MAX_REQUESTS_PER_DAY)
                 ),
@@ -98,6 +126,8 @@ def load_providers(config: dict[str, Any]) -> list[ProviderConfig]:
                         DEFAULT_REQUESTS_PER_SUITE_ESTIMATE,
                     )
                 ),
+                max_context_tokens=int(entry.get("max_context_tokens", 0)),
+                allow_local_only=_coerce_bool(entry.get("allow_local_only")),
             )
         )
     return providers

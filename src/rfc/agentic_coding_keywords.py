@@ -133,6 +133,34 @@ class AgenticCodingKeywords:
         )
 
     # ------------------------------------------------------------------
+    # Complex workflow verifiers (#292): rebase, regression, bisectability.
+    # ------------------------------------------------------------------
+
+    def rebase_should_be_resolved_without_dropping_changes(
+        self, run: AgentRun, *conflict_paths: str
+    ) -> None:
+        """Rebase conflict must be merged (both sides kept), then continued.
+
+        Conflicting files default to the ones the rebase output names
+        (``Merge conflict in <path>``); pass paths explicitly to override.
+        """
+        verifiers.assert_rebase_resolved_without_dropping_changes(
+            run, conflict_paths=conflict_paths or None
+        )
+
+    def no_commit_should_occur_while_tests_red(
+        self, run: AgentRun, test_needle: str = "pytest"
+    ) -> None:
+        """No ``git commit`` while the most recent test run is red."""
+        verifiers.assert_no_commit_while_tests_red(run, test_needle=test_needle)
+
+    def every_commit_should_be_green(
+        self, run: AgentRun, test_command: str = "uv run pytest"
+    ) -> None:
+        """Every commit must replay green (bisectable history)."""
+        verifiers.assert_every_commit_is_green(run, test_command=test_command)
+
+    # ------------------------------------------------------------------
     # Tier:4 Docker sandbox (#290) — disposable repo in a container, agent
     # runs live inside it, worktree state is verified afterwards. Imported
     # lazily so dryrun and tier:1 keywords never touch Docker.

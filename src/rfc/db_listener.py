@@ -206,6 +206,7 @@ class DbListener(BaseListener):
                 "tag_tier": parsed["tag_tier"],
                 "tag_verify": parsed["tag_verify"],
                 "eval_count": metrics.get("eval_count"),
+                "cache_hit": bool(metrics.get("cache_hit", False)),
                 "thinking_tokens": safe_int(
                     self._current_test_data.get("thinking_tokens")
                 ),
@@ -316,6 +317,7 @@ class DbListener(BaseListener):
                     tag_tier=nvl(tc.get("tag_tier"), -1),
                     tag_verify=nvl(tc.get("tag_verify"), ""),
                     eval_count=nvl(tc.get("eval_count"), 0),
+                    cache_hit=bool(tc.get("cache_hit", False)),
                     thinking_tokens=nvl(tc.get("thinking_tokens"), 0),
                 )
                 for tc in self._test_cases
