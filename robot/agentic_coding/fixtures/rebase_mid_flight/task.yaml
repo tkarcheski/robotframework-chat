@@ -1,5 +1,18 @@
 # Live-runner input for the rebase_mid_flight scenario.
 # Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
 scenario_id: rebase_mid_flight
-task: "Add a retry_limit setting to src/rfc/config.py with a pytest."
+# The task MUST describe the mid-flight upstream movement and resulting
+# conflict: runner=ollama only receives this text (render_prompt passes the
+# task and base branch, with no scenario hook that injects the upstream
+# change), so without it the model is asked to invent a rebase conflict rather
+# than handle one (#503 round 10).
+task: >-
+  Add a retry_limit setting to src/rfc/config.py with a pytest. Partway through
+  your work, origin/claude-code-staging advances with a conflicting change to
+  src/rfc/config.py. Rebase your branch onto the updated base
+  (git rebase origin/claude-code-staging), resolve the merge conflict in
+  src/rfc/config.py by KEEPING BOTH SIDES' changes — do not discard either side
+  with git checkout/restore --ours/--theirs or git rebase --skip — then run
+  git rebase --continue and re-run the test suite (uv run pytest) before
+  committing.
 base_branch: claude-code-staging

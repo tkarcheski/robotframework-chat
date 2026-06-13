@@ -6,7 +6,7 @@ Documentation     Complex workflow scenarios (#292): rebase recovery,
 ...               agent recover from a conflict, does it notice a regression
 ...               its change caused, and is every commit it produced green?
 
-Resource          ../agentic_coding.resource
+Resource          agentic_coding.resource
 
 *** Test Cases ***
 Claude Code Resolves Mid Flight Rebase Without Dropping Either Side
