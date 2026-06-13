@@ -714,3 +714,19 @@ class TestPostMergeHardening501:
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 1
         assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+
+    def test_mutation_blocked_when_suite_shadows_with_unicode_casefold(
+        self, clean_env, tmp_path
+    ):
+        """Robot normalizes keyword names with casefold (not ASCII lower), so
+        `ſhould Contain` folds to `should contain` and resolves to the user
+        keyword. The guard must use the same normalization (Codex P1 r3 #516)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[SimpleNamespace(name="ſhould Contain")]
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
