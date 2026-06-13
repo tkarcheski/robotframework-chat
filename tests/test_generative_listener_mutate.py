@@ -765,3 +765,51 @@ class TestPostMergeHardening501:
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 2  # original + applied mutation
         assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
+
+
+class TestImportedBuiltinResourceShadow528:
+    """A suite that imports a resource file whose owner name is literally
+    `BuiltIn` makes the inserted `BuiltIn.<kw>` call ambiguous ("Multiple
+    keywords found"), so the mutation must be blocked, not recorded applied=1
+    with a sibling that errors at runtime (#528)."""
+
+    def test_blocked_when_resource_named_builtin_is_imported(self, clean_env, tmp_path):
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[
+                SimpleNamespace(type="RESOURCE", name="resources/BuiltIn.resource")
+            ],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+
+    def test_normal_resource_import_does_not_block(self, clean_env, tmp_path):
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[
+                SimpleNamespace(type="RESOURCE", name="resources/common.resource")
+            ],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
+
+    def test_builtin_library_import_does_not_block(self, clean_env, tmp_path):
+        # Importing the real BuiltIn *library* is normal, not a collision.
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[SimpleNamespace(type="LIBRARY", name="BuiltIn")],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1

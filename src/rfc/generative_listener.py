@@ -368,9 +368,12 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
     * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
       pattern matches ``BuiltIn.Should Contain``.
 
-    Walks the suite parent chain; imported resources are outside the running
-    model and are not inspected — collisions there are the suite author's
-    responsibility.
+    Walks the suite parent chain for its own keyword tables, and also rejects a
+    suite that imports a *resource* whose owner name is literally ``BuiltIn``:
+    Robot then resolves the inserted ``BuiltIn.<keyword>`` against both the real
+    library and that resource and raises "Multiple keywords found", so the
+    mutated sibling would error at runtime (#528). The real ``BuiltIn``
+    *library* import is normal and never blocks.
     """
     from robot.running.arguments.embedded import EmbeddedArguments
 
@@ -390,7 +393,29 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
                 embedded.name.fullmatch(target) for target in embedded_targets
             ):
                 return True
+        if _imports_builtin_named_resource(resource):
+            return True
         node = getattr(node, "parent", None)
+    return False
+
+
+def _imports_builtin_named_resource(resource: Any) -> bool:
+    """True when *resource* imports a RESOURCE file whose owner name is
+    ``BuiltIn`` — which makes any qualified ``BuiltIn.<kw>`` call ambiguous
+    (#528). Library imports (including the real ``BuiltIn`` library) are
+    ignored: only a resource file's basename collides with a library name.
+    """
+    builtin = _normalize_keyword_name("BuiltIn")
+    for imp in getattr(resource, "imports", None) or []:
+        imp_type = str(getattr(imp, "type", "") or "")
+        name = getattr(imp, "name", "") or ""
+        # Robot's resource import type is "RESOURCE"; fall back to the file
+        # extension so a looser/stubbed import object is still recognized.
+        is_resource = imp_type.upper() == "RESOURCE" or name.endswith(
+            (".resource", ".robot")
+        )
+        if is_resource and _normalize_keyword_name(Path(name).stem) == builtin:
+            return True
     return False
 
 
