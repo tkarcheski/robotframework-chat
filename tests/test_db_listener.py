@@ -836,6 +836,17 @@ class TestExtractLlmMetrics:
         assert result["eval_count"] == 10
         assert result.get("eval_duration_ns") is None
 
+    def test_preserves_cache_hit_flag(self) -> None:
+        # Provenance (#522/#524): a cache hit must survive metric extraction
+        # so DBListener can persist it — otherwise a replayed answer looks
+        # like a fresh zero-token measurement.
+        result = _extract_llm_metrics('{"eval_count": 0, "cache_hit": true}')
+        assert result["cache_hit"] is True
+
+    def test_cache_hit_defaults_false_when_absent(self) -> None:
+        result = _extract_llm_metrics('{"eval_count": 10}')
+        assert result["cache_hit"] is False
+
     def test_openai_metrics_passthrough(self) -> None:
         """OpenAI token detail fields pass through to metrics dict."""
         import json
@@ -943,6 +954,20 @@ class TestDbListenerThinkingCapture:
         listener.end_test(_mock_test_data("T"), _mock_test_result())
         assert listener._test_cases[0]["eval_count"] == 186
 
+    def test_extracts_cache_hit_from_llm_metrics_json(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        metrics = '{"eval_count": 0, "cache_hit": true, "model_name": "m"}'
+        listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["cache_hit"] is True
+
+    def test_cache_hit_defaults_false_without_metrics(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.end_test(_mock_test_data("T"), _mock_test_result())
+        assert listener._test_cases[0]["cache_hit"] is False
+
     @patch("rfc.db_listener.collect_ci_metadata", return_value={})
     def test_thinking_data_archived_to_database(
         self, _mock_ci: MagicMock, tmp_path: object
@@ -956,7 +981,8 @@ class TestDbListenerThinkingCapture:
         listener.log_message(_mock_message("RFC_DATA:thinking_text:Let me think"))
         listener.log_message(_mock_message("RFC_DATA:thinking_tokens:3"))
         metrics = (
-            '{"eval_count": 50, "eval_duration_ns": 5000000000, "eval_rate": 10.0}'
+            '{"eval_count": 50, "eval_duration_ns": 5000000000, '
+            '"eval_rate": 10.0, "cache_hit": true}'
         )
         listener.log_message(_mock_message(f"RFC_DATA:llm_metrics:{metrics}"))
         listener.end_test(_mock_test_data("Think Test"), _mock_test_result("PASS"))
@@ -969,6 +995,8 @@ class TestDbListenerThinkingCapture:
             lean = conn.execute("SELECT * FROM test_results").fetchone()
             assert lean["thinking_tokens"] == 3
             assert lean["eval_count"] == 50
+            # Provenance: a replayed answer must be queryable as a cache hit.
+            assert lean["cache_hit"] in (1, True)
 
             full = conn.execute("SELECT * FROM test_results_full").fetchone()
             assert full["thinking_text"] == "Let me think"
