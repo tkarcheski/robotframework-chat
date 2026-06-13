@@ -208,6 +208,11 @@ _CONFLICT_FILE_PATTERN = re.compile(r"Merge conflict in (\S+)")
 _DROP_A_SIDE_FRAGMENTS = (
     "checkout --ours",
     "checkout --theirs",
+    # `git restore --ours/--theirs <path>` selects one version of an unmerged
+    # file, discarding the other side just like `checkout --ours/--theirs`
+    # (#503 round 9).
+    "restore --ours",
+    "restore --theirs",
     "git rebase --skip",
     # Stage extraction writes exactly one side of the conflict:
     # :2: is ours, :3: is theirs (git show :2:<path> > <path>).
@@ -243,6 +248,31 @@ def _is_trailing_background(cmd: AgentCommand) -> bool:
         return False
     inner = inner.rstrip()
     return inner.endswith("&") and not inner.endswith("&&")
+
+
+def _is_git_commit(sub: str) -> bool:
+    """True when *sub* is a ``git commit`` invocation, tolerating global options.
+
+    Git permits global options between ``git`` and the subcommand, e.g.
+    ``git -c user.name=bot commit`` or ``git -C path commit`` (``git -h``). A
+    plain ``"git commit" in sub`` substring misses these forms, so a commit run
+    that way slips past the commit-while-red gate (#503 round 9). Walk the
+    tokens after ``git``, skipping global options (``-c k=v`` and ``-C dir``
+    take a value; other leading ``-x`` flags do not) until the first
+    non-option token, and check it is ``commit``.
+    """
+    tokens = sub.split()
+    if not tokens or tokens[0] != "git":
+        return False
+    i = 1
+    while i < len(tokens) and tokens[i].startswith("-"):
+        # ``-c key=val`` and ``-C dir`` consume the following token as a value
+        # (unless it was given glued, e.g. ``-Cdir``).
+        if tokens[i] in ("-c", "-C") and "=" not in tokens[i]:
+            i += 2
+        else:
+            i += 1
+    return i < len(tokens) and tokens[i] == "commit"
 
 
 def _is_head_checkout(sub: str, sha: str) -> bool:
@@ -438,7 +468,7 @@ def assert_no_commit_while_tests_red(
         pairs = cmd.shell_subcommands_with_operators()
         subs = [sub for _, sub in pairs]
         for pos, sub in enumerate(subs):
-            if "git commit" not in sub:
+            if not _is_git_commit(sub):
                 continue
             test_positions = [i for i in range(pos) if test_needle in subs[i]]
             if test_positions:
@@ -578,23 +608,21 @@ def assert_every_commit_is_green(
                 f"recorded after its replay checkout"
             )
         # A worktree edit after the checkout but before the test means the test
-        # exercised a modified/repaired tree, not the commit (#503). Edits show
-        # as non-empty changed_paths_after. Two shapes:
-        #   * separate commands: any command strictly between checkout and test;
-        #   * same command: ``git checkout <sha> && patch && pytest`` bundles
-        #     the edit into the anchor, so the anchor's own changes count when
-        #     the test is in that same command (#529).
-        # The anchor's changes are NOT counted when the test is in a later
-        # command, since a bare ``git checkout`` legitimately rewrites the tree.
+        # exercised a modified/repaired tree, not the commit (#503).
+        # ``changed_paths_after`` is ``git status --porcelain`` (uncommitted
+        # changes), so a clean ``git checkout`` leaves it EMPTY — only a real
+        # edit (sed/patch) makes it non-empty. The anchor command therefore
+        # counts too, covering an edit bundled into the boundary command
+        # (``git checkout <sha> && sed ...``) whether the test is in that same
+        # command (#529) or a later one (#503 round 9). The test command itself
+        # is excluded (its own porcelain output is not a pre-test edit).
         dirty_edit: AgentCommand | None = None
-        if test_idx == checkout_idx:
-            if run.commands[checkout_idx].changed_paths_after:
-                dirty_edit = run.commands[checkout_idx]
-        else:
-            for j in range(checkout_idx + 1, test_idx):
-                if run.commands[j].changed_paths_after:
-                    dirty_edit = run.commands[j]
-                    break
+        for j in range(checkout_idx, test_idx + 1):
+            if j == test_idx and test_idx != checkout_idx:
+                continue  # the test command's own status is not a prior edit
+            if run.commands[j].changed_paths_after:
+                dirty_edit = run.commands[j]
+                break
         if dirty_edit is not None:
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}): the worktree was "

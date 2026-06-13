@@ -1174,3 +1174,117 @@ class TestReviewFindingsPr503Round8:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round9:
+    """Codex round-9 P1s — two more shell-fragment bypasses in the same family
+    as round 8 (cheap, reachable, one-line fixes):
+
+    * ``git restore --ours/--theirs <path>`` is a standard one-side conflict
+      resolution the drop-a-side guard did not list.
+    * ``git -c k=v commit`` / ``git -C dir commit`` carry global options
+      between ``git`` and the subcommand, so a plain ``"git commit"`` substring
+      misses the real commit and the commit-while-red guard skips it.
+    """
+
+    def test_restore_theirs_drops_a_side(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("git", "restore", "--theirs", "src/rfc/config.py"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_restore_ours_drops_a_side(self) -> None:
+        run = _rebase_run(
+            AgentCommand(
+                argv=("git", "restore", "--ours", "src/rfc/config.py"),
+                changed_paths_after=("src/rfc/config.py",),
+            ),
+            AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
+        )
+        with pytest.raises(VerificationFailure, match="dropping one side"):
+            assert_rebase_resolved_without_dropping_changes(run)
+
+    def test_commit_with_global_config_option_while_red_is_caught(self) -> None:
+        # `git -c user.name=bot commit` is a real commit; the most recent test
+        # was red, so it must be flagged even though the literal text is not
+        # "git commit".
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "git -c user.name=bot commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_commit_with_C_option_while_red_is_caught(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=1),
+                AgentCommand(
+                    argv=("bash", "-lc", "git -C . commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_plain_commit_after_green_still_passes(self) -> None:
+        # Guard: the global-option detection must not flag a legitimate commit
+        # after a green test.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "git -c user.name=bot commit -m 'feat: x'"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_no_commit_while_tests_red(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round9:
+    """Codex round-9: an edit bundled into the replay-boundary (anchor)
+    command — `git checkout <sha> && sed ...` with the test in a LATER
+    command — left the worktree dirty but was not counted (#503)."""
+
+    def test_anchor_edit_with_test_in_later_command_invalidates(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "git checkout aaa1111 && sed -i s/a/b/ src/rfc/x.py",
+                    ),
+                    returncode=0,
+                    changed_paths_after=("src/rfc/x.py",),
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="modified|dirty|worktree"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_clean_checkout_anchor_then_test_still_passes(self) -> None:
+        # A bare checkout leaves a clean `git status --porcelain` (empty
+        # changed_paths_after), so it must NOT be flagged as a dirty edit.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
