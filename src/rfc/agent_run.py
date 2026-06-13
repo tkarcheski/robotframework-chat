@@ -51,21 +51,24 @@ class AgentCommand:
         """Like :meth:`shell_subcommands`, keeping the joining operator.
 
         Each element is ``(operator, subcommand)`` where ``operator`` is the
-        separator BEFORE the subcommand (``"&&"``, ``";"``, ``"||"``) or
-        ``None`` for the first one. Verifiers need the operator: ``A && B``
-        runs B only when A succeeded, ``A || B`` only when A FAILED, and
-        ``A; B`` regardless — conflating them excuses commit-on-red (#503).
+        separator BEFORE the subcommand (``"&&"``, ``";"``, ``"||"``, ``"|"``)
+        or ``None`` for the first one. Verifiers need the operator: ``A && B``
+        runs B only when A succeeded, ``A || B`` only when A FAILED, ``A; B``
+        regardless, and ``A | B`` exits with B's status (A's failure is hidden
+        without ``pipefail``) — conflating them excuses commit-on-red (#503).
+        The ``\\|\\|`` alternative precedes ``\\|`` so ``||`` is never split
+        into two pipes.
         """
         for wrapper in _SHELL_WRAPPERS:
             if tuple(self.argv[: len(wrapper)]) == wrapper and len(self.argv) > len(
                 wrapper
             ):
                 inner = self.argv[len(wrapper)]
-                tokens = re.split(r"\s*(&&|;|\|\|)\s*", inner)
+                tokens = re.split(r"\s*(&&|;|\|\||\|)\s*", inner)
                 result: list[tuple[str | None, str]] = []
                 operator: str | None = None
                 for token in tokens:
-                    if token in ("&&", ";", "||"):
+                    if token in ("&&", ";", "||", "|"):
                         operator = token
                         continue
                     if token.strip():

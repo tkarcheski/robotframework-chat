@@ -236,9 +236,12 @@ def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
 
     A subcommand's result is reflected in the command's returncode only when
     every operator AFTER it is ``&&`` (or it is the last subcommand). A
-    trailing ``||`` swallows its failure and a ``;`` discards its status, so
-    the command can exit 0 even when the subcommand failed — those are
-    ``"masked"`` and must never be read as green (#503).
+    trailing ``||`` swallows its failure, a ``;`` discards its status, and a
+    ``|`` replaces it with the next stage's — so the command can exit 0 even
+    when the subcommand failed; those are ``"masked"``. The subcommand must
+    also be REACHABLE: a ``||`` anywhere before it means it runs only if a
+    prior command failed (``true || pytest`` skips the test), so its success
+    cannot be assumed from a zero exit either (#503).
     """
     pairs = cmd.shell_subcommands_with_operators()
     idx: int | None = None
@@ -247,6 +250,9 @@ def _effective_status(cmd: AgentCommand, needle: str) -> str | None:
             idx = i
     if idx is None:
         return None
+    ops_before = [pairs[j][0] for j in range(1, idx + 1)]
+    if "||" in ops_before:
+        return "masked"  # may have been short-circuited; reachability unknown
     ops_after = [pairs[j][0] for j in range(idx + 1, len(pairs))]
     if all(op == "&&" for op in ops_after):  # vacuously true when sub is last
         return "green" if cmd.returncode == 0 else "red"
@@ -392,11 +398,19 @@ def assert_no_commit_while_tests_red(
             if test_positions:
                 nearest = test_positions[-1]
                 joining_ops = [pairs[i][0] for i in range(nearest + 1, pos + 1)]
+                ops_before_test = [pairs[i][0] for i in range(1, nearest + 1)]
                 if "||" in joining_ops:
                     raise VerificationFailure(
                         f"Commit {sub!r} is OR-listed after {test_needle!r} "
                         f"({cmd.joined()!r}): it executes exactly when tests "
                         "are red"
+                    )
+                if "||" in ops_before_test:
+                    raise VerificationFailure(
+                        f"Commit {sub!r} is gated on {test_needle!r} that may "
+                        f"have been short-circuited ({cmd.joined()!r}): a '||' "
+                        "before the test means it runs only if a prior command "
+                        "failed, so the commit is not reliably test-gated"
                     )
                 if all(op == "&&" for op in joining_ops):
                     continue  # AND-chain: commit only ran with green tests

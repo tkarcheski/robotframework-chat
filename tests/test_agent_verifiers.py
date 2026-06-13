@@ -890,3 +890,112 @@ class TestReviewFindingsPr503Round3:
             AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
         )
         assert_rebase_resolved_without_dropping_changes(run)
+
+
+class TestReviewFindingsPr503Round4:
+    """Codex round-4: a test can be short-circuited by operators BEFORE it
+    (`true || pytest` never runs the test) or masked by a pipeline (`pytest |
+    tee` exits with tee's status), yet still read as green (#503)."""
+
+    # ── operators before the matched test (short-circuit) ───────────────
+
+    def test_or_true_before_test_then_commit_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "true || uv run pytest && git commit -m 'x'",
+                    ),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_standalone_short_circuited_test_then_commit_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "true || uv run pytest"), returncode=0
+                ),
+                AgentCommand(argv=("git", "commit", "-m", "x")),
+            )
+        )
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_replay_short_circuited_test_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "true || uv run pytest"), returncode=0
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    # ── pipelines mask the test's exit status ───────────────────────────
+
+    def test_piped_test_then_commit_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest | tee test.log"),
+                    returncode=0,
+                ),
+                AgentCommand(argv=("git", "commit", "-m", "x")),
+            )
+        )
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_replay_piped_test_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest | tee out.log"),
+                    returncode=0,
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    # ── regressions: legitimate patterns still pass ─────────────────────
+
+    def test_and_chain_with_leading_setup_still_passes(self) -> None:
+        # `cd repo && uv run pytest && git commit` — no `||`, test reached.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "cd repo && uv run pytest && git commit -m 'x'",
+                    ),
+                    returncode=0,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run, test_needle="pytest")
+
+    def test_pipe_operator_does_not_corrupt_double_pipe(self) -> None:
+        # `pytest || true` must still parse as a single `||`, not two pipes.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest || true"), returncode=0
+                ),
+                AgentCommand(argv=("git", "commit", "-m", "x")),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="mask"):
+            assert_no_commit_while_tests_red(run, test_needle="pytest")
