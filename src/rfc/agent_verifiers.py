@@ -259,6 +259,14 @@ _HEAD_MOVING_FRAGMENTS = (
     "git reset --hard",
     "git reset --keep",
     "git reset --merge",
+    # cherry-pick / merge / rebase / revert all advance or rewrite HEAD and
+    # leave a clean worktree, so a test run after one of them no longer
+    # exercises the replayed commit even though changed_paths_after is empty
+    # (#503 round 10). Same tokenized-denylist family as the moves above.
+    "git cherry-pick",
+    "git merge",
+    "git rebase",
+    "git revert",
 )
 
 

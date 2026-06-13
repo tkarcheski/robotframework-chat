@@ -1288,3 +1288,48 @@ class TestReviewFindingsPr503Round9AnchorEdit:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+class TestReviewFindingsPr503Round10HeadMovers:
+    """Codex round-10 (structural, in-family): `git cherry-pick`, `git merge`,
+    and `git rebase` move HEAD just like checkout/switch/reset, leaving a clean
+    worktree, so a test run after one of them no longer certifies the replayed
+    commit. These belong in `_HEAD_MOVING_FRAGMENTS` (same tokenized-denylist
+    approach as the prior reset/switch fixes) — a cheap structural extension,
+    not shell-grammar chasing (#503)."""
+
+    def test_cherry_pick_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("git", "cherry-pick", "bbb2222"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_merge_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("git", "merge", "bbb2222"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_rebase_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(argv=("git", "rebase", "main"), returncode=0),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
