@@ -321,3 +321,30 @@ def test_caching_provider_exposes_full_llm_provider_surface():
     for attr in LLMProvider.__protocol_attrs__:
         assert hasattr(wrapped, attr), f"wrapper missing provider attr {attr!r}"
     assert callable(wrapped.generate)
+
+
+def test_caching_provider_breaks_ollamaclient_isinstance():
+    """Characterization: a wrapped OllamaClient fails ``isinstance(.., OllamaClient)``.
+
+    ``keywords.py`` gates five keywords (Wait For LLM, Unload Model, Get Running
+    Models, LLM Is Busy, Set LLM Endpoint) on
+    ``isinstance(self.client, OllamaClient)`` — a *concrete-class* check, not a
+    structural one. Because ``CachingProvider`` proxies rather than subclasses,
+    those keywords silently degrade when ``ANSWER_CACHE_ENABLED=1`` wraps the
+    provider. This test pins that behavior so the fix (and any regression) is
+    visible. See the linked ``from:testing`` defect issue.
+
+    The transparency goal ("wrapping is invisible to callers") is therefore NOT
+    fully met today; the concrete-class isinstance is the leak, not the proxy.
+    """
+    from rfc.ollama import OllamaClient
+
+    cache = make_cache()
+    inner = OllamaClient(base_url="http://localhost:11434", model="m")
+    wrapped = CachingProvider(inner, cache)
+
+    # Documents the defect: the wrapper is NOT seen as an OllamaClient, so
+    # concrete-class isinstance gates in keywords.py take their else-branch.
+    assert not isinstance(wrapped, OllamaClient)
+    # ...even though the underlying client is one (proxying is structural only).
+    assert isinstance(wrapped._client, OllamaClient)
