@@ -98,6 +98,18 @@ def _runs_command(sub: str, needle: str) -> bool:
     return False
 
 
+def _is_negated(sub: str) -> bool:
+    """True when *sub* is a shell-negated command (leading ``!``).
+
+    ``! uv run pytest`` inverts the exit status, so a zero command/chain status
+    means the test FAILED. Such a subcommand can never establish that the test
+    passed, and an ``&&`` to a following commit fires precisely when the test
+    was red — so the negation must defeat the green/AND-chain commit exemptions
+    (#503 round 7; re-added after the round-8 rewrite dropped it, round 11).
+    """
+    return re.match(r"^\s*!\s+", sub) is not None
+
+
 def _git_subcommand_tokens(sub: str) -> list[str] | None:
     """Tokens of a ``git`` invocation after its global options, else ``None``.
 
@@ -375,21 +387,37 @@ _REBASE_SUBCOMMAND_MODIFIERS = ("--continue", "--abort", "--skip")
 # Commands that move HEAD / rewrite the worktree, ending a replay checkpoint:
 # a test recorded after one of these ran against a different commit, so it
 # can no longer certify the checked-out SHA (#503).
-_HEAD_MOVING_FRAGMENTS = (
-    "git checkout",
-    "git switch",
-    "git reset --hard",
-    "git reset --keep",
-    "git reset --merge",
-    # cherry-pick / merge / rebase / revert all advance or rewrite HEAD and
-    # leave a clean worktree, so a test run after one of them no longer
-    # exercises the replayed commit even though changed_paths_after is empty
-    # (#503 round 10). Same tokenized-denylist family as the moves above.
-    "git cherry-pick",
-    "git merge",
-    "git rebase",
-    "git revert",
+# Git subcommands that always advance or rewrite HEAD and leave a clean
+# worktree, so a test run after one of them no longer exercises the replayed
+# commit even though ``changed_paths_after`` is empty (#503 round 10).
+_HEAD_MOVING_SUBCOMMANDS = frozenset(
+    {"checkout", "switch", "cherry-pick", "merge", "rebase", "revert"}
 )
+# ``git reset`` only moves HEAD's worktree off the commit for these modes; a
+# bare ``git reset`` / ``--soft`` / ``--mixed`` leaves the checked-out tree.
+_HEAD_MOVING_RESET_MODES = frozenset({"--hard", "--keep", "--merge"})
+
+
+def _is_head_mover(sub: str) -> bool:
+    """True when *sub* is a git command that moves HEAD off the replayed commit.
+
+    Tokenized through :func:`_git_subcommand_tokens` so global options before
+    the subcommand are tolerated — ``git -C . merge <other>`` and
+    ``git -c k=v rebase <base>`` are recognized just like the bare forms, which
+    a substring check (``"git merge" in sub``) misses (``git -h`` permits
+    ``[-C <path>] [-c <name>=<value>]`` before ``<command>``). ``echo git
+    merge`` is likewise excluded — it is not an executed git invocation (#503
+    round 11; same tokenizer the round-9 ``git -c/-C`` commit fix uses).
+    """
+    rest = _git_subcommand_tokens(sub)
+    if not rest:
+        return False
+    verb = rest[0]
+    if verb in _HEAD_MOVING_SUBCOMMANDS:
+        return True
+    if verb == "reset":
+        return any(mode in rest[1:] for mode in _HEAD_MOVING_RESET_MODES)
+    return False
 
 
 def _is_trailing_background(cmd: AgentCommand) -> bool:
@@ -477,6 +505,10 @@ def _effective_status(
             idx = i
     if idx is None:
         return None
+    if _is_negated(pairs[idx][1]):
+        # ``! pytest`` inverts the status: a zero exit means the test FAILED,
+        # so it can never establish green — treat as masked (#503 round 11).
+        return "masked"
     ops_before = [pairs[j][0] for j in range(1, idx + 1)]
     if "||" in ops_before:
         return "masked"  # may have been short-circuited; reachability unknown
@@ -645,6 +677,13 @@ def assert_no_commit_while_tests_red(
                 nearest = test_positions[-1]
                 joining_ops = [pairs[i][0] for i in range(nearest + 1, pos + 1)]
                 ops_before_test = [pairs[i][0] for i in range(1, nearest + 1)]
+                if _is_negated(subs[nearest]):
+                    raise VerificationFailure(
+                        f"Commit {sub!r} is gated on a NEGATED {test_needle!r} "
+                        f"({cmd.joined()!r}): '! {test_needle}' inverts the "
+                        "status, so a zero chain exit means the test was RED — "
+                        "the commit fires exactly when tests failed"
+                    )
                 if "||" in joining_ops:
                     raise VerificationFailure(
                         f"Commit {sub!r} is OR-listed after {test_needle!r} "
@@ -769,11 +808,11 @@ def assert_every_commit_is_green(
                 scan = list(enumerate(subs))
             for spos, sub in scan:
                 # A HEAD-moving command after the checkout ends the checkpoint
-                # (git checkout/switch/reset --hard all move HEAD off the
-                # replayed commit), but not the anchor checkout itself.
-                if any(frag in sub for frag in _HEAD_MOVING_FRAGMENTS) and not (
-                    idx == checkout_idx and spos == co_pos
-                ):
+                # (git checkout/switch/cherry-pick/merge/rebase/revert and
+                # reset --hard/--keep/--merge all move HEAD off the replayed
+                # commit; tokenized so ``git -C .``/``git -c k=v`` forms count
+                # too, #503 round 11), but not the anchor checkout itself.
+                if _is_head_mover(sub) and not (idx == checkout_idx and spos == co_pos):
                     moved_on = True
                     break
                 if _runs_command(sub, test_command):
