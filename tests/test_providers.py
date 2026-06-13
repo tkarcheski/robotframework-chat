@@ -290,12 +290,39 @@ class TestCerebrasReviewFindings521:
     def _cerebras(self):
         return next(p for p in load_providers(self._config()) if p.name == "cerebras")
 
-    def test_drops_deprecated_llama_3_3_70b(self) -> None:
-        # Cerebras deprecated Llama 3.3 70B on 2026-02-16; scheduling it would
-        # record every suite as a failure rather than a skip.
+    def _groq(self):
+        return next(p for p in load_providers(self._config()) if p.name == "groq")
+
+    # Cerebras deprecation dates (inference-docs.cerebras.ai/support/deprecation):
+    # llama-3.3-70b 2026-02-16, llama3.1-8b 2026-05-27.
+    _DEPRECATED_CEREBRAS = ("llama-3.3-70b", "llama3.1-8b", "llama3.1-70b")
+
+    def test_no_deprecated_cerebras_models(self) -> None:
         cerebras = self._cerebras()
-        assert "llama-3.3-70b" not in cerebras.models
-        assert "llama3.1-8b" in cerebras.models
+        for retired in self._DEPRECATED_CEREBRAS:
+            assert retired not in cerebras.models, f"{retired} is retired"
+        # at least one current production model (gpt-oss-120b)
+        assert "gpt-oss-120b" in cerebras.models
+
+    def test_groq_scheduled_model_is_not_tpd_starved(self) -> None:
+        # llama-3.3-70b-versatile is capped at 100K tokens/day on Groq free —
+        # far too low for a 630-call sweep — so it must not be the first
+        # (scheduled) model. llama-3.1-8b-instant carries the sweep (#521).
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        groq = self._groq()
+        kept = select_models_within_budget(
+            list(groq.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=groq.max_requests_per_day,
+            requests_per_suite_estimate=groq.requests_per_suite_estimate,
+        )
+        assert kept, "Groq budget must schedule at least one model"
+        assert "llama-3.3-70b-versatile" not in kept, (
+            "the 100K-TPD 70B model can't complete a full sweep; schedule "
+            "llama-3.1-8b-instant instead"
+        )
 
     def test_budget_schedules_at_least_one_model(self) -> None:
         from rfc.providers import select_models_within_budget

@@ -266,33 +266,34 @@ providers:
     # ~LLM calls one (model, suite) run makes; used for budget/pacing math.
     requests_per_suite_estimate: 15
 
-  # Groq free tier: 1,000 req/day on llama-3.3-70b-versatile (14,400/day on
-  # llama-3.1-8b-instant), 30 RPM. Budget set to the stricter 70b limit so a
-  # mixed sweep can never exhaust the smaller pool (#509).
+  # Groq free tier, 30 RPM. llama-3.1-8b-instant is the scheduled (first)
+  # model: 14,400 req/day and a token/day budget large enough to complete a
+  # full sweep. llama-3.3-70b-versatile is intentionally NOT scheduled here —
+  # its free-plan cap is 100K tokens/day (≈100 calls), far below a 42-suite
+  # sweep (~630 calls), so it would 429 partway through (#521). Token-aware
+  # budgeting that could safely mix both models is tracked in #515.
   - name: "groq"
     base_url: "https://api.groq.com/openai/v1"
     api_key_env: "GROQ_API_KEY"
     models:
-      - "llama-3.3-70b-versatile"
       - "llama-3.1-8b-instant"
     discover_free_pool: false
     max_requests_per_day: 1000
     requests_per_minute: 30
     requests_per_suite_estimate: 15
 
-  # Cerebras free tier: 1M tokens/day, 30 RPM, 8K context cap. Model ids are
-  # current as of 2026-06 — Llama 3.3 70B / Qwen 3 32B were deprecated
-  # 2026-02-16, so scheduling them would fail every suite instead of skipping.
-  # Budget: at ~1.4K tokens per small eval request (8K-ctx cap, 256 default
-  # max_tokens), 1M tokens/day ≈ 700 requests — enough to run one model across
-  # the full suite set (42 suites x 15 ≈ 630). The second model is dropped with
-  # a log line until the budget or suite set allows it. Suites declaring
-  # min_context_tokens > 8192 are skipped with a log line (#509).
+  # Cerebras free tier: 1M tokens/day, 30 RPM, 8K context cap. gpt-oss-120b is
+  # the only current production model here — every Llama (incl. llama3.1-8b,
+  # deprecated 2026-05-27) and the older Qwen 3 32B have been retired
+  # (inference-docs.cerebras.ai/support/deprecation), and scheduling a retired
+  # id fails every suite instead of skipping. Budget: at ~1.4K tokens per small
+  # eval request (8K-ctx cap, 256 default max_tokens), 1M tokens/day ≈ 700
+  # requests — enough for one model across the full suite set (42 x 15 ≈ 630).
+  # Suites declaring min_context_tokens > 8192 are skipped with a log (#509).
   - name: "cerebras"
     base_url: "https://api.cerebras.ai/v1"
     api_key_env: "CEREBRAS_API_KEY"
     models:
-      - "llama3.1-8b"
       - "gpt-oss-120b"
     discover_free_pool: false
     max_requests_per_day: 700
