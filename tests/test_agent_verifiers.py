@@ -1253,7 +1253,7 @@ class TestReviewFindingsPr503Round9:
         assert_no_commit_while_tests_red(run, "uv run pytest")
 
 
-class TestReviewFindingsPr503Round9:
+class TestReviewFindingsPr503Round9AnchorEdit:
     """Codex round-9: an edit bundled into the replay-boundary (anchor)
     command — `git checkout <sha> && sed ...` with the test in a LATER
     command — left the worktree dirty but was not counted (#503)."""
