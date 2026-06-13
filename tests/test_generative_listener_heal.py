@@ -52,7 +52,7 @@ from rfc.harness_models import AgenticHarness
 T0 = "2026-06-12T00:00:00Z"
 SESSION = "sess-gen-heal-1"
 
-HEAL_RESPONSE = "1\nShould Be Equal    ${answer}    Paris"
+HEAL_RESPONSE = "2\nShould Be Equal    ${answer}    Paris"
 GRADE_OK = '{"score": 0.9, "reason": "plausible fix"}'
 GRADE_LOW = '{"score": 0.2, "reason": "weak fix"}'
 HEALED_NAME_RE = re.compile(r"^t1::healed::[0-9a-f]{8}$")
@@ -106,7 +106,12 @@ class FakeTest:
     def __init__(self, name: str, tags: List[str], parent: Any = None) -> None:
         self.name = name
         self.tags = list(tags)
-        self.body = FakeBody([SimpleNamespace(name="Original Keyword", args=[])])
+        self.body = FakeBody(
+            [
+                SimpleNamespace(name="Ask Question", args=["capital?"]),
+                SimpleNamespace(name="Should Be Equal", args=["${answer}", "Berlin"]),
+            ]
+        )
         self.parent = parent
         self.setup: Any = None
         self.teardown: Any = None
@@ -204,9 +209,10 @@ class TestHealRunsSideExperiment:
         assert HEALED_NAME_RE.match(experiment.name), experiment.name
         assert HEALED_MARKER_TAG in experiment.tags
         # exactly the targeted body line was replaced by the proposed fix
-        assert len(experiment.body) == 1
-        assert experiment.body[0].name == "Should Be Equal"
-        assert experiment.body[0].args == ["${answer}", "Paris"]
+        assert len(experiment.body) == 2
+        assert experiment.body[0].name == "Ask Question"  # action preserved
+        assert experiment.body[1].name == "Should Be Equal"
+        assert experiment.body[1].args == ["${answer}", "Paris"]
         rows = db.get_decisions(SESSION, proposed_action="heal")
         assert len(rows) == 1
         assert rows[0].test_name == "t1"
@@ -271,7 +277,7 @@ class TestHealRunsSideExperiment:
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
         _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         prompt = provider.prompts[0]
-        assert "Original Keyword" in prompt  # the test body is shown
+        assert "Ask Question" in prompt  # the test body is shown
         assert "boom" in prompt  # the failure message is shown
         for keyword in ALLOWED_MUTATION_KEYWORDS:
             assert keyword in prompt
@@ -332,7 +338,7 @@ class TestHealSafety:
 
     def test_disallowed_keyword_recorded_not_run(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
-        provider = SyntheticProvider(responses=["1\nRun Process    rm    -rf    /"])
+        provider = SyntheticProvider(responses=["2\nRun Process    rm    -rf    /"])
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
         executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1  # no experiment inserted
@@ -344,7 +350,7 @@ class TestHealSafety:
     def test_injected_argument_recorded_not_run(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(
-            responses=["1\nShould Be Equal    ${{__import__('os').getcwd()}}    x"]
+            responses=["2\nShould Be Equal    ${{__import__('os').getcwd()}}    x"]
         )
         suite = _suite([HEAL_SUGGEST_TAG], ["t1"])
         executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
@@ -353,12 +359,29 @@ class TestHealSafety:
         assert len(rows) == 1
         assert rows[0].applied == 0
 
+    def test_non_assertion_target_recorded_not_run(self, clean_env, tmp_path):
+        """Replacing the ACTION that caused the failure (e.g. Ask LLM,
+        Fail, a setup keyword) with an assertion would make the experiment
+        trivially green and surface a false healing candidate (Codex P2 on
+        PR #518). Only assertion lines are eligible targets."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(
+            responses=["1\nShould Be Equal    ${answer}    Paris"]
+        )
+        suite = _suite([HEAL_SUGGEST_TAG], ["t1"])  # line 1 is 'Ask Question'
+        executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
+        assert len(executed) == 1  # no experiment inserted
+        rows = db.get_decisions(SESSION, proposed_action="heal")
+        assert len(rows) == 1
+        assert rows[0].applied == 0
+        assert provider.calls == 1  # no grading call for a rejected target
+
     def test_out_of_range_line_recorded_not_run(self, clean_env, tmp_path):
         db = _seed_harness(tmp_path)
         provider = SyntheticProvider(
             responses=["99\nShould Be Equal    ${answer}    Paris"]
         )
-        suite = _suite([HEAL_SUGGEST_TAG], ["t1"])  # body has 1 line
+        suite = _suite([HEAL_SUGGEST_TAG], ["t1"])  # body has 2 lines
         executed = _run_suite(_listener(tmp_path, provider), suite, {"t1": "FAIL"})
         assert len(executed) == 1
         rows = db.get_decisions(SESSION, proposed_action="heal")

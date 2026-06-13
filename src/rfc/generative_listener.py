@@ -261,6 +261,9 @@ _DEFAULT_MUTATE_PROMPTS = {
         "{body}\n"
         "Propose a fix by replacing ONE body line with ONE corrected "
         "assertion (e.g. an updated expected value).\n"
+        "You may only target a line that is itself an assertion (its "
+        "keyword name contains 'Should'); never replace the action that "
+        "produced the output.\n"
         "Reply with EXACTLY two lines and nothing else:\n"
         "line 1: the number of the body line to replace\n"
         "line 2: the replacement in Robot Framework syntax — the keyword, "
@@ -459,6 +462,17 @@ def _fill_template(template: str, **values: Any) -> str:
     for key, value in values.items():
         template = template.replace("{" + key + "}", str(value))
     return template
+
+
+def _assertion_like(item: Any) -> bool:
+    """True when a body item looks like an assertion (its keyword name
+    contains 'should', covering the BuiltIn assertion family and most
+    custom verification keywords). Heal experiments may only replace
+    assertion lines: swapping out the *action* that caused the failure
+    (``Ask LLM``, ``Fail``, a setup step) for an assertion would make the
+    experiment trivially green and surface a false healing candidate
+    (Codex P2, PR #518)."""
+    return "should" in (getattr(item, "name", "") or "").lower()
 
 
 def _render_body(test: Any, numbered: bool = False) -> str:
@@ -1240,20 +1254,34 @@ class GenerativeListener(BaseListener):
         # changes the official outcome — heal_passed (written when the
         # experiment finishes) is the signal that the experiment ran.
         staged = None
-        body_len = len(getattr(data, "body", None) or [])
+        body = list(getattr(data, "body", None) or [])
+        body_len = len(body)
         if heal is not None and self._suite_position(data)[0] is not None:
             line_number, keyword, args = heal
-            if 1 <= line_number <= body_len:
-                staged = self._build_heal_copy(
-                    data, test_name, line_number, keyword, args
-                )
-            else:
+            if not 1 <= line_number <= body_len:
                 logger.warning(
                     "GenerativeListener: heal for %r targeted body line %d "
                     "of %d; recorded, not run.",
                     test_name,
                     line_number,
                     body_len,
+                )
+            elif not _assertion_like(body[line_number - 1]):
+                # Replacing the ACTION that caused the failure (Ask LLM,
+                # Fail, a setup step) with an assertion would make the
+                # experiment trivially green and surface a false healing
+                # candidate (Codex P2, PR #518). Only assertion lines are
+                # eligible targets.
+                logger.warning(
+                    "GenerativeListener: heal for %r targeted body line %d "
+                    "(%r), which is not an assertion; recorded, not run.",
+                    test_name,
+                    line_number,
+                    getattr(body[line_number - 1], "name", ""),
+                )
+            else:
+                staged = self._build_heal_copy(
+                    data, test_name, line_number, keyword, args
                 )
         persisted = self._persist(
             AgenticDecision(

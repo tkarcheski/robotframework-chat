@@ -56,6 +56,8 @@ ${HEAL_PROMPT_TEMPLATE}    SEPARATOR=\n
 ...    {body}
 ...    Propose a fix by replacing ONE body line with ONE corrected assertion
 ...    (e.g. an updated expected value).
+...    You may only target a line that is itself an assertion (its keyword name
+...    contains 'Should'); never replace the action that produced the output.
 ...    Reply with EXACTLY two lines and nothing else:
 ...    line 1: the number of the body line to replace
 ...    line 2: the replacement in Robot Framework syntax — the keyword, then each
