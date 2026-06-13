@@ -1047,3 +1047,37 @@ class TestReviewFindingsPr503Round6:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_same_command_edit_between_checkout_and_test_invalidates(self) -> None:
+        # `git checkout <sha> && patch && pytest` bundles the edit into the
+        # anchor command — the test still ran on a dirty tree (#503 round-6 gap
+        # flagged on PR #529).
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=(
+                        "bash",
+                        "-lc",
+                        "git checkout aaa1111 && patch src/rfc/x.py && uv run pytest",
+                    ),
+                    returncode=0,
+                    changed_paths_after=("src/rfc/x.py",),
+                ),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="modified|dirty|worktree"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_clean_same_command_checkout_and_test_still_passes(self) -> None:
+        # `git checkout <sha> && pytest` with no edits must still pass.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "git checkout aaa1111 && uv run pytest"),
+                    returncode=0,
+                ),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")

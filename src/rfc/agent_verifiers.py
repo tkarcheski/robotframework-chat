@@ -502,8 +502,8 @@ def assert_every_commit_is_green(
             )
 
         test_cmd: AgentCommand | None = None
+        test_idx: int | None = None
         moved_on = False
-        dirty_edit: AgentCommand | None = None
         for idx in range(checkout_idx, len(run.commands)):
             cmd = run.commands[idx]
             subs = cmd.shell_subcommands()
@@ -520,10 +520,6 @@ def assert_every_commit_is_green(
                 scan = list(enumerate(subs))[co_pos + 1 :]
             else:
                 scan = list(enumerate(subs))
-            # A worktree edit after the checkout but before the test means the
-            # test exercised a modified/repaired tree, not the commit (#503).
-            if idx > checkout_idx and cmd.changed_paths_after:
-                dirty_edit = cmd
             for spos, sub in scan:
                 # A HEAD-moving command after the checkout ends the checkpoint
                 # (git checkout/switch/reset --hard all move HEAD off the
@@ -535,14 +531,33 @@ def assert_every_commit_is_green(
                     break
                 if test_command in sub:
                     test_cmd = cmd
+                    test_idx = idx
                     break
             if test_cmd is not None or moved_on:
                 break
-        if test_cmd is None:
+        if test_cmd is None or test_idx is None:
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}): no {test_command!r} "
                 f"recorded after its replay checkout"
             )
+        # A worktree edit after the checkout but before the test means the test
+        # exercised a modified/repaired tree, not the commit (#503). Edits show
+        # as non-empty changed_paths_after. Two shapes:
+        #   * separate commands: any command strictly between checkout and test;
+        #   * same command: ``git checkout <sha> && patch && pytest`` bundles
+        #     the edit into the anchor, so the anchor's own changes count when
+        #     the test is in that same command (#529).
+        # The anchor's changes are NOT counted when the test is in a later
+        # command, since a bare ``git checkout`` legitimately rewrites the tree.
+        dirty_edit: AgentCommand | None = None
+        if test_idx == checkout_idx:
+            if run.commands[checkout_idx].changed_paths_after:
+                dirty_edit = run.commands[checkout_idx]
+        else:
+            for j in range(checkout_idx + 1, test_idx):
+                if run.commands[j].changed_paths_after:
+                    dirty_edit = run.commands[j]
+                    break
         if dirty_edit is not None:
             raise VerificationFailure(
                 f"Commit {commit.sha} ({commit.subject!r}): the worktree was "
