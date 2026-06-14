@@ -289,6 +289,15 @@ class CachingProvider:
 
     # ── Transparent proxying ────────────────────────────────────────────
 
+    @property  # type: ignore[misc]
+    def __class__(self) -> type:
+        # Delegate the virtual class to the wrapped client so that
+        # isinstance(caching_provider, OllamaClient) returns True (#531).
+        # Python's isinstance() checks obj.__class__ when type(obj) does not
+        # match — this satisfies the PEP 3119 virtual-subclassing path without
+        # altering type() or the MRO.
+        return type(self._client)
+
     def __getattr__(self, name: str) -> Any:
         # __getattr__ only fires for names not found normally, so this never
         # shadows generate / _client / _cache.

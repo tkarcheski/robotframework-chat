@@ -1,7 +1,7 @@
 """Tests for rfc.llm_client — LLMProvider protocol and create_provider factory."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -101,6 +101,49 @@ class TestCreateProvider:
         assert isinstance(client, OpenAIClient)
         assert client.timeout == 30
         assert client.max_retries == 3
+
+
+class TestCreateProviderWithCache:
+    """Tests for create_provider() when ANSWER_CACHE_ENABLED=1 (#531)."""
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    @patch.dict(os.environ, {"ANSWER_CACHE_ENABLED": "1"})
+    def test_isinstance_transparent_when_cache_enabled(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """CachingProvider.__class__ must delegate to the inner type so that
+        isinstance(create_provider(), OllamaClient) is True even with caching
+        enabled (#531).
+        """
+        mock_from_env.return_value = MagicMock()
+        client = create_provider(provider="ollama", model="test-model")
+        assert isinstance(client, OllamaClient)
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    @patch.dict(os.environ, {"ANSWER_CACHE_ENABLED": "1"})
+    def test_type_still_caching_provider_when_cache_enabled(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """type() returns CachingProvider — __class__ is a virtual delegation only."""
+        from rfc.answer_cache import CachingProvider
+
+        mock_from_env.return_value = MagicMock()
+        client = create_provider(provider="ollama", model="test-model")
+        assert type(client) is CachingProvider
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    @patch.dict(
+        os.environ, {"ANSWER_CACHE_ENABLED": "1", "OPENAI_API_KEY": "sk-test"}
+    )
+    def test_openai_isinstance_transparent_when_cache_enabled(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """isinstance(create_provider('openai'), OpenAIClient) is True with cache."""
+        from rfc.openai_client import OpenAIClient
+
+        mock_from_env.return_value = MagicMock()
+        client = create_provider(provider="openai")
+        assert isinstance(client, OpenAIClient)
 
 
 class TestLLMClientAlias:
