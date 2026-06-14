@@ -201,14 +201,12 @@ def import_results(
 
     git_commit = (
         metadata.get("Commit_SHA")
-        or metadata.get("GitLab Commit")
-        or os.getenv("CI_COMMIT_SHA")
+        or metadata.get("GitLab Commit")  # historical re-imports
         or os.getenv("GITHUB_SHA", "")
     )
     git_branch = (
         metadata.get("Branch")
-        or metadata.get("GitLab Branch")
-        or os.getenv("CI_COMMIT_REF_NAME")
+        or metadata.get("GitLab Branch")  # historical re-imports
         or os.getenv("GITHUB_REF_NAME", "")
     )
 

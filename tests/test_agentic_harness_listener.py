@@ -223,14 +223,6 @@ class TestListenerRegistration:
     REPO_ROOT = Path(__file__).resolve().parent.parent
     LISTENER = "rfc.agentic_harness_listener.AgenticHarnessListener"
 
-    def test_registered_in_test_suites_yaml(self):
-        import yaml
-
-        config = yaml.safe_load(
-            (self.REPO_ROOT / "config" / "test_suites.yaml").read_text()
-        )
-        assert self.LISTENER in config["ci"]["listeners"]
-
     def test_registered_in_local_models_config(self):
         import yaml
 

@@ -687,27 +687,17 @@ class TestBuildOutputXmlUrl:
             url = _build_output_xml_url()
         assert url == "https://results.example.com/math/output.xml"
 
-    def test_from_ci_job_url(self) -> None:
-        env = {"CI_JOB_URL": "https://gitlab.example.com/project/-/jobs/123"}
-        with patch.dict(os.environ, env, clear=False):
-            os.environ.pop("REPORT_BASE_URL", None)
-            url = _build_output_xml_url()
-        assert url is not None
-        assert "output.xml" in url
-
     def test_empty_when_only_output_dir(self) -> None:
         """Filesystem paths should NOT be stored as URLs."""
         env = {"ROBOT_OUTPUT_DIR": "/tmp/results/math"}
         with patch.dict(os.environ, env, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
-            os.environ.pop("CI_JOB_URL", None)
             url = _build_output_xml_url()
         assert url == ""
 
     def test_empty_when_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
-            os.environ.pop("CI_JOB_URL", None)
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
             url = _build_output_xml_url()
         assert url == ""
