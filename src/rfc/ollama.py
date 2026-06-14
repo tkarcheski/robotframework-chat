@@ -8,7 +8,12 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
-from .exceptions import OllamaModelNotFoundError, OllamaTimeoutError
+from .exceptions import (
+    ModelNotReadyError,
+    OllamaModelNotFoundError,
+    OllamaTimeoutError,
+    ProviderOfflineError,
+)
 from .retry import retry_on_transient
 
 
@@ -389,6 +394,41 @@ class OllamaClient:
             elapsed=elapsed,
             models=[m.get("name", "?") for m in models],
         )
+
+    def ensure_ready(
+        self, *, timeout: Optional[int] = None, warmup: bool = True
+    ) -> None:
+        """Verify the endpoint is online and proactively load the model.
+
+        Steps:
+          1. Fast online probe (``is_available``) — skip immediately if the
+             endpoint is unreachable rather than blocking for the full timeout.
+          2. ``wait_until_ready`` — wait out contention from another model
+             loaded on a shared host.
+          3. When *warmup*, send a tiny ``generate`` request. Ollama lazily
+             loads models, so this both forces the target model into VRAM and
+             proves it can emit tokens — exactly the cold-load that otherwise
+             returned empty mid-suite.
+
+        Raises (all ``RFCSkipError`` subclasses → the test/suite is *skipped*,
+        not failed):
+            ProviderOfflineError: endpoint unreachable.
+            OllamaTimeoutError: stayed busy past *timeout*.
+            OllamaModelNotFoundError: model is not pulled (404 on warm-up).
+            ModelNotReadyError: warm-up returned an empty response.
+        """
+        wait_timeout = timeout if timeout is not None else self.timeout
+        if not self.is_available():
+            raise ProviderOfflineError("Ollama", self.base_url)
+        self.wait_until_ready(timeout=wait_timeout)
+        if not warmup:
+            return
+        answer = self.generate("ping")
+        if not answer.strip():
+            raise ModelNotReadyError(
+                self.model, self.base_url, "warm-up returned empty response"
+            )
+        logger.info(f"Model ready: {self.model} loaded and responding.")
 
 
 # Backward-compatible alias

@@ -59,6 +59,45 @@ class OllamaTimeoutError(RFCSkipError):
         )
 
 
+# ── Provider readiness (any backend) ─────────────────────────────────
+
+
+class ProviderOfflineError(RFCSkipError):
+    """Raised when an LLM provider endpoint is offline / unreachable.
+
+    Provider-agnostic: Ollama, vLLM, and external OpenAI-compatible APIs all
+    raise this from their readiness check so the suite is skipped rather than
+    recording false-positive failures.
+    """
+
+    def __init__(self, provider: str, endpoint: str, detail: str = "") -> None:
+        self.provider = provider
+        self.endpoint = endpoint
+        hint = f" ({detail})" if detail else ""
+        super().__init__(
+            f"{provider} endpoint is offline or unreachable: {endpoint}{hint}. "
+            f"Marking test as skipped."
+        )
+
+
+class ModelNotReadyError(RFCSkipError):
+    """Raised when the target model could not be loaded / served in time.
+
+    Distinct from :class:`OllamaModelNotFoundError` (model not pulled): here the
+    endpoint is reachable but a warm-up request did not produce output, e.g. a
+    cold load that never finished within the timeout.
+    """
+
+    def __init__(self, model: str, endpoint: str, detail: str = "") -> None:
+        self.model = model
+        self.endpoint = endpoint
+        hint = f" ({detail})" if detail else ""
+        super().__init__(
+            f"Model '{model}' is not ready on {endpoint}{hint}. "
+            f"Marking test as skipped."
+        )
+
+
 # ── Docker ────────────────────────────────────────────────────────────
 
 

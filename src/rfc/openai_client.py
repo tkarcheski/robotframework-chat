@@ -7,8 +7,12 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .exceptions import ModelNotReadyError, ProviderOfflineError
 from .provider_budget import record_env_request
 from .retry import retry_on_transient
+
+#: Timeout (seconds) for the lightweight /models readiness probe.
+_ONLINE_PROBE_TIMEOUT = 10
 
 
 class OpenAIClient:
@@ -138,6 +142,49 @@ class OpenAIClient:
             return text
 
         return retry_on_transient(_do_request, max_retries=self.max_retries)
+
+    def is_online(self) -> bool:
+        """Return True if the provider endpoint is reachable and serving.
+
+        Queries the OpenAI-compatible ``{base_url}/models`` catalog with a short
+        timeout. Works for OpenAI, vLLM (``/v1/models``), and other compatible
+        servers. Any non-200 or network error counts as offline (fail-closed).
+        """
+        try:
+            response = requests.get(
+                f"{self.base_url}/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=_ONLINE_PROBE_TIMEOUT,
+            )
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+    def ensure_ready(
+        self, *, timeout: Optional[int] = None, warmup: bool = False
+    ) -> None:
+        """Verify the provider is online (and optionally serving the model).
+
+        OpenAI-compatible servers (OpenAI, vLLM, external APIs) load their model
+        at startup, so the ``/models`` probe is the readiness gate. *warmup*
+        defaults to False to avoid spending a paid/budgeted request; pass True
+        to additionally confirm the model emits tokens.
+
+        Raises (``RFCSkipError`` subclasses → test/suite *skipped*, not failed):
+            ProviderOfflineError: ``/models`` unreachable or non-200.
+            ModelNotReadyError: warm-up returned an empty response.
+        """
+        del timeout  # online probe uses its own short timeout
+        if not self.is_online():
+            raise ProviderOfflineError("OpenAI-compatible", self.base_url)
+        if not warmup:
+            return
+        answer = self.generate("ping")
+        if not answer.strip():
+            raise ModelNotReadyError(
+                self.model, self.base_url, "warm-up returned empty response"
+            )
+        logger.info(f"Model ready: {self.model} online and responding.")
 
 
 def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:

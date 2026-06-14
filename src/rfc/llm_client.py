@@ -49,8 +49,11 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
     """Create an LLM provider instance.
 
     Args:
-        provider: ``"ollama"`` or ``"openai"``.
+        provider: ``"ollama"``, ``"openai"``, or ``"vllm"``.
                   Defaults to the ``LLM_PROVIDER`` env var, then ``"ollama"``.
+                  ``"vllm"`` targets a local vLLM OpenAI-compatible server
+                  (``VLLM_BASE_URL``, default ``http://localhost:8000/v1``);
+                  vLLM accepts any bearer token, so a dummy key is used.
         **kwargs: Forwarded to the provider constructor
                   (e.g. ``timeout``, ``max_retries``).
 
@@ -78,9 +81,20 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
                 provider="openai", variable="OPENAI_API_KEY"
             )
         client = OpenAIClient(api_key=api_key, **kwargs)
+    elif provider == "vllm":
+        from .openai_client import OpenAIClient
+
+        base_url = kwargs.pop("base_url", "") or os.getenv(
+            "VLLM_BASE_URL", "http://localhost:8000/v1"
+        )
+        # vLLM serves an OpenAI-compatible API and accepts any bearer token;
+        # a dummy key satisfies OpenAIClient's non-empty validation.
+        api_key = kwargs.pop("api_key", "") or os.getenv("VLLM_API_KEY", "") or "EMPTY"
+        client = OpenAIClient(base_url=base_url, api_key=api_key, **kwargs)
     else:
         raise ValueError(
-            f"Unknown LLM provider: {provider!r}. Supported: 'ollama', 'openai'."
+            f"Unknown LLM provider: {provider!r}. "
+            f"Supported: 'ollama', 'openai', 'vllm'."
         )
 
     return _maybe_wrap_with_cache(client)
