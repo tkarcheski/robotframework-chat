@@ -130,12 +130,12 @@ class TestCICDAndConfig:
         assert "app:" in content
         assert "postgres:" in content
 
-    def test_gitlab_ci_has_pipeline_stages(self) -> None:
-        ci_path = REPO_ROOT / ".gitlab-ci.yml"
-        if not ci_path.is_file():
-            pytest.skip(".gitlab-ci.yml not found")
-        content = ci_path.read_text()
-        assert "stages:" in content
+    def test_github_workflows_present(self) -> None:
+        workflows_dir = REPO_ROOT / ".github" / "workflows"
+        if not workflows_dir.is_dir():
+            pytest.skip(".github/workflows not found")
+        workflows = list(workflows_dir.glob("*.yml"))
+        assert workflows, "No GitHub Actions workflows found"
 
     def test_pyproject_lists_robotframework_dependency(self) -> None:
         content = (REPO_ROOT / "pyproject.toml").read_text()

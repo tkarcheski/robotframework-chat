@@ -327,7 +327,6 @@ See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/a
 | Document | Description |
 |----------|-------------|
 | [docs/TEST_DATABASE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/TEST_DATABASE.md) | Database schema and usage |
-| [docs/GITLAB_CI_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
 | [docs/GRAFANA_SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |

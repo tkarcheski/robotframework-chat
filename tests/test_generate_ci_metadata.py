@@ -20,7 +20,7 @@ def _clean_env(**overrides) -> dict:
     env = {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith(("CI_", "GITLAB_", "GITHUB_", "RUNNER_"))
+        if not k.startswith(("CI_", "GITHUB_", "RUNNER_"))
     }
     env.update(overrides)
     return env
@@ -89,32 +89,6 @@ class TestGitHubPlatform:
         assert data["ci"]["job_url"] == ""
 
 
-class TestGitLabPlatform:
-    def test_gitlab_metadata(self, tmp_path):
-        env = _clean_env(
-            GITLAB_CI="true",
-            CI_PROJECT_URL="https://gitlab.example.com/group/project",
-            CI_COMMIT_SHA="deadbeefcafe1234",
-            CI_COMMIT_SHORT_SHA="deadbeef",
-            CI_COMMIT_REF_NAME="develop",
-            CI_JOB_URL="https://gitlab.example.com/group/project/-/jobs/1234",
-            CI_JOB_ID="1234",
-        )
-        result = _run_script(tmp_path, env)
-        assert result.returncode == 0, result.stderr
-
-        data = json.loads(
-            (tmp_path / "results" / "combined" / "ci_metadata.json").read_text()
-        )
-        assert data["ci_platform"] == "gitlab"
-        assert data["ci"]["project_url"] == "https://gitlab.example.com/group/project"
-        assert data["ci"]["commit_sha"] == "deadbeefcafe1234"
-        assert data["ci"]["commit_short_sha"] == "deadbeef"
-        assert data["ci"]["branch"] == "develop"
-        assert data["ci"]["job_id"] == "1234"
-        assert "runner" not in data
-
-
 class TestNoPlatform:
     def test_unknown_platform(self, tmp_path):
         env = _clean_env()
@@ -125,8 +99,13 @@ class TestNoPlatform:
             (tmp_path / "results" / "combined" / "ci_metadata.json").read_text()
         )
         assert data["ci_platform"] == "unknown"
-        # Falls into the GitLab (else) branch with empty env vars
+        # Falls into the unknown-platform branch: all keys present, empty.
+        assert data["ci"]["project_url"] == ""
         assert data["ci"]["commit_sha"] == ""
+        assert data["ci"]["commit_short_sha"] == ""
+        assert data["ci"]["branch"] == ""
+        assert data["ci"]["job_url"] == ""
+        assert data["ci"]["job_id"] == ""
 
 
 class TestDefaults:

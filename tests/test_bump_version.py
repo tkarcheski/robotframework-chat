@@ -6,7 +6,7 @@ Tests cover:
 - File update logic (both pyproject.toml and __init__.py)
 - Highest-bump-wins when multiple commits are present
 - Dry-run mode (no file modification)
-- Repository platform detection (GitHub/GitLab/unknown)
+- Repository platform detection (GitHub/unknown)
 - Git tag creation
 """
 
@@ -286,7 +286,7 @@ class TestQualityGates:
 
 
 class TestDetectRepoPlatform:
-    """Test auto-detection of GitHub vs GitLab from git remote URL."""
+    """Test auto-detection of GitHub from git remote URL."""
 
     def test_github_https(self) -> None:
         """HTTPS GitHub remote detected as 'github'."""
@@ -301,32 +301,6 @@ class TestDetectRepoPlatform:
             mock_run.return_value.stdout = "git@github.com:user/repo.git\n"
             mock_run.return_value.returncode = 0
             assert detect_repo_platform() == "github"
-
-    def test_gitlab_https(self) -> None:
-        """HTTPS GitLab remote detected as 'gitlab'."""
-        with patch("bump_version.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "https://gitlab.com/user/repo.git\n"
-            mock_run.return_value.returncode = 0
-            assert detect_repo_platform() == "gitlab"
-
-    def test_gitlab_ssh(self) -> None:
-        """SSH GitLab remote detected as 'gitlab'."""
-        with patch("bump_version.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "git@gitlab.com:user/repo.git\n"
-            mock_run.return_value.returncode = 0
-            assert detect_repo_platform() == "gitlab"
-
-    def test_self_hosted_gitlab(self) -> None:
-        """Self-hosted GitLab detected via CI env var."""
-        with patch("bump_version.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = "https://git.example.com/user/repo.git\n"
-            mock_run.return_value.returncode = 0
-            # Isolate from the host CI: GITHUB_ACTIONS=true is always set on
-            # GitHub runners and is checked before GITLAB_CI.
-            env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
-            env["GITLAB_CI"] = "true"
-            with patch.dict("os.environ", env, clear=True):
-                assert detect_repo_platform() == "gitlab"
 
     def test_self_hosted_github(self) -> None:
         """Self-hosted GitHub detected via CI env var."""
@@ -344,7 +318,6 @@ class TestDetectRepoPlatform:
             with patch.dict("os.environ", {}, clear=False):
                 # Ensure no CI env vars leak in
                 env = dict(os.environ)
-                env.pop("GITLAB_CI", None)
                 env.pop("GITHUB_ACTIONS", None)
                 with patch.dict("os.environ", env, clear=True):
                     assert detect_repo_platform() == "unknown"
@@ -355,11 +328,7 @@ class TestDetectRepoPlatform:
             "bump_version.subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git"),
         ):
-            env = {
-                k: v
-                for k, v in os.environ.items()
-                if k not in ("GITHUB_ACTIONS", "GITLAB_CI")
-            }
+            env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
             with patch.dict("os.environ", env, clear=True):
                 assert detect_repo_platform() == "unknown"
 

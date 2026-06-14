@@ -88,15 +88,10 @@ def build_output_xml_url() -> str:
 
     Priority:
     1. REPORT_BASE_URL — explicit base URL
-    2. CI_JOB_URL — GitLab CI artifact URL pattern
     """
     base = os.getenv("REPORT_BASE_URL")
     if base:
         return f"{base.rstrip('/')}/output.xml"
-
-    ci_job_url = os.getenv("CI_JOB_URL")
-    if ci_job_url:
-        return f"{ci_job_url}/artifacts/browse/output.xml"
 
     return ""
 

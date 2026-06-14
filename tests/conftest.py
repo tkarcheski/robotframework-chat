@@ -47,8 +47,6 @@ def mock_suite_config():
         "nodes": [{"hostname": "localhost", "port": 11434}],
         "master_models": ["llama3"],
         "run_all": {"label": "Run All", "path": "robot"},
-        "ci": {"listeners": []},
-        "monitoring": {"poll_interval_seconds": 30, "history_hours": 24},
     }
     with patch("rfc.suite_config.load_config") as mock_load:
         mock_load.return_value = config_data

@@ -55,7 +55,7 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
         model-cards \
-        ci-report ci-deploy \
+        ci-deploy \
         opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
 
@@ -301,9 +301,6 @@ model-cards: ## Generate Markdown model cards from test results (requires Supers
 	uv run python -m rfc.make_model_cards
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
-
-ci-report: ## Generate repo metrics (add POST_MR=1 to post to MR)
-	bash ci/report.sh $(if $(POST_MR),--post-mr,)
 
 ci-deploy: ## Deploy Superset to remote host
 	bash ci/deploy.sh

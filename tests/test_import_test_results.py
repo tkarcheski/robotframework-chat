@@ -219,9 +219,6 @@ LEGACY_METADATA_XML = """\
     <metadata>
       <item name="GitLab Commit">def456</item>
       <item name="GitLab Branch">feature-x</item>
-      <item name="GitLab Pipeline">https://gl.test/p/600</item>
-      <item name="Runner ID">runner-2</item>
-      <item name="Runner Tags">docker</item>
     </metadata>
     <test name="Test 1" id="s1-t1">
       <status status="PASS"/>
@@ -570,13 +567,13 @@ class TestImportResults:
     @patch.dict(
         os.environ,
         {
-            "CI_COMMIT_SHA": "env-sha",
-            "CI_COMMIT_REF_NAME": "env-branch",
+            "GITHUB_SHA": "env-sha",
+            "GITHUB_REF_NAME": "env-branch",
         },
         clear=False,
     )
     def test_import_fallback_to_env_vars(self):
-        """Falls back to CI_* env vars when metadata has no git info."""
+        """Falls back to GITHUB_* env vars when metadata has no git info."""
         path = _write_xml(NO_METADATA_XML)
         try:
             db = _mock_db(run_id=1)

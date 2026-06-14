@@ -189,13 +189,13 @@ def run_quality_gates() -> bool:
 
 
 def detect_repo_platform() -> str:
-    """Detect whether the repo is hosted on GitHub, GitLab, or unknown.
+    """Detect whether the repo is hosted on GitHub, or unknown.
 
     Checks the git remote URL first, then falls back to CI environment
     variables for self-hosted instances.
 
     Returns:
-        ``"github"``, ``"gitlab"``, or ``"unknown"``.
+        ``"github"`` or ``"unknown"``.
     """
     # Try remote URL first
     try:
@@ -208,16 +208,12 @@ def detect_repo_platform() -> str:
         url = result.stdout.strip().lower()
         if "github.com" in url:
             return "github"
-        if "gitlab.com" in url:
-            return "gitlab"
     except subprocess.CalledProcessError:
         pass
 
     # Fall back to CI environment variables (for self-hosted instances)
     if os.getenv("GITHUB_ACTIONS") == "true":
         return "github"
-    if os.getenv("GITLAB_CI") == "true":
-        return "gitlab"
 
     return "unknown"
 
