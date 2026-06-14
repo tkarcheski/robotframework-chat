@@ -684,6 +684,7 @@ def run_provider_suites(
     # is unset; resolved absolute so the scheduler and the cwd=_project_root
     # subprocess agree on one file (#515).
     budget_file = _resolve_budget_file()
+    budget = ProviderBudget(budget_file)
 
     # Normalize to an explicit (model, suite) run list. ``jobs`` (from the
     # #510 planner) runs an exact, possibly partial, budget-planned subset;
@@ -700,6 +701,15 @@ def run_provider_suites(
     prev_start: float | None = None
     for model, suite in run_list:
         watermark = f"{provider.name}/{model}"
+        # Runtime hard-stop: re-read the shared counter before each dispatch so
+        # retry/429 overshoot that the upfront estimate cannot anticipate is
+        # caught and the provider's remaining jobs are skipped (#515).
+        if budget.exhausted(provider.name, provider.max_requests_per_day):
+            print(
+                f"  {tag} daily budget exhausted — stopping remaining job(s) "
+                f"(skip-and-log, #515)."
+            )
+            break
         # #525: never run a privacy/context-ineligible suite, even if a caller
         # passes it explicitly in jobs.
         skip_reason = _provider_suite_skip_reason(suite, provider)
