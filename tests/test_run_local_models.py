@@ -1270,6 +1270,48 @@ class TestRunProviderSuites:
         assert [r.returncode for r in results] == [1, 0, 0, 0]
         assert results[0].model == "openrouter/a/b:free"
 
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_runtime_budget_exhausted_before_first_job_stops_all(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Budget already exhausted → no subprocess launched, skip-and-log (#515)."""
+        with patch("scripts.run_local_models.ProviderBudget") as mock_cls:
+            inst = MagicMock()
+            inst.exhausted.return_value = True
+            mock_cls.return_value = inst
+            results = run_provider_suites(
+                _provider_config(),
+                _provider(max_requests_per_day=10),
+                "sk-or-abc",
+                ["a/b:free", "c/d:free"],
+                sleep_fn=lambda _s: None,
+            )
+        mock_run.assert_not_called()
+        assert results == []
+        assert "budget exhausted" in capsys.readouterr().out.lower()
+
+    @patch("scripts.run_local_models.subprocess.run")
+    def test_runtime_budget_exhausted_mid_run_stops_remaining(
+        self, mock_run: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Budget exhausted after first job → remaining jobs not dispatched (#515)."""
+        mock_run.return_value = MagicMock(returncode=0)
+        with patch("scripts.run_local_models.ProviderBudget") as mock_cls:
+            inst = MagicMock()
+            # First check passes; all subsequent checks see exhaustion.
+            inst.exhausted.side_effect = [False, True, True, True]
+            mock_cls.return_value = inst
+            results = run_provider_suites(
+                _provider_config(),
+                _provider(max_requests_per_day=10),
+                "sk-or-abc",
+                ["a/b:free", "c/d:free"],
+                sleep_fn=lambda _s: None,
+            )
+        assert mock_run.call_count == 1
+        assert len(results) == 1
+        assert "budget exhausted" in capsys.readouterr().out.lower()
+
 
 class TestRunProviderRuns:
     def test_no_providers_configured_is_noop(self) -> None:
