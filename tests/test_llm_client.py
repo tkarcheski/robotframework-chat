@@ -132,9 +132,7 @@ class TestCreateProviderWithCache:
         assert type(client) is CachingProvider
 
     @patch("rfc.answer_cache.AnswerCache.from_env")
-    @patch.dict(
-        os.environ, {"ANSWER_CACHE_ENABLED": "1", "OPENAI_API_KEY": "sk-test"}
-    )
+    @patch.dict(os.environ, {"ANSWER_CACHE_ENABLED": "1", "OPENAI_API_KEY": "sk-test"})
     def test_openai_isinstance_transparent_when_cache_enabled(
         self, mock_from_env: MagicMock
     ) -> None:
