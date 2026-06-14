@@ -713,7 +713,6 @@ from bootstrap_dashboards import (  # noqa: E402
     _AGENTIC_LAYOUT_SECTIONS,
     _AGENTIC_TABLE_DDL,
     _AGENTIC_VIRTUAL_DATASETS,
-    _agentic_dataset_is_current,
     _build_agentic_position_json,
 )
 
