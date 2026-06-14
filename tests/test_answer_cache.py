@@ -323,20 +323,16 @@ def test_caching_provider_exposes_full_llm_provider_surface():
     assert callable(wrapped.generate)
 
 
-def test_caching_provider_breaks_ollamaclient_isinstance():
-    """A wrapped OllamaClient is (correctly) NOT an ``OllamaClient`` itself.
+def test_caching_provider_isinstance_transparent():
+    """CachingProvider.__class__ delegates to the wrapped type, making
+    isinstance() transparent to callers (#531).
 
-    ``CachingProvider`` proxies rather than subclasses, so a direct
-    ``isinstance(wrapped, OllamaClient)`` is False — by design. The five
-    Ollama-management keywords (Wait For LLM, Unload Model, Get Running
-    Models, LLM Is Busy, Set LLM Endpoint) used to gate on that direct check
-    and silently degraded when ``ANSWER_CACHE_ENABLED=1`` wrapped the
-    provider (#523, the linked ``from:testing`` defect). The fix unwraps at
-    the seam (``rfc.llm_client.as_ollama`` — see
-    ``test_as_ollama_sees_through_wrapper`` and the wrapper keyword tests in
-    ``test_keywords.py``), so the keywords now reach the concrete client
-    through the proxy. This test pins the proxy's intentional structural
-    distinction: unwrap, don't subclass.
+    When ``ANSWER_CACHE_ENABLED=1``, ``create_provider()`` returns a
+    ``CachingProvider`` wrapper. Direct ``isinstance(p, OllamaClient)`` checks
+    in test assertions (and any production code that hasn't migrated to
+    ``as_ollama()``) were silently broken. Fixing ``__class__`` to delegate to
+    the inner type makes the wrapper invisible to isinstance without altering
+    the real ``type()`` or the ``as_ollama()`` unwrap path.
     """
     from rfc.ollama import OllamaClient
 
@@ -344,11 +340,14 @@ def test_caching_provider_breaks_ollamaclient_isinstance():
     inner = OllamaClient(base_url="http://localhost:11434", model="m")
     wrapped = CachingProvider(inner, cache)
 
-    # The wrapper is deliberately NOT an OllamaClient; callers that need the
-    # concrete type unwrap via as_ollama() rather than relying on this check.
-    assert not isinstance(wrapped, OllamaClient)
-    # ...even though the underlying client is one (proxying is structural only).
-    assert isinstance(wrapped._client, OllamaClient)
+    # isinstance() sees through the wrapper after the __class__ fix.
+    assert isinstance(wrapped, OllamaClient)
+    # type() still returns CachingProvider — __class__ is a virtual class only.
+    assert type(wrapped) is CachingProvider
+    # as_ollama() continues to work and returns the concrete inner client.
+    from rfc.llm_client import as_ollama
+
+    assert as_ollama(wrapped) is inner
 
 
 # ── Finding 1: cache-hit metrics are honest, not inherited (#523) ────────
