@@ -11,11 +11,13 @@ import yaml
 
 from rfc.host_scheduler import HostConfig, HostSpec, SchedulerDefaults
 from scripts.run_local_models import (
+    _EMPTY_ITERATION_IDLE_SECONDS,
     PREFLIGHT_SUITE,
     RunResult,
     _build_robot_command,
     _maybe_audit,
     _nodes_from_host_config,
+    _resolve_budget_file,
     _sanitize_name,
     discover_local_models,
     load_local_config,

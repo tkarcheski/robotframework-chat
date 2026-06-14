@@ -81,6 +81,22 @@ def test_corrupt_state_file_treated_as_empty(tmp_path: Path) -> None:
     assert budget.spent("openrouter") == 2
 
 
+def test_malformed_count_value_treated_as_empty(tmp_path: Path) -> None:
+    # A syntactically valid file whose count is not an int (hand-edited or
+    # corrupted) must not crash record(): the client records before its HTTP
+    # call, so a TypeError there would fail every generation (#515).
+    import json
+
+    path = tmp_path / "b.json"
+    path.write_text(
+        json.dumps({"date": "2026-06-13", "counts": {"openrouter": "oops"}})
+    )
+    budget = ProviderBudget(path, today="2026-06-13")
+    assert budget.spent("openrouter") == 0
+    budget.record("openrouter")  # must not raise TypeError
+    assert budget.spent("openrouter") == 1
+
+
 def test_uses_current_utc_day_when_not_overridden(tmp_path, monkeypatch):
     # A long-running scheduler instance must see the date roll over at UTC
     # midnight, not freeze the date captured at construction (#515 review).
