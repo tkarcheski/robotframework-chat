@@ -86,7 +86,6 @@ from rfc.providers import (  # noqa: E402
     discover_free_models,
     load_providers,
     resolve_api_key,
-    select_models_within_budget,
 )
 from scripts.discover_ollama import (  # noqa: E402
     _probe_port,
@@ -682,10 +681,10 @@ def run_provider_suites(
     # Shared runtime daily-budget counter file (#515): passed to the subprocess
     # so each provider API request is recorded and the day's spend is capped at
     # the source. A default path keeps the counter active even when the env var
-    # is unset.
-    budget_file = os.getenv(BUDGET_FILE_ENV) or str(
-        _project_root / ".rfc_provider_budget.json"
-    )
+    # is unset; resolved absolute so the scheduler and the cwd=_project_root
+    # subprocess agree on one file (#515).
+    budget_file = _resolve_budget_file()
+    budget = ProviderBudget(budget_file)
 
     # Normalize to an explicit (model, suite) run list. ``jobs`` (from the
     # #510 planner) runs an exact, possibly partial, budget-planned subset;
