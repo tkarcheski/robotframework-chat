@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -211,3 +212,264 @@ class TestSelectModelsWithinBudget:
             requests_per_suite_estimate=100,
         )
         assert kept == models[:5]
+
+
+class TestMaxContextTokens:
+    def test_default_is_unlimited(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "groq",
+                        "base_url": "https://api.groq.com/openai/v1",
+                        "api_key_env": "GROQ_API_KEY",
+                    }
+                ]
+            }
+        )
+        assert providers[0].max_context_tokens == 0
+
+    def test_parses_explicit_cap(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "cerebras",
+                        "base_url": "https://api.cerebras.ai/v1",
+                        "api_key_env": "CEREBRAS_API_KEY",
+                        "max_context_tokens": 8192,
+                    }
+                ]
+            }
+        )
+        assert providers[0].max_context_tokens == 8192
+
+
+class TestConfiguredFreeTierProviders:
+    """The committed config must declare the free-tier providers (#509)."""
+
+    @staticmethod
+    def _real_providers() -> dict[str, "ProviderConfig"]:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        config = yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+        return {p.name: p for p in load_providers(config)}
+
+    def test_groq_cerebras_google_declared(self) -> None:
+        providers = self._real_providers()
+        assert providers["groq"].api_key_env == "GROQ_API_KEY"
+        assert providers["cerebras"].api_key_env == "CEREBRAS_API_KEY"
+        assert providers["google-ai-studio"].api_key_env == "GOOGLE_AI_STUDIO_API_KEY"
+        # static model lists, no ":free" discovery convention on these APIs
+        for name in ("groq", "cerebras", "google-ai-studio"):
+            assert providers[name].models, f"{name} needs a static model list"
+            assert not providers[name].discover_free_pool
+
+    def test_cerebras_context_cap_declared(self) -> None:
+        assert self._real_providers()["cerebras"].max_context_tokens == 8192
+
+    def test_env_example_documents_all_keys(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        env_example = (root / ".env.example").read_text()
+        for key in ("GROQ_API_KEY", "CEREBRAS_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"):
+            assert key in env_example
+
+
+class TestCerebrasReviewFindings521:
+    """Cerebras config must be runnable: a valid model id and a budget big
+    enough to schedule at least one model across the suite set (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _cerebras(self):
+        return next(p for p in load_providers(self._config()) if p.name == "cerebras")
+
+    def _groq(self):
+        return next(p for p in load_providers(self._config()) if p.name == "groq")
+
+    # Cerebras deprecation dates (inference-docs.cerebras.ai/support/deprecation):
+    # llama-3.3-70b 2026-02-16, llama3.1-8b 2026-05-27.
+    _DEPRECATED_CEREBRAS = ("llama-3.3-70b", "llama3.1-8b", "llama3.1-70b")
+
+    def test_no_deprecated_cerebras_models(self) -> None:
+        cerebras = self._cerebras()
+        for retired in self._DEPRECATED_CEREBRAS:
+            assert retired not in cerebras.models, f"{retired} is retired"
+        # at least one current production model (gpt-oss-120b)
+        assert "gpt-oss-120b" in cerebras.models
+
+    def test_groq_scheduled_model_is_not_tpd_starved(self) -> None:
+        # llama-3.3-70b-versatile is capped at 100K tokens/day on Groq free —
+        # far too low for a 630-call sweep — so it must not be the first
+        # (scheduled) model. llama-3.1-8b-instant carries the sweep (#521).
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        groq = self._groq()
+        kept = select_models_within_budget(
+            list(groq.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=groq.max_requests_per_day,
+            requests_per_suite_estimate=groq.requests_per_suite_estimate,
+        )
+        assert kept, "Groq budget must schedule at least one model"
+        assert "llama-3.3-70b-versatile" not in kept, (
+            "the 100K-TPD 70B model can't complete a full sweep; schedule "
+            "llama-3.1-8b-instant instead"
+        )
+
+    def test_budget_schedules_at_least_one_model(self) -> None:
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        cerebras = self._cerebras()
+        kept = select_models_within_budget(
+            list(cerebras.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=cerebras.max_requests_per_day,
+            requests_per_suite_estimate=cerebras.requests_per_suite_estimate,
+        )
+        assert kept, (
+            "Cerebras budget too small to schedule any model — the provider "
+            "would be silently skipped on every run"
+        )
+
+
+class TestProviderModelsCurrent521R3:
+    """Configured provider models must be currently available (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _provider(self, name: str):
+        return next(p for p in load_providers(self._config()) if p.name == name)
+
+    def test_google_model_is_not_shut_down_gemini_2_0(self) -> None:
+        # gemini-2.0-flash shut down 2026-06-01; use a current Flash model.
+        google = self._provider("google-ai-studio")
+        assert "gemini-2.0-flash" not in google.models
+        assert any("flash" in m for m in google.models)
+
+    def test_benchmark_suite_declares_context_requirement(self) -> None:
+        # The benchmark suite drives num_ctx up to 131584; without
+        # min_context_tokens the Cerebras 8K cap silently never skips it (#521).
+        cfg = self._config()
+        bench = next(s for s in cfg["test_suites"] if s["name"] == "benchmark")
+        assert bench.get("min_context_tokens", 0) > 8192
+
+
+class TestProviderQuotas521R4:
+    """Free-tier quotas must match the chosen model so the sweep doesn't
+    429: Gemini 2.5 Flash is 10 RPM/250 RPD (too low to sweep) — use
+    Flash-Lite (15 RPM/1000 RPD); Groq's 8B context is 131072, so the
+    benchmark (131584 num_ctx) is skipped via the context cap (#521)."""
+
+    @staticmethod
+    def _config() -> dict:
+        import yaml
+
+        root = Path(__file__).resolve().parents[1]
+        return yaml.safe_load((root / "config" / "local_models.yaml").read_text())
+
+    def _provider(self, name: str):
+        return next(p for p in load_providers(self._config()) if p.name == name)
+
+    def test_google_uses_sweep_capable_flash_lite_quotas(self) -> None:
+        from rfc.providers import select_models_within_budget
+
+        cfg = self._config()
+        google = self._provider("google-ai-studio")
+        # Gemini 2.5 Flash free tier is only 10 RPM / 250 RPD — too low to
+        # sweep — so the config must use Flash-Lite (15 RPM / 1000 RPD) with
+        # quotas within its real published limits.
+        assert any("flash-lite" in m for m in google.models), google.models
+        assert google.requests_per_minute <= 15
+        assert google.max_requests_per_day <= 1000
+        kept = select_models_within_budget(
+            list(google.models),
+            len(cfg["test_suites"]),
+            max_requests_per_day=google.max_requests_per_day,
+            requests_per_suite_estimate=google.requests_per_suite_estimate,
+        )
+        assert kept, "Google budget must schedule at least one model"
+
+    def test_groq_declares_context_cap_to_skip_benchmark(self) -> None:
+        groq = self._provider("groq")
+        # llama-3.1-8b-instant context window is 131072; the benchmark needs
+        # 131584, so the cap must be set to skip it (not unlimited).
+        assert 0 < groq.max_context_tokens <= 131072
+
+
+class TestAllowLocalOnly:
+    def test_default_false(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "groq",
+                        "base_url": "https://api.groq.com/openai/v1",
+                        "api_key_env": "GROQ_API_KEY",
+                    }
+                ]
+            }
+        )
+        assert providers[0].allow_local_only is False
+
+    def test_parses_explicit_allowlist_flag(self) -> None:
+        providers = load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "paid-zdr",
+                        "base_url": "https://api.example.com/v1",
+                        "api_key_env": "ZDR_API_KEY",
+                        "allow_local_only": True,
+                    }
+                ]
+            }
+        )
+        assert providers[0].allow_local_only is True
+
+
+class TestStrictBoolParsing:
+    """allow_local_only is a security boundary; bool('false') is True, so a
+    quoted/templated false-looking value must fail closed (#525)."""
+
+    def _provider(self, value):
+        return load_providers(
+            {
+                "providers": [
+                    {
+                        "name": "p",
+                        "base_url": "https://x/v1",
+                        "api_key_env": "K",
+                        "allow_local_only": value,
+                    }
+                ]
+            }
+        )[0]
+
+    @pytest.mark.parametrize("value", ["false", "False", "no", "0", "off", ""])
+    def test_falsey_strings_fail_closed(self, value: str) -> None:
+        assert self._provider(value).allow_local_only is False
+
+    @pytest.mark.parametrize("value", ["true", "True", "yes", "1", "on"])
+    def test_truthy_strings_enable(self, value: str) -> None:
+        assert self._provider(value).allow_local_only is True
+
+    def test_native_booleans_preserved(self) -> None:
+        assert self._provider(True).allow_local_only is True
+        assert self._provider(False).allow_local_only is False
+
+    def test_unknown_string_fails_closed(self) -> None:
+        assert self._provider("maybe").allow_local_only is False

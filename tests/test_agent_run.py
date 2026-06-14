@@ -78,6 +78,53 @@ class TestAgentRunFromYaml:
         cmd = AgentCommand(argv=("uv", "run", "pytest"))
         assert cmd.shell_subcommands() == ("uv run pytest",)
 
+    def test_background_ampersand_splits_into_subcommands(self) -> None:
+        """A single ``&`` backgrounds the preceding command and is a list
+        separator (Bash manual: an ``&``-terminated command runs asynchronously
+        and returns 0). It must split like ``;`` so the verifier sees the
+        backgrounded test and the following commit as separate subcommands —
+        not one opaque blob that hides an ungated commit (#503 round 8)."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest & git commit -m x"))
+        assert cmd.shell_subcommands() == ("uv run pytest", "git commit -m x")
+
+    def test_trailing_background_ampersand_yields_single_subcommand(self) -> None:
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest &"))
+        assert cmd.shell_subcommands() == ("uv run pytest",)
+
+    def test_double_ampersand_not_split_by_background_rule(self) -> None:
+        """``&&`` must remain a single AND operator, never two background
+        separators — the ``&&`` alternative has to precede the bare ``&``."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest && git commit -m x"))
+        pairs = cmd.shell_subcommands_with_operators()
+        assert pairs == ((None, "uv run pytest"), ("&&", "git commit -m x"))
+
+    def test_newline_splits_into_subcommands(self) -> None:
+        """A raw newline is a Bash command separator equivalent to ``;``: each
+        line of a multiline ``bash -lc`` script is an independent simple command
+        whose status does NOT gate the next. Without splitting it, ``uv run
+        pytest\\ngit commit`` collapses into one opaque subcommand headed by
+        ``uv``, so a red test followed by a commit slips past the commit-gate
+        (#503 round 8 regression / round 11)."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest\ngit commit -m x"))
+        assert cmd.shell_subcommands() == ("uv run pytest", "git commit -m x")
+
+    def test_newline_is_semicolon_like_separator_not_and(self) -> None:
+        """A newline-joined subcommand carries a list operator (``;``-like, not
+        ``None`` and not ``&&``): the second command runs regardless of the
+        first's status, so a verifier must NOT treat it as an AND-gated chain."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest\ngit commit -m x"))
+        pairs = cmd.shell_subcommands_with_operators()
+        assert pairs[0] == (None, "uv run pytest")
+        # operator before the commit must be a list separator, never ``&&``
+        assert pairs[1][0] == ";"
+        assert pairs[1][1] == "git commit -m x"
+
+    def test_crlf_and_blank_lines_collapse(self) -> None:
+        """Windows CRLF and runs of blank lines collapse to a single separator
+        so empty subcommands are not emitted."""
+        cmd = AgentCommand(argv=("bash", "-lc", "uv run pytest\r\n\n  git commit -m x"))
+        assert cmd.shell_subcommands() == ("uv run pytest", "git commit -m x")
+
     def test_loads_commits(self, tmp_path: Path) -> None:
         payload = {
             "agent_id": "claude-code",

@@ -7,6 +7,7 @@ from robot.api import logger
 import requests
 
 from .constants import DEFAULT_TIMEOUT
+from .provider_budget import record_env_request
 from .retry import retry_on_transient
 
 
@@ -118,6 +119,11 @@ class OpenAIClient:
         self.last_metrics = None
 
         def _do_request() -> str:
+            # Count BEFORE the call so an attempt that raises (ReadTimeout
+            # after the request reached the provider, a 429 that retry_on_
+            # transient retries) still counts toward the daily budget — those
+            # all consume the provider's allowance (#515).
+            record_env_request()
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
