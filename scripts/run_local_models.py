@@ -684,7 +684,6 @@ def run_provider_suites(
     # is unset; resolved absolute so the scheduler and the cwd=_project_root
     # subprocess agree on one file (#515).
     budget_file = _resolve_budget_file()
-    budget = ProviderBudget(budget_file)
 
     # Normalize to an explicit (model, suite) run list. ``jobs`` (from the
     # #510 planner) runs an exact, possibly partial, budget-planned subset;
