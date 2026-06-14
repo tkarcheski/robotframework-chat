@@ -1260,3 +1260,332 @@ class TestPluginDriftPartitionsByTool:
                 "stable per-tool versions must not be flagged as drift when "
                 "sessions from different tools interleave"
             )
+
+
+# ---------------------------------------------------------------------------
+# Graph data contract: the charts must return real rows when fed a session
+# through the production write path (HarnessDatabase API), not raw SQL.
+# These guard the "no data in Superset" failure mode: the chart/SQL defs are
+# fine, but nothing proves the datasets light up given a genuine session.
+# ---------------------------------------------------------------------------
+
+
+def _query(db_url: str, sql: str) -> list[dict[str, object]]:
+    """Run ``sql`` against the SQLite file behind ``db_url`` -> list of dicts."""
+    import sqlite3
+
+    db_path = db_url.removeprefix("sqlite:///")
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.execute(sql)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+
+def _seed_full_session(
+    db_url: str,
+    *,
+    session_id: str = "sess-1",
+    tool_name: str = "claude-code",
+    model_id: str = "qwen3:32b",
+    rfc_version: str = "1.16.10",
+    started_at: str = "2026-06-12T00:00:00",
+    outcome: str = "success",
+) -> None:
+    """Seed one complete session via the production ``HarnessDatabase`` API.
+
+    Writes a harness row, plugin + skill snapshots, the four pivoted metrics
+    (tokens_in/out, latency_ms, grader_score), and a heal decision with its
+    paired ``mutation_quality`` / ``heal_passed`` metrics whose IDs match the
+    healing-candidates join (``<decision_id>`` and ``<decision_id>-heal``).
+    """
+    from rfc.harness_db import HarnessDatabase
+    from rfc.harness_models import (
+        AgenticDecision,
+        AgenticHarness,
+        AgenticMetric,
+        AgenticPlugin,
+        AgenticSkill,
+    )
+
+    db = HarnessDatabase(db_path=db_url.removeprefix("sqlite:///"))
+    db.save_harness(
+        AgenticHarness(
+            session_id=session_id,
+            tool_name=tool_name,
+            model_id=model_id,
+            rfc_version=rfc_version,
+            started_at=started_at,
+        )
+    )
+    db.save_plugins(
+        [
+            AgenticPlugin(
+                session_id=session_id,
+                plugin_name="anthropic",
+                semver="1.0.0",
+                source="pip",
+                recorded_at=started_at,
+            )
+        ]
+    )
+    db.save_skills(
+        [
+            AgenticSkill(
+                session_id=session_id,
+                skill_path="robot/math/math.resource",
+                git_sha="abc123",
+                skill_name="math",
+                recorded_at=started_at,
+            )
+        ]
+    )
+    db.save_metrics(
+        [
+            AgenticMetric(
+                session_id=session_id,
+                metric_key=key,
+                metric_value=value,
+                recorded_at=started_at,
+            )
+            for key, value in (
+                ("tokens_in", 1200.0),
+                ("tokens_out", 340.0),
+                ("latency_ms", 850.0),
+                ("grader_score", 0.9),
+            )
+        ]
+    )
+    decision_id = f"{session_id}-dec"
+    db.save_decision(
+        AgenticDecision(
+            id=decision_id,
+            session_id=session_id,
+            hook_event="on_failure",
+            prompt_model=model_id,
+            prompt_text="heal the failing assertion",
+            response_text="rewrite expected value",
+            proposed_action="heal",
+            recorded_at=started_at,
+        )
+    )
+    db.save_metrics(
+        [
+            AgenticMetric(
+                id=decision_id,
+                session_id=session_id,
+                metric_key="mutation_quality",
+                metric_value=0.8,
+                recorded_at=started_at,
+            ),
+            AgenticMetric(
+                id=f"{decision_id}-heal",
+                session_id=session_id,
+                metric_key="heal_passed",
+                metric_value=1.0,
+                recorded_at=started_at,
+            ),
+        ]
+    )
+    if outcome:
+        db.end_harness(session_id, outcome, "2026-06-12T00:05:00")
+
+
+class TestAgenticGraphDataContract:
+    """The dashboard datasets must return correct rows for a real session.
+
+    Unlike the structural tests above (column probes, SQL-string checks),
+    these seed data through the production ``HarnessDatabase`` write path and
+    assert each chart's backing dataset actually lights up — the regression
+    guard for the empty Superset dashboard.
+    """
+
+    def test_sessions_full_aggregates_real_session(
+        self, agentic_db_with_view: str
+    ) -> None:
+        _seed_full_session(agentic_db_with_view, session_id="s1")
+        rows = _query(
+            agentic_db_with_view,
+            "SELECT * FROM agentic_sessions_full WHERE session_id = 's1'",
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["tool_name"] == "claude-code"
+        assert row["model_id"] == "qwen3:32b"
+        assert row["outcome"] == "success"
+        assert row["tokens_in"] == 1200.0
+        assert row["tokens_out"] == 340.0
+        assert row["avg_latency_ms"] == 850.0
+        assert row["avg_grader_score"] == 0.9
+
+    def test_sessions_full_includes_session_without_metrics(
+        self, agentic_db_with_view: str
+    ) -> None:
+        """A started-but-unmeasured session still appears (metric cols NULL)."""
+        from rfc.harness_db import HarnessDatabase
+        from rfc.harness_models import AgenticHarness
+
+        db = HarnessDatabase(db_path=agentic_db_with_view.removeprefix("sqlite:///"))
+        db.save_harness(
+            AgenticHarness(
+                session_id="bare",
+                tool_name="codex",
+                started_at="2026-06-12T01:00:00",
+            )
+        )
+        rows = _query(
+            agentic_db_with_view,
+            "SELECT * FROM agentic_sessions_full WHERE session_id = 'bare'",
+        )
+        assert len(rows) == 1
+        assert rows[0]["tokens_in"] is None
+        assert rows[0]["avg_grader_score"] is None
+
+    def test_outcome_funnel_counts_running_and_ended(self, agentic_db: str) -> None:
+        """Running sessions (NULL outcome) bucket as 'running'; ended by outcome."""
+        from rfc.harness_db import HarnessDatabase
+        from rfc.harness_models import AgenticHarness
+
+        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
+        db.save_harness(
+            AgenticHarness(
+                session_id="run1",
+                tool_name="claude-code",
+                started_at="2026-06-12T00:00:00",
+            )
+        )
+        db.save_harness(
+            AgenticHarness(
+                session_id="done1",
+                tool_name="claude-code",
+                started_at="2026-06-12T00:01:00",
+            )
+        )
+        db.end_harness("done1", "success", "2026-06-12T00:06:00")
+
+        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_outcome_funnel"])
+        by_outcome = {r["outcome"]: r["session_count"] for r in rows}
+        assert by_outcome.get("running") == 1
+        assert by_outcome.get("success") == 1
+
+    def test_plugin_drift_flags_real_upgrade(self, agentic_db: str) -> None:
+        """A genuine semver bump across sessions is flagged version_changed=1."""
+        from rfc.harness_db import HarnessDatabase
+        from rfc.harness_models import AgenticHarness, AgenticPlugin
+
+        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
+        for sid, ts in (("a", "2026-06-10T00:00:00"), ("b", "2026-06-11T00:00:00")):
+            db.save_harness(
+                AgenticHarness(session_id=sid, tool_name="claude-code", started_at=ts)
+            )
+        db.save_plugins(
+            [
+                AgenticPlugin(
+                    session_id="a",
+                    plugin_name="anthropic",
+                    semver="1.0.0",
+                    recorded_at="2026-06-10T00:00:01",
+                )
+            ]
+        )
+        db.save_plugins(
+            [
+                AgenticPlugin(
+                    session_id="b",
+                    plugin_name="anthropic",
+                    semver="1.1.0",
+                    recorded_at="2026-06-11T00:00:01",
+                )
+            ]
+        )
+        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"])
+        changed = [r for r in rows if r["version_changed"] == 1]
+        assert len(changed) == 1
+        assert changed[0]["semver"] == "1.1.0"
+        assert changed[0]["prev_semver"] == "1.0.0"
+
+    def test_skill_outcomes_counts_sessions(self, agentic_db: str) -> None:
+        _seed_full_session(agentic_db, session_id="s1")
+        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_skill_outcomes"])
+        math_rows = [r for r in rows if r["skill_name"] == "math"]
+        assert math_rows, "seeded skill 'math' missing from skill_outcomes"
+        assert math_rows[0]["outcome"] == "success"
+        assert math_rows[0]["session_count"] == 1
+
+    def test_healing_candidates_filters_by_quality_and_pass(
+        self, agentic_db: str
+    ) -> None:
+        """Only heal decisions with quality >= 0.7 AND heal_passed pass through."""
+        from rfc.harness_db import HarnessDatabase
+        from rfc.harness_models import (
+            AgenticDecision,
+            AgenticHarness,
+            AgenticMetric,
+        )
+
+        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
+        db.save_harness(
+            AgenticHarness(
+                session_id="s1",
+                tool_name="claude-code",
+                started_at="2026-06-12T00:00:00",
+            )
+        )
+
+        def _heal(dec_id: str, quality: float, passed: float) -> None:
+            db.save_decision(
+                AgenticDecision(
+                    id=dec_id,
+                    session_id="s1",
+                    hook_event="on_failure",
+                    prompt_model="qwen3:32b",
+                    prompt_text="heal",
+                    proposed_action="heal",
+                    recorded_at="2026-06-12T00:00:01",
+                )
+            )
+            db.save_metrics(
+                [
+                    AgenticMetric(
+                        id=dec_id,
+                        session_id="s1",
+                        metric_key="mutation_quality",
+                        metric_value=quality,
+                        recorded_at="2026-06-12T00:00:02",
+                    ),
+                    AgenticMetric(
+                        id=f"{dec_id}-heal",
+                        session_id="s1",
+                        metric_key="heal_passed",
+                        metric_value=passed,
+                        recorded_at="2026-06-12T00:00:02",
+                    ),
+                ]
+            )
+
+        _heal("good", quality=0.9, passed=1.0)  # qualifies
+        _heal("lowq", quality=0.4, passed=1.0)  # below quality threshold
+        _heal("failed", quality=0.9, passed=0.0)  # heal did not pass
+
+        rows = _query(
+            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
+        )
+        sessions = {(r["session_id"], r["mutation_quality"]) for r in rows}
+        assert sessions == {("s1", 0.9)}
+
+    def test_full_session_populates_every_chart_dataset(
+        self, agentic_db_with_view: str
+    ) -> None:
+        """One complete session must light up every dashboard dataset (>=1 row)."""
+        _seed_full_session(agentic_db_with_view, session_id="s1")
+        assert _query(agentic_db_with_view, "SELECT * FROM agentic_sessions_full"), (
+            "agentic_sessions_full (Harness Comparison / Token Burn / Bubble) empty"
+        )
+        for key in (
+            "agentic_plugin_drift",
+            "agentic_skill_outcomes",
+            "agentic_outcome_funnel",
+            "agentic_healing_candidates",
+        ):
+            assert _query(agentic_db_with_view, _AGENTIC_VIRTUAL_DATASETS[key]), (
+                f"virtual dataset {key} returned no rows for a full session"
+            )
