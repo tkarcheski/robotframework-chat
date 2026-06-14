@@ -81,6 +81,15 @@ class AgentCommand:
         commit`` looks like one opaque subcommand and the ungated commit slips
         through the test gate (#503 round 8).
 
+        A raw newline is a Bash command separator equivalent to ``;`` (each
+        line of a multiline ``bash -lc`` script is an independent simple
+        command whose status does not gate the next). A multiline wrapper such
+        as ``uv run pytest\\ngit commit`` must therefore split into two
+        ``;``-joined subcommands; without this a red test followed by a commit
+        collapses into one opaque subcommand headed by ``uv`` and slips past
+        the commit gate (#503 round 8 regression / round 11). Newlines (incl.
+        CRLF and blank-line runs) are normalized to ``;`` before splitting.
+
         Operator-alternation ordering matters: ``&&`` precedes the bare ``&``
         and ``\\|\\|`` precedes ``\\|`` so the two-character operators are never
         split into two single-character ones.
@@ -90,6 +99,10 @@ class AgentCommand:
                 wrapper
             ):
                 inner = self.argv[len(wrapper)]
+                # Treat unquoted newlines as ';' list separators; collapse a run
+                # of newlines (and surrounding horizontal whitespace) to one so
+                # blank lines do not produce empty subcommands.
+                inner = re.sub(r"[ \t]*[\r\n]+[ \t]*", " ; ", inner)
                 tokens = re.split(r"\s*(&&|&|;|\|\||\|)\s*", inner)
                 result: list[tuple[str | None, str]] = []
                 operator: str | None = None

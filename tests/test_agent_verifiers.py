@@ -1451,3 +1451,136 @@ class TestReviewFindingsPr503Round10:
             AgentCommand(argv=("git", "rebase", "--continue"), returncode=0),
         )
         assert_rebase_resolved_without_dropping_changes(run)
+
+
+class TestReviewFindingsPr503Round11:
+    """Codex round-11 — structural regressions re-surfaced after the round-8
+    rewrite dropped two earlier (round-7) structural guards, plus the round-9
+    ``git -c/-C`` tokenizer applied to the round-10 HEAD-mover set. All three
+    are STRUCTURAL (tokenized command identity / operator semantics), squarely
+    inside the ratified tier:1 cap — not shell-grammar/content chasing (#503).
+
+    1. Newline-separated commands: ``bash -lc 'uv run pytest\\ngit commit'`` —
+       a raw newline is a ``;`` list separator, so the commit is ungated. Fixed
+       in ``AgentCommand.shell_subcommands`` (regression from round 8, which
+       dropped the round-7 newline normalization). See ``test_agent_run`` for
+       the splitter-level tests; here we assert the verifier-level consequence.
+    2. Negated tests as commit gates: ``! uv run pytest && git commit`` — the
+       leading ``!`` inverts the exit status, so the ``&&`` fires the commit
+       exactly when the test was RED. Re-adds the round-7 ``_is_negated`` guard
+       (dropped in round 8).
+    3. HEAD-movers with git global options: ``git -C . merge`` /
+       ``git -c k=v rebase`` after a replay checkout move HEAD but were missed
+       by the substring ``"git merge"``/``"git rebase"`` check. Tokenized the
+       HEAD-mover detection via the round-9 ``git -c/-C`` parser.
+    """
+
+    # ── Finding 1: newline-separated commit slips the red-test gate ──────────
+    def test_newline_separated_commit_after_red_test_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest\ngit commit -m x"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="masked"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_newline_green_test_then_commit_passes(self) -> None:
+        # A newline is ';'-like (status discarded), so even a green-exit test on
+        # one line does NOT gate a commit on the next; this is a violation just
+        # like a ';' chain. The agent must use '&&' to gate.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m x"),
+                    returncode=0,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    # ── Finding 2: negated test as a commit gate ────────────────────────────
+    def test_negated_test_anded_to_commit_fails(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "! uv run pytest && git commit -m x"),
+                    returncode=0,
+                ),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="(?i)negat"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_negated_prior_test_then_commit_fails(self) -> None:
+        # Negated test in an earlier command: a zero exit means the test FAILED,
+        # so the later commit ran while tests were effectively red (masked).
+        run = _minimal_run(
+            commands=(
+                AgentCommand(argv=("bash", "-lc", "! uv run pytest"), returncode=0),
+                AgentCommand(argv=("git", "commit", "-m", "x")),
+            )
+        )
+        with pytest.raises(VerificationFailure, match="tests were red"):
+            assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    def test_plain_green_test_still_passes(self) -> None:
+        # Guard against over-broad negation matching: a normal test must remain
+        # a valid gate.
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("bash", "-lc", "uv run pytest && git commit -m x"),
+                    returncode=0,
+                ),
+            )
+        )
+        assert_no_commit_while_tests_red(run, "uv run pytest")
+
+    # ── Finding 3: HEAD-movers with git global options ──────────────────────
+    def test_merge_with_C_option_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "git -C . merge bbb2222"), returncode=0
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_rebase_with_c_config_moves_head_off_commit_fails(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "git -c rebase.autoStash=true rebase main"),
+                    returncode=0,
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        with pytest.raises(VerificationFailure, match="after its replay checkout"):
+            assert_every_commit_is_green(run, "uv run pytest")
+
+    def test_echoed_head_mover_is_not_a_move(self) -> None:
+        # Tokenized detection must NOT treat `echo git merge ...` as a HEAD move
+        # (it prints text); the green test after a real checkout still certifies.
+        run = _minimal_run(
+            commits=(AgentCommit(sha="aaa1111", subject="feat: module"),),
+            commands=(
+                AgentCommand(argv=("git", "checkout", "aaa1111"), returncode=0),
+                AgentCommand(
+                    argv=("bash", "-lc", "echo git merge bbb2222"), returncode=0
+                ),
+                AgentCommand(argv=("uv", "run", "pytest"), returncode=0),
+            ),
+        )
+        assert_every_commit_is_green(run, "uv run pytest")
