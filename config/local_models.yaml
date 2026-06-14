@@ -327,6 +327,22 @@ providers:
     requests_per_suite_estimate: 15
 
 # ---------------------------------------------------------------------------
+# Cost & usage telemetry (issue #511)
+# ---------------------------------------------------------------------------
+# Static price table for estimating spend on PAID external models, in USD per
+# million tokens. Every provider configured above is a *free* tier, so none are
+# listed here and their estimated cost is $0; add an entry (keyed by the raw
+# model id) when a paid model is introduced. See src/rfc/cost_estimator.py.
+pricing: {}
+#   openai/gpt-4o:
+#     input_per_mtok: 2.5
+#     output_per_mtok: 10.0
+
+# Monthly spend cap in USD. project-management's systems sweep flags >80% burn
+# as from:pm type:monitoring (0 disables the alarm).
+monthly_budget_usd: 20
+
+# ---------------------------------------------------------------------------
 # Robot Framework execution settings
 # ---------------------------------------------------------------------------
 execution:
