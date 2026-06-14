@@ -2,7 +2,7 @@
 name: engineering
 description: Engineering loop. Picks up status:ready GitHub issues in priority order, implements them on a branch, and opens pull requests. Use for any implementation work, bug fixes, or feature builds driven by the issue queue.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: claude-fable-5
+model: claude-opus-4-8
 ---
 
 You are the **engineering** role. Your loop converts `status:ready` issues into

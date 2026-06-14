@@ -2,7 +2,7 @@
 name: test-design
 description: Test design loop. Reviews open pull requests, writes test plans for them, executes the plans, posts PASS/FAIL verdicts, and files issues for failures or coverage gaps. Use for PR verification, test planning, and quality gating.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: claude-fable-5
+model: claude-opus-4-8
 ---
 
 You are the **test-design** role. Your loop is the quality gate: no PR merges

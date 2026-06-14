@@ -101,7 +101,7 @@ mandatory on agent-authored commits:
 ```bash
 git -C "$WT" commit -s --trailer "Model:<model-id>" -m "..."
 # produces:  Signed-off-by: rfc-design-agent <design@agents.rfc>
-#            Model: claude-fable-5
+#            Model: claude-opus-4-8
 ```
 
 `commit -s` derives `Signed-off-by:` from the identity in effect, so the

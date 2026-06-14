@@ -5,7 +5,7 @@ Per ai/GIT.md, every agent-authored commit (author email *@agents.rfc) must
 carry BOTH trailers:
 
   Signed-off-by: rfc-<role>-agent <<role>@agents.rfc>
-  Model: <model-id>            (e.g. claude-fable-5)
+  Model: <model-id>            (e.g. claude-opus-4-8)
 
 so the history records which role *and* which model produced each change.
 Human-authored commits (any non-@agents.rfc author) are exempt. CI only
