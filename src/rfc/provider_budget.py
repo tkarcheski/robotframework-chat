@@ -1,14 +1,8 @@
 """File-backed per-provider daily request counter (issue #515).
 
-``select_models_within_budget`` caps an external provider's daily spend by an
-*upfront estimate* (n_suites x requests_per_suite_estimate). That cannot catch
-real overshoot — LLM-judge retries, self-healing retries, and 429 re-attempts
-all make more HTTP calls than the estimate, so a sweep can blow past the
-provider's daily allowance in an uncontrolled order.
-
-This adds the missing primitive: a *runtime* counter, persisted per provider
-per UTC day, that the scheduler reads to hard-stop dispatching new (model,
-suite) jobs once the day's spend reaches the configured budget, and that the
+Budget enforcement uses a *runtime* counter, persisted per provider per UTC
+day, that the scheduler reads to hard-stop dispatching new (model, suite) jobs
+once the day's spend reaches the configured budget, and that the
 OpenAI-compatible client increments on each request.
 
 State is a small JSON document ``{"date": "<UTC date>", "counts": {...}}``.

@@ -86,7 +86,6 @@ from rfc.providers import (  # noqa: E402
     discover_free_models,
     load_providers,
     resolve_api_key,
-    select_models_within_budget,
 )
 from scripts.discover_ollama import (  # noqa: E402
     _probe_port,

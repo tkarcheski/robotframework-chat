@@ -14,7 +14,6 @@ from rfc.providers import (
     discover_free_models,
     load_providers,
     resolve_api_key,
-    select_models_within_budget,
 )
 
 
@@ -154,66 +153,6 @@ class TestDiscoverFreeModels:
         assert discover_free_models("https://openrouter.ai/api/v1", "k") == []
 
 
-class TestSelectModelsWithinBudget:
-    def test_all_fit(self) -> None:
-        # 2 models x 3 suites x 10 req = 60 <= 1000
-        models = ["a:free", "b:free"]
-        kept = select_models_within_budget(
-            models,
-            n_suites=3,
-            max_requests_per_day=1000,
-            requests_per_suite_estimate=10,
-        )
-        assert kept == models
-
-    def test_truncates_preserving_order(self) -> None:
-        # each model costs 3 suites x 100 req = 300; budget 700 -> 2 models
-        models = ["a:free", "b:free", "c:free"]
-        kept = select_models_within_budget(
-            models,
-            n_suites=3,
-            max_requests_per_day=700,
-            requests_per_suite_estimate=100,
-        )
-        assert kept == ["a:free", "b:free"]
-
-    def test_zero_budget_keeps_nothing(self) -> None:
-        kept = select_models_within_budget(
-            ["a:free"],
-            n_suites=1,
-            max_requests_per_day=0,
-            requests_per_suite_estimate=1,
-        )
-        assert kept == []
-
-    def test_empty_models(self) -> None:
-        assert (
-            select_models_within_budget(
-                [],
-                n_suites=5,
-                max_requests_per_day=1000,
-                requests_per_suite_estimate=10,
-            )
-            == []
-        )
-
-    def test_exact_budget_boundary_kept_then_dropped(self) -> None:
-        """The 1,000th estimated request fits; the 1,001st does not (#507).
-
-        Each model costs 2 suites x 100 req = 200. Budget 1000 admits exactly
-        five models (5 x 200 = 1000, equality allowed); a sixth would push
-        the total to 1200 and must be dropped.
-        """
-        models = [f"m{i}:free" for i in range(6)]
-        kept = select_models_within_budget(
-            models,
-            n_suites=2,
-            max_requests_per_day=1000,
-            requests_per_suite_estimate=100,
-        )
-        assert kept == models[:5]
-
-
 class TestMaxContextTokens:
     def test_default_is_unlimited(self) -> None:
         providers = load_providers(
@@ -290,9 +229,6 @@ class TestCerebrasReviewFindings521:
     def _cerebras(self):
         return next(p for p in load_providers(self._config()) if p.name == "cerebras")
 
-    def _groq(self):
-        return next(p for p in load_providers(self._config()) if p.name == "groq")
-
     # Cerebras deprecation dates (inference-docs.cerebras.ai/support/deprecation):
     # llama-3.3-70b 2026-02-16, llama3.1-8b 2026-05-27.
     _DEPRECATED_CEREBRAS = ("llama-3.3-70b", "llama3.1-8b", "llama3.1-70b")
@@ -303,42 +239,6 @@ class TestCerebrasReviewFindings521:
             assert retired not in cerebras.models, f"{retired} is retired"
         # at least one current production model (gpt-oss-120b)
         assert "gpt-oss-120b" in cerebras.models
-
-    def test_groq_scheduled_model_is_not_tpd_starved(self) -> None:
-        # llama-3.3-70b-versatile is capped at 100K tokens/day on Groq free —
-        # far too low for a 630-call sweep — so it must not be the first
-        # (scheduled) model. llama-3.1-8b-instant carries the sweep (#521).
-        from rfc.providers import select_models_within_budget
-
-        cfg = self._config()
-        groq = self._groq()
-        kept = select_models_within_budget(
-            list(groq.models),
-            len(cfg["test_suites"]),
-            max_requests_per_day=groq.max_requests_per_day,
-            requests_per_suite_estimate=groq.requests_per_suite_estimate,
-        )
-        assert kept, "Groq budget must schedule at least one model"
-        assert "llama-3.3-70b-versatile" not in kept, (
-            "the 100K-TPD 70B model can't complete a full sweep; schedule "
-            "llama-3.1-8b-instant instead"
-        )
-
-    def test_budget_schedules_at_least_one_model(self) -> None:
-        from rfc.providers import select_models_within_budget
-
-        cfg = self._config()
-        cerebras = self._cerebras()
-        kept = select_models_within_budget(
-            list(cerebras.models),
-            len(cfg["test_suites"]),
-            max_requests_per_day=cerebras.max_requests_per_day,
-            requests_per_suite_estimate=cerebras.requests_per_suite_estimate,
-        )
-        assert kept, (
-            "Cerebras budget too small to schedule any model — the provider "
-            "would be silently skipped on every run"
-        )
 
 
 class TestProviderModelsCurrent521R3:
@@ -383,25 +283,6 @@ class TestProviderQuotas521R4:
 
     def _provider(self, name: str):
         return next(p for p in load_providers(self._config()) if p.name == name)
-
-    def test_google_uses_sweep_capable_flash_lite_quotas(self) -> None:
-        from rfc.providers import select_models_within_budget
-
-        cfg = self._config()
-        google = self._provider("google-ai-studio")
-        # Gemini 2.5 Flash free tier is only 10 RPM / 250 RPD — too low to
-        # sweep — so the config must use Flash-Lite (15 RPM / 1000 RPD) with
-        # quotas within its real published limits.
-        assert any("flash-lite" in m for m in google.models), google.models
-        assert google.requests_per_minute <= 15
-        assert google.max_requests_per_day <= 1000
-        kept = select_models_within_budget(
-            list(google.models),
-            len(cfg["test_suites"]),
-            max_requests_per_day=google.max_requests_per_day,
-            requests_per_suite_estimate=google.requests_per_suite_estimate,
-        )
-        assert kept, "Google budget must schedule at least one model"
 
     def test_groq_declares_context_cap_to_skip_benchmark(self) -> None:
         groq = self._provider("groq")
