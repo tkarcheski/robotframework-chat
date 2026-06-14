@@ -6,9 +6,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from robot.api import logger
 from robot.api.deco import keyword
 
-from .exceptions import EmptyLLMResponseError
+from .exceptions import EmptyLLMResponseError, ModelNotReadyError
 from .grader import Grader
-from .llm_client import as_ollama, create_provider, resolve_timeout
+from .llm_client import (
+    as_ollama,
+    create_provider,
+    resolve_timeout,
+    unwrap_provider,
+)
 from .rfc_data import emit_rfc_data
 from .thinking import estimate_token_count, parse_thinking
 
@@ -313,6 +318,45 @@ class LLMKeywords:
             f"poll={poll_interval}s)"
         )
         return ollama.wait_until_ready(timeout, poll_interval)
+
+    @keyword("Ensure Model Ready")
+    def ensure_model_ready(self, timeout: Optional[int] = None) -> None:
+        """Verify the provider is online and the model is loaded / served.
+
+        Provider-aware pre-flight for a Suite Setup: Ollama warms the model
+        into VRAM and proves it emits tokens; vLLM / OpenAI-compatible servers
+        confirm the ``/models`` catalog is reachable. On failure it raises an
+        ``RFCSkipError`` subclass (``ROBOT_SKIP_EXECUTION``), so the suite is
+        *skipped* rather than recording false-positive failures from an empty
+        cold-load response.
+
+        Args:
+            timeout: Max seconds to wait for readiness. Defaults via
+                ``resolve_timeout`` (``OLLAMA_TIMEOUT`` env, then 5400s).
+
+        Raises:
+            ProviderOfflineError: endpoint unreachable.
+            ModelNotReadyError: model could not be loaded / warm-up was empty.
+            OllamaTimeoutError / OllamaModelNotFoundError: Ollama-specific.
+
+        Example:
+            | Ensure Model Ready | timeout=120 |
+        """
+        provider = unwrap_provider(self.client)
+        resolved = resolve_timeout(timeout)
+        ensure = getattr(provider, "ensure_ready", None)
+        if ensure is not None:
+            ensure(timeout=resolved)
+            return
+        # Generic fallback for a provider without a readiness method: a single
+        # warm-up generate doubles as load + liveness probe.
+        answer = self.client.generate("ping")
+        if not answer.strip():
+            raise ModelNotReadyError(
+                getattr(self.client, "model", "unknown"),
+                getattr(self.client, "base_url", "unknown"),
+                "warm-up returned empty response",
+            )
 
     @keyword("Get Running Models")
     def get_running_models(self) -> List[Dict[str, Any]]:
