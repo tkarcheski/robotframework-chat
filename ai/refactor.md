@@ -165,10 +165,7 @@ If a module starts doing two things, split it.
 2. Add resource file if needed: `robot/<suite-name>/resources/`
 3. Register in `config/test_suites.yaml`
 4. Add Makefile target: `test-<suite-name>`
-5. Run pipeline generation locally to validate:
-   ```bash
-   uv run yamllint .gitlab-ci.yml   # the pipeline is static YAML now
-   ```
+5. Validate the suite parses: `make robot-dryrun`
 
 ### Adding New Listeners
 
@@ -195,7 +192,7 @@ current change:
 | Magic strings for model names | Use constants or config file lookups |
 | Mixed sync/async patterns | Standardize on one approach per module |
 | Test setup duplication | Extract shared fixtures to resource files |
-| Inline CI logic in `.gitlab-ci.yml` | Move to `ci/*.sh` scripts (completed) |
+| Inline CI logic in workflow YAML | Move to `ci/*.sh` scripts (completed) |
 
 ---
 
@@ -245,10 +242,9 @@ When reviewing code (whether as a human or an AI agent):
 The CI pipeline follows a strict layering:
 
 ```
-.gitlab-ci.yml   → bare-bones skeleton (stages, rules, artifacts only)
-ci/common.yml    → shared YAML templates (.uv-setup, .robot-test)
-ci/*.sh          → all executable logic (bash scripts)
-Makefile         → ci-* targets wrap scripts for local + CI use
+.github/workflows/ → minimal workflow YAML (runner, steps, artifacts)
+ci/*.sh            → all executable logic (bash scripts)
+Makefile           → targets wrap scripts for local + CI use
 ```
 
 ### CI Script Conventions
@@ -260,24 +256,23 @@ All scripts in `ci/` must follow these patterns:
 - **Verbose on failure:** Print diagnostics, file paths, troubleshooting hints
 - **Validate env vars:** Check required variables before doing work
 - **One concern per script:** lint, test, deploy, etc. — not combined
-- **Runnable locally:** `bash ci/lint.sh` or `make ci-lint` must work on developer machines
+- **Runnable locally:** `bash ci/lint.sh` must work on developer machines
 
 ### When to Modify CI
 
 | Change needed | Where to edit |
 |---------------|---------------|
-| Add/remove a pipeline stage | `.gitlab-ci.yml` |
-| Change trigger rules or artifacts | `.gitlab-ci.yml` |
+| Add/remove a workflow step | `.github/workflows/*.yml` |
+| Change trigger rules or artifacts | `.github/workflows/*.yml` |
 | Change what a job actually does | `ci/*.sh` script |
-| Add a new test suite to CI | `config/test_suites.yaml` (auto-propagates) |
-| Add shared YAML templates | `ci/common.yml` |
-| Add a new CI script | Create `ci/<name>.sh`, add Makefile target, add job in `.gitlab-ci.yml` |
+| Add a new test suite to CI | `config/test_suites.yaml` |
+| Add a new CI script | Create `ci/<name>.sh`, add Makefile target, add a workflow step |
 
 ### Adding a New CI Script
 
 1. Create `ci/<name>.sh` with `#!/usr/bin/env bash` and `set -euo pipefail`
-2. Add a Makefile target: `ci-<name>: ## Description` → `bash ci/<name>.sh`
-3. Add a job in `.gitlab-ci.yml` with `script: [bash ci/<name>.sh]`
+2. Add a Makefile target: `<name>: ## Description` → `bash ci/<name>.sh`
+3. Add a step in the relevant `.github/workflows/*.yml` calling `bash ci/<name>.sh`
 4. Document in `ai/pipelines.md`
 
 ---
