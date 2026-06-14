@@ -177,34 +177,9 @@ def discover_free_models(
     return free
 
 
-def select_models_within_budget(
-    models: list[str],
-    n_suites: int,
-    *,
-    max_requests_per_day: int,
-    requests_per_suite_estimate: int,
-) -> list[str]:
-    """Keep the longest model prefix whose estimated requests fit the budget.
-
-    Each model is estimated to cost ``n_suites * requests_per_suite_estimate``
-    requests for a full sweep. Order is preserved; models that would push the
-    daily total past ``max_requests_per_day`` are dropped from the tail.
-    """
-    cost_per_model = n_suites * requests_per_suite_estimate
-    kept: list[str] = []
-    spent = 0
-    for model in models:
-        if spent + cost_per_model > max_requests_per_day:
-            break
-        kept.append(model)
-        spent += cost_per_model
-    return kept
-
-
 __all__ = [
     "ProviderConfig",
     "discover_free_models",
     "load_providers",
     "resolve_api_key",
-    "select_models_within_budget",
 ]
