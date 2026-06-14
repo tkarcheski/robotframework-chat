@@ -33,6 +33,7 @@ from bootstrap_dashboards import (  # noqa: E402
     _LAYOUT_SECTIONS,
     _TABLE_DDL,
     _VIRTUAL_DATASETS,
+    _agentic_dataset_is_current,
     _build_position_json,
     _probe_columns,
 )

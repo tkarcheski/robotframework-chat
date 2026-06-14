@@ -701,16 +701,6 @@ def run_provider_suites(
     prev_start: float | None = None
     for model, suite in run_list:
         watermark = f"{provider.name}/{model}"
-        # #515 hard-stop: re-read the shared counter and stop dispatching once
-        # the day's budget is reached (catches real overshoot the upfront
-        # estimate misses — retries, 429 re-attempts).
-        if budget.exhausted(provider.name, provider.max_requests_per_day):
-            print(
-                f"  {tag} daily budget reached "
-                f"({provider.max_requests_per_day} requests today) — "
-                f"stopping further {provider.name} jobs (#515)."
-            )
-            return results
         # #525: never run a privacy/context-ineligible suite, even if a caller
         # passes it explicitly in jobs.
         skip_reason = _provider_suite_skip_reason(suite, provider)
