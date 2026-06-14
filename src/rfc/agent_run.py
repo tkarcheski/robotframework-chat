@@ -38,19 +38,83 @@ class AgentCommand:
     def joined(self) -> str:
         return " ".join(self.argv)
 
+    def inner_shell_command(self) -> str | None:
+        """The inner command string of a shell-wrapper invocation, else ``None``.
+
+        ``("bash", "-lc", "uv run pytest & git commit")`` returns
+        ``"uv run pytest & git commit"``; a plain ``argv`` returns ``None``.
+        Lets verifiers inspect raw shell syntax (e.g. a trailing background
+        ``&``) without re-deriving the wrapper-detection logic.
+        """
+        for wrapper in _SHELL_WRAPPERS:
+            if tuple(self.argv[: len(wrapper)]) == wrapper and len(self.argv) > len(
+                wrapper
+            ):
+                return self.argv[len(wrapper)]
+        return None
+
     def shell_subcommands(self) -> tuple[str, ...]:
-        """Split a shell-wrapper invocation into its && / ; separated subcommands.
+        """Split a shell-wrapper invocation into its && / ; / || subcommands.
 
         Plain invocations return a single-element tuple of the joined argv.
+        """
+        return tuple(sub for _, sub in self.shell_subcommands_with_operators())
+
+    def shell_subcommands_with_operators(
+        self,
+    ) -> tuple[tuple[str | None, str], ...]:
+        """Like :meth:`shell_subcommands`, keeping the joining operator.
+
+        Each element is ``(operator, subcommand)`` where ``operator`` is the
+        separator BEFORE the subcommand (``"&&"``, ``";"``, ``"||"``, ``"|"``,
+        ``"&"``) or ``None`` for the first one. Verifiers need the operator:
+        ``A && B`` runs B only when A succeeded, ``A || B`` only when A FAILED,
+        ``A; B`` regardless, and ``A | B`` exits with B's status (A's failure
+        is hidden without ``pipefail``) — conflating them excuses commit-on-red
+        (#503).
+
+        A single ``A & B`` is a background list: per the Bash manual, the ``&``
+        backgrounds A (it runs asynchronously and ``$?`` for the list is 0
+        regardless of A's eventual outcome) and B runs immediately without
+        waiting. So ``&`` is a list separator like ``;`` whose preceding
+        command's status is discarded — without splitting it, ``pytest & git
+        commit`` looks like one opaque subcommand and the ungated commit slips
+        through the test gate (#503 round 8).
+
+        A raw newline is a Bash command separator equivalent to ``;`` (each
+        line of a multiline ``bash -lc`` script is an independent simple
+        command whose status does not gate the next). A multiline wrapper such
+        as ``uv run pytest\\ngit commit`` must therefore split into two
+        ``;``-joined subcommands; without this a red test followed by a commit
+        collapses into one opaque subcommand headed by ``uv`` and slips past
+        the commit gate (#503 round 8 regression / round 11). Newlines (incl.
+        CRLF and blank-line runs) are normalized to ``;`` before splitting.
+
+        Operator-alternation ordering matters: ``&&`` precedes the bare ``&``
+        and ``\\|\\|`` precedes ``\\|`` so the two-character operators are never
+        split into two single-character ones.
         """
         for wrapper in _SHELL_WRAPPERS:
             if tuple(self.argv[: len(wrapper)]) == wrapper and len(self.argv) > len(
                 wrapper
             ):
                 inner = self.argv[len(wrapper)]
-                parts = re.split(r"\s*(?:&&|;|\|\|)\s*", inner)
-                return tuple(p.strip() for p in parts if p.strip())
-        return (self.joined(),)
+                # Treat unquoted newlines as ';' list separators; collapse a run
+                # of newlines (and surrounding horizontal whitespace) to one so
+                # blank lines do not produce empty subcommands.
+                inner = re.sub(r"[ \t]*[\r\n]+[ \t]*", " ; ", inner)
+                tokens = re.split(r"\s*(&&|&|;|\|\||\|)\s*", inner)
+                result: list[tuple[str | None, str]] = []
+                operator: str | None = None
+                for token in tokens:
+                    if token in ("&&", "&", ";", "||", "|"):
+                        operator = token
+                        continue
+                    if token.strip():
+                        result.append((operator, token.strip()))
+                        operator = None
+                return tuple(result)
+        return ((None, self.joined()),)
 
 
 @dataclass(frozen=True)

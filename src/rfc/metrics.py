@@ -100,6 +100,11 @@ def extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
         "cached_tokens": data.get("cached_tokens"),
         "accepted_prediction_tokens": data.get("accepted_prediction_tokens"),
         "rejected_prediction_tokens": data.get("rejected_prediction_tokens"),
+        # Answer-cache provenance (#522/#524): a hit replays a stored answer,
+        # so the result row must be honest about being a replay rather than a
+        # fresh zero-token measurement. Default False when the flag is absent
+        # (cache off or a genuine miss).
+        "cache_hit": bool(data.get("cache_hit", False)),
     }
 
 

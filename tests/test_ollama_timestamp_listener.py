@@ -52,12 +52,13 @@ class TestOllamaTimestampListener:
         with patch.dict(os.environ, {}, clear=True):
             listener = OllamaTimestampListener()
         assert listener._model == "unknown"
+        robot_variables = {
+            "${DEFAULT_MODEL}": "llama3:70b",
+            "${OLLAMA_ENDPOINT}": "http://ai-node:11434",
+        }
         with patch("rfc.ollama_timestamp_listener.BuiltIn") as mock_builtin_cls:
             mock_builtin_cls.return_value.get_variable_value.side_effect = (
-                lambda name: {
-                    "${DEFAULT_MODEL}": "llama3:70b",
-                    "${OLLAMA_ENDPOINT}": "http://ai-node:11434",
-                }.get(name)
+                robot_variables.get
             )
             listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
         assert listener._model == "llama3:70b"

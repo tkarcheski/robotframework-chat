@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from sqlalchemy import (  # type: ignore[import-not-found]
+        Boolean,
         Column,
         DateTime,
         Float,
@@ -88,6 +89,9 @@ class TestResult:
     tag_tier: int = -1
     tag_verify: str = ""
     eval_count: int = 0
+    # Answer-cache provenance (#522/#524): True when this result replayed a
+    # cached answer rather than measuring a fresh model call.
+    cache_hit: bool = False
     thinking_tokens: int = 0
     id: int = -1
 
@@ -191,6 +195,7 @@ SELECT
     tr.tag_tier,
     tr.tag_verify,
     tr.eval_count,
+    tr.cache_hit,
     tr.thinking_tokens,
     r.timestamp,
     r.model_name,
@@ -302,6 +307,7 @@ class _SQLiteBackend(_Backend):
         tag_tier INTEGER,
         tag_verify TEXT,
         eval_count INTEGER,
+        cache_hit INTEGER DEFAULT 0,
         thinking_tokens INTEGER,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
@@ -382,6 +388,10 @@ class _SQLiteBackend(_Backend):
         # Databases predating the watermark 5-tuple lack hostname; the
         # test_results_full view selects r.hostname, so add it on upgrade.
         "ALTER TABLE test_runs ADD COLUMN hostname TEXT",
+        # Issue #524: answer-cache provenance. Older test_results tables lack
+        # cache_hit; the test_results_full view selects tr.cache_hit, so add
+        # it on upgrade (before the view is rebuilt below).
+        "ALTER TABLE test_results ADD COLUMN cache_hit INTEGER DEFAULT 0",
     ]
 
     def __init__(self, db_path: str):
@@ -441,8 +451,8 @@ class _SQLiteBackend(_Backend):
                     INSERT INTO test_results
                     (run_id, test_name, test_status, score, tags,
                      tag_severity, tag_tier, tag_verify,
-                     eval_count, thinking_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     eval_count, cache_hit, thinking_tokens)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         r.run_id,
@@ -454,6 +464,7 @@ class _SQLiteBackend(_Backend):
                         r.tag_tier,
                         r.tag_verify,
                         r.eval_count,
+                        1 if r.cache_hit else 0,
                         r.thinking_tokens,
                     ),
                 )
@@ -684,6 +695,10 @@ class _SQLAlchemyBackend(_Backend):
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_tier INTEGER",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50)",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_count INTEGER",
+        # Issue #524: answer-cache provenance. The test_results_full view
+        # selects tr.cache_hit, so add the column before the view is created.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cache_hit BOOLEAN "
+        "DEFAULT false",
         "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER",
         # Archive tables.
         """CREATE TABLE IF NOT EXISTS test_run_artifacts (
@@ -778,6 +793,7 @@ class _SQLAlchemyBackend(_Backend):
             Column("tag_tier", Integer),
             Column("tag_verify", String(50)),
             Column("eval_count", Integer),
+            Column("cache_hit", Boolean, server_default=text("false")),
             Column("thinking_tokens", Integer),
             Index("idx_test_results_run_id", "run_id"),
         )
@@ -871,6 +887,7 @@ class _SQLAlchemyBackend(_Backend):
                 "tag_tier": r.tag_tier,
                 "tag_verify": r.tag_verify,
                 "eval_count": r.eval_count,
+                "cache_hit": bool(r.cache_hit),
                 "thinking_tokens": r.thinking_tokens,
             }
             for r in results

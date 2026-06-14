@@ -24,7 +24,9 @@ TAGS_LINE = re.compile(r"^\s*\[Tags\]\s+(.+)$", re.MULTILINE)
 
 
 def _robot_test_files() -> list[Path]:
-    return sorted(p for p in SUITE_TESTS.glob("*.robot") if p.name != "__init__.robot")
+    # rglob so nested suites (e.g. tests/test_sandboxed.robot,
+    # tests/test_workflow.robot) cannot dodge the tag and fixture checks.
+    return sorted(p for p in SUITE_TESTS.rglob("*.robot") if p.name != "__init__.robot")
 
 
 def _iter_test_cases(robot_file: Path) -> list[tuple[str, str]]:
