@@ -73,6 +73,13 @@ class TestRun:
     rfc_version: str = ""
     session_id: str = ""
     model_harness: str = ""
+    # Cost & usage telemetry (#511): per-suite token totals + estimated USD
+    # spend. Concrete zero defaults (never Optional) so a run with no token
+    # data records 0, not NULL. Cost is computed from the static pricing table
+    # in config/local_models.yaml; free-tier models stay at 0.0.
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    estimated_cost_usd: float = 0.0
     id: int = -1
 
 
@@ -293,7 +300,10 @@ class _SQLiteBackend(_Backend):
         hostname TEXT,
         rfc_version TEXT,
         session_id TEXT,
-        model_harness TEXT
+        model_harness TEXT,
+        prompt_tokens INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        estimated_cost_usd REAL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS test_results (
@@ -392,6 +402,10 @@ class _SQLiteBackend(_Backend):
         # cache_hit; the test_results_full view selects tr.cache_hit, so add
         # it on upgrade (before the view is rebuilt below).
         "ALTER TABLE test_results ADD COLUMN cache_hit INTEGER DEFAULT 0",
+        # Issue #511: cost & usage telemetry — per-run token totals + spend.
+        "ALTER TABLE test_runs ADD COLUMN prompt_tokens INTEGER DEFAULT 0",
+        "ALTER TABLE test_runs ADD COLUMN completion_tokens INTEGER DEFAULT 0",
+        "ALTER TABLE test_runs ADD COLUMN estimated_cost_usd REAL DEFAULT 0",
     ]
 
     def __init__(self, db_path: str):
@@ -414,8 +428,9 @@ class _SQLiteBackend(_Backend):
                 INSERT INTO test_runs
                 (timestamp, model_name, test_suite, total_tests, passed,
                  failed, skipped, duration_seconds, git_commit, git_branch,
-                 hostname, rfc_version, session_id, model_harness)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hostname, rfc_version, session_id, model_harness,
+                 prompt_tokens, completion_tokens, estimated_cost_usd)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.timestamp.isoformat(),
@@ -432,6 +447,9 @@ class _SQLiteBackend(_Backend):
                     run.rfc_version,
                     run.session_id or None,
                     run.model_harness or None,
+                    run.prompt_tokens,
+                    run.completion_tokens,
+                    run.estimated_cost_usd,
                 ),
             )
             run_id = cursor.lastrowid
@@ -735,6 +753,13 @@ class _SQLAlchemyBackend(_Backend):
         # Databases predating the watermark 5-tuple lack hostname; the
         # test_results_full view selects r.hostname, so add it on upgrade.
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS hostname TEXT",
+        # Issue #511: cost & usage telemetry — per-run token totals + spend.
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS prompt_tokens "
+        "INTEGER DEFAULT 0",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS completion_tokens "
+        "INTEGER DEFAULT 0",
+        "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS estimated_cost_usd "
+        "REAL DEFAULT 0",
         # Joined view for Superset — lean columns + archive LEFT JOIN.
         f"CREATE VIEW test_results_full AS {TEST_RESULTS_FULL_VIEW_BODY}",
     ]
@@ -770,6 +795,10 @@ class _SQLAlchemyBackend(_Backend):
             Column("rfc_version", Text),
             Column("session_id", String, nullable=True),
             Column("model_harness", String, nullable=True),
+            # Cost & usage telemetry (#511): per-suite token totals + spend.
+            Column("prompt_tokens", Integer, server_default=text("0")),
+            Column("completion_tokens", Integer, server_default=text("0")),
+            Column("estimated_cost_usd", Float, server_default=text("0")),
             Index("idx_test_runs_model", "model_name"),
             Index("idx_test_runs_timestamp", "timestamp"),
             Index("idx_test_runs_suite", "test_suite"),
@@ -865,6 +894,9 @@ class _SQLAlchemyBackend(_Backend):
                     rfc_version=run.rfc_version,
                     session_id=run.session_id or None,
                     model_harness=run.model_harness or None,
+                    prompt_tokens=run.prompt_tokens,
+                    completion_tokens=run.completion_tokens,
+                    estimated_cost_usd=run.estimated_cost_usd,
                 )
             )
             pk = result.inserted_primary_key
