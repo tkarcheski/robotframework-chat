@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, text
 
+from rfc.harness_db import HarnessDatabase
+
 # ---------------------------------------------------------------------------
 # Import from bootstrap_dashboards (lives outside src/rfc/)
 # ---------------------------------------------------------------------------
@@ -1281,6 +1283,19 @@ def _query(db_url: str, sql: str) -> list[dict[str, object]]:
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
 
+def _make_harness_db(db_url: str, *, backend: str = "db_path") -> HarnessDatabase:
+    """Return a ``HarnessDatabase`` using the requested backend convention.
+
+    ``backend="db_path"``      → native sqlite3 path via ``_SQLiteHarnessBackend``.
+    ``backend="database_url"`` → SQLAlchemy path via ``_SQLAlchemyHarnessBackend``,
+                                  exercising the same code that production callers use
+                                  when ``database_url`` is set (issue #604).
+    """
+    if backend == "database_url":
+        return HarnessDatabase(database_url=db_url)
+    return HarnessDatabase(db_path=db_url.removeprefix("sqlite:///"))
+
+
 def _seed_full_session(
     db_url: str,
     *,
@@ -1290,6 +1305,7 @@ def _seed_full_session(
     rfc_version: str = "1.16.10",
     started_at: str = "2026-06-12T00:00:00",
     outcome: str = "success",
+    backend: str = "db_path",
 ) -> None:
     """Seed one complete session via the production ``HarnessDatabase`` API.
 
@@ -1298,7 +1314,6 @@ def _seed_full_session(
     paired ``mutation_quality`` / ``heal_passed`` metrics whose IDs match the
     healing-candidates join (``<decision_id>`` and ``<decision_id>-heal``).
     """
-    from rfc.harness_db import HarnessDatabase
     from rfc.harness_models import (
         AgenticDecision,
         AgenticHarness,
@@ -1307,7 +1322,7 @@ def _seed_full_session(
         AgenticSkill,
     )
 
-    db = HarnessDatabase(db_path=db_url.removeprefix("sqlite:///"))
+    db = _make_harness_db(db_url, backend=backend)
     db.save_harness(
         AgenticHarness(
             session_id=session_id,
@@ -1588,4 +1603,140 @@ class TestAgenticGraphDataContract:
         ):
             assert _query(agentic_db_with_view, _AGENTIC_VIRTUAL_DATASETS[key]), (
                 f"virtual dataset {key} returned no rows for a full session"
+            )
+
+
+# ---------------------------------------------------------------------------
+# SQLAlchemy backend coverage — mirrors TestAgenticGraphDataContract but
+# exercises _SQLAlchemyHarnessBackend (the production write path) instead of
+# _SQLiteHarnessBackend.  Issue #604: the graph data-contract tests previously
+# only exercised the db_path= (native sqlite3) path.
+# ---------------------------------------------------------------------------
+
+
+class TestAgenticGraphDataContractSQLAlchemy:
+    """Graph data-contract assertions through the SQLAlchemy backend (issue #604).
+
+    Uses ``backend="database_url"`` so every ``HarnessDatabase`` write goes
+    through ``_SQLAlchemyHarnessBackend`` — the same code path as production
+    Postgres callers.  The fixture wires a throwaway SQLite-via-SQLAlchemy URL
+    so CI needs no live Postgres instance.
+    """
+
+    def test_sessions_full_aggregates_real_session(
+        self, agentic_db_with_view: str
+    ) -> None:
+        _seed_full_session(
+            agentic_db_with_view, session_id="s1", backend="database_url"
+        )
+        rows = _query(
+            agentic_db_with_view,
+            "SELECT * FROM agentic_sessions_full WHERE session_id = 's1'",
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["tool_name"] == "claude-code"
+        assert row["model_id"] == "qwen3:32b"
+        assert row["outcome"] == "success"
+        assert row["tokens_in"] == 1200.0
+        assert row["tokens_out"] == 340.0
+        assert row["avg_latency_ms"] == 850.0
+        assert row["avg_grader_score"] == 0.9
+
+    def test_sessions_full_includes_session_without_metrics(
+        self, agentic_db_with_view: str
+    ) -> None:
+        from rfc.harness_models import AgenticHarness
+
+        db = _make_harness_db(agentic_db_with_view, backend="database_url")
+        db.save_harness(
+            AgenticHarness(
+                session_id="bare",
+                tool_name="codex",
+                started_at="2026-06-12T01:00:00",
+            )
+        )
+        rows = _query(
+            agentic_db_with_view,
+            "SELECT * FROM agentic_sessions_full WHERE session_id = 'bare'",
+        )
+        assert len(rows) == 1
+        assert rows[0]["tokens_in"] is None
+        assert rows[0]["avg_grader_score"] is None
+
+    def test_outcome_funnel_counts_running_and_ended(self, agentic_db: str) -> None:
+        from rfc.harness_models import AgenticHarness
+
+        db = _make_harness_db(agentic_db, backend="database_url")
+        db.save_harness(
+            AgenticHarness(
+                session_id="run1",
+                tool_name="claude-code",
+                started_at="2026-06-12T00:00:00",
+            )
+        )
+        db.save_harness(
+            AgenticHarness(
+                session_id="done1",
+                tool_name="claude-code",
+                started_at="2026-06-12T00:01:00",
+            )
+        )
+        db.end_harness("done1", "success", "2026-06-12T00:06:00")
+        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_outcome_funnel"])
+        by_outcome = {r["outcome"]: r["session_count"] for r in rows}
+        assert by_outcome.get("running") == 1
+        assert by_outcome.get("success") == 1
+
+    def test_plugin_drift_flags_real_upgrade(self, agentic_db: str) -> None:
+        from rfc.harness_models import AgenticHarness, AgenticPlugin
+
+        db = _make_harness_db(agentic_db, backend="database_url")
+        for sid, ts in (("a", "2026-06-10T00:00:00"), ("b", "2026-06-11T00:00:00")):
+            db.save_harness(
+                AgenticHarness(session_id=sid, tool_name="claude-code", started_at=ts)
+            )
+        db.save_plugins(
+            [
+                AgenticPlugin(
+                    session_id="a",
+                    plugin_name="anthropic",
+                    semver="1.0.0",
+                    recorded_at="2026-06-10T00:00:01",
+                )
+            ]
+        )
+        db.save_plugins(
+            [
+                AgenticPlugin(
+                    session_id="b",
+                    plugin_name="anthropic",
+                    semver="1.1.0",
+                    recorded_at="2026-06-11T00:00:01",
+                )
+            ]
+        )
+        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"])
+        changed = [r for r in rows if r["version_changed"] == 1]
+        assert len(changed) == 1
+        assert changed[0]["semver"] == "1.1.0"
+        assert changed[0]["prev_semver"] == "1.0.0"
+
+    def test_full_session_populates_every_chart_dataset(
+        self, agentic_db_with_view: str
+    ) -> None:
+        _seed_full_session(
+            agentic_db_with_view, session_id="s1", backend="database_url"
+        )
+        assert _query(agentic_db_with_view, "SELECT * FROM agentic_sessions_full"), (
+            "agentic_sessions_full empty (SQLAlchemy backend)"
+        )
+        for key in (
+            "agentic_plugin_drift",
+            "agentic_skill_outcomes",
+            "agentic_outcome_funnel",
+            "agentic_healing_candidates",
+        ):
+            assert _query(agentic_db_with_view, _AGENTIC_VIRTUAL_DATASETS[key]), (
+                f"virtual dataset {key} returned no rows (SQLAlchemy backend)"
             )
