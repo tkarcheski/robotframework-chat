@@ -5,6 +5,7 @@ grading fact consistency, scoring instruction-following drift, and
 evaluating topic isolation (context bleed detection).
 """
 
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from robot.api import logger
@@ -54,6 +55,9 @@ class MultiTurnKeywords:
         clean, thinking = parse_thinking(raw, strip_unclosed=self._hide_thinking)
         if thinking is not None:
             emit_rfc_data("thinking_text", thinking)
+        last_metrics = getattr(self.client, "last_metrics", None)
+        if isinstance(last_metrics, dict) and last_metrics:
+            emit_rfc_data("llm_metrics", json.dumps(last_metrics))
         return clean
 
     @keyword("Run Multi Turn Conversation")

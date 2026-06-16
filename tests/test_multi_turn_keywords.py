@@ -210,3 +210,35 @@ class TestGradeTopicIsolationSlidingWindow:
             kw.grade_topic_isolation_sliding_window(
                 "cooking", "astronomy", ["pasta"], 5
             )
+
+
+class TestGenerateResponseEmitsLlmMetrics:
+    """_generate_response() emits RFC_DATA:llm_metrics for DbListener (#611)."""
+
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.multi_turn_keywords.create_provider")
+    def test_emits_llm_metrics_when_last_metrics_available(
+        self, mock_create: MagicMock, mock_logger: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Hello back"
+        mock_client.last_metrics = {"eval_count": 15, "prompt_eval_count": 30}
+        mock_create.return_value = mock_client
+        kw = MultiTurnKeywords()
+        kw._generate_response([{"role": "user", "content": "Hi"}])
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        assert any("RFC_DATA:llm_metrics" in c for c in calls)
+
+    @patch("rfc.rfc_data.logger")
+    @patch("rfc.multi_turn_keywords.create_provider")
+    def test_no_emit_when_last_metrics_is_none(
+        self, mock_create: MagicMock, mock_logger: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_client.generate.return_value = "Hello"
+        mock_client.last_metrics = None
+        mock_create.return_value = mock_client
+        kw = MultiTurnKeywords()
+        kw._generate_response([{"role": "user", "content": "Hi"}])
+        calls = [str(c) for c in mock_logger.info.call_args_list]
+        assert not any("RFC_DATA:llm_metrics" in c for c in calls)

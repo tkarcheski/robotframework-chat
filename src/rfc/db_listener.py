@@ -30,6 +30,7 @@ from .git_metadata import collect_ci_metadata
 from .harness_cli import active_session_id
 from .host_info import collect_host_info
 from .metrics import (
+    accumulate_llm_metrics,
     extract_llm_metrics,
     get_robot_float,
     get_robot_int,
@@ -194,7 +195,7 @@ class DbListener(BaseListener):
         parsed = parse_tags(tags)
         tags_str = parsed["tags_sorted"]
 
-        metrics = extract_llm_metrics(self._current_test_data.get("llm_metrics"))
+        metrics = accumulate_llm_metrics(self.get_rfc_data_history("llm_metrics"))
 
         self._test_cases.append(
             {

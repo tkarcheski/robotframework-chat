@@ -1,6 +1,7 @@
 import json
 
 from .models import GradeResult
+from .rfc_data import emit_rfc_data
 from .thinking import extract_json
 
 
@@ -58,6 +59,9 @@ Format:
 """
 
         raw = self.llm.generate(prompt)
+        last_metrics = getattr(self.llm, "last_metrics", None)
+        if isinstance(last_metrics, dict) and last_metrics:
+            emit_rfc_data("llm_metrics", json.dumps(last_metrics))
 
         # Extract JSON from response (handle thinking tags, markdown, etc.)
         json_text = extract_json(raw)
