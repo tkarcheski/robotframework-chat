@@ -80,8 +80,18 @@ def estimate_cost(
     completion_tokens: int,
     pricing: dict[str, ModelPrice],
 ) -> float:
-    """Estimated USD for one request. Unlisted (free-tier) models cost 0."""
-    price_in, price_out = pricing.get(model, (0.0, 0.0))
+    """Estimated USD for one request. Unlisted (free-tier) models cost 0.
+
+    Provider-prefixed watermark IDs (e.g. ``openrouter/openai/gpt-4o``) are
+    normalised by stripping the leading segment so they match pricing table
+    keys (e.g. ``openai/gpt-4o``). Exact match is preferred. (#612)
+    """
+    if model in pricing:
+        price_in, price_out = pricing[model]
+    elif "/" in model:
+        price_in, price_out = pricing.get(model.split("/", 1)[1], (0.0, 0.0))
+    else:
+        price_in, price_out = 0.0, 0.0
     return (max(0, prompt_tokens) / 1e6) * price_in + (
         max(0, completion_tokens) / 1e6
     ) * price_out
