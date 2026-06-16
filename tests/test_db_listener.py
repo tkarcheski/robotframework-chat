@@ -22,6 +22,7 @@ from rfc.db_listener import (
     _safe_int,
     resolve_session_id,
 )
+from rfc.metrics import accumulate_llm_metrics
 
 
 def _mock_suite_data(name: str = "Suite") -> MagicMock:
@@ -1450,3 +1451,73 @@ class TestDbListenerCostTelemetry:
         assert runs[0]["prompt_tokens"] == 0
         assert runs[0]["completion_tokens"] == 0
         assert runs[0]["estimated_cost_usd"] == 0.0
+
+
+class TestAccumulateLlmMetrics:
+    """Tests for accumulate_llm_metrics — sums token counts across payloads (#610)."""
+
+    def test_empty_payloads_returns_empty(self) -> None:
+        assert accumulate_llm_metrics([]) == {}
+
+    def test_single_payload_equivalent_to_extract(self) -> None:
+        payload = '{"eval_count": 50, "prompt_eval_count": 100}'
+        result = accumulate_llm_metrics([payload])
+        assert result["eval_count"] == 50
+        assert result["prompt_eval_count"] == 100
+
+    def test_multiple_payloads_sums_token_counts(self) -> None:
+        p1 = '{"eval_count": 30, "prompt_eval_count": 60}'
+        p2 = '{"eval_count": 20, "prompt_eval_count": 40}'
+        result = accumulate_llm_metrics([p1, p2])
+        assert result["eval_count"] == 50
+        assert result["prompt_eval_count"] == 100
+
+    def test_cache_hit_true_when_any_payload_is_hit(self) -> None:
+        p1 = '{"eval_count": 0, "cache_hit": true}'
+        p2 = '{"eval_count": 25, "cache_hit": false}'
+        result = accumulate_llm_metrics([p1, p2])
+        assert result["cache_hit"] is True
+
+    def test_cache_hit_false_when_no_payload_is_hit(self) -> None:
+        p1 = '{"eval_count": 10, "cache_hit": false}'
+        p2 = '{"eval_count": 20, "cache_hit": false}'
+        result = accumulate_llm_metrics([p1, p2])
+        assert result["cache_hit"] is False
+
+    def test_invalid_payload_skipped(self) -> None:
+        result = accumulate_llm_metrics(["not-json", '{"eval_count": 5}'])
+        assert result["eval_count"] == 5
+
+    def test_sums_duration_fields(self) -> None:
+        p1 = '{"eval_duration_ns": 1000000, "prompt_eval_duration_ns": 500000}'
+        p2 = '{"eval_duration_ns": 2000000, "prompt_eval_duration_ns": 300000}'
+        result = accumulate_llm_metrics([p1, p2])
+        assert result["eval_duration_ns"] == 3000000
+        assert result["prompt_eval_duration_ns"] == 800000
+
+
+class TestDbListenerAccumulatesMultiCallMetrics:
+    """DbListener uses accumulated token counts across multiple RFC_DATA:llm_metrics (#610)."""
+
+    def test_sums_eval_count_across_two_calls(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(
+            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 30, "prompt_eval_count": 60}')
+        )
+        listener.log_message(
+            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 20, "prompt_eval_count": 40}')
+        )
+        listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
+        assert listener._test_cases[0]["eval_count"] == 50
+        assert listener._test_cases[0]["prompt_eval_count"] == 100
+
+    def test_single_call_unchanged(self) -> None:
+        listener = DbListener()
+        listener.start_test(_mock_test_data("T"), _mock_test_result())
+        listener.log_message(
+            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 186, "prompt_eval_count": 512}')
+        )
+        listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
+        assert listener._test_cases[0]["eval_count"] == 186
+        assert listener._test_cases[0]["prompt_eval_count"] == 512

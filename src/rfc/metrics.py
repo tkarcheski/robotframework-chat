@@ -73,6 +73,46 @@ def safe_int(value: Optional[str]) -> Optional[int]:
         return None
 
 
+def accumulate_llm_metrics(payloads: list[str]) -> Dict[str, Any]:
+    """Sum integer token counts across multiple RFC_DATA:llm_metrics payloads.
+
+    For each numeric token/duration field the values are summed; for
+    non-numeric fields (eval_rate, num_ctx, etc.) the last non-None value
+    wins.  ``cache_hit`` is True when *any* payload reports a cache hit.
+    Returns an empty dict when payloads is empty or all payloads are invalid.
+    """
+    INTEGER_KEYS: frozenset[str] = frozenset(
+        {
+            "eval_count",
+            "prompt_eval_count",
+            "eval_duration_ns",
+            "prompt_eval_duration_ns",
+            "load_duration_ns",
+            "total_duration_ns",
+            "reasoning_tokens",
+            "cached_tokens",
+            "accepted_prediction_tokens",
+            "rejected_prediction_tokens",
+        }
+    )
+    accumulated: Dict[str, Any] = {}
+    any_cache_hit = False
+    for payload in payloads:
+        parsed = extract_llm_metrics(payload)
+        if not parsed:
+            continue
+        for key, val in parsed.items():
+            if key == "cache_hit":
+                any_cache_hit = any_cache_hit or bool(val)
+            elif key in INTEGER_KEYS and val is not None:
+                accumulated[key] = accumulated.get(key, 0) + int(val)
+            elif val is not None:
+                accumulated[key] = val
+    if accumulated:
+        accumulated["cache_hit"] = any_cache_hit
+    return accumulated
+
+
 def extract_llm_metrics(metrics_json: Optional[str]) -> Dict[str, Any]:
     """Extract individual metrics from the llm_metrics JSON string.
 
