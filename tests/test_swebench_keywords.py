@@ -74,11 +74,13 @@ class TestLoadInstances:
         assert instances == []
 
     @patch("rfc.swebench_keywords._load_dataset")
-    def test_load_defaults_to_swebench_dataset(self, mock_load: MagicMock) -> None:
+    def test_load_defaults_to_swebench_verified(self, mock_load: MagicMock) -> None:
         mock_load.return_value = [_SAMPLE_DATASET_ROW]
         kw = SWEBenchKeywords()
         kw.load_swebench_instances(split="test", max_instances=1)
-        mock_load.assert_called_once_with("princeton-nlp/SWE-bench", split="test")
+        mock_load.assert_called_once_with(
+            "princeton-nlp/SWE-bench_Verified", split="test"
+        )
 
     @patch("rfc.swebench_keywords._load_dataset")
     def test_load_accepts_dataset_override(self, mock_load: MagicMock) -> None:
@@ -91,6 +93,66 @@ class TestLoadInstances:
         )
         mock_load.assert_called_once_with("princeton-nlp/SWE-bench_Lite", split="test")
         assert len(instances) == 1
+
+
+# ---------------------------------------------------------------------------
+# SWEBENCH_SLICE filtering
+# ---------------------------------------------------------------------------
+
+_EASY_ROW: Dict[str, Any] = {**_SAMPLE_DATASET_ROW, "difficulty": "easy"}
+_HARD_ROW: Dict[str, Any] = {
+    **_SAMPLE_DATASET_ROW,
+    "difficulty": "hard",
+    "instance_id": "django__django-99999",
+}
+
+
+class TestSWEBenchSlice:
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_slice_all_returns_all_instances(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_EASY_ROW, _HARD_ROW]
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(
+            split="test", max_instances=10, swebench_slice="all"
+        )
+        assert len(instances) == 2
+
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_slice_easy_returns_only_easy_instances(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_EASY_ROW, _HARD_ROW]
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(
+            split="test", max_instances=10, swebench_slice="easy"
+        )
+        assert len(instances) == 1
+        assert instances[0].instance_id == "django__django-11099"
+
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_slice_hard_returns_only_hard_instances(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_EASY_ROW, _HARD_ROW]
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(
+            split="test", max_instances=10, swebench_slice="hard"
+        )
+        assert len(instances) == 1
+        assert instances[0].instance_id == "django__django-99999"
+
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_slice_no_match_falls_back_to_all(self, mock_load: MagicMock) -> None:
+        rows = [{**_SAMPLE_DATASET_ROW}]  # no difficulty field
+        mock_load.return_value = rows
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(
+            split="test", max_instances=10, swebench_slice="easy"
+        )
+        assert len(instances) == 1
+
+    @patch("rfc.swebench_keywords._load_dataset")
+    def test_slice_default_is_all(self, mock_load: MagicMock) -> None:
+        mock_load.return_value = [_EASY_ROW, _HARD_ROW]
+        kw = SWEBenchKeywords()
+        instances = kw.load_swebench_instances(split="test", max_instances=10)
+        assert len(instances) == 2
 
 
 # ---------------------------------------------------------------------------

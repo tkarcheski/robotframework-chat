@@ -16,10 +16,32 @@ from .docker_config import ContainerConfig, ContainerNetwork, ContainerResources
 from .rfc_data import emit_rfc_data
 from .swebench_models import PatchResult, SWEBenchInstance
 
-_SWEBENCH_DATASET = "princeton-nlp/SWE-bench"
+_SWEBENCH_DATASET = "princeton-nlp/SWE-bench_Verified"
 _DEFAULT_DOCKER_IMAGE = "python:3.11-slim"
 _PATCH_APPLY_CMD = "git apply --allow-empty /tmp/patch.diff"
 _TEST_RUN_CMD = "python -m pytest --tb=short -q"
+
+
+def _filter_by_slice(
+    rows: List[Dict[str, Any]], swebench_slice: str
+) -> List[Dict[str, Any]]:
+    """Filter dataset rows by difficulty slice (easy/hard).
+
+    Rows without a 'difficulty' field, or where no rows match, fall back to
+    returning all rows (skip-and-log behaviour).
+    """
+    filtered = [
+        r for r in rows if str(r.get("difficulty", "")).lower() == swebench_slice
+    ]
+    if not filtered:
+        from robot.api import logger as _logger  # type: ignore[import-untyped]
+
+        _logger.warn(
+            f"SWEBENCH_SLICE={swebench_slice!r}: no rows matched difficulty={swebench_slice!r}; "
+            "returning all rows (dataset may lack a 'difficulty' field)"
+        )
+        return rows
+    return filtered
 
 
 def _load_dataset(dataset: str, split: str) -> List[Dict[str, Any]]:
@@ -56,13 +78,16 @@ class SWEBenchKeywords:
         split: str = "test",
         max_instances: int = 10,
         dataset: str = _SWEBENCH_DATASET,
+        swebench_slice: str = "all",
     ) -> List[SWEBenchInstance]:
         """Load SWE-bench instances from the HuggingFace dataset.
 
         Args:
             split: Dataset split (test, dev, train).
             max_instances: Maximum number of instances to load.
-            dataset: HuggingFace dataset name (e.g. princeton-nlp/SWE-bench_Lite).
+            dataset: HuggingFace dataset name (e.g. princeton-nlp/SWE-bench_Verified).
+            swebench_slice: Difficulty filter — all | easy | hard. Falls back to all
+                when the dataset lacks a 'difficulty' field or no rows match.
 
         Returns:
             List of SWEBenchInstance objects.
@@ -70,9 +95,11 @@ class SWEBenchKeywords:
         max_instances = int(max_instances)
         logger.info(
             f"Loading SWE-bench instances: dataset={dataset}, "
-            f"split={split}, max={max_instances}"
+            f"split={split}, slice={swebench_slice}, max={max_instances}"
         )
         rows = _load_dataset(dataset, split=split)
+        if swebench_slice != "all":
+            rows = _filter_by_slice(rows, swebench_slice)
         instances = [SWEBenchInstance.from_dict(row) for row in rows[:max_instances]]
         logger.info(f"Loaded {len(instances)} SWE-bench instances")
         return instances
