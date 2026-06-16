@@ -49,6 +49,29 @@ def test_estimate_cost_zero_tokens() -> None:
     assert estimate_cost("m", 0, 0, {"m": (2.0, 6.0)}) == 0.0
 
 
+def test_estimate_cost_strips_provider_prefix() -> None:
+    # Watermarked OpenRouter IDs include a provider prefix ("openrouter/openai/gpt-4o")
+    # but the pricing table keys by raw model ID ("openai/gpt-4o"). #612
+    pricing = {"openai/gpt-4o": (2.5, 10.0)}
+    cost = estimate_cost("openrouter/openai/gpt-4o", 1_000_000, 1_000_000, pricing)
+    assert cost == 2.5 + 10.0
+
+
+def test_estimate_cost_exact_match_preferred_over_prefix_strip() -> None:
+    # If the full watermarked ID is in the table, use it directly. #612
+    pricing = {
+        "openrouter/openai/gpt-4o": (1.0, 2.0),
+        "openai/gpt-4o": (2.5, 10.0),
+    }
+    assert estimate_cost("openrouter/openai/gpt-4o", 1_000_000, 0, pricing) == 1.0
+
+
+def test_estimate_cost_prefix_strip_fallback_only_strips_one_segment() -> None:
+    # Stripping only the first segment: "a/b/c" → lookup "b/c", not "c". #612
+    pricing = {"b/c": (4.0, 0.0)}
+    assert estimate_cost("a/b/c", 1_000_000, 0, pricing) == 4.0
+
+
 # ── load_pricing_table (file loader) ──────────────────────────────────────
 
 
