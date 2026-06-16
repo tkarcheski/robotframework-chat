@@ -46,6 +46,34 @@ def load_pricing(config: dict) -> dict[str, ModelPrice]:
     return pricing
 
 
+def _default_config_path() -> Path:
+    """Absolute path to ``config/local_models.yaml`` (repo-root relative)."""
+    return Path(__file__).resolve().parents[2] / "config" / "local_models.yaml"
+
+
+def load_pricing_table(
+    path: str | os.PathLike[str] | None = None,
+) -> dict[str, ModelPrice]:
+    """Load the pricing table from ``config/local_models.yaml`` (fail-open).
+
+    A thin wrapper over :func:`load_pricing` that reads the YAML file from
+    disk. Any read/parse error — or a missing PyYAML — returns ``{}`` so a
+    run is never aborted for the sake of cost telemetry (CLAUDE.md skip-and-log
+    discipline). Defaults to the in-repo config when *path* is omitted.
+    """
+    cfg_path = Path(path) if path else _default_config_path()
+    try:
+        import yaml
+
+        data = yaml.safe_load(cfg_path.read_text())
+    except (OSError, ValueError, ImportError) as exc:
+        logger.warning("Pricing config unreadable (%s); treating as no pricing.", exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return load_pricing(data)
+
+
 def estimate_cost(
     model: str,
     prompt_tokens: int,
@@ -122,4 +150,5 @@ __all__ = [
     "MonthlySpend",
     "estimate_cost",
     "load_pricing",
+    "load_pricing_table",
 ]

@@ -1370,3 +1370,83 @@ class TestCloseDefersOutputXmlCapture:
         listener._db = MagicMock()
         listener.close()
         listener._db.update_output_xml.assert_not_called()
+
+
+class TestDbListenerCostTelemetry:
+    """Cost & usage telemetry wiring (#511): per-run token totals + spend."""
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_run_aggregates_token_usage_and_cost(
+        self, _mock_ci: MagicMock, tmp_path: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+        # Inject a non-free price so cost is observable (config is free-tier).
+        monkeypatch.setattr(
+            "rfc.db_listener.load_pricing_table",
+            lambda *a, **k: {"mistral": (1000.0, 2000.0)},
+        )
+
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.start_test(_mock_test_data("T1"), _mock_test_result())
+            listener.log_message(
+                _mock_message(
+                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 100, "eval_count": 50}'
+                )
+            )
+            listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+            listener.start_test(_mock_test_data("T2"), _mock_test_result())
+            listener.log_message(
+                _mock_message(
+                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 200, "eval_count": 70}'
+                )
+            )
+            listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
+            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=2))
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["prompt_tokens"] == 300
+        assert runs[0]["completion_tokens"] == 120
+        # 300/1e6*1000 + 120/1e6*2000 = 0.30 + 0.24 = 0.54
+        assert runs[0]["estimated_cost_usd"] == pytest.approx(0.54)
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_free_tier_run_records_zero_cost(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        # Unlisted (free-tier) model: tokens recorded, cost stays 0.0.
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        with patch.dict(os.environ, {"DEFAULT_MODEL": "some-free-model"}):
+            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+            listener.start_test(_mock_test_data("T1"), _mock_test_result())
+            listener.log_message(
+                _mock_message(
+                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 100, "eval_count": 50}'
+                )
+            )
+            listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["prompt_tokens"] == 100
+        assert runs[0]["completion_tokens"] == 50
+        assert runs[0]["estimated_cost_usd"] == 0.0
+
+    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
+    def test_run_without_token_metrics_records_zero(
+        self, _mock_ci: MagicMock, tmp_path: object
+    ) -> None:
+        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
+        listener = DbListener(database_url=f"sqlite:///{db_path}")
+
+        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
+        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
+        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
+
+        runs = listener._get_db().get_recent_runs(limit=1)
+        assert runs[0]["prompt_tokens"] == 0
+        assert runs[0]["completion_tokens"] == 0
+        assert runs[0]["estimated_cost_usd"] == 0.0
