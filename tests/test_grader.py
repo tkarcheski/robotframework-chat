@@ -121,14 +121,14 @@ class TestGraderLlmMetricsEmission:
         calls = [str(c) for c in mock_logger.info.call_args_list]
         metrics_calls = [c for c in calls if "RFC_DATA:llm_metrics" in c]
         assert metrics_calls
-        payload = json.loads(metrics_calls[0].split("RFC_DATA:llm_metrics:")[1].rstrip("'\"(),"))
+        payload = json.loads(
+            metrics_calls[0].split("RFC_DATA:llm_metrics:")[1].rstrip("'\"(),")
+        )
         assert payload["eval_count"] == 77
         assert payload["prompt_eval_count"] == 200
 
     @patch("rfc.rfc_data.logger")
-    def test_no_emit_when_last_metrics_is_none(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_no_emit_when_last_metrics_is_none(self, mock_logger: MagicMock) -> None:
         client = MagicMock()
         client.generate.return_value = '{"score": 1, "reason": "ok"}'
         client.last_metrics = None

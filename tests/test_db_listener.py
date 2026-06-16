@@ -1503,10 +1503,14 @@ class TestDbListenerAccumulatesMultiCallMetrics:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 30, "prompt_eval_count": 60}')
+            _mock_message(
+                'RFC_DATA:llm_metrics:{"eval_count": 30, "prompt_eval_count": 60}'
+            )
         )
         listener.log_message(
-            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 20, "prompt_eval_count": 40}')
+            _mock_message(
+                'RFC_DATA:llm_metrics:{"eval_count": 20, "prompt_eval_count": 40}'
+            )
         )
         listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
         assert listener._test_cases[0]["eval_count"] == 50
@@ -1516,7 +1520,9 @@ class TestDbListenerAccumulatesMultiCallMetrics:
         listener = DbListener()
         listener.start_test(_mock_test_data("T"), _mock_test_result())
         listener.log_message(
-            _mock_message('RFC_DATA:llm_metrics:{"eval_count": 186, "prompt_eval_count": 512}')
+            _mock_message(
+                'RFC_DATA:llm_metrics:{"eval_count": 186, "prompt_eval_count": 512}'
+            )
         )
         listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
         assert listener._test_cases[0]["eval_count"] == 186
