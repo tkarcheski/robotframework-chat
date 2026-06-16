@@ -25,6 +25,7 @@ from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .base_listener import BaseListener
+from .cost_estimator import estimate_cost, load_pricing_table
 from .git_metadata import collect_ci_metadata
 from .harness_cli import active_session_id
 from .host_info import collect_host_info
@@ -206,6 +207,10 @@ class DbListener(BaseListener):
                 "tag_tier": parsed["tag_tier"],
                 "tag_verify": parsed["tag_verify"],
                 "eval_count": metrics.get("eval_count"),
+                # Cost & usage telemetry (#511): prompt-side token count;
+                # eval_count above is the completion side. Summed per-suite in
+                # on_suite_end to record run-level spend.
+                "prompt_eval_count": metrics.get("prompt_eval_count"),
                 "cache_hit": bool(metrics.get("cache_hit", False)),
                 "thinking_tokens": safe_int(
                     self._current_test_data.get("thinking_tokens")
@@ -269,6 +274,20 @@ class DbListener(BaseListener):
 
         hostname = self._host_info.get("hostname", "")
 
+        # Cost & usage telemetry (#511): sum prompt/completion tokens across the
+        # suite's tests and price them via the static table. estimate_cost is
+        # linear, so pricing the totals equals summing per-test cost. Pricing
+        # load is fail-open (free-tier models / unreadable config → $0.00).
+        prompt_tokens = sum(
+            safe_int(tc.get("prompt_eval_count")) or 0 for tc in self._test_cases
+        )
+        completion_tokens = sum(
+            safe_int(tc.get("eval_count")) or 0 for tc in self._test_cases
+        )
+        estimated_cost_usd = estimate_cost(
+            model_name, prompt_tokens, completion_tokens, load_pricing_table()
+        )
+
         # output.xml is read later in close(), after Robot flushes the file.
         # Resolve the path now while Robot context is still available.
         output_xml_source = build_output_xml_source()
@@ -289,6 +308,9 @@ class DbListener(BaseListener):
             rfc_version=__version__,
             session_id=resolve_session_id(session_id_var),
             model_harness=model_harness_var or "",
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            estimated_cost_usd=estimated_cost_usd,
         )
 
         try:

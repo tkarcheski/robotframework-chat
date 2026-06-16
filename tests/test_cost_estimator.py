@@ -8,6 +8,7 @@ from rfc.cost_estimator import (
     MonthlySpend,
     estimate_cost,
     load_pricing,
+    load_pricing_table,
 )
 
 
@@ -46,6 +47,26 @@ def test_estimate_cost_unknown_model_is_free() -> None:
 
 def test_estimate_cost_zero_tokens() -> None:
     assert estimate_cost("m", 0, 0, {"m": (2.0, 6.0)}) == 0.0
+
+
+# ── load_pricing_table (file loader) ──────────────────────────────────────
+
+
+def test_load_pricing_table_reads_file(tmp_path: Path) -> None:
+    cfg = tmp_path / "local_models.yaml"
+    cfg.write_text(
+        "pricing:\n"
+        "  openai/gpt-4o:\n"
+        "    input_per_mtok: 2.5\n"
+        "    output_per_mtok: 10.0\n"
+    )
+    pricing = load_pricing_table(cfg)
+    assert pricing["openai/gpt-4o"] == (2.5, 10.0)
+
+
+def test_load_pricing_table_missing_file_is_empty(tmp_path: Path) -> None:
+    # Fail-open: an unreadable/absent config never aborts a run (#511).
+    assert load_pricing_table(tmp_path / "does-not-exist.yaml") == {}
 
 
 # ── MonthlySpend ──────────────────────────────────────────────────────────
