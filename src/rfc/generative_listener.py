@@ -43,7 +43,7 @@ tagged ``mutated:true`` (copies never re-mutate). Safety rails:
   because the keyword allow-list alone would not stop code execution
   smuggled through an argument.
 - mutation prompts are externalized to
-  ``robot/resources/generative_mutate_prompts.resource`` so reviewers
+  ``src/rfc/resources/generative_mutate_prompts.resource`` so reviewers
   can read and edit them (built-in fallback if unreadable).
 - a parallel grader (the ``Grade Answer`` core, same prompting model)
   scores each applied mutation's quality and writes it to
@@ -162,24 +162,23 @@ DEFAULT_BUDGET_TOKENS = 10_000
 
 # Deterministic BuiltIn assertions a mutation may use — anything else is
 # recorded (applied=0) but never executed. Deliberately excludes anything
-# that runs code, touches the OS, or sets state.
+# that runs code, touches the OS, or sets state — and `Should Match Regexp`,
+# whose model-controlled pattern is a ReDoS vector (#516).
 ALLOWED_MUTATION_KEYWORDS = (
     "Length Should Be",
     "Should Be Equal",
     "Should Be Equal As Numbers",
     "Should Be Equal As Strings",
     "Should Contain",
-    "Should Match Regexp",
     "Should Not Be Empty",
     "Should Not Contain",
 )
 _ALLOWED_MUTATION_LOOKUP = {k.lower(): k for k in ALLOWED_MUTATION_KEYWORDS}
 
+# Ships as package data so installed (wheel) deployments resolve it too,
+# not just repo checkouts (#516).
 MUTATE_PROMPTS_RESOURCE = (
-    Path(__file__).resolve().parents[2]
-    / "robot"
-    / "resources"
-    / "generative_mutate_prompts.resource"
+    Path(__file__).resolve().parent / "resources" / "generative_mutate_prompts.resource"
 )
 
 _FLOW_ACTIONS = ("skip", "retry", "fork", "none")
@@ -215,7 +214,7 @@ _FLOW_PROMPT_TEMPLATE = (
 
 
 # Built-in fallbacks, kept in sync with
-# robot/resources/generative_mutate_prompts.resource (the reviewable copy).
+# src/rfc/resources/generative_mutate_prompts.resource (the reviewable copy).
 _DEFAULT_MUTATE_PROMPTS = {
     "MUTATION_PROMPT_TEMPLATE": (
         "You are mutating a Robot Framework test (suite opted in via the "
@@ -449,6 +448,61 @@ def _parse_heal(response: str) -> Optional[tuple[int, str, list[str]]]:
         return None
     keyword, args = assertion
     return line_number, keyword, args
+
+
+def _normalize_keyword_name(name: str) -> str:
+    """Normalize a keyword name exactly as Robot resolves it.
+
+    Delegates to ``robot.utils.normalize`` (casefold + all-whitespace removal)
+    with underscores ignored, so the collision guard matches Robot's own
+    resolution — including Unicode case-folding like ``ſ`` → ``s`` that ASCII
+    ``lower()`` would miss (#516).
+    """
+    from robot.utils import normalize
+
+    return normalize(name, ignore=["_"])
+
+
+def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
+    """True when a user keyword in the suite hierarchy would hijack the
+    inserted assertion.
+
+    The assertion is inserted as the explicit ``BuiltIn.<keyword>`` call, and
+    Robot resolves a *qualified* call against suite keywords by their full
+    name before the library lookup. So only a suite keyword that resolves to
+    ``BuiltIn.<keyword>`` can hijack it (#516) — a bare ``Should Contain``
+    user keyword shadows the *unqualified* call, not our qualified one, and
+    must not block the mutation. Two ways to shadow the qualified call:
+
+    * a literal name that normalizes equal to ``BuiltIn.<keyword>``
+      (case/space/underscore-insensitive via Robot's own normalization); or
+    * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
+      pattern matches ``BuiltIn.Should Contain``.
+
+    Walks the suite parent chain; imported resources are outside the running
+    model and are not inspected — collisions there are the suite author's
+    responsibility.
+    """
+    from robot.running.arguments.embedded import EmbeddedArguments
+
+    qualified = f"BuiltIn.{keyword}"
+    wanted_literal = {_normalize_keyword_name(qualified)}
+    # Raw name (not normalized) for Robot's embedded-arg regex matching.
+    embedded_targets = (qualified,)
+    node = getattr(data, "parent", None)
+    while node is not None:
+        resource = getattr(node, "resource", None)
+        for kw in getattr(resource, "keywords", None) or []:
+            name = getattr(kw, "name", "") or ""
+            if _normalize_keyword_name(name) in wanted_literal:
+                return True
+            embedded = EmbeddedArguments.from_name(name)
+            if embedded is not None and any(
+                embedded.name.fullmatch(target) for target in embedded_targets
+            ):
+                return True
+        node = getattr(node, "parent", None)
+    return False
 
 
 def _fill_template(template: str, **values: Any) -> str:
@@ -1089,13 +1143,26 @@ class GenerativeListener(BaseListener):
         All failable work (deepcopy, tagging, keyword creation) happens
         here so callers can persist a truthful ``applied`` before the
         trivial list insert (#501)."""
+        if _suite_shadows_keyword(data, keyword):
+            logger.warning(
+                "GenerativeListener: not mutating %r — suite defines a user "
+                "keyword shadowing %r; the inserted assertion could be "
+                "hijacked (#516)",
+                test_name,
+                keyword,
+            )
+            return None
         assertion_line = "    ".join([keyword, *args])
         short_hash = hashlib.sha1(assertion_line.encode("utf-8")).hexdigest()[:8]
         try:
             copy = _copy_test(data)
             copy.name = f"{test_name}::mutated::{short_hash}"
             _add_tag(copy, MUTATED_MARKER_TAG)
-            copy.body.create_keyword(name=keyword, args=list(args))
+            # Explicit BuiltIn. qualification: a user keyword named e.g.
+            # "Should Be Equal" would shadow the BuiltIn at resolution
+            # time, so the allow-listed name alone cannot guarantee which
+            # code runs (#516).
+            copy.body.create_keyword(name=f"BuiltIn.{keyword}", args=list(args))
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning(
                 "GenerativeListener: could not build mutated copy of %r: %s",
