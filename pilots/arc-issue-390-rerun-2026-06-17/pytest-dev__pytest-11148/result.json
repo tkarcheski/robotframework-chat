@@ -24,9 +24,17 @@
     "verification_log": "verification.log"
   },
   "patch_result": {
+    "source": "manual reproduction via verification.sh in this package; NOT a successful harness `apply_and_test_patch` invocation in this environment (see harness_invocation below)",
     "passed": false,
     "exit_code": 1,
-    "test_output": "git apply rejected the generated patch before pytest could run. Decisive line: 'error: pmxbot/logging.py: No such file or directory'. Same scope-violation failure mode as the first pilot run (the model again targets the issue reporter's example project pmxbot, not pytest's repo), with a different specific generated body. verification.sh reproduces this identically. Verification was run with two environmental adjustments documented in verification.sh: (a) apt installs ca-certificates alongside git, and (b) the git clone uses http.sslVerify=false because the sandbox network presents a self-signed CA chain for github.com. Neither adjustment changes the decisive failure mode (pure git apply semantics)."
+    "test_output": "git apply rejected the generated patch before pytest could run. Decisive line: 'error: pmxbot/logging.py: No such file or directory'. Same scope-violation failure mode as the first pilot run (the model again targets the issue reporter's example project pmxbot, not pytest's repo), with a different specific generated body. The first pilot run's `apply_and_test_patch` produced the same exit_code=1 / passed=false signal for the same scope-violation reason, so the harness-equivalent result is identical."
+  },
+  "harness_invocation": {
+    "attempted": true,
+    "completed": false,
+    "blocker": "Docker Hub unauthenticated pull rate-limit when `apply_and_test_patch` tried to pull `python:3.11-slim`. The harness raised RuntimeError: Failed to create container before any patch step ran. Same `scripts/arc_pilot_390.py` driver, same prompt, same model, same generated.patch -- the failure was strictly in container provisioning, after generation.",
+    "fallback": "verification.sh was run manually from the package dir to reproduce the apply step. The manual run required two adjustments to verification.sh that are NOT in the harness's container setup (`src/rfc/swebench_keywords.py` `apply_and_test_patch`): (a) apt installs `ca-certificates` alongside `git` (the slim base image lacks them), and (b) `git clone` uses `-c http.sslVerify=false` because the sandbox network presents a self-signed CA chain for github.com. In an unmodified harness invocation in this same sandbox, the harness would fail at the clone step with a TLS-verification error rather than at the apply step. In a normal environment (direct github.com TLS chain, no Docker Hub rate-limit) the harness's apply step would produce the same exit_code=1 / passed=false signal the manual reproduction recorded, for the same scope-violation reason.",
+    "honest_label": "Treat `patch_result` as the verification.sh reproduction, not as a harness PatchResult. ARC's contract-versus-diff check operates on generated.patch + scope.json regardless; the failure-mode signal is preserved."
   },
   "lineage": {
     "first_pilot_package": "pilots/arc-issue-390/pytest-dev__pytest-11148/",
