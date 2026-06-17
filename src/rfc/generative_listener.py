@@ -479,14 +479,18 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
     * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
       pattern matches ``BuiltIn.Should Contain``.
 
-    Walks the suite parent chain; imported resources are outside the running
-    model and are not inspected — collisions there are the suite author's
-    responsibility.
+    Walks the suite parent chain, inspecting both the suite's own keyword
+    tables and its imported-resource owners. An imported resource file whose
+    owner name is literally ``BuiltIn`` (#528) makes Robot resolve the
+    qualified ``BuiltIn.<keyword>`` against both the real library and the
+    resource ("Multiple keywords ... found"), so it is treated as a shadow and
+    blocked conservatively.
     """
     from robot.running.arguments.embedded import EmbeddedArguments
 
     qualified = f"BuiltIn.{keyword}"
     wanted_literal = {_normalize_keyword_name(qualified)}
+    builtin_owner = _normalize_keyword_name("BuiltIn")
     # Raw name (not normalized) for Robot's embedded-arg regex matching.
     embedded_targets = (qualified,)
     node = getattr(data, "parent", None)
@@ -500,6 +504,18 @@ def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
             if embedded is not None and any(
                 embedded.name.fullmatch(target) for target in embedded_targets
             ):
+                return True
+        # #528: an imported resource whose owner name is literally ``BuiltIn``
+        # collides with the qualified ``BuiltIn.<keyword>`` call ("Multiple
+        # keywords ... found"). The suite-own walk above never sees imported
+        # owners, so inspect the import table and block conservatively — a
+        # legitimate suite never names a resource ``BuiltIn``. Only RESOURCE
+        # imports collide; the real BuiltIn *library* is a LIBRARY import.
+        for imp in getattr(resource, "imports", None) or []:
+            if (getattr(imp, "type", "") or "").upper() != "RESOURCE":
+                continue
+            owner = Path(str(getattr(imp, "name", "") or "")).stem
+            if _normalize_keyword_name(owner) == builtin_owner:
                 return True
         node = getattr(node, "parent", None)
     return False

@@ -765,3 +765,77 @@ class TestPostMergeHardening501:
         executed = _run_suite(_listener(tmp_path, provider), suite, {})
         assert len(executed) == 2  # original + applied mutation
         assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
+
+
+class TestImportedResourceShadow528:
+    """#528: the #520 guard only walks the suite's *own* keyword tables. A suite
+    that imports a resource file whose owner name is literally ``BuiltIn`` makes
+    Robot 7.4.1 resolve the inserted ``BuiltIn.<keyword>`` against *both* the real
+    library and the resource ("Multiple keywords ... found"), so the mutated
+    sibling errors at runtime while the decision is recorded ``applied=1``. The
+    guard must also inspect imported-resource owners and record ``applied=0``."""
+
+    def test_mutation_blocked_when_imported_resource_named_builtin(
+        self, clean_env, tmp_path
+    ):
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[
+                SimpleNamespace(type="RESOURCE", name="resources/BuiltIn.resource")
+            ],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1  # nothing inserted
+        rows = db.get_decisions(SESSION, proposed_action="mutate")
+        assert len(rows) == 1
+        assert rows[0].applied == 0
+
+    def test_imported_builtin_resource_owner_matches_case_insensitively(
+        self, clean_env, tmp_path
+    ):
+        """Robot resolves resource owner names case-insensitively, so a
+        ``builtin.resource`` import collides just the same."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[SimpleNamespace(type="RESOURCE", name="x/builtin.resource")],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 1
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 0
+
+    def test_unrelated_resource_import_does_not_block(self, clean_env, tmp_path):
+        """A normally-named resource import must NOT block (no false positives)."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[
+                SimpleNamespace(type="RESOURCE", name="resources/helpers.resource")
+            ],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2  # original + applied mutation
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
+
+    def test_builtin_library_import_does_not_block(self, clean_env, tmp_path):
+        """The real ``BuiltIn`` is a LIBRARY import (auto-imported everywhere);
+        only a RESOURCE owner named BuiltIn collides with the qualified call.
+        A LIBRARY named BuiltIn must never block, or every mutation in every
+        suite would be suppressed."""
+        db = _seed_harness(tmp_path)
+        provider = SyntheticProvider(responses=[ASSERTION, GRADE_OK])
+        suite = _suite([GENERATIVE_MUTATE_TAG], ["t1"])
+        suite.resource = SimpleNamespace(
+            keywords=[],
+            imports=[SimpleNamespace(type="LIBRARY", name="BuiltIn")],
+        )
+        executed = _run_suite(_listener(tmp_path, provider), suite, {})
+        assert len(executed) == 2
+        assert db.get_decisions(SESSION, proposed_action="mutate")[0].applied == 1
