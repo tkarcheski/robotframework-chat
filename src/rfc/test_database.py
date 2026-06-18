@@ -100,6 +100,13 @@ class TestResult:
     # cached answer rather than measuring a fresh model call.
     cache_hit: bool = False
     thinking_tokens: int = 0
+    # Issue #621: eval-harness provenance columns.
+    benchmark: str = ""
+    split: str = ""
+    instance_id: str = ""
+    grader_model: str = ""
+    wall_seconds: float = 0.0
+    cost_usd: float = 0.0
     id: int = -1
 
 
@@ -204,6 +211,12 @@ SELECT
     tr.eval_count,
     tr.cache_hit,
     tr.thinking_tokens,
+    tr.benchmark,
+    tr.split,
+    tr.instance_id,
+    tr.grader_model,
+    tr.wall_seconds,
+    tr.cost_usd,
     r.timestamp,
     r.model_name,
     r.test_suite,
@@ -319,6 +332,12 @@ class _SQLiteBackend(_Backend):
         eval_count INTEGER,
         cache_hit INTEGER DEFAULT 0,
         thinking_tokens INTEGER,
+        benchmark TEXT DEFAULT '',
+        split TEXT DEFAULT '',
+        instance_id TEXT DEFAULT '',
+        grader_model TEXT DEFAULT '',
+        wall_seconds REAL DEFAULT 0,
+        cost_usd REAL DEFAULT 0,
         FOREIGN KEY (run_id) REFERENCES test_runs(id) ON DELETE CASCADE
     );
 
@@ -406,6 +425,13 @@ class _SQLiteBackend(_Backend):
         "ALTER TABLE test_runs ADD COLUMN prompt_tokens INTEGER DEFAULT 0",
         "ALTER TABLE test_runs ADD COLUMN completion_tokens INTEGER DEFAULT 0",
         "ALTER TABLE test_runs ADD COLUMN estimated_cost_usd REAL DEFAULT 0",
+        # Issue #621: eval-harness provenance columns.
+        "ALTER TABLE test_results ADD COLUMN benchmark TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN split TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN instance_id TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN grader_model TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN wall_seconds REAL DEFAULT 0",
+        "ALTER TABLE test_results ADD COLUMN cost_usd REAL DEFAULT 0",
     ]
 
     def __init__(self, db_path: str):
@@ -469,8 +495,10 @@ class _SQLiteBackend(_Backend):
                     INSERT INTO test_results
                     (run_id, test_name, test_status, score, tags,
                      tag_severity, tag_tier, tag_verify,
-                     eval_count, cache_hit, thinking_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     eval_count, cache_hit, thinking_tokens,
+                     benchmark, split, instance_id,
+                     grader_model, wall_seconds, cost_usd)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         r.run_id,
@@ -484,6 +512,12 @@ class _SQLiteBackend(_Backend):
                         r.eval_count,
                         1 if r.cache_hit else 0,
                         r.thinking_tokens,
+                        r.benchmark,
+                        r.split,
+                        r.instance_id,
+                        r.grader_model,
+                        r.wall_seconds,
+                        r.cost_usd,
                     ),
                 )
                 row_id = cursor.lastrowid
@@ -760,6 +794,13 @@ class _SQLAlchemyBackend(_Backend):
         "INTEGER DEFAULT 0",
         "ALTER TABLE test_runs ADD COLUMN IF NOT EXISTS estimated_cost_usd "
         "REAL DEFAULT 0",
+        # Issue #621: eval-harness provenance columns.
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS benchmark TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS split TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS instance_id TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS grader_model TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS wall_seconds REAL DEFAULT 0",
+        "ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cost_usd REAL DEFAULT 0",
         # Joined view for Superset — lean columns + archive LEFT JOIN.
         f"CREATE VIEW test_results_full AS {TEST_RESULTS_FULL_VIEW_BODY}",
     ]
@@ -824,6 +865,12 @@ class _SQLAlchemyBackend(_Backend):
             Column("eval_count", Integer),
             Column("cache_hit", Boolean, server_default=text("false")),
             Column("thinking_tokens", Integer),
+            Column("benchmark", Text, server_default=text("''")),
+            Column("split", Text, server_default=text("''")),
+            Column("instance_id", Text, server_default=text("''")),
+            Column("grader_model", Text, server_default=text("''")),
+            Column("wall_seconds", Float, server_default=text("0")),
+            Column("cost_usd", Float, server_default=text("0")),
             Index("idx_test_results_run_id", "run_id"),
         )
 
@@ -921,6 +968,12 @@ class _SQLAlchemyBackend(_Backend):
                 "eval_count": r.eval_count,
                 "cache_hit": bool(r.cache_hit),
                 "thinking_tokens": r.thinking_tokens,
+                "benchmark": r.benchmark,
+                "split": r.split,
+                "instance_id": r.instance_id,
+                "grader_model": r.grader_model,
+                "wall_seconds": r.wall_seconds,
+                "cost_usd": r.cost_usd,
             }
             for r in results
         ]

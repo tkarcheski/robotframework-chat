@@ -44,7 +44,7 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         robot-review \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
-        robot-swebench swebench-discover \
+        robot-swebench swebench-discover robot-openai-evals \
         retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models run-all-external \
@@ -134,6 +134,9 @@ robot-multilingual: ## Run multilingual instruction-following tests (Robot Frame
 
 robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,swebench) $(call LLM_META,swebench) $(LLM_VARS) $(LISTENER) $(ARGS) robot/swebench/
+
+robot-openai-evals: ## Run OpenAI Evals harness (Robot Framework)
+	$(ROBOT) -d $(call LLM_RUN_DIR,openai-evals) $(call LLM_META,openai-evals) $(LLM_VARS) $(LISTENER) $(ARGS) robot/openai_evals/
 
 swebench-discover: ## List available SWE-bench instances
 	uv run python scripts/run_swebench.py --discover
