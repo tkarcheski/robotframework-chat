@@ -1,0 +1,44 @@
+{
+  "schema_version": "arc-pilot-result-v1",
+  "instance_id": "pytest-dev__pytest-11148",
+  "dataset": "princeton-nlp/SWE-bench_Lite",
+  "generation": {
+    "provider": "ollama",
+    "model": "llama3:latest",
+    "model_version_or_digest": "365c0bd3c000a25d28ddbf732fe1c6add414de7275464c4e4d1c3b5fcb5d8ad1",
+    "harness": "robotframework-chat SWE-bench",
+    "harness_commit": "edc6ca10821e63e02f0f7d8303d2d3e642bc8de0",
+    "harness_commit_note": "HEAD of claude-code-staging at run time (2026-06-17 14:26 UTC). The scripts/arc_pilot_390.py driver, the prompt template, and the Load SWEBench Instances + Apply And Test Patch keywords are unchanged from the published commit 9ae631d used by the first pilot package."
+  },
+  "frozen_contract": {
+    "base_commit": "2f7415cfbc4b6ca62f9013f1abd27136f46b9653",
+    "allowed_files": ["src/_pytest/pathlib.py"],
+    "prohibited_scope": "all files not in allowed_files"
+  },
+  "artifacts": {
+    "instance": "instance.json",
+    "generated_patch": "generated.patch",
+    "gold_patch": "gold.patch",
+    "scope": "scope.json",
+    "verification_script": "verification.sh",
+    "verification_log": "verification.log"
+  },
+  "patch_result": {
+    "source": "manual reproduction via verification.sh in this package; NOT a successful harness `apply_and_test_patch` invocation in this environment (see harness_invocation below)",
+    "passed": false,
+    "exit_code": 1,
+    "test_output": "git apply rejected the generated patch before pytest could run. Decisive line: 'error: pmxbot/logging.py: No such file or directory'. Same scope-violation failure mode as the first pilot run (the model again targets the issue reporter's example project pmxbot, not pytest's repo), with a different specific generated body. The first pilot run's `apply_and_test_patch` produced the same exit_code=1 / passed=false signal for the same scope-violation reason, so the harness-equivalent result is identical."
+  },
+  "harness_invocation": {
+    "attempted": true,
+    "completed": false,
+    "blocker": "Docker Hub unauthenticated pull rate-limit when `apply_and_test_patch` tried to pull `python:3.11-slim`. The harness raised RuntimeError: Failed to create container before any patch step ran. Same `scripts/arc_pilot_390.py` driver, same prompt, same model, same generated.patch -- the failure was strictly in container provisioning, after generation.",
+    "fallback": "verification.sh was run manually from the package dir to reproduce the apply step. The manual run required two adjustments to verification.sh that are NOT in the harness's container setup (`src/rfc/swebench_keywords.py` `apply_and_test_patch`): (a) apt installs `ca-certificates` alongside `git` (the slim base image lacks them), and (b) `git clone` uses `-c http.sslVerify=false` because the sandbox network presents a self-signed CA chain for github.com. In an unmodified harness invocation in this same sandbox, the harness would fail at the clone step with a TLS-verification error rather than at the apply step. In a normal environment (direct github.com TLS chain, no Docker Hub rate-limit) the harness's apply step would produce the same exit_code=1 / passed=false signal the manual reproduction recorded, for the same scope-violation reason.",
+    "honest_label": "Treat `patch_result` as the verification.sh reproduction, not as a harness PatchResult. ARC's contract-versus-diff check operates on generated.patch + scope.json regardless; the failure-mode signal is preserved."
+  },
+  "lineage": {
+    "first_pilot_package": "pilots/arc-issue-390/pytest-dev__pytest-11148/",
+    "first_pilot_commit_published": "9ae631d1ec350a8b9a0667c841fb4450c0e2964d",
+    "note": "Fresh agent attempt requested by ARC reviewer at https://github.com/tkarcheski/robotframework-chat/issues/390#issuecomment-4698678978. Same frozen base commit, same allowed file, same prohibited scope, same default model and digest. The first pilot package is preserved unchanged at the path above."
+  }
+}
