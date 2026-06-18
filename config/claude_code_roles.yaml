@@ -1,0 +1,162 @@
+# Subagent role taxonomy for the Claude Code multi-host sweep (Goal 2, issue #594).
+#
+# Each role defines the task class a subagent is assigned during a sweep run.
+# The `primary_graders` list names grader keys defined in the `graders` section
+# below; the sweep harness uses them to score model-role fitness.
+#
+# Consumed by: robot/claude_code/ harnesses (issues #596–#601), sweep reporter.
+
+roles:
+  planner:
+    description: "Decomposes a high-level goal into an ordered, dependency-aware task plan."
+    inputs:
+      - goal_description
+      - codebase_context
+    outputs:
+      - task_list
+      - dependency_graph
+    primary_graders:
+      - plan_completeness
+      - step_ordering
+      - dependency_accuracy
+
+  coder:
+    description: "Implements a single task from a plan, producing a passing, clean diff."
+    inputs:
+      - task_description
+      - codebase_context
+      - test_requirements
+    outputs:
+      - code_diff
+      - commit_message
+    primary_graders:
+      - tests_pass
+      - lint_clean
+      - type_check_clean
+
+  reviewer:
+    description: "Reviews a code diff for correctness and adherence to project standards."
+    inputs:
+      - code_diff
+      - project_standards
+    outputs:
+      - findings_list
+      - verdict
+    primary_graders:
+      - bug_detection_rate
+      - false_positive_rate
+      - standards_coverage
+
+  test-author:
+    description: "Authors a failing test suite for a feature or bug before implementation."
+    inputs:
+      - feature_description
+      - existing_tests
+      - framework_conventions
+    outputs:
+      - test_file
+      - coverage_report
+    primary_graders:
+      - test_runnable
+      - test_fails_before_impl
+      - tier_correct
+      - tags_correct
+
+  search:
+    description: "Locates relevant code, files, or documentation for a given query."
+    inputs:
+      - query
+      - codebase_context
+    outputs:
+      - file_paths
+      - line_references
+      - summary
+    primary_graders:
+      - precision
+      - recall
+      - false_negative_rate
+
+# ---------------------------------------------------------------------------
+# Grader definitions
+# ---------------------------------------------------------------------------
+# type: llm_judge  — scored by an LLM judge at sweep-report time
+# type: command    — pass/fail derived from a shell command exit code
+# type: yaml_check — structural assertion on the produced YAML artifact
+# ---------------------------------------------------------------------------
+
+graders:
+  # planner graders
+  plan_completeness:
+    type: llm_judge
+    metric: fraction_of_required_steps_present
+
+  step_ordering:
+    type: llm_judge
+    metric: topological_sort_violations
+
+  dependency_accuracy:
+    type: llm_judge
+    metric: fraction_of_dependencies_correctly_identified
+
+  # coder graders
+  tests_pass:
+    type: command
+    command: "uv run pytest"
+    success_criterion: exit_code_0
+
+  lint_clean:
+    type: command
+    command: "uv run ruff check ."
+    success_criterion: exit_code_0
+
+  type_check_clean:
+    type: command
+    command: "uv run mypy src/rfc/"
+    success_criterion: exit_code_0
+
+  # reviewer graders
+  bug_detection_rate:
+    type: llm_judge
+    metric: fraction_of_introduced_bugs_flagged
+
+  false_positive_rate:
+    type: llm_judge
+    metric: fraction_of_correct_code_flagged_as_buggy
+
+  standards_coverage:
+    type: llm_judge
+    metric: fraction_of_relevant_standards_checked
+
+  # test-author graders
+  test_runnable:
+    type: command
+    command: "uv run pytest {test_file} --collect-only"
+    success_criterion: exit_code_0
+
+  test_fails_before_impl:
+    type: command
+    command: "uv run pytest {test_file}"
+    success_criterion: exit_code_nonzero
+
+  tier_correct:
+    type: yaml_check
+    field: tags
+    constraint: "contains_one_of(tier:0, tier:1, tier:2, tier:3, tier:4)"
+
+  tags_correct:
+    type: yaml_check
+    field: tags
+    constraint: "contains_one_of(verify:robot, verify:python, verify:llm, verify:human)"
+
+  # search graders
+  precision:
+    type: llm_judge
+    metric: fraction_of_returned_items_that_are_relevant
+
+  recall:
+    type: llm_judge
+    metric: fraction_of_relevant_items_returned
+
+  false_negative_rate:
+    type: llm_judge
+    metric: fraction_of_relevant_items_missed
