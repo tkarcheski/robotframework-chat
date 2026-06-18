@@ -186,6 +186,11 @@ test_suites:
     description: "SWE-bench patch generation and validation"
     timeout_seconds: 7200
 
+  - name: "openai-evals"
+    path: "robot/openai_evals/"
+    description: "OpenAI Evals harness scaffolding — dataset loader and llm_judge grader integration"
+    timeout_seconds: 600
+
   - name: "react"
     path: "robot/react/"
     description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"

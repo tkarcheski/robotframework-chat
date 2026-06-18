@@ -209,6 +209,11 @@ test_suites:
     path: "robot/swebench"
     description: "SWE-bench patch generation and validation against real GitHub issues"
 
+  openai-evals:
+    label: "OpenAI Evals"
+    path: "robot/openai_evals"
+    description: "OpenAI Evals harness scaffolding — dataset loader and llm_judge grader integration"
+
   react:
     label: "ReAct Loop"
     path: "robot/react"
