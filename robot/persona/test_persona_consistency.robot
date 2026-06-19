@@ -10,7 +10,7 @@ Resource          persona.resource
 
 Test Tags         persona    consistency    tier:2    verify:llm
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 Pirate Captain Under Pressure

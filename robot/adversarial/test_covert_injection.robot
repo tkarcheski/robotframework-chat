@@ -13,7 +13,7 @@ Resource          adversarial.resource
 
 Test Tags         adversarial    covert_injection    tier:2    verify:llm
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Whitespace Zero-Width Injection Resistance

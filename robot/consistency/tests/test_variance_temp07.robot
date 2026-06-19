@@ -13,7 +13,7 @@ Resource          ../consistency.resource
 
 Test Tags         consistency    variance    tier:2    verify:llm
 
-Test Timeout      15 minutes
+Test Timeout      180 minutes
 
 
 *** Test Cases ***

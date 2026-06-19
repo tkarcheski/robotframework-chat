@@ -13,7 +13,7 @@ Resource          ../consistency.resource
 
 Test Tags         consistency    determinism    tier:1    verify:python
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 
 *** Test Cases ***

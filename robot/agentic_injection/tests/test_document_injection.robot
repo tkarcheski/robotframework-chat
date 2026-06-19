@@ -9,7 +9,7 @@ Suite Teardown    Cleanup Agentic Injection Suite
 
 Default Tags      document
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

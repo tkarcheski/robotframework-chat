@@ -3,7 +3,7 @@ Documentation     Switch topics abruptly mid-conversation and verify the model
 ...               does not bleed prior context into the new topic. Uses sliding
 ...               window evaluation over post-switch responses.
 Resource          multi_turn.resource
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Cooking To Astronomy Handoff

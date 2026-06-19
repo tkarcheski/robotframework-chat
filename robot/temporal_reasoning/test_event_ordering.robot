@@ -11,7 +11,7 @@ Documentation     Event Ordering Tests
 Resource          temporal_reasoning.resource
 
 Default Tags      temporal_reasoning    event_ordering    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Battle Of Waterloo Is Earliest Of Four 20th-Century Milestones

@@ -22,7 +22,7 @@ Documentation     GAIA-Style Tool-Use Tests
 
 Resource          gaia.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 
 *** Test Cases ***

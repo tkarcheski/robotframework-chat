@@ -38,7 +38,7 @@ ${DEFECT_HF_MIN_ACCURACY}    0.5
 *** Test Cases ***
 Defect Detection HF Benchmark Subset
     [Documentation]    Accuracy over the committed Devign subset must beat chance.
-    [Timeout]    30 minutes
+    [Timeout]    180 minutes
     ${count}=    Get Length    ${CODE_REVIEW_DEFECT_HF}
     # Round down to an even prefix: the committed list alternates
     # vulnerable/safe, so an odd slice would be one-class-heavy and skew

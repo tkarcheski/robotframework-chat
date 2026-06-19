@@ -12,7 +12,7 @@ Documentation     CEO Agent — Vending Machine Product Pipeline
 Resource          ceo.resource
 Variables         ${CURDIR}/variables/vending_inputs.yaml
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 

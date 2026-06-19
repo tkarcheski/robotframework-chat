@@ -3,7 +3,7 @@ Documentation     Complex creative joke tests with multiple constraints.
 ...               Large token budget (1024-2048) with automatic escalation.
 ...               Tests constrained wordplay, emotional arcs, and absurd combinations.
 Resource          creativity.resource
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Byte And Bite Wordplay

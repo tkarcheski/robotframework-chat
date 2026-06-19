@@ -15,7 +15,7 @@ Documentation     Logical Fallacy Detection Tests
 Resource          causal_reasoning.resource
 
 Default Tags      causal_reasoning    fallacy    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

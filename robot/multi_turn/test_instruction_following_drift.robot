@@ -4,7 +4,7 @@ Documentation     Establish a formatting constraint in the system prompt, then
 ...               comply with the constraint. Drift should remain below a
 ...               threshold (at least 80%% of turns must comply).
 Resource          multi_turn.resource
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 Bullet Points Constraint Drift

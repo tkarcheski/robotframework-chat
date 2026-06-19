@@ -11,7 +11,7 @@ Resource          tool_call_schema.resource
 
 Test Tags         tool-call-schema    tier:2    verify:llm
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Variables ***
 # --- Single-tool schemas ---------------------------------------------------

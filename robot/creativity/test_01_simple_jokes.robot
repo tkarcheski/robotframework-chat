@@ -2,7 +2,7 @@
 Documentation     Simple joke creation tests (fart jokes, dad jokes, knock-knock).
 ...               Small token budget (256). Tests basic humor generation.
 Resource          creativity.resource
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Fart Joke

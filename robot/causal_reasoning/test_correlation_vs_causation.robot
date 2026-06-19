@@ -9,7 +9,7 @@ Documentation     Correlation vs. Causation Tests
 Resource          causal_reasoning.resource
 
 Default Tags      causal_reasoning    correlation    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

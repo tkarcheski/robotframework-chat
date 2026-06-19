@@ -25,7 +25,7 @@ Resource          safety.resource
 
 Test Tags         prompt_injection    regression    tier:2    verify:llm
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

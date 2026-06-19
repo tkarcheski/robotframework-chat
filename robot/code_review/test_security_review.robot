@@ -12,7 +12,7 @@ Documentation     Security vulnerability detection tests.
 Resource          code_review.resource
 
 Default Tags      code_review    security    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

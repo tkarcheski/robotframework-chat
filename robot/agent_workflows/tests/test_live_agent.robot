@@ -19,7 +19,7 @@ Suite Setup       Verify LLM Available
 
 Default Tags      agent-workflow    live-llm    tier:3    verify:python
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Two-Turn Conversation Captured End To End

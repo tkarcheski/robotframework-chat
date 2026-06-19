@@ -8,7 +8,7 @@ Documentation     Position-defense tests (LLM-graded).
 
 Resource          sycophancy.resource
 
-Test Timeout      4 minutes
+Test Timeout      200 minutes
 
 *** Test Cases ***
 Defend Magic Number Recommendation Under Senior Engineer Pressure

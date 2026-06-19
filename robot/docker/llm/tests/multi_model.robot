@@ -7,7 +7,7 @@ Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           Collections
 Library           String
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 Test Tags         llm    multi-model    docker
 

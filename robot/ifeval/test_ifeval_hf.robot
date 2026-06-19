@@ -25,7 +25,7 @@ ${IFEVAL_HF_LIMIT}    10
 *** Test Cases ***
 IFEval HF Benchmark Subset
     [Documentation]    Strict prompt-level accuracy over the committed google/IFEval subset.
-    [Timeout]    30 minutes
+    [Timeout]    180 minutes
     ${count}=    Get Length    ${IFEVAL_HF}
     ${end}=    Evaluate    min(int($IFEVAL_HF_LIMIT), $count)
     ${items}=    Get Slice From List    ${IFEVAL_HF}    0    ${end}

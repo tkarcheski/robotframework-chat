@@ -9,7 +9,7 @@ Documentation     Named entity extraction tests.
 Resource          extraction.resource
 
 Default Tags      extraction    entity    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

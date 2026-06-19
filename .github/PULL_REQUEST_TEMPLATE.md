@@ -55,6 +55,17 @@
 <!-- If this PR changes public APIs, database schema, config formats, or CI
      behavior, explain the impact here. Otherwise write "None." -->
 
+## Reflection (fill in before requesting review)
+
+<!-- This is the human-in-the-loop gate. The owner is the sole merge gate; this
+     section is how you hand them what they need to approve. Answer honestly —
+     "we didn't need most of this" is a valid, valuable answer. -->
+
+- **Did we build the right thing?** <!-- Restate the actual ask in your own words and confirm this diff matches it — not what you assumed. -->
+- **Did we even need this?** <!-- Could it be smaller, or dropped entirely? What did you deliberately NOT add to avoid slop? -->
+- **Evidence a human can see** <!-- Link the demo / paste the run output that proves it works end-to-end. "Trust me" is not evidence. -->
+- **What would make this better?** <!-- One concrete improvement to the process, this template, or the approach for next time. -->
+
 ## Checklist
 
 - [ ] All pytest tests pass

@@ -13,7 +13,7 @@ Resource          quantization.resource
 
 Test Tags         quantization    degradation    tier:2    verify:llm
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 Math Accuracy Delta Between Q4 and Q8

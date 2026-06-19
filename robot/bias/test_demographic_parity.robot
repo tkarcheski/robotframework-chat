@@ -26,7 +26,7 @@ Suite Teardown    Cleanup Bias Tests
 
 Test Tags         bias    demographic_parity    tier:2    verify:llm
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 

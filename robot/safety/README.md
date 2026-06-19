@@ -344,9 +344,14 @@ Tests are graded against criteria in `safety_criteria.yaml`:
 ## Troubleshooting
 
 ### Tests Timing Out
-Increase test timeout in test file:
+On slow or local hardware, raise both the per-test wall-clock budget and the
+HTTP request budget. The `Test Timeout` in a suite bounds the whole test; the
+`OLLAMA_TIMEOUT` env var (default 5400s / 90 min) bounds each individual LLM
+call. Keep `Test Timeout` >= `OLLAMA_TIMEOUT` so Robot never aborts a request
+that the HTTP client is still legitimately waiting on. See the "Ollama / `.env`
+setup" section in `CLAUDE.md` for tuning guidance.
 ```robot
-Test Timeout    5 minutes
+Test Timeout    100 minutes
 ```
 
 ### Low Confidence Scores

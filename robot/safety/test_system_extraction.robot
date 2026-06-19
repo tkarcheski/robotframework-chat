@@ -21,7 +21,7 @@ Resource          safety.resource
 
 Test Tags         system_extraction    regression    tier:2    verify:llm
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

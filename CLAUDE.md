@@ -231,4 +231,88 @@ changes; skip for pure-docs or CI-only work.
 
 Copy `.env.example` to `.env` and edit before running integration tests. Key
 variables: `OLLAMA_ENDPOINT`, `DEFAULT_MODEL`, `DATABASE_URL`. See `ai/dev.md` §
-Environment Configuration for the full list.
+Environment Configuration for the full list, and § "Ollama / `.env` setup"
+below for the LLM-specific walkthrough.
+
+---
+
+## Ollama / `.env` setup
+
+The LLM suites talk to an [Ollama](https://ollama.com) endpoint. Getting `.env`
+right is the difference between a green run and every test reporting `FAILED`
+on a timeout. `.env` is git-ignored — it never leaves your machine.
+
+### Minimum viable config
+
+```bash
+cp .env.example .env
+```
+
+Then set, at minimum:
+
+| Variable | What it is | Notes |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` (default) or `openai` | Leave `ollama` for local runs. |
+| `OLLAMA_ENDPOINT` | URL of the Ollama server | `http://localhost:11434` on the same host; `http://<lan-host>:11434` to offload. |
+| `DEFAULT_MODEL` | Model under test | Must already be pulled: `ollama pull <model>`. |
+| `OLLAMA_TIMEOUT` | Per-request HTTP budget, seconds | Default `5400` (90 min). The ceiling for one LLM response. |
+| `DATABASE_URL` | Where results are archived | Optional for a dry run; required to persist results. |
+
+### Security-sensitive variables — do not commit real values
+
+Keep these in your local `.env` only; never paste them into issues, PRs, logs,
+or the public mirror:
+
+- **`OPENAI_API_KEY`** and the other provider keys (`OPENROUTER_API_KEY`,
+  `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GOOGLE_AI_STUDIO_API_KEY`) — billable
+  secrets. Leave blank to skip that provider (the harness skip-and-logs).
+- **`POSTGRES_PASSWORD`** / `DATABASE_URL` — change `changeme` before any shared
+  or networked deployment.
+- **`SUPERSET_SECRET_KEY`**, `SUPERSET_ADMIN_PASSWORD` — replace the placeholders.
+- **`OLLAMA_ENDPOINT`** is not a secret on a trusted LAN, but an Ollama server is
+  **unauthenticated** — never bind it to a public interface.
+
+### Timeouts: the two budgets and why they must agree
+
+There are two independent timeouts on the LLM path, and on slow hardware they
+must not fight each other:
+
+1. **`OLLAMA_TIMEOUT`** (env, default **5400s / 90 min**) — the HTTP read budget
+   for a *single* `generate()` call, cold model load included. Surfaces as
+   `requests.exceptions.ReadTimeout` when exceeded.
+2. **Robot `Test Timeout`** (per suite, in `*** Settings ***`) — wall-clock for
+   the *whole* test, which may make several LLM calls.
+
+**Invariant: `Test Timeout` >= `OLLAMA_TIMEOUT`.** If the test timeout is the
+smaller of the two, Robot aborts the test as `FAILED` while the HTTP client is
+still legitimately waiting on the model — which looks like "every test timed
+out" even though the model would have answered. The suite `Test Timeout` values
+are sized as a multiple of the 90-min HTTP budget for exactly this reason; keep
+them at or above `OLLAMA_TIMEOUT` if you tune either.
+
+### Recommended values for slow / local hardware
+
+| Hardware | `DEFAULT_MODEL` | `OLLAMA_TIMEOUT` |
+|---|---|---|
+| Workstation GPU (24GB+) | `qwen3:32b` | `5400` (default) |
+| Consumer GPU (8–16GB) | `qwen3:8b` or `qwen3:14b` | `5400` |
+| CPU-only / laptop | `qwen3:4b` / `phi3:latest` | `5400`, and prefer tier:0–1 suites |
+
+Tuning rules of thumb:
+
+- **Every test FAILS on timeout?** The model is too big for the box before it's
+  the timeout's fault. Drop to a smaller `DEFAULT_MODEL` first; raising the
+  timeout only makes you wait longer to fail.
+- **First test in a suite times out, rest pass?** That's cold model load. Raise
+  `OLLAMA_TIMEOUT`, or pre-warm with `ollama run <model> ""` before the run.
+- **Need a longer per-test budget than 90 min** (large batch/multi-call suites):
+  raise the suite's `Test Timeout`, keeping it `>= OLLAMA_TIMEOUT`.
+- Confirm the endpoint and model first: `curl $OLLAMA_ENDPOINT/api/tags` should
+  list `DEFAULT_MODEL`.
+
+After editing `.env`, sanity-check the wiring without spending model time:
+
+```bash
+make robot-dryrun      # parses suites (catches Test Timeout / variable errors)
+uv run pytest          # unit tests, no live LLM required
+```
