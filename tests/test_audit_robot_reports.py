@@ -253,6 +253,30 @@ def test_load_suites_includes_known_suites() -> None:
     assert len(suites) >= 30
 
 
+def test_openai_evals_suite_id_is_hyphenated() -> None:
+    """The LLM_META call for the openai-evals suite must use hyphens, not underscores.
+
+    scripts/audit_robot_reports.py reads test_suite from output.xml metadata
+    and compares it against config/local_models.yaml suite names. The canonical
+    name there is openai-evals (hyphen). If the Makefile passes
+    openai_evals (underscore) to LLM_META, runs recorded under that name are
+    never matched and always appear as MISSING in the coverage matrix.
+    """
+    makefile = Path(__file__).parent.parent / "Makefile"
+    content = makefile.read_text()
+    # The LLM_META call for the openai-evals target must pass the hyphenated name.
+    assert "LLM_META,openai-evals)" in content, (
+        "Makefile LLM_META call for the openai-evals suite must use "
+        "'openai-evals' (hyphen), not 'openai_evals' (underscore). "
+        "Found content: see Makefile robot-openai-evals target."
+    )
+    # The underscore variant must NOT appear as a metadata ID.
+    assert "LLM_META,openai_evals)" not in content, (
+        "Makefile still contains 'LLM_META,openai_evals)' — "
+        "replace it with 'LLM_META,openai-evals)' to match the canonical suite name."
+    )
+
+
 def test_load_master_models_includes_known_model() -> None:
     models = load_master_models()
     assert "llama3" in models
