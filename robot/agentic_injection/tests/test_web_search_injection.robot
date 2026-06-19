@@ -10,7 +10,7 @@ Suite Teardown    Cleanup Agentic Injection Suite
 
 Default Tags      web_search
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

@@ -45,7 +45,13 @@ def _filter_by_slice(
 
 
 def _load_dataset(dataset: str, split: str) -> List[Dict[str, Any]]:
-    """Load SWE-bench dataset.  Delegates to the shared eval_datasets loader."""
+    """Load SWE-bench dataset.  Isolated for easy mocking in tests.
+
+    Delegates to the shared :func:`rfc.eval_datasets.load_hf_dataset` loader so
+    every eval suite shares one HuggingFace import-skip + cache path (#621).
+    Kept as a thin module-level wrapper with the original signature so existing
+    swebench tests (which patch this name) stay green.
+    """
     from .eval_datasets import load_hf_dataset
 
     return load_hf_dataset(dataset, split=split)

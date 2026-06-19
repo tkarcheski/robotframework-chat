@@ -4,12 +4,15 @@ Defines the ``LLMProvider`` protocol that all LLM backends must satisfy,
 and a ``create_provider()`` factory for instantiation from configuration.
 """
 
+import logging
 import os
 from typing import Any, Dict, Optional, runtime_checkable
 
 from typing import Protocol
 
 from .ollama import OllamaClient
+
+logger = logging.getLogger(__name__)
 
 # Backward-compatible alias
 LLMClient = OllamaClient
@@ -97,7 +100,40 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
             f"Supported: 'ollama', 'openai', 'vllm'."
         )
 
-    return _maybe_wrap_with_cache(client)
+    return _maybe_wrap_with_graylog(_maybe_wrap_with_cache(client))
+
+
+def _maybe_wrap_with_graylog(client: LLMProvider) -> LLMProvider:
+    """Wrap *client* so each ``generate()`` ships a GELF event to Graylog,
+    when ``GRAYLOG_LLM_ENABLED=1`` and the private ``rfc-graylog`` submodule
+    is installed.
+
+    Opt-in and best-effort, mirroring :func:`_maybe_wrap_with_cache`: the
+    private package is absent from default/public installs, and a missing
+    package — or a missing listener/sink at run time — must never block a
+    measurement run, so we skip-and-log instead of failing.
+
+    Applied *outermost* (around any caching wrapper): instrumentation should
+    observe the fully-wrapped provider's ``generate()``. ``as_ollama`` stays
+    correct regardless of wrapper order because ``unwrap_provider`` now peels
+    *all* ``__wrapped__`` layers recursively to the concrete client (#83); the
+    outermost placement is an instrumentation choice, no longer a load-bearing
+    requirement of the single-layer unwrap it once worked around.
+    """
+    if os.getenv("GRAYLOG_LLM_ENABLED", "") != "1":
+        return client
+
+    try:
+        from robot_graylog_llm import wrap_provider
+    except ImportError:
+        logger.warning(
+            "GRAYLOG_LLM_ENABLED=1 but the private 'robot_graylog_llm' package "
+            "is not installed (run `pip install -e modules/graylog` or "
+            "`make robot-graylog`); skipping LLM Graylog instrumentation."
+        )
+        return client
+
+    return wrap_provider(client)
 
 
 def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
@@ -118,13 +154,32 @@ def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
 
 
 def unwrap_provider(client: Any) -> Any:
-    """Return the underlying provider, peeling a caching wrapper if present.
+    """Return the concrete underlying provider, peeling *every* wrapper layer.
 
-    A ``CachingProvider`` is a transparent proxy, so callers that need the
-    *concrete* provider type (rather than its structural interface) must
+    Provider wrappers (``CachingProvider``, the graylog proxy, and the planned
+    nv-cache wrapper) are transparent proxies that expose the wrapped object as
+    ``__wrapped__`` (the ``functools.wraps`` convention). Callers that need the
+    *concrete* provider type — rather than its structural interface — must
     unwrap first. Non-wrapped clients return themselves (#523).
+
+    Peeling is **recursive**: it walks ``__wrapped__`` down to the base client,
+    so any depth of wrapper stack resolves to the concrete provider (#83). This
+    is required before nv-cache stacks as a third wrapper at the
+    :func:`create_provider` seam (graylog → nv-cache → answer-cache → client) —
+    a single-layer peel would stop at the outermost wrapper and hide the
+    concrete ``OllamaClient`` from :func:`as_ollama` (RFC-006 §3.2). For 0, 1,
+    or 2 wrappers the result is identical to the historical single-peel
+    behaviour.
     """
-    return getattr(client, "__wrapped__", client)
+    seen: set[int] = set()
+    while hasattr(client, "__wrapped__"):
+        # Guard against a pathological self/cyclic ``__wrapped__`` reference so
+        # a buggy wrapper can never spin this loop forever.
+        if id(client) in seen:
+            break
+        seen.add(id(client))
+        client = client.__wrapped__
+    return client
 
 
 def as_ollama(client: Any) -> Optional[OllamaClient]:

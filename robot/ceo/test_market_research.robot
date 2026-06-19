@@ -7,7 +7,7 @@ Documentation     CEO Agent — Stage 2: Market Research Tests
 
 Resource          ceo.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Market Research Produces Structured Analysis

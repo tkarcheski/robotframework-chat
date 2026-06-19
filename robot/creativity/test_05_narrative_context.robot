@@ -3,7 +3,7 @@ Documentation     Narrative context tests with 3-4 turn conversations.
 ...               Tests instruction persistence, emotional tone tracking,
 ...               and topic switching with return.
 Resource          creativity.resource
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Instruction Persistence

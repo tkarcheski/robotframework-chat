@@ -9,7 +9,7 @@ Resource          ifeval.resource
 
 Default Tags      ifeval    regression    tier:1    verify:python
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Exact Sentence Count

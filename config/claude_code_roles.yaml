@@ -141,12 +141,15 @@ graders:
   tier_correct:
     type: yaml_check
     field: tags
-    constraint: "contains_one_of(tier:0, tier:1, tier:2, tier:3, tier:4)"
+    # Tier tags run tier:0..tier:6 (docs/testing.md "Tagging Rules").
+    constraint: "contains_one_of(tier:0, tier:1, tier:2, tier:3, tier:4, tier:5, tier:6)"
 
   tags_correct:
     type: yaml_check
     field: tags
-    constraint: "contains_one_of(verify:robot, verify:python, verify:llm, verify:human)"
+    # Verify tags are robot|python|llm|llms (docs/testing.md); there is no
+    # verify:human. Mirrors robot_review.py VALID_VERIFY. See rfc-chat#619.
+    constraint: "contains_one_of(verify:robot, verify:python, verify:llm, verify:llms)"
 
   # search graders
   precision:

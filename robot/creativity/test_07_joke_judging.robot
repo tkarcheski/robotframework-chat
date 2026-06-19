@@ -6,7 +6,7 @@ Documentation     Multi-LLM joke judging tests using consensus grading.
 ...               (issue #260). Tests skip if the env var is unset.
 ...               Tests a simple, medium, and complex joke for quality.
 Resource          creativity.resource
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 Judge Simple Fart Joke

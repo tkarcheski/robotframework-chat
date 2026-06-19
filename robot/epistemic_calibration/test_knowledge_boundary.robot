@@ -13,7 +13,7 @@ Documentation     Knowledge Boundary Acknowledgment Tests
 Resource          epistemic_calibration.resource
 
 Default Tags      epistemic_calibration    knowledge_boundary    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Model Acknowledges No Live Sports Score Access

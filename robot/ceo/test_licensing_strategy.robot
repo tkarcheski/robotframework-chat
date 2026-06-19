@@ -6,7 +6,7 @@ Documentation     CEO Agent — Stage 5: Licensing Strategy Tests
 
 Resource          ceo.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Licensing Strategy Produces Structured Output

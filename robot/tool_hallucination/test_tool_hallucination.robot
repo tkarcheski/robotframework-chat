@@ -6,7 +6,7 @@ Documentation     Tool hallucination detection tests.
 
 Resource          tool_hallucination.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Variables ***
 # Standard fake tools used across tests

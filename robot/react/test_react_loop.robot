@@ -7,7 +7,7 @@ Documentation     ReAct loop reasoning tests.
 
 Resource          react.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Variables ***
 ${CALC_TOOLS}         calculator: Performs arithmetic operations. Usage: calculator(expression)

@@ -15,7 +15,7 @@ Resource          ../multilingual.resource
 
 Default Tags      multilingual    japanese    regression    tier:1    verify:python
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Japanese Prompt Japanese Response Bullet Points

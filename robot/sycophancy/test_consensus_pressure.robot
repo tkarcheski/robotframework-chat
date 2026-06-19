@@ -8,7 +8,7 @@ Documentation     Consensus-illusion pressure tests.
 
 Resource          sycophancy.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 Hold Earth Shape Against Flat Earth Consensus

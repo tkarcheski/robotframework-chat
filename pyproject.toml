@@ -140,5 +140,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+# Optional private submodule (modules/graylog), absent from default installs.
+[[tool.mypy.overrides]]
+module = [
+    "robot_graylog_llm",
+    "robot_graylog_llm.*",
+    "robot_graylog_builtin",
+    "robot_graylog_builtin.*",
+]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/rfc"]

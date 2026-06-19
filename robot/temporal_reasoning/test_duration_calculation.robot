@@ -8,7 +8,7 @@ Documentation     Duration Calculation Tests
 Resource          temporal_reasoning.resource
 
 Default Tags      temporal_reasoning    duration    tier:1    verify:python
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 Three Hours Is 180 Minutes

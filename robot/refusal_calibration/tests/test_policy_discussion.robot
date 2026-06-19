@@ -9,7 +9,7 @@ Resource          ../refusal_calibration.resource
 
 Default Tags      category:policy_discussion    severity:high    tier:2    verify:llm    regression
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 

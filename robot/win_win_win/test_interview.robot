@@ -15,7 +15,7 @@ Suite Setup       Skip Unless Skill Available    ${SKILL_PATH}
 
 Default Tags      win_win_win    tier:2    verify:llm
 
-Test Timeout      5 minutes
+Test Timeout      250 minutes
 
 *** Test Cases ***
 

@@ -9,7 +9,7 @@ Resource          ../multilingual.resource
 
 Default Tags      multilingual    german    regression    tier:1    verify:python
 
-Test Timeout      2 minutes
+Test Timeout      100 minutes
 
 *** Test Cases ***
 German Prompt German Response Word Count

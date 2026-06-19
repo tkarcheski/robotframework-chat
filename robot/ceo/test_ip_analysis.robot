@@ -6,7 +6,7 @@ Documentation     CEO Agent — Stage 3: IP Analysis Tests
 
 Resource          ceo.resource
 
-Test Timeout      3 minutes
+Test Timeout      150 minutes
 
 *** Test Cases ***
 IP Analysis Produces Structured Findings

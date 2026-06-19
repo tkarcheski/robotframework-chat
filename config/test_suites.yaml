@@ -207,7 +207,7 @@ test_suites:
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
-    description: "SWE-bench patch generation and validation against real GitHub issues"
+    description: "Loads SWE-bench instances (princeton-nlp/SWE-bench, test split), asks the model to generate a unified-diff patch from each real GitHub issue, applies and runs it against the repo's tests in a Docker sandbox, then LLM-grades whether the issue was resolved. See #563 for the planned SWE-bench Verified upgrade with easy/hard slices."
 
   openai-evals:
     label: "OpenAI Evals"
