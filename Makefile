@@ -136,7 +136,7 @@ robot-swebench: ## Run SWE-bench evaluation (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,swebench) $(call LLM_META,swebench) $(LLM_VARS) $(LISTENER) $(ARGS) robot/swebench/
 
 robot-openai-evals: ## Run the OpenAI-Evals umbrella suite (scaffolding stub until child suites land — #621)
-	$(ROBOT) -d $(call LLM_RUN_DIR,openai_evals) $(call LLM_META,openai_evals) $(LLM_VARS) $(LISTENER) $(ARGS) robot/openai_evals/
+	$(ROBOT) -d $(call LLM_RUN_DIR,openai-evals) $(call LLM_META,openai-evals) $(LLM_VARS) $(LISTENER) $(ARGS) robot/openai_evals/
 
 swebench-discover: ## List available SWE-bench instances
 	uv run python scripts/run_swebench.py --discover
