@@ -1,7 +1,7 @@
 """Loader for config/test_suites.yaml -- the single source of truth.
 
-Used by the Dash dashboard. Environment variables from ``.env``
-override YAML values when set.
+Used by the Dash dashboard and by CI pipeline generation scripts.
+Environment variables from ``.env`` override YAML values when set.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ _ENV_OVERRIDES: list[tuple[str, list[str]]] = [
     ("DEFAULT_MODEL", ["defaults", "model"]),
     ("LLM_PROVIDER", ["defaults", "llm_provider"]),
     ("OLLAMA_ENDPOINT", ["defaults", "ollama_endpoint"]),
+    ("GITLAB_API_URL", ["monitoring", "gitlab_api_url"]),
+    ("GITLAB_PROJECT_ID", ["monitoring", "gitlab_project_id"]),
 ]
 
 
@@ -104,6 +106,11 @@ def nodes() -> list[dict[str, Any]]:
 def master_models() -> list[str]:
     """Return the ``master_models`` list of known model names."""
     return load_config().get("master_models", [])
+
+
+def ci_config() -> dict[str, Any]:
+    """Return the ``ci`` section."""
+    return load_config().get("ci", {})
 
 
 # -- Helpers for the dashboard ------------------------------------------------

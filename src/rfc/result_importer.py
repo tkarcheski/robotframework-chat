@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from rfc.result_import import import_results as _base_import
 from rfc.test_database import TestDatabase
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,6 @@ def import_results(
     Returns:
         ImportResult with run_id and hash.
     """
-    from scripts.import_test_results import import_results as _base_import
-
     file_hash = compute_file_hash(xml_path)
 
     # Deduplication check

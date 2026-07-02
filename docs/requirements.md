@@ -131,20 +131,24 @@ Sandboxed code execution in disposable containers.
 
 ## 6. CI/CD Pipeline
 
-GitHub Actions with modular scripts.
+GitLab CI with dynamic pipeline generation and modular scripts.
 
 | # | Requirement | Status | Notes |
 |---|-------------|--------|-------|
-| 6.1 | Modular CI scripts (`ci/*.sh`) | Complete | All `set -euo pipefail` |
+| 6.1 | Modular CI scripts (`ci/*.sh`) | Complete | 8+ scripts, all `set -euo pipefail` |
+| 6.2 | Dynamic pipeline generation | Removed (2026-06-10 audit) | static `.gitlab-ci.yml`; generator deleted |
 | 6.3 | Ollama network discovery | Complete | `scripts/discover_nodes.py` |
+| 6.4 | GitHub mirror sync | Complete | GitHub workflows (sync-to-gitlab, mirror-staging) |
 | 6.5 | Claude Code review stage | Replaced (2026-06-10 audit) | Codex auto-review + Claude heartbeat sweep |
+| 6.6 | Repo metrics + MR comments | Complete | `ci/report.sh` |
 | 6.7 | `.env` sourcing in CI scripts | Complete | CI scripts source `.env` when present |
-| 6.8 | Single-source config (YAML) | Complete | `config/test_suites.yaml` drives dashboard + runners |
+| 6.8 | Single-source config (YAML) | Complete | `config/test_suites.yaml` drives dashboard + CI |
 | 6.9 | Env var → YAML overlays | Complete | `suite_config.py` applies runtime overrides |
-| 6.10 | GitHub Actions workflow | Functional | `.github/workflows/robot-tests.yml` |
-| 6.11 | PyPI publishing in CI | Complete | `pypi-publish.yml`, `ci/release.sh` |
+| 6.10 | GitHub Actions workflow | Functional | `.github/workflows/robot-tests.yml` — may drift from GitLab |
+| 6.11 | PyPI publishing in CI | Complete | `publish-pypi` job, `ci/release.sh` |
 | 6.12 | Pipeline node auto-discovery | Planned | Ping nodes before scheduling jobs |
 | 6.13 | Model-to-node assignment config | Planned | `config/model_assignments.yaml` |
+| 6.14 | Node-to-GitLab-tag mapping | Planned | Hardware tags in `config/test_suites.yaml` |
 | 6.15 | Coverage thresholds in CI | Planned | Enforce minimum coverage as CI gate |
 | 6.16 | Semver auto-bump on merge to main | Planned | Derive from conventional commit prefixes |
 | 6.17 | Auto-generated CHANGELOG | Planned | From conventional commits via `git-cliff` or similar |
@@ -333,7 +337,7 @@ Grafana dashboards with TRON aesthetic. Deferred along with Grafana/Loki.
 | 18.5 | Suite/IQ/model/profile dropdowns | Deprecated | Populated from config |
 | 18.6 | Result upload to database | Deprecated | Export button per session |
 | 18.7 | Ollama Hosts monitoring tab | Deprecated | Polls `/api/tags` + `/api/ps` |
-| 18.8 | CI Pipelines monitoring tab | Deprecated | Real-time status table |
+| 18.8 | GitLab Pipelines monitoring tab | Deprecated | Real-time status table |
 | 18.9 | Playwright browser tests | Deprecated | `robot/dashboard/tests/` |
 
 ---

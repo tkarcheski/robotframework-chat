@@ -16,6 +16,10 @@ class TestDetectCiPlatform:
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
             assert detect_ci_platform() == "github"
 
+    def test_detects_gitlab(self):
+        with patch.dict(os.environ, {"GITLAB_CI": "true"}, clear=True):
+            assert detect_ci_platform() == "gitlab"
+
     def test_returns_none_outside_ci(self):
         with patch.dict(os.environ, {}, clear=True):
             assert detect_ci_platform() is None
@@ -46,6 +50,21 @@ class TestCollectGitMetadata:
             result = collect_ci_metadata()
         assert "Ollama_Endpoint" in result
 
+    def test_gitlab_env_vars_included(self):
+        with patch.dict(
+            os.environ,
+            {
+                "GITLAB_CI": "true",
+                "CI_COMMIT_SHA": "abc123",
+                "CI_COMMIT_REF_NAME": "main",
+            },
+            clear=True,
+        ):
+            result = collect_ci_metadata()
+        assert result["Commit_SHA"] == "abc123"
+        assert result["Branch"] == "main"
+        assert result["CI_Platform"] == "gitlab"
+
     def test_github_env_vars_included(self):
         with patch.dict(
             os.environ,
@@ -69,12 +88,23 @@ class TestCollectGitMetadata:
     def test_empty_values_filtered(self):
         with patch.dict(
             os.environ,
-            {"GITHUB_ACTIONS": "true"},
+            {"GITLAB_CI": "true", "CI_JOB_URL": ""},
             clear=True,
         ):
             result = collect_ci_metadata()
-        # No GITHUB_RUN_ID/REPOSITORY → Job_URL resolves empty and is filtered.
         assert "Job_URL" not in result
+
+    def test_gitlab_vars_collected(self):
+        with patch.dict(
+            os.environ,
+            {
+                "GITLAB_CI": "true",
+                "CI_JOB_URL": "https://gitlab.com/job/1",
+            },
+            clear=True,
+        ):
+            result = collect_ci_metadata()
+        assert result["Job_URL"] == "https://gitlab.com/job/1"
 
     @patch("rfc.git_metadata.subprocess.run")
     def test_no_ci_platform_uses_local_metadata(self, mock_run):

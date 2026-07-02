@@ -754,7 +754,10 @@ class TestLLMKeywordsThroughCacheWrapper:
 
     @staticmethod
     def _wrapped_ollama():
-        import fakeredis
+        # ``fakeredis`` is a dev-extra dependency; skip cleanly rather than
+        # raising ImportError when it is absent (same rationale as
+        # test_answer_cache.py).
+        fakeredis = pytest.importorskip("fakeredis")
 
         from rfc.answer_cache import AnswerCache, CachingProvider
 

@@ -14,6 +14,9 @@ ROBOT    := uv run robot
 VERSION  := $(shell uv run python -c "from rfc import __version__; print(__version__)")
 LISTENER := --listener rfc.db_listener.DbListener --listener rfc.git_metadata_listener.GitMetaData --listener rfc.ollama_timestamp_listener.OllamaTimestampListener --listener rfc.chat_log_listener.ChatLogListener --listener rfc.dialog_listener.DialogListener --listener rfc.agentic_harness_listener.AgenticHarnessListener --listener rfc.generative_listener.GenerativeListener
 DRYRUN_LISTENER := --listener rfc.dry_run_listener.DryRunListener
+# Opt-in Graylog GELF listeners (private modules/graylog submodule). Not in the
+# default LISTENER set so a missing submodule never breaks a normal run.
+GRAYLOG_LISTENER := --listener robot_graylog_builtin.robot_graylog_builtin --listener robot_graylog_llm.robot_graylog_llm
 
 # Load .env if present
 -include .env
@@ -41,10 +44,10 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
 
 .PHONY: help install update \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
-        robot-review \
+        robot-review robot-graylog graylog-up graylog-down graylog-logs graylog-demo \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
-        robot-swebench swebench-discover robot-openai-evals \
+        robot-swebench robot-openai-evals swebench-discover \
         retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models run-all-external \
@@ -106,6 +109,9 @@ robot-docker: ## Run Docker tests (Robot Framework)
 
 robot-safety: ## Run safety tests (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,safety) $(call LLM_META,safety) $(LLM_VARS) $(LISTENER) $(ARGS) robot/safety/
+
+robot-graylog: ## Run math tests with Graylog GELF listeners (needs `pip install -e ../modules/graylog`)
+	GRAYLOG_LLM_ENABLED=1 $(ROBOT) -d $(call LLM_RUN_DIR,graylog) $(call LLM_META,graylog) $(LLM_VARS) $(LISTENER) $(GRAYLOG_LISTENER) $(ARGS) robot/math/
 
 robot-agentic-injection: ## Run agentic prompt injection resistance tests
 	$(ROBOT) -d $(call AGENT_RUN_DIR,agentic_injection) $(call AGENT_META,agentic_injection) $(AGENT_VARS) $(LISTENER) $(ARGS) robot/agentic_injection/
@@ -252,6 +258,30 @@ docker-restart: ## Rebuild images and restart all services
 
 docker-logs: ## Tail service logs
 	$(COMPOSE) logs -f
+
+# ── Graylog stack (GELF sink for the private graylog module) ─────────
+# Layout-agnostic (#632 review): the graylog ops dir lives at
+# ../modules/ops/graylog in the monorepo and is absent on the public mirror.
+# Resolve at expansion time; targets skip-and-log when the module isn't here.
+GRAYLOG_DIR := $(firstword $(wildcard ../modules/ops/graylog) $(wildcard graylog))
+GRAYLOG_COMPOSE = docker compose -p rfc-graylog -f $(GRAYLOG_DIR)/docker-compose.yml
+GRAYLOG_GUARD = @test -n "$(GRAYLOG_DIR)" || { echo "graylog module not present (private module; monorepo only) — skipping"; exit 0; }
+
+graylog-up: ## Start Graylog (MongoDB+OpenSearch+Graylog) and auto-provision GELF inputs
+	$(GRAYLOG_GUARD)
+	@test -z "$(GRAYLOG_DIR)" || { $(GRAYLOG_COMPOSE) up -d && echo "Graylog UI: http://localhost:$${GRAYLOG_WEB_PORT:-9000}  (admin/admin)"; }
+
+graylog-down: ## Stop the Graylog stack
+	$(GRAYLOG_GUARD)
+	@test -z "$(GRAYLOG_DIR)" || $(GRAYLOG_COMPOSE) down
+
+graylog-logs: ## Tail Graylog stack logs
+	$(GRAYLOG_GUARD)
+	@test -z "$(GRAYLOG_DIR)" || $(GRAYLOG_COMPOSE) logs -f
+
+graylog-demo: ## Send real harness LLM events into a running Graylog (needs graylog-up + Ollama)
+	$(GRAYLOG_GUARD)
+	@test -z "$(GRAYLOG_DIR)" || GRAYLOG_LLM_ENABLED=1 uv run python $(GRAYLOG_DIR)/demo_emit.py
 
 bootstrap: ## First-time Superset setup (run after 'make docker-up')
 	$(COMPOSE) run --rm superset-init
