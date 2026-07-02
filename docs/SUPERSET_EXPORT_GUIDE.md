@@ -327,17 +327,21 @@ Add a daily export to your crontab:
 ### CI Pipeline Integration
 
 Add `make superset-export` as a CI step to create versioned backups.
+See [GITLAB_CI_SETUP.md](GITLAB_CI_SETUP.md) for the pipeline structure.
 
-Example GitHub Actions step:
+Example GitLab CI job:
 
 ```yaml
-- name: Backup Superset
-  run: make superset-export
-- uses: actions/upload-artifact@v4
-  with:
-    name: superset-backup
-    path: backups/
-    retention-days: 30
+backup-superset:
+  stage: deploy
+  script:
+    - make superset-export
+  artifacts:
+    paths:
+      - backups/
+    expire_in: 30 days
+  only:
+    - schedules
 ```
 
 ---

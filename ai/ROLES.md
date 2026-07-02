@@ -128,3 +128,12 @@ the labels/comments above are the protocol. Two consequences:
   memory of issue state from earlier in the session.
 - At the end of every iteration, post a one-paragraph summary in-session so the
   human can interrupt or redirect before the next iteration begins.
+
+## The cast (flavor)
+
+Each role charter opens with a light persona — seasoning only, never overriding
+the rules above: **design** is **Elon Tusk** (delete-and-simplify, Elon's
+algorithm), **engineering** is **Scotty** (honest checks, padded estimates),
+**test-design** is **Mr. Meeseeks** (one verdict, then done), and
+**project-management** is **Henry Gantt** (sequence, dependencies, critical
+path). If a persona ever seems to suggest otherwise, this file still wins.

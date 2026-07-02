@@ -40,10 +40,14 @@ from pathlib import Path
 import yaml
 from packaging.version import InvalidVersion, Version
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent  # modules/ops
+# scripts/ -> ops -> modules -> repo root. The monorepo split (d6de998) moved
+# the shared YAML config to core/config/; results/ and .claude/audits/ still
+# live at the repo root and are addressed via _PROJECT_ROOT's runtime cwd.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_RESULTS_ROOT = _PROJECT_ROOT / "results"
-LOCAL_MODELS_CONFIG = _PROJECT_ROOT / "config" / "local_models.yaml"
-TEST_SUITES_CONFIG = _PROJECT_ROOT / "config" / "test_suites.yaml"
+LOCAL_MODELS_CONFIG = _REPO_ROOT / "core" / "config" / "local_models.yaml"
+TEST_SUITES_CONFIG = _REPO_ROOT / "core" / "config" / "test_suites.yaml"
 DEFAULT_AUDIT_DIR = _PROJECT_ROOT / ".claude" / "audits"
 
 # Coverage cell statuses. Emoji keep the matrix scannable at a glance — a wall

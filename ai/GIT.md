@@ -122,9 +122,14 @@ identity-by-config is v1.)
 
 ## Submodules
 
-Three submodules exist (`.gitmodules`): `results` (LFS-backed test output —
-see the `audit-robot-reports` skill for the robotmetrics/LFS quirks),
-`monitoring/logs`, and `.claude/skills/elons-algorithm`.
+Five submodules exist (`.gitmodules`): the three agent-prompt repos
+`modules/agents/{design,test,engineering}`, the `.claude/skills/elons-algorithm`
+skill, and `modules/graylog` (the logging-stack integration, fork of
+`tkarcheski/rfc-graylog`). Other paths named in the ownership table below
+(`results`, `monitoring/logs`, `knowledge`, `vendor/skill-packs/*`) are governed
+by the same rule wherever they are wired up as submodules; the table is the
+authoritative owner list, this sentence only counts what `.gitmodules` declares
+today.
 
 **Ownership — only the owning role may commit a pointer bump:**
 
@@ -133,6 +138,7 @@ see the `audit-robot-reports` skill for the robotmetrics/LFS quirks),
 | `results` | test-design |
 | `monitoring/logs` | project-management |
 | `.claude/skills/elons-algorithm` | design |
+| `modules/graylog` (logging-stack integration, see #75) | engineering |
 | `vendor/skill-packs/*` (all external skill packs, see #447) | design |
 | `knowledge` (the tiered brain, see #454) | design |
 

@@ -22,7 +22,7 @@ make install
 
 # Create environment config from template
 cp .env.example .env
-# Edit .env with your settings (Ollama endpoint, database, etc.)
+# Edit .env with your settings (GitLab, Ollama endpoint, database, etc.)
 
 # Install pre-commit hooks
 pre-commit install
@@ -50,14 +50,14 @@ The `.env` file is loaded automatically by:
 - **Makefile** — `-include .env` + `export` (all `make` targets see the vars)
 - **CI shell scripts** — `set -a; source .env; set +a` (e.g. `ci/lint.sh`)
 - **pytest** — `python-dotenv` session fixture in `tests/conftest.py` (`override=False`, so `patch.dict` mocks still work)
-- **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`) onto `config/test_suites.yaml`
+- **suite_config.py** — `load_config()` overlays env vars (`DEFAULT_MODEL`, `OLLAMA_ENDPOINT`, `GITLAB_API_URL`, `GITLAB_PROJECT_ID`) onto `config/test_suites.yaml`
 
 ### Core Variables
 
 | Variable | Purpose | Default | Used By |
 |----------|---------|---------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `.env` fallback | db_listener, test_database, dry_run_listener |
-| `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | CI workflows |
+| `DATABASE_HOST` | Hostname for DB (CI builds `DATABASE_URL` from this) | `localhost` | .gitlab-ci.yml |
 | `DEFAULT_MODEL` | LLM model for tests | `gpt-oss:20b` (CI: `qwen3.5:27b`) | ollama.py, keywords, listeners, scripts |
 | `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` | ollama.py, pre_run_modifier, listeners |
 | `OLLAMA_TIMEOUT` | Request timeout in seconds | `5400` (90 min) | ollama.py, keywords, safety_keywords, Robot resources |
@@ -104,6 +104,14 @@ global concurrency cap and is deprecated for the TOML path in favor of
 | `SUPERSET_ADMIN_PASSWORD` | Initial admin password | `changeme` | docker-compose.yml |
 | `SUPERSET_ADMIN_EMAIL` | Initial admin email | `admin@rfc.local` | docker-compose.yml |
 
+### GitLab Monitoring
+
+| Variable | Purpose | Default | Used By |
+|----------|---------|---------|---------|
+| `GITLAB_API_URL` | GitLab instance URL (legacy; GitLab CI removed) | (empty) | suite_config.py |
+| `GITLAB_PROJECT_ID` | Numeric project ID (legacy; GitLab CI removed) | (empty) | suite_config.py |
+| `GITLAB_TOKEN` | API token (legacy; GitLab CI removed) | (empty) | suite_config.py |
+
 ### Hugging Face
 
 | Variable | Purpose | Default | Used By |
@@ -128,19 +136,20 @@ global concurrency cap and is deprecated for the TOML path in favor of
 
 ### Auto-Set CI Variables (do not configure in `.env`)
 
-These are set automatically by GitHub Actions:
+These are set automatically by GitLab CI or GitHub Actions:
 
 | Variable | Source | Purpose |
 |----------|--------|---------|
-| `CI`, `GITHUB_ACTIONS` | CI runner | Platform detection |
-| `GITHUB_SHA` | CI runner | Commit hash |
-| `GITHUB_REF_NAME` | CI runner | Branch name |
-| `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_JOB` | GitHub Actions | Job/run tracking |
-| `GITHUB_EVENT_NUMBER`, `GITHUB_EVENT_NAME` | GitHub Actions | PR / event identification |
+| `CI`, `GITLAB_CI`, `GITHUB_ACTIONS` | CI runner | Platform detection |
+| `CI_COMMIT_SHA`, `GITHUB_SHA` | CI runner | Commit hash |
+| `CI_COMMIT_REF_NAME`, `GITHUB_REF_NAME` | CI runner | Branch name |
+| `CI_PIPELINE_ID` | GitLab | Pipeline tracking |
+| `CI_JOB_URL`, `CI_JOB_ID`, `CI_JOB_NAME` | GitLab | Job tracking |
+| `CI_MERGE_REQUEST_IID` | GitLab | MR identification |
+| `CI_API_V4_URL`, `CI_PROJECT_ID` | GitLab | API access |
 | `ROBOT_OUTPUT_DIR` | Robot Framework | Output directory |
 | `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY` | GitHub Actions | Repo identification |
-| `GITHUB_WORKSPACE` | GitHub Actions | Workspace path |
-| `GITHUB_ACTOR` | GitHub Actions | Triggering user |
+| `GITHUB_WORKSPACE`, `CI_PROJECT_DIR` | CI runner | Workspace path |
 
 ---
 

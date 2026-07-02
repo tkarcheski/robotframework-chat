@@ -1,0 +1,6 @@
+# Opt-in Graylog GELF integration — the private `modules/graylog` submodule.
+# NOT part of the default install; pull in only when streaming to Graylog:
+#   git submodule update --init modules/graylog
+#   pip install -r core/requirements-graylog.txt
+# Used by `make robot-graylog` / `tasks.py robot-graylog`. See core/docs/graylog.md.
+-e ../modules/graylog

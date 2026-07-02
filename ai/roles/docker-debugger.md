@@ -1,8 +1,8 @@
 # Docker Debugger Role
 
 **Audience:** AI agents (Claude, OpenCode, future agents)
-**Authority:** Owner-confirmed (2026-02-22) — based on Docker credential store
-debugging session on mini2
+**Authority:** Owner-confirmed (2026-02-22) — based on a Docker credential store
+debugging session on a Mac-mini CI runner
 **Last updated:** 2026-02-22
 
 ---
@@ -189,7 +189,7 @@ getting credentials - err: exit status 1, out: keychain cannot be accessed"`
 
 **Classification:** config
 
-**Root cause:** `~/.docker/config.json` on the mini2 runner has
+**Root cause:** `~/.docker/config.json` on the macOS runner has
 `"credsStore": "desktop"` (leftover from Docker Desktop). The runner uses Colima,
 not Docker Desktop. Non-interactive CI sessions cannot access the macOS keychain.
 

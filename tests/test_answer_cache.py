@@ -16,10 +16,15 @@ calls. They cover:
 
 from typing import Any, Dict, List, Optional
 
-import fakeredis
 import pytest
 
-from rfc.answer_cache import AnswerCache, CachingProvider
+# ``fakeredis`` lives in the ``dev`` optional-dependency extra (pyproject.toml),
+# not the base install. Importing it at module scope would raise during
+# collection on a non-dev env and abort the *entire* suite, so skip this module
+# cleanly instead (see CLAUDE.md § Rules: prefer skip-and-log for optional deps).
+fakeredis = pytest.importorskip("fakeredis")
+
+from rfc.answer_cache import AnswerCache, CachingProvider  # noqa: E402
 
 
 # ── Test doubles ────────────────────────────────────────────────────────
