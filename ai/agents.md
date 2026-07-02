@@ -294,7 +294,7 @@ Robot Framework Test
 │   ├─ Docker Manager (container_manager.py)
 │   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
 │   ├─ Data Models (models.py) ── GradeResult, SafetyResult
-│   ├─ CI Metadata (git_metadata.py) ── GitLab CI env collection
+│   ├─ CI Metadata (git_metadata.py) ── GitHub Actions env collection
 │   ├─ CI Metadata Listener (git_metadata_listener.py) ── attaches CI metadata to output
 │   ├─ DB Listener (db_listener.py) ── archives results to SQL database
 │   ├─ Ollama Timestamp Listener (ollama_timestamp_listener.py) ── timestamps Ollama chats
@@ -375,8 +375,7 @@ robotframework-chat/
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
-│   ├── TEST_DATABASE.md        # Database schema & usage
-│   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
+│   └── TEST_DATABASE.md        # Database schema & usage
 ├── humans/                     # Owner decisions & action items
 │   └── TODO.md                 # Actionable items from spec reviews
 ├── data/                       # SQLite database (gitignored)
@@ -397,7 +396,7 @@ Three Robot Framework listeners handle test result collection:
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
-| `rfc.git_metadata_listener.GitMetaData` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
+| `rfc.git_metadata_listener.GitMetaData` | Collects CI metadata from GitHub Actions (commit, branch, run URL) and adds it to test output |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama keyword call (Ask LLM, Wait For LLM, etc.) and saves `ollama_timestamps.json` |
 
 All listeners are always active in the Makefile targets and in CI. Use them together:
@@ -421,39 +420,18 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 ## CI/CD Pipeline
 
-The GitLab CI pipeline uses a six-stage architecture with all logic
-delegated to bash scripts in `ci/` and Makefile targets:
+CI runs on GitHub Actions (`.github/workflows/`). GitLab CI support was
+removed at source (rfc-monorepo #106/#107).
 
-```
-lint → generate → test → report → deploy → review
-```
+| Workflow | Purpose |
+|----------|---------|
+| `robot-tests.yml` | Lint, pytest, Robot dry-run, robot tests |
+| `docker-publish.yml` | Build and publish the Docker image |
+| `pypi-publish.yml` | Build and publish the package to PyPI on version tags |
 
-### Architecture: Minimal YAML, Modular Scripts
-
-`.gitlab-ci.yml` is a bare-bones skeleton (~170 lines). It defines stages,
-variables, rules, and artifacts — nothing else. All executable logic lives in:
-
-| Layer | Location | Role |
-|-------|----------|------|
-| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review |
-| **Templates** | `ci/common.yml` | Shared YAML templates (`.uv-setup`, `.robot-test`) |
-| **Makefile** | `Makefile` | `ci-*` targets wrap scripts for local and CI use |
-
-To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
-
-### CI Scripts
-
-| Script | Purpose | Makefile target |
-|--------|---------|-----------------|
-| `ci/lint.sh` | Run all linters, collect all failures, report summary | (called directly) |
-| `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
-
-All scripts follow these conventions:
-- `set -euo pipefail` (fail fast)
-- Source `.env` when present (auto-export via `set -a`)
-- Verbose output on failure (diagnostics, paths, troubleshooting hints)
-- Validate required env vars before proceeding
-- Runnable locally: `bash ci/lint.sh` or `make ci-lint`
+All executable logic stays in Makefile targets so it runs identically in CI
+and locally — edit the Makefile (or the scripts it wraps), not the workflow
+YAML, to change what a job does.
 
 ### Pipeline Data Flow
 
@@ -517,8 +495,6 @@ after loading `config/test_suites.yaml`:
 |---------|-----------|---------|
 | `DEFAULT_MODEL` | `defaults.model` | `qwen3.5:27b` |
 | `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
-| `GITLAB_API_URL` | `monitoring.gitlab_api_url` | `https://gitlab.example.com` |
-| `GITLAB_PROJECT_ID` | `monitoring.gitlab_project_id` | `42` |
 
 Empty env vars are ignored (YAML defaults are preserved). The `OLLAMA_NODES_LIST`
 env var is handled separately by `dashboard/monitoring.py::_node_list()`.

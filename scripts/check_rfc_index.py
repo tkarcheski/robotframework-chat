@@ -4,9 +4,9 @@
 RFC numbers used to be picked per-branch with no central reservation, so two
 concurrent branches could each write `RFC-006-*.md` and only a human at review
 would notice the collision. This guard, a sibling to
-`check_agent_signoffs.py` / `check_submodule_ownership.py`, makes the
-reservation convention in `modules/rfcs/README.md` mechanical — "prompts
-request, checks enforce" (ai/GIT.md).
+`check_agent_signoffs.py`, makes the reservation convention in
+`modules/rfcs/README.md` mechanical — "prompts request, checks enforce"
+(ai/GIT.md).
 
 It scans `modules/rfcs/`, parses the index table in `modules/rfcs/README.md`,
 and fails (`--check`, the default) when:

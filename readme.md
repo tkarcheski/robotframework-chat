@@ -1,6 +1,7 @@
 # robotframework-chat
 
 [![Try Claude Code — free guest pass](https://img.shields.io/badge/Claude%20Code-free%20guest%20pass-D97757?logo=claude&logoColor=white)](https://claude.ai/referral/4Q8ajgGjHQ)
+[![Project wiki on DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tkarcheski/robotframework-chat)
 
 > This repo is built with [Claude Code](https://claude.com/claude-code). Grab a guest pass above to try it yourself.
 
@@ -327,7 +328,6 @@ See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/a
 | Document | Description |
 |----------|-------------|
 | [docs/TEST_DATABASE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/TEST_DATABASE.md) | Database schema and usage |
-| [docs/GITLAB_CI_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GITLAB_CI_SETUP.md) | CI/CD setup guide |
 | [docs/GRAFANA_SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |

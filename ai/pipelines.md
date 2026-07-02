@@ -1,114 +1,66 @@
 # Pipeline Strategy
 
-This document describes the pipeline architecture and model selection
-strategy for robotframework-chat CI/CD.
+This document describes the CI/CD pipeline architecture and model selection
+strategy for robotframework-chat.
+
+> **Historical note:** the original pipeline ran on GitLab CI (per-node
+> runner tags, child pipelines, MR comments). GitLab CI support was removed
+> at source (rfc-monorepo #106/#107); GitHub Actions is the only CI.
 
 ---
 
-## Architecture: Minimal YAML, Modular Scripts
+## Architecture: Minimal YAML, Modular Logic
 
 The CI pipeline follows a strict separation of concerns:
 
 ```
-.gitlab-ci.yml          # Skeleton: stages, rules, artifacts (~165 lines)
-ci/common.yml           # Shared YAML templates (.uv-setup, .robot-test)
-ci/*.sh                 # All executable logic (bash scripts)
-Makefile                # ci-* targets wrap scripts for local + CI use
-config/test_suites.yaml # Single source of truth for test suites
+.github/workflows/       # Workflow YAML: triggers, jobs, artifacts
+Makefile                 # Targets wrap all executable logic for local + CI use
+config/test_suites.yaml  # Single source of truth for test suites
 config/local_models.yaml # Local model discovery and test config
 ```
 
-**Strong requirement:** `.gitlab-ci.yml` stays minimal. To change pipeline
-behavior, edit `ci/*.sh` scripts or `Makefile` targets — not the YAML.
+**Strong requirement:** workflow YAML stays minimal. To change pipeline
+behavior, edit Makefile targets (or the scripts they wrap) — not the YAML.
 
 ### Design Principles
 
-1. **Simple** — the YAML skeleton is readable at a glance
-2. **Modular** — each script handles one concern (lint, test, deploy, etc.)
-3. **Reusable** — scripts run identically in CI and locally (`make ci-lint`)
-4. **Extendable** — add a new script, add a job that calls it
-5. **Fail fast and loud** — `set -euo pipefail`, verbose error diagnostics
-6. **Per-node** — each runner tag gets its own job, `allow_failure: true`
+1. **Simple** — each workflow is readable at a glance
+2. **Modular** — each job handles one concern (lint, test, publish, etc.)
+3. **Reusable** — logic runs identically in CI and locally (`make ...`)
+4. **Extendable** — add a Makefile target, add a job that calls it
+5. **Fail fast and loud** — strict shell modes, verbose error diagnostics
 
 ---
 
-## Pipeline Modes
+## Workflows
 
-| Mode | Trigger | Purpose |
-|------|---------|---------|
-| **Test** | Every push / MR | Per-node `make run-local-models` on each fleet node |
-| **Release** | Tag push (`v*`) | Build and publish package to PyPI |
-| **Test Release** | Pre-release tag (`v*-rc*`) | Build and verify only |
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `robot-tests.yml` | Push / PR | Lint, pytest, Robot dry-run, robot tests |
+| `docker-publish.yml` | See workflow | Build and publish the Docker image |
+| `pypi-publish.yml` | Tag push (`v*`) | Build and publish package to PyPI |
 
-### Per-node test strategy
+### Per-node test strategy (removed)
 
-Each node gets its own CI job, dispatched by GitLab runner tag. Every job
-runs `make run-local-models`, which discovers models on the local Ollama
-instance and runs all test suites against each model.
-
-- All per-node jobs have `allow_failure: true` — nodes may be offline
-- Jobs wait for `lint` to pass before starting
-- Results are archived to `results/` and collected as artifacts
-- Node list: the `nodes:` entries in `config/test_suites.yaml`
+The GitLab-era pipeline dispatched one `make run-local-models` job per fleet
+node via GitLab runner tags. That mechanism was removed with GitLab CI
+support (#106/#107). Per-node runs are now executed locally with
+`make run-local-models` on each node.
 
 ---
 
-## Local CI Pipeline
+## Local Verification
 
-Run the full CI pipeline locally with a single command:
+Run the CI checks locally before pushing:
 
-```bash
-make run-ci-pipeline                      # lint + dashboard tests + robot dryrun + release verify
-make run-ci-pipeline ROBOT=1              # same, plus live robot tests (requires Ollama)
-make run-ci-pipeline ROBOT=1 SUITE=math   # live tests, math suite only
-```
-
-Stages run locally:
-
-| Stage | Command | Notes |
+| Check | Command | Notes |
 |-------|---------|-------|
 | install | `make install` | `uv sync` all extras |
-| lint | `make ci-lint` | pre-commit + ruff + mypy |
-| test | `make ci-test-dashboard MODE=pytest` | dashboard unit tests |
+| lint | `pre-commit run --all-files` | yaml, json, whitespace, ruff, mypy |
+| lint | `make code-quality-check` | ruff + mypy + coverage |
+| test | `uv run pytest` | Python unit tests |
 | test | `make robot-dryrun` | validate robot test syntax |
-| test | `make ci-test` | live robot tests (only with `ROBOT=1`) |
-| release | `make ci-release` | dry-run package build + twine verify |
-
-Stages skipped locally (CI-only):
-
-| Stage | Why |
-|-------|-----|
-| report | MR comments via GitLab API |
-| deploy | remote host deployment |
-| review | AI code review (requires opencode-ai + OpenRouter) |
-
----
-
-## Pipeline Stages
-
-```
-lint → test → report → deploy → release → review
-```
-
-| Stage | Job(s) | Make target | Notes |
-|-------|--------|-------------|-------|
-| `lint` | `lint` | `make ci-lint` | Runs pre-commit, ruff, mypy |
-| `test` | `run-local-models-<node>` (one per fleet node) | `make run-local-models` | Per-node model discovery + test runs (`allow_failure`) |
-| `deploy` | `deploy-superset` | `make ci-deploy` | Update Superset stack on default branch |
-| `release` | `test-release`, `publish-pypi` | `make ci-release [UPLOAD=1]` | Build + publish to PyPI on version tags (`v*`) |
-
----
-
-## CI Scripts Reference
-
-| Script | Usage | Arguments |
-|--------|-------|-----------|
-| `ci/lint.sh` | `bash ci/lint.sh [all\|pre-commit\|ruff\|mypy]` | Check type (default: all) |
-| `ci/deploy.sh` | `bash ci/deploy.sh` | Requires SUPERSET_DEPLOY_* vars |
-| `ci/release.sh` | `bash ci/release.sh [--dry-run]` | Requires PYPI_TOKEN or TWINE_USERNAME+PASSWORD |
-
-All scripts can be invoked via Makefile targets: `make ci-lint`, `make ci-test`,
-`make ci-release`, etc.
 
 ---
 
@@ -119,7 +71,7 @@ Every Robot Framework run in CI attaches all three listeners:
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives results to SQL (SQLite or PostgreSQL) |
-| `rfc.git_metadata_listener.GitMetaData` | Adds CI context (commit, branch, pipeline URL) from GitHub Actions or GitLab CI |
+| `rfc.git_metadata_listener.GitMetaData` | Adds CI context (commit, branch, run URL) from GitHub Actions |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama chat call |
 
 ---
@@ -127,23 +79,10 @@ Every Robot Framework run in CI attaches all three listeners:
 ## Configuration
 
 All test suite definitions live in `config/test_suites.yaml`. This single
-file drives both the dashboard UI and CI pipeline generation. Changes
-propagate automatically — no manual YAML editing in `.gitlab-ci.yml` for
-test jobs.
+file drives test configuration for local runs and CI. Changes propagate
+automatically — no manual editing of workflow YAML for test jobs.
 
 See [agents.md](agents.md) for the full project architecture.
-
----
-
-## Node Strategy
-
-Each physical node has a GitLab runner whose tag matches the node's hostname
-in `config/test_suites.yaml`. The CI pipeline creates one job per node. Each job
-runs `make run-local-models`, which discovers models on the local Ollama
-instance automatically via `scripts/run_local_models.py`.
-
-Nodes that are offline simply have their job stay pending or fail — this is
-safe because all per-node jobs have `allow_failure: true`.
 
 ---
 
@@ -164,8 +103,7 @@ Long-term: web UI to manage assignments.
 - `main` — human-reviewed, tested, stable
 - `claude-code-staging` — AI agent working branch (long-lived)
 - `claude/*` — per-session feature branches -> PR into staging
-- GitLab CI runs on both `main` and staging (regression detection)
-- GitHub mirrors for code checks only
+- CI runs on both `main` and staging (regression detection)
 - Owner syncs staging -> main after review and testing
 
 ---

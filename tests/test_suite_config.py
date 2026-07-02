@@ -149,11 +149,13 @@ class TestEnvVarOverrides:
             result = _apply_env_overrides(cfg)
         assert result["defaults"]["ollama_endpoint"] == "http://gpu1:11434"
 
-    def test_gitlab_api_url_overridden_by_env(self):
-        cfg = {"monitoring": {"gitlab_api_url": ""}}
+    def test_gitlab_api_url_env_is_ignored(self):
+        """GitLab config surface was removed (rfc-monorepo #107): the old
+        GITLAB_API_URL env override must no longer touch the config."""
+        cfg = {"monitoring": {}}
         with patch.dict(os.environ, {"GITLAB_API_URL": "https://gitlab.example.com"}):
             result = _apply_env_overrides(cfg)
-        assert result["monitoring"]["gitlab_api_url"] == "https://gitlab.example.com"
+        assert result["monitoring"] == {}
 
     def test_empty_env_var_does_not_override(self):
         cfg = {"defaults": {"model": "llama3"}}

@@ -114,12 +114,14 @@ class TestBuildOutputXmlUrl:
             url = build_output_xml_url()
         assert url == "https://results.example.com/math/output.xml"
 
-    def test_from_ci_job_url(self) -> None:
-        env = {"CI_JOB_URL": "https://gitlab.example.com/project/-/jobs/123"}
+    def test_ci_job_url_ignored(self) -> None:
+        """The GitLab CI_JOB_URL artifact fallback was removed
+        (rfc-monorepo #107): the env var must be ignored."""
+        env = {"CI_JOB_URL": "https://ci.example.com/project/jobs/123"}
         with patch.dict(os.environ, env, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
             url = build_output_xml_url()
-        assert "output.xml" in url
+        assert url == ""
 
     def test_empty_when_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=False):

@@ -35,7 +35,7 @@ jobs:
       - name: Pytest with coverage
         run: uv run pytest --cov --cov-report=term-missing
 
-  submodule-ownership:
+  agent-git-contract:
     name: Agent Git Contract Guard
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -46,13 +46,14 @@ jobs:
           # so it needs real history, not a depth-1 snapshot.
           fetch-depth: 0
 
-      - name: Check submodule pointer bumps against ai/GIT.md ownership
+      # The submodule pointer-bump guard was retired from the public surface
+      # (public #554): this repo has no .gitmodules, so there was nothing for
+      # check_submodule_ownership.py to check. The monorepo keeps its own copy
+      # of the guard; submodule ownership there is process-enforced (GIT.md).
+      - name: Check agent commit sign-offs and Model trailers
         run: |
           git fetch origin "${{ github.base_ref }}"
-          python3 scripts/check_submodule_ownership.py --base "origin/${{ github.base_ref }}"
-
-      - name: Check agent commit sign-offs and Model trailers
-        run: python3 scripts/check_agent_signoffs.py --base "origin/${{ github.base_ref }}"
+          python3 scripts/check_agent_signoffs.py --base "origin/${{ github.base_ref }}"
 
   robot-dryrun:
     name: Robot Suite Validation (dry-run)

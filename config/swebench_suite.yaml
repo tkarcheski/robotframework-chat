@@ -5,7 +5,9 @@
 
 swebench:
   suite: robot/swebench/swebench.robot
+  dataset: princeton-nlp/SWE-bench_Verified
   split: test
+  slices: [all, easy, hard]
   max_instances: 50
   models:
     - phi4:14b

@@ -22,8 +22,8 @@ Two modes:
 
   --write   regenerate both registries in place (the fix / one-file-edit path).
   --check   (default) fail when either registry drifts from the manifests — the
-            CI guard. Mirrors the sibling ``check_submodule_ownership.py`` /
-            ``check_agent_signoffs.py`` exit-code contract (0 ok, 1 violations).
+            CI guard. Mirrors the sibling ``check_agent_signoffs.py``
+            exit-code contract (0 ok, 1 violations).
 
 Usage:
   uv run python scripts/render_registry.py --check

@@ -291,7 +291,7 @@ tables.
 
 ## CI/CD Integration
 
-The GitLab CI pipeline archives results at two levels:
+The CI pipeline archives results at two levels:
 
 ```
 test stage:  math ─────────┐   docker ────────┐   safety ────────┐
@@ -311,7 +311,7 @@ report stage:          rebot merges output.xml files
    `output.xml` files, then `import_test_results.py` imports the
    combined result.
 
-Set `DATABASE_URL` in GitLab CI/CD variables to archive to PostgreSQL.
+Set `DATABASE_URL` as a CI secret (GitHub Actions) to archive to PostgreSQL.
 When unset, archiving falls back to local SQLite.
 
 ## Database Maintenance

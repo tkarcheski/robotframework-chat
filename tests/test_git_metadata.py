@@ -16,9 +16,11 @@ class TestDetectCiPlatform:
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
             assert detect_ci_platform() == "github"
 
-    def test_detects_gitlab(self):
+    def test_gitlab_no_longer_detected(self):
+        """GitLab CI support was removed (rfc-monorepo #107): GITLAB_CI
+        must no longer be treated as a CI platform."""
         with patch.dict(os.environ, {"GITLAB_CI": "true"}, clear=True):
-            assert detect_ci_platform() == "gitlab"
+            assert detect_ci_platform() is None
 
     def test_returns_none_outside_ci(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -50,7 +52,14 @@ class TestCollectGitMetadata:
             result = collect_ci_metadata()
         assert "Ollama_Endpoint" in result
 
-    def test_gitlab_env_vars_included(self):
+    @patch("rfc.git_metadata.subprocess.run")
+    def test_gitlab_env_vars_ignored(self, mock_run):
+        """GitLab CI env vars fall back to local git metadata now that
+        the GitLab write path is removed (rfc-monorepo #107)."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="local-branch\n"),
+            MagicMock(returncode=0, stdout="local123\n"),
+        ]
         with patch.dict(
             os.environ,
             {
@@ -61,9 +70,9 @@ class TestCollectGitMetadata:
             clear=True,
         ):
             result = collect_ci_metadata()
-        assert result["Commit_SHA"] == "abc123"
-        assert result["Branch"] == "main"
-        assert result["CI_Platform"] == "gitlab"
+        assert result["CI_Platform"] == "local"
+        assert result["Commit_SHA"] == "local123"
+        assert result["Branch"] == "local-branch"
 
     def test_github_env_vars_included(self):
         with patch.dict(
@@ -88,23 +97,12 @@ class TestCollectGitMetadata:
     def test_empty_values_filtered(self):
         with patch.dict(
             os.environ,
-            {"GITLAB_CI": "true", "CI_JOB_URL": ""},
+            {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": ""},
             clear=True,
         ):
             result = collect_ci_metadata()
+        assert "Project_URL" not in result
         assert "Job_URL" not in result
-
-    def test_gitlab_vars_collected(self):
-        with patch.dict(
-            os.environ,
-            {
-                "GITLAB_CI": "true",
-                "CI_JOB_URL": "https://gitlab.com/job/1",
-            },
-            clear=True,
-        ):
-            result = collect_ci_metadata()
-        assert result["Job_URL"] == "https://gitlab.com/job/1"
 
     @patch("rfc.git_metadata.subprocess.run")
     def test_no_ci_platform_uses_local_metadata(self, mock_run):
