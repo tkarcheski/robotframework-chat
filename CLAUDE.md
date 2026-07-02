@@ -121,6 +121,14 @@ Multiple agents may work on this repo simultaneously, so:
 
 ## Rules
 
+- **NEVER merge — or recommend merging — anything with failing tests or failing
+  CI checks.** Red CI is an absolute blocker, no exceptions:
+  - Never tell the owner a PR is "ready" or "merge = publish" before **every**
+    check has run and passed.
+  - "Pre-existing failure" is not an excuse. A red baseline blocks new work:
+    fix the failure (or get the owner's explicit deferral) before building on it.
+  - This applies to generated PRs too (mirror publishes, automation): a publish
+    PR with failing checks gets fixed at source and regenerated — never merged.
 - `src/rfc/` is the single source of truth for all Python code.
 - `robot/` is the single home for all Robot Framework tests.
 - Type hints required on all new Python code. mypy must pass.
