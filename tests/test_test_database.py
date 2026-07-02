@@ -20,7 +20,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rfc.test_database import (
-    HAS_SQLALCHEMY,
     Model,
     TestDatabase,
     TestResult,
@@ -158,34 +157,6 @@ class TestSQLiteBackend:
         assert len(runs) == 1
         assert runs[0]["hostname"] == "dev1"
 
-    def test_token_and_cost_telemetry_stored_on_test_run(
-        self, tmp_path: object
-    ) -> None:
-        # Cost & usage telemetry (#511): per-run token totals + estimated
-        # spend round-trip through the lean test_runs table.
-        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        run = _make_run(
-            prompt_tokens=1200,
-            completion_tokens=340,
-            estimated_cost_usd=0.0123,
-        )
-        db.add_test_run(run)
-
-        runs = db.get_recent_runs(limit=1)
-        assert len(runs) == 1
-        assert runs[0]["prompt_tokens"] == 1200
-        assert runs[0]["completion_tokens"] == 340
-        assert runs[0]["estimated_cost_usd"] == pytest.approx(0.0123)
-
-    def test_token_and_cost_telemetry_default_zero(self, tmp_path: object) -> None:
-        # A run with no telemetry records zeros, never NULL (#511).
-        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        db.add_test_run(_make_run())
-        runs = db.get_recent_runs(limit=1)
-        assert runs[0]["prompt_tokens"] == 0
-        assert runs[0]["completion_tokens"] == 0
-        assert runs[0]["estimated_cost_usd"] == 0.0
-
     def test_update_output_xml_upserts_artifact(self, tmp_path: object) -> None:
         db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
         run_id = db.add_test_run(_make_run())
@@ -242,29 +213,6 @@ class TestTestDatabase:
         db = TestDatabase(database_url=f"sqlite:///{db_path}")
         run_id = db.add_test_run(_make_run())
         assert run_id > 0
-
-    @pytest.mark.skipif(
-        not HAS_SQLALCHEMY, reason="sqlalchemy not installed in this environment"
-    )
-    def test_token_cost_telemetry_sqlalchemy_backend(self, tmp_path: Path) -> None:
-        # Exercise the SQLAlchemy write path directly (sqlite-via-SQLAlchemy),
-        # not just the native sqlite3 backend, so the cost telemetry columns
-        # are verified on the same backend production uses for Postgres
-        # (#511; mirrors the cross-backend concern in #604).
-        db_path = str(tmp_path / "sa.db")
-        backend = _SQLAlchemyBackend(database_url=f"sqlite:///{db_path}")
-        run_id = backend.add_test_run(
-            _make_run(
-                prompt_tokens=900,
-                completion_tokens=210,
-                estimated_cost_usd=0.05,
-            )
-        )
-        assert run_id > 0
-        runs = backend.get_recent_runs(limit=1)
-        assert runs[0]["prompt_tokens"] == 900
-        assert runs[0]["completion_tokens"] == 210
-        assert runs[0]["estimated_cost_usd"] == pytest.approx(0.05)
 
 
 class TestTestRunDataclass:

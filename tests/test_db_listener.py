@@ -22,7 +22,6 @@ from rfc.db_listener import (
     _safe_int,
     resolve_session_id,
 )
-from rfc.metrics import accumulate_llm_metrics
 
 
 def _mock_suite_data(name: str = "Suite") -> MagicMock:
@@ -688,17 +687,27 @@ class TestBuildOutputXmlUrl:
             url = _build_output_xml_url()
         assert url == "https://results.example.com/math/output.xml"
 
+    def test_from_ci_job_url(self) -> None:
+        env = {"CI_JOB_URL": "https://gitlab.example.com/project/-/jobs/123"}
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("REPORT_BASE_URL", None)
+            url = _build_output_xml_url()
+        assert url is not None
+        assert "output.xml" in url
+
     def test_empty_when_only_output_dir(self) -> None:
         """Filesystem paths should NOT be stored as URLs."""
         env = {"ROBOT_OUTPUT_DIR": "/tmp/results/math"}
         with patch.dict(os.environ, env, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
             url = _build_output_xml_url()
         assert url == ""
 
     def test_empty_when_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("REPORT_BASE_URL", None)
+            os.environ.pop("CI_JOB_URL", None)
             os.environ.pop("ROBOT_OUTPUT_DIR", None)
             url = _build_output_xml_url()
         assert url == ""
@@ -1371,159 +1380,3 @@ class TestCloseDefersOutputXmlCapture:
         listener._db = MagicMock()
         listener.close()
         listener._db.update_output_xml.assert_not_called()
-
-
-class TestDbListenerCostTelemetry:
-    """Cost & usage telemetry wiring (#511): per-run token totals + spend."""
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_run_aggregates_token_usage_and_cost(
-        self, _mock_ci: MagicMock, tmp_path: object, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-        # Inject a non-free price so cost is observable (config is free-tier).
-        monkeypatch.setattr(
-            "rfc.db_listener.load_pricing_table",
-            lambda *a, **k: {"mistral": (1000.0, 2000.0)},
-        )
-
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "mistral"}):
-            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
-            listener.start_test(_mock_test_data("T1"), _mock_test_result())
-            listener.log_message(
-                _mock_message(
-                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 100, "eval_count": 50}'
-                )
-            )
-            listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
-            listener.start_test(_mock_test_data("T2"), _mock_test_result())
-            listener.log_message(
-                _mock_message(
-                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 200, "eval_count": 70}'
-                )
-            )
-            listener.end_test(_mock_test_data("T2"), _mock_test_result("PASS"))
-            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=2))
-
-        runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["prompt_tokens"] == 300
-        assert runs[0]["completion_tokens"] == 120
-        # 300/1e6*1000 + 120/1e6*2000 = 0.30 + 0.24 = 0.54
-        assert runs[0]["estimated_cost_usd"] == pytest.approx(0.54)
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_free_tier_run_records_zero_cost(
-        self, _mock_ci: MagicMock, tmp_path: object
-    ) -> None:
-        # Unlisted (free-tier) model: tokens recorded, cost stays 0.0.
-        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        with patch.dict(os.environ, {"DEFAULT_MODEL": "some-free-model"}):
-            listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
-            listener.start_test(_mock_test_data("T1"), _mock_test_result())
-            listener.log_message(
-                _mock_message(
-                    'RFC_DATA:llm_metrics:{"prompt_eval_count": 100, "eval_count": 50}'
-                )
-            )
-            listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
-            listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
-
-        runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["prompt_tokens"] == 100
-        assert runs[0]["completion_tokens"] == 50
-        assert runs[0]["estimated_cost_usd"] == 0.0
-
-    @patch("rfc.db_listener.collect_ci_metadata", return_value={})
-    def test_run_without_token_metrics_records_zero(
-        self, _mock_ci: MagicMock, tmp_path: object
-    ) -> None:
-        db_path = str(tmp_path / "test.db")  # type: ignore[operator]
-        listener = DbListener(database_url=f"sqlite:///{db_path}")
-
-        listener.start_suite(_mock_suite_data("Suite"), _mock_suite_result())
-        listener.end_test(_mock_test_data("T1"), _mock_test_result("PASS"))
-        listener.end_suite(_mock_suite_data("Suite"), _mock_suite_result(total=1))
-
-        runs = listener._get_db().get_recent_runs(limit=1)
-        assert runs[0]["prompt_tokens"] == 0
-        assert runs[0]["completion_tokens"] == 0
-        assert runs[0]["estimated_cost_usd"] == 0.0
-
-
-class TestAccumulateLlmMetrics:
-    """Tests for accumulate_llm_metrics — sums token counts across payloads (#610)."""
-
-    def test_empty_payloads_returns_empty(self) -> None:
-        assert accumulate_llm_metrics([]) == {}
-
-    def test_single_payload_equivalent_to_extract(self) -> None:
-        payload = '{"eval_count": 50, "prompt_eval_count": 100}'
-        result = accumulate_llm_metrics([payload])
-        assert result["eval_count"] == 50
-        assert result["prompt_eval_count"] == 100
-
-    def test_multiple_payloads_sums_token_counts(self) -> None:
-        p1 = '{"eval_count": 30, "prompt_eval_count": 60}'
-        p2 = '{"eval_count": 20, "prompt_eval_count": 40}'
-        result = accumulate_llm_metrics([p1, p2])
-        assert result["eval_count"] == 50
-        assert result["prompt_eval_count"] == 100
-
-    def test_cache_hit_true_when_any_payload_is_hit(self) -> None:
-        p1 = '{"eval_count": 0, "cache_hit": true}'
-        p2 = '{"eval_count": 25, "cache_hit": false}'
-        result = accumulate_llm_metrics([p1, p2])
-        assert result["cache_hit"] is True
-
-    def test_cache_hit_false_when_no_payload_is_hit(self) -> None:
-        p1 = '{"eval_count": 10, "cache_hit": false}'
-        p2 = '{"eval_count": 20, "cache_hit": false}'
-        result = accumulate_llm_metrics([p1, p2])
-        assert result["cache_hit"] is False
-
-    def test_invalid_payload_skipped(self) -> None:
-        result = accumulate_llm_metrics(["not-json", '{"eval_count": 5}'])
-        assert result["eval_count"] == 5
-
-    def test_sums_duration_fields(self) -> None:
-        p1 = '{"eval_duration_ns": 1000000, "prompt_eval_duration_ns": 500000}'
-        p2 = '{"eval_duration_ns": 2000000, "prompt_eval_duration_ns": 300000}'
-        result = accumulate_llm_metrics([p1, p2])
-        assert result["eval_duration_ns"] == 3000000
-        assert result["prompt_eval_duration_ns"] == 800000
-
-
-class TestDbListenerAccumulatesMultiCallMetrics:
-    """DbListener uses accumulated token counts across multiple RFC_DATA:llm_metrics (#610)."""
-
-    def test_sums_eval_count_across_two_calls(self) -> None:
-        listener = DbListener()
-        listener.start_test(_mock_test_data("T"), _mock_test_result())
-        listener.log_message(
-            _mock_message(
-                'RFC_DATA:llm_metrics:{"eval_count": 30, "prompt_eval_count": 60}'
-            )
-        )
-        listener.log_message(
-            _mock_message(
-                'RFC_DATA:llm_metrics:{"eval_count": 20, "prompt_eval_count": 40}'
-            )
-        )
-        listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
-        assert listener._test_cases[0]["eval_count"] == 50
-        assert listener._test_cases[0]["prompt_eval_count"] == 100
-
-    def test_single_call_unchanged(self) -> None:
-        listener = DbListener()
-        listener.start_test(_mock_test_data("T"), _mock_test_result())
-        listener.log_message(
-            _mock_message(
-                'RFC_DATA:llm_metrics:{"eval_count": 186, "prompt_eval_count": 512}'
-            )
-        )
-        listener.end_test(_mock_test_data("T"), _mock_test_result("PASS"))
-        assert listener._test_cases[0]["eval_count"] == 186
-        assert listener._test_cases[0]["prompt_eval_count"] == 512

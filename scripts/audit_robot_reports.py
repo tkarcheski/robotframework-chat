@@ -40,10 +40,33 @@ from pathlib import Path
 import yaml
 from packaging.version import InvalidVersion, Version
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent  # modules/ops
+
+
+def _find_config_dir() -> Path:
+    """Layout-agnostic config discovery.
+
+    This script runs from two layouts — the monorepo (modules/ops/scripts/,
+    config under <root>/core/config/) and the flat public mirror (scripts/,
+    config under <root>/config/). A fixed parents[N] hop breaks whichever
+    layout it wasn't written for (#632 review), so walk the ancestors and take
+    the first directory that actually holds the suite config.
+    """
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        for candidate in (ancestor / "core" / "config", ancestor / "config"):
+            if (candidate / "test_suites.yaml").is_file():
+                return candidate
+    raise FileNotFoundError(
+        "config/test_suites.yaml not found in any ancestor of "
+        f"{here} (looked for <root>/core/config and <root>/config)"
+    )
+
+
+_CONFIG_DIR = _find_config_dir()
 DEFAULT_RESULTS_ROOT = _PROJECT_ROOT / "results"
-LOCAL_MODELS_CONFIG = _PROJECT_ROOT / "config" / "local_models.yaml"
-TEST_SUITES_CONFIG = _PROJECT_ROOT / "config" / "test_suites.yaml"
+LOCAL_MODELS_CONFIG = _CONFIG_DIR / "local_models.yaml"
+TEST_SUITES_CONFIG = _CONFIG_DIR / "test_suites.yaml"
 DEFAULT_AUDIT_DIR = _PROJECT_ROOT / ".claude" / "audits"
 
 # Coverage cell statuses. Emoji keep the matrix scannable at a glance — a wall

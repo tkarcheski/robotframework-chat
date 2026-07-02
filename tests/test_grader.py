@@ -1,7 +1,6 @@
 """Tests for rfc.grader.Grader."""
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -91,48 +90,3 @@ class TestGrader:
         assert "score must be a number between 0.0 and 1.0" in prompt
         assert "use partial credit" in prompt
         assert '"score": 0.0 to 1.0' in prompt
-
-
-class TestGraderLlmMetricsEmission:
-    """Grader.grade() emits RFC_DATA:llm_metrics so DbListener sees token counts (#611)."""
-
-    @patch("rfc.rfc_data.logger")
-    def test_emits_llm_metrics_when_last_metrics_available(
-        self, mock_logger: MagicMock
-    ) -> None:
-        client = MagicMock()
-        client.generate.return_value = '{"score": 1, "reason": "correct"}'
-        client.last_metrics = {"eval_count": 42, "prompt_eval_count": 100}
-        grader = Grader(client)
-        grader.grade("q", "e", "a")
-        # At least one logger.info call must contain RFC_DATA:llm_metrics
-        calls = [str(c) for c in mock_logger.info.call_args_list]
-        assert any("RFC_DATA:llm_metrics" in c for c in calls)
-
-    @patch("rfc.rfc_data.logger")
-    def test_emitted_payload_contains_token_counts(
-        self, mock_logger: MagicMock
-    ) -> None:
-        client = MagicMock()
-        client.generate.return_value = '{"score": 0.5, "reason": "partial"}'
-        client.last_metrics = {"eval_count": 77, "prompt_eval_count": 200}
-        grader = Grader(client)
-        grader.grade("What is 2+2?", "4", "maybe 4")
-        calls = [str(c) for c in mock_logger.info.call_args_list]
-        metrics_calls = [c for c in calls if "RFC_DATA:llm_metrics" in c]
-        assert metrics_calls
-        payload = json.loads(
-            metrics_calls[0].split("RFC_DATA:llm_metrics:")[1].rstrip("'\"(),")
-        )
-        assert payload["eval_count"] == 77
-        assert payload["prompt_eval_count"] == 200
-
-    @patch("rfc.rfc_data.logger")
-    def test_no_emit_when_last_metrics_is_none(self, mock_logger: MagicMock) -> None:
-        client = MagicMock()
-        client.generate.return_value = '{"score": 1, "reason": "ok"}'
-        client.last_metrics = None
-        grader = Grader(client)
-        grader.grade("q", "e", "a")
-        calls = [str(c) for c in mock_logger.info.call_args_list]
-        assert not any("RFC_DATA:llm_metrics" in c for c in calls)

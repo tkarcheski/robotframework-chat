@@ -14,7 +14,7 @@ Suite Setup       Import Browser And Login Or Skip
 Suite Teardown    Run Keyword And Ignore Error    Close Browser
 
 *** Variables ***
-${SUPERSET_URL}         http://ai1:8088
+${SUPERSET_URL}         http://localhost:8088
 ${SUPERSET_USER}        admin
 ${SUPERSET_PASSWORD}    changeme
 ${DASHBOARD_IDS}        11,12,13,14,15,16

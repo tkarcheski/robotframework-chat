@@ -188,8 +188,8 @@ test_suites:
 
   - name: "openai-evals"
     path: "robot/openai_evals/"
-    description: "OpenAI Evals harness scaffolding — dataset loader and llm_judge grader integration"
-    timeout_seconds: 600
+    description: "OpenAI-Evals umbrella suite (#561); scaffolding stub only until child benchmark suites land (#621)"
+    timeout_seconds: 300
 
   - name: "react"
     path: "robot/react/"

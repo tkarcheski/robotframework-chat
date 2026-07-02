@@ -16,8 +16,8 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Git version control | Adopted | Git repo hosted on GitHub |
-| Branch protection rules | Partial | GitHub PR workflow exists; branch protection rules not verified |
+| Git version control | Adopted | Git repo with GitLab primary, GitHub mirror |
+| Branch protection rules | Partial | GitLab MR workflow exists; branch protection rules not verified |
 | Conventional commit messages | Not Started | No enforced commit message format |
 | Signed commits | Not Started | No GPG/SSH signing requirement |
 | Git hooks (pre-commit) | Adopted | `.pre-commit-config.yaml` — ruff, mypy, YAML/JSON checks |
@@ -30,10 +30,11 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| CI pipeline on every push | Adopted | GitHub Actions — `.github/workflows/robot-tests.yml` |
-| CI on pull requests | Adopted | Lint, test, dry-run steps run on PR events |
+| CI pipeline on every push | Adopted | `.gitlab-ci.yml` — 7 stages |
+| CI on merge requests | Adopted | Lint, test, report stages run on MR events |
 | GitHub Actions CI | Adopted | `.github/workflows/robot-tests.yml` — lint, dashboard pytest, dry-run, robot tests |
-| Scheduled pipelines | Adopted | Cron-triggered runs with node/model matrix |
+| Dynamic pipeline generation | Retired (2026-06-10 audit) | static `.gitlab-ci.yml`; the generator was deleted |
+| Scheduled pipelines | Adopted | Hourly cron triggers dynamic pipeline with full node/model matrix |
 | Pipeline artifact collection | Adopted | Test results, metrics, review artifacts archived |
 | JUnit report integration | Adopted | Dashboard pytest produces `pytest-results.xml` |
 | Dry-run validation | Adopted | `robot --dryrun` validates all `.robot` files without execution |
@@ -129,10 +130,11 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 |----------|--------|-------|
 | Superset analytics dashboard | Partial | Charts view working; full dashboard incomplete |
 | Ollama host monitoring | Adopted | Dashboard polls `/api/tags` + `/api/ps`, 24hr ring buffer |
-| Repo metrics reporting | Partial | Metrics surfaced via Superset dashboards |
+| Repo metrics reporting | Removed | GitLab CI support removed (rfc-monorepo #106/#107) |
 | Application logging | Partial | Python logging in listeners; no centralized logging |
 | Structured logging (JSON) | Not Started | No structured log format |
 | Log aggregation (ELK/Loki) | Deferred (v2+) | Loki listener removed; deferred to post-v1 |
+| Log aggregation (Graylog/GELF) | Opt-in | Private `modules/graylog` submodule; lifecycle + per-LLM-call GELF streams. Off by default — docs live with the private module |
 | APM / distributed tracing | Not Started | No OpenTelemetry, Datadog, etc. |
 | Alerting (PagerDuty/OpsGenie) | Not Started | No alerting integration |
 | Uptime monitoring | Not Started | No external health checks |
@@ -164,7 +166,7 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 | Semantic versioning | Adopted | `pyproject.toml` + `src/rfc/__init__.py` |
 | Version command | Adopted | `make version` prints current version |
 | Git tags for releases | Adopted | `v*` tags trigger release pipeline |
-| Package publishing (PyPI) | Adopted | `pypi-publish.yml` GitHub Actions workflow, `ci/release.sh` builds + uploads |
+| Package publishing (PyPI) | Adopted | `publish-pypi` job in GitLab CI, `ci/release.sh` builds + uploads |
 | GitHub Releases | Not Started | No release workflow |
 
 ---

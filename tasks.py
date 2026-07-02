@@ -42,6 +42,16 @@ LISTENERS = [
 
 DRYRUN_LISTENER = ["--listener", "rfc.dry_run_listener.DryRunListener"]
 
+# Opt-in Graylog GELF listeners from the private `modules/graylog` submodule.
+# Kept out of the default LISTENERS so a missing submodule never breaks a run;
+# only `robot-graylog` registers them (and `pip install -e ../modules/graylog`).
+GRAYLOG_LISTENERS = [
+    "--listener",
+    "robot_graylog_builtin.robot_graylog_builtin",
+    "--listener",
+    "robot_graylog_llm.robot_graylog_llm",
+]
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -139,6 +149,27 @@ def robot_safety() -> None:
     _uv_run("robot", "-d", "results/safety", *LISTENERS, "robot/safety/")
 
 
+def robot_graylog() -> None:
+    """Run the math suite with the Graylog GELF listeners registered.
+
+    Requires the private submodule: ``pip install -e ../modules/graylog``.
+    Streams Robot lifecycle events and every LLM ``generate()`` call to the
+    configured Graylog inputs (set ``GRAYLOG_HOST`` / ``GRAYLOG_*`` and
+    ``GRAYLOG_LLM_ENABLED=1`` first). See ``modules/ops/graylog/graylog.md``
+    in the monorepo (private module; not part of the public surface).
+    """
+    _ensure_env()
+    os.environ.setdefault("GRAYLOG_LLM_ENABLED", "1")
+    _uv_run(
+        "robot",
+        "-d",
+        "results/graylog",
+        *LISTENERS,
+        *GRAYLOG_LISTENERS,
+        "robot/math/",
+    )
+
+
 def robot_dryrun() -> None:
     """Validate all Robot tests (dry run, no execution)."""
     _ensure_env()
@@ -175,7 +206,8 @@ def import_results() -> None:
     results_path = os.environ.get("RESULTS_PATH", "results/")
     cmd: list[str] = [
         "python",
-        "scripts/import_test_results.py",
+        "-m",
+        "rfc.result_import",
         results_path,
         "--recursive",
     ]
@@ -273,6 +305,7 @@ TARGETS: dict[str, object] = {
     "robot-math": robot_math,
     "robot-accounting": robot_accounting,
     "robot-safety": robot_safety,
+    "robot-graylog": robot_graylog,
     "robot-dryrun": robot_dryrun,
     "robot-review": robot_review,
     "run-local-models": run_local_models,

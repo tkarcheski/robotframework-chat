@@ -8,6 +8,7 @@ keywords against the SQLAlchemy backend (SQLite fixture URL — the same
 code path used for PostgreSQL).
 """
 
+import importlib.util
 import json
 from unittest.mock import MagicMock, patch
 
@@ -216,6 +217,20 @@ class TestAssertDialogRecordingPersisted:
 
 
 class TestDeleteDialogRecording:
+    # ``delete_dialog_recording`` requires SQLAlchemy, which ships only in the
+    # ``superset`` optional-dependency extra (pyproject.toml), not the base or
+    # dev install. Skip this class cleanly when it is absent rather than letting
+    # the keyword raise RuntimeError at runtime (see CLAUDE.md § Rules: prefer
+    # skip-and-log for optional deps; same rationale as test_answer_cache.py's
+    # fakeredis importorskip). A class-scoped ``skipif`` keeps the skip narrow:
+    # the other tests in this file use the stdlib sqlite path and must still run,
+    # so a module-level ``importorskip`` (which would abort collection of the
+    # whole file) is deliberately avoided.
+    pytestmark = pytest.mark.skipif(
+        importlib.util.find_spec("sqlalchemy") is None,
+        reason="sqlalchemy not installed (install with: uv sync --extra superset)",
+    )
+
     def test_removes_recording_and_turns(self, kw, db_url) -> None:
         _seed_recording(db_url, "rec-del", turns=2, ended=True)
         kw.delete_dialog_recording(db_url, "rec-del")

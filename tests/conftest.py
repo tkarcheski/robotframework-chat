@@ -5,18 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Skip test files that require sqlalchemy (superset extra) when it's not installed.
-collect_ignore_glob: list[str] = []
-try:
-    import sqlalchemy  # noqa: F401
-except ImportError:
-    collect_ignore_glob = [
-        "test_bootstrap_columns.py",
-        "test_bootstrap_dashboards.py",
-        "test_collect_coverage.py",
-        "test_infra_dashboard.py",
-    ]
-
 
 @pytest.fixture(scope="session", autouse=True)
 def _load_dotenv():
@@ -47,6 +35,8 @@ def mock_suite_config():
         "nodes": [{"hostname": "localhost", "port": 11434}],
         "master_models": ["llama3"],
         "run_all": {"label": "Run All", "path": "robot"},
+        "ci": {"listeners": []},
+        "monitoring": {"poll_interval_seconds": 30, "history_hours": 24},
     }
     with patch("rfc.suite_config.load_config") as mock_load:
         mock_load.return_value = config_data

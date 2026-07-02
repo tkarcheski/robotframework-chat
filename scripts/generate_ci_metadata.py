@@ -1,7 +1,7 @@
 """Generate CI metadata JSON file.
 
-Auto-detects GitHub Actions and collects the appropriate environment
-variables. Falls back to empty values when no known CI is detected.
+Auto-detects GitHub Actions or GitLab CI and collects the
+appropriate environment variables.
 """
 
 import json
@@ -36,12 +36,12 @@ if platform == "github":
     }
 else:
     ci_data = {
-        "project_url": "",
-        "commit_sha": "",
-        "commit_short_sha": "",
-        "branch": "",
-        "job_url": "",
-        "job_id": "",
+        "project_url": os.getenv("CI_PROJECT_URL", ""),
+        "commit_sha": os.getenv("CI_COMMIT_SHA", ""),
+        "commit_short_sha": os.getenv("CI_COMMIT_SHORT_SHA", ""),
+        "branch": os.getenv("CI_COMMIT_REF_NAME", ""),
+        "job_url": os.getenv("CI_JOB_URL", ""),
+        "job_id": os.getenv("CI_JOB_ID", ""),
     }
 
 data = {
