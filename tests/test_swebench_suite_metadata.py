@@ -38,6 +38,15 @@ class TestSwebenchSuiteMetadata:
                 f"swebench description must mention {needle!r}; got: {description!r}"
             )
 
+    def test_description_reflects_shipped_verified_upgrade(self) -> None:
+        """The Verified upgrade + SWEBENCH_SLICE filter shipped (mono #60 /
+        robotframework-chat#563); the description must describe what runs
+        today, not point at a planned upgrade."""
+        description = _suites()["swebench"]["description"].lower()
+        assert "verified" in description
+        assert "swebench_slice" in description
+        assert "planned" not in description
+
     def test_description_is_not_the_sycophancy_placeholder(self) -> None:
         """Guard against the regression in robotframework-chat#563 where the
         swebench description carried the sycophancy / pressure-resistance text."""

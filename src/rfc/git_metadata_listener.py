@@ -1,7 +1,7 @@
 """Robot Framework listener for Git/CI metadata collection.
 
 This listener automatically collects metadata from GitHub Actions
-or GitLab CI and adds it to Robot Framework test results.
+and adds it to Robot Framework test results.
 """
 
 import json
@@ -17,8 +17,7 @@ from .git_metadata import collect_ci_metadata
 class GitMetaData(BaseListener):
     """Listener that collects Git/CI metadata and adds it to test results.
 
-    Auto-detects GitHub Actions or GitLab CI and formats links
-    appropriately for the detected platform.
+    Auto-detects GitHub Actions and formats links appropriately.
 
     Unlike other listeners, ``start_suite`` and ``end_suite`` operate
     at *every* suite level (not just top-level) because metadata must
@@ -153,29 +152,18 @@ class GitMetaData(BaseListener):
         )
 
     def _format_commit_link(self, project_url: str, sha: str, short_sha: str) -> str:
-        """Format a commit SHA as a clickable link for the detected platform."""
-        if self.platform == "github":
-            return f"[{short_sha}|{project_url}/commit/{sha}]"
-        # GitLab (default)
-        return f"[{short_sha}|{project_url}/-/commit/{sha}]"
+        """Format a commit SHA as a clickable GitHub link."""
+        return f"[{short_sha}|{project_url}/commit/{sha}]"
 
     def _format_source_link(self, project_url: str, sha: str, rel_path: str) -> str:
-        """Format a source file path as a clickable link for the detected platform."""
-        if self.platform == "github":
-            return f"[{rel_path}|{project_url}/blob/{sha}/{rel_path}]"
-        # GitLab (default)
-        return f"[{rel_path}|{project_url}/-/blob/{sha}/{rel_path}]"
+        """Format a source file path as a clickable GitHub link."""
+        return f"[{rel_path}|{project_url}/blob/{sha}/{rel_path}]"
 
     def _resolve_relative_path(self, source: str) -> str:
         """Resolve a source path to a repository-relative path."""
-        if self.platform == "github":
-            workspace = os.getenv("GITHUB_WORKSPACE", "")
-            if workspace and source.startswith(workspace):
-                return source[len(workspace) :].lstrip(os.sep)
-        else:
-            project_dir = os.getenv("CI_PROJECT_DIR", "")
-            if project_dir and source.startswith(project_dir):
-                return source[len(project_dir) :].lstrip(os.sep)
+        workspace = os.getenv("GITHUB_WORKSPACE", "")
+        if workspace and source.startswith(workspace):
+            return source[len(workspace) :].lstrip(os.sep)
         return source
 
     def _save_metadata_json(self, metadata: Dict[str, str]) -> None:

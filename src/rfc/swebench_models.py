@@ -22,6 +22,10 @@ class SWEBenchInstance:
     test_patch: str
     base_commit: str
     version: str
+    # Difficulty annotation from SWE-bench Verified (e.g. "<15 min fix").
+    # Empty for datasets without difficulty data (base SWE-bench). Concrete
+    # default rather than Optional per the dataclass-fields rule.
+    difficulty: str = ""
 
     def __post_init__(self) -> None:
         _require_non_empty_str(self.instance_id, "instance_id")
@@ -37,6 +41,7 @@ class SWEBenchInstance:
             "test_patch": self.test_patch,
             "base_commit": self.base_commit,
             "version": self.version,
+            "difficulty": self.difficulty,
         }
 
     @classmethod
@@ -49,6 +54,7 @@ class SWEBenchInstance:
             test_patch=d["test_patch"],
             base_commit=d["base_commit"],
             version=d["version"],
+            difficulty=str(d.get("difficulty") or ""),
         )
 
 

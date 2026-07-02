@@ -80,6 +80,7 @@ class TestSWEBenchInstance:
             "test_patch": "test_diff",
             "base_commit": "abc123",
             "version": "3.0",
+            "difficulty": "",
         }
 
     def test_from_dict(self) -> None:
@@ -115,6 +116,61 @@ class TestSWEBenchInstance:
         assert restored.repo == inst.repo
         assert restored.problem_statement == inst.problem_statement
         assert restored.patch == inst.patch
+
+    # -- difficulty (SWE-bench Verified annotation; mono #60) ---------------
+
+    def test_difficulty_defaults_to_empty(self) -> None:
+        """Base SWE-bench rows carry no difficulty; the field must be
+        optional so existing constructors and datasets keep working."""
+        inst = SWEBenchInstance(
+            instance_id="django__django-11099",
+            repo="django/django",
+            problem_statement="Fix bug",
+            patch="diff",
+            test_patch="test_diff",
+            base_commit="abc123",
+            version="3.0",
+        )
+        assert inst.difficulty == ""
+
+    def test_from_dict_without_difficulty_defaults_to_empty(self) -> None:
+        d = {
+            "instance_id": "django__django-11099",
+            "repo": "django/django",
+            "problem_statement": "Fix bug",
+            "patch": "diff",
+            "test_patch": "test_diff",
+            "base_commit": "abc123",
+            "version": "3.0",
+        }
+        assert SWEBenchInstance.from_dict(d).difficulty == ""
+
+    def test_from_dict_preserves_difficulty(self) -> None:
+        d = {
+            "instance_id": "django__django-11099",
+            "repo": "django/django",
+            "problem_statement": "Fix bug",
+            "patch": "diff",
+            "test_patch": "test_diff",
+            "base_commit": "abc123",
+            "version": "3.0",
+            "difficulty": "<15 min fix",
+        }
+        assert SWEBenchInstance.from_dict(d).difficulty == "<15 min fix"
+
+    def test_roundtrip_preserves_difficulty(self) -> None:
+        inst = SWEBenchInstance(
+            instance_id="django__django-11099",
+            repo="django/django",
+            problem_statement="Fix bug",
+            patch="diff",
+            test_patch="test_diff",
+            base_commit="abc123",
+            version="3.0",
+            difficulty="easy",
+        )
+        restored = SWEBenchInstance.from_dict(inst.to_dict())
+        assert restored.difficulty == "easy"
 
 
 # ---------------------------------------------------------------------------

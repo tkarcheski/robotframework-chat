@@ -1,7 +1,6 @@
 # Git & CI
 .git/
 .github/
-.gitlab-ci.yml
 
 # Python artifacts
 __pycache__/

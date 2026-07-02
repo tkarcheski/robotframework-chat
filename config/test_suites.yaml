@@ -1,11 +1,9 @@
 # Test Suite Configuration - Single Source of Truth
 #
-# This file drives GitLab CI pipelines and test configuration.
-# Changes here automatically propagate to:
-#   - GitLab CI pipeline (regular and dynamic pipeline generation)
+# This file drives test configuration for local runs and CI
+# (GitHub Actions).
 #
 # See src/rfc/suite_config.py for the Python loader.
-# See scripts/generate_pipeline.py for CI pipeline generation.
 
 defaults:
   iq_levels: ["70", "80", "90", "100", "110", "120", "130", "140", "150", "160"]
@@ -203,7 +201,7 @@ test_suites:
   swebench:
     label: "SWE-bench Evaluation"
     path: "robot/swebench"
-    description: "Loads SWE-bench instances (princeton-nlp/SWE-bench, test split), asks the model to generate a unified-diff patch from each real GitHub issue, applies and runs it against the repo's tests in a Docker sandbox, then LLM-grades whether the issue was resolved. See #563 for the planned SWE-bench Verified upgrade with easy/hard slices."
+    description: "Loads SWE-bench Verified instances (princeton-nlp/SWE-bench_Verified, test split — the 500-instance human-annotated subset), optionally filtered by difficulty via SWEBENCH_SLICE (all/easy/hard), asks the model to generate a unified-diff patch from each real GitHub issue, applies and runs it against the repo's tests in a Docker sandbox, then LLM-grades whether the issue was resolved."
 
   openai-evals:
     label: "OpenAI Evals"
@@ -340,8 +338,7 @@ container_profiles:
 # ---------------------------------------------------------------------------
 # CI Configuration
 #
-# Listeners, job grouping, and options used by generate_pipeline.py to
-# produce GitLab CI child pipelines.
+# Listeners and options attached to every CI and local test run.
 # ---------------------------------------------------------------------------
 ci:
   listeners:
@@ -485,17 +482,8 @@ ci:
 # ---------------------------------------------------------------------------
 # Monitoring Configuration
 #
-# Settings for Ollama host monitoring and GitLab pipeline tracking.
-#
-# To enable GitLab pipeline monitoring, either:
-#   1. Set GITLAB_API_URL, GITLAB_PROJECT_ID, GITLAB_TOKEN env vars, or
-#   2. Fill in the gitlab_api_url and gitlab_project_id fields below.
+# Settings for Ollama host monitoring.
 # ---------------------------------------------------------------------------
 monitoring:
   poll_interval_seconds: 30
   history_hours: 24
-  # GitLab API settings (set via env vars or fill in here)
-  gitlab_api_url: ""
-  gitlab_project_id: ""
-  gitlab_token_env: "GITLAB_TOKEN"
-  pipeline_count: 20

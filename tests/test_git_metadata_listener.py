@@ -112,8 +112,8 @@ class TestGitMetaDataStartSuite:
         "rfc.git_metadata_listener.collect_ci_metadata",
         return_value={
             "CI": "true",
-            "CI_Platform": "gitlab",
-            "Project_URL": "https://gitlab.com/org/repo",
+            "CI_Platform": "github",
+            "Project_URL": "https://github.com/org/repo",
             "Commit_SHA": "abc12345def",
             "Commit_Short_SHA": "abc12345",
             "Branch": "main",
@@ -125,23 +125,6 @@ class TestGitMetaDataStartSuite:
         listener.start_suite(_mock_suite_data(), result)
         assert result.metadata["Branch"] == "main"
         assert result.metadata["CI"] == "true"
-
-    @patch(
-        "rfc.git_metadata_listener.collect_ci_metadata",
-        return_value={
-            "CI": "true",
-            "CI_Platform": "gitlab",
-            "Project_URL": "https://gitlab.com/org/repo",
-            "Commit_SHA": "abc12345def",
-            "Commit_Short_SHA": "abc12345",
-        },
-    )
-    def test_formats_commit_link_gitlab(self, _mock_ci: MagicMock) -> None:
-        listener = GitMetaData()
-        result = _mock_suite_result()
-        listener.start_suite(_mock_suite_data(), result)
-        expected = "[abc12345|https://gitlab.com/org/repo/-/commit/abc12345def]"
-        assert result.metadata["Commit_SHA"] == expected
 
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata",
@@ -159,26 +142,6 @@ class TestGitMetaDataStartSuite:
         listener.start_suite(_mock_suite_data(), result)
         expected = "[abc12345|https://github.com/org/repo/commit/abc12345def]"
         assert result.metadata["Commit_SHA"] == expected
-
-    @patch(
-        "rfc.git_metadata_listener.collect_ci_metadata",
-        return_value={
-            "CI": "true",
-            "CI_Platform": "gitlab",
-            "Project_URL": "https://gitlab.com/org/repo",
-            "Commit_SHA": "abc12345def",
-        },
-    )
-    def test_formats_source_link_gitlab(self, _mock_ci: MagicMock) -> None:
-        listener = GitMetaData()
-        with patch.dict(os.environ, {"CI_PROJECT_DIR": "/builds/org/repo"}):
-            data = _mock_suite_data(
-                source="/builds/org/repo/robot/math/tests/test.robot"
-            )
-            result = _mock_suite_result()
-            listener.start_suite(data, result)
-        assert "robot/math/tests/test.robot" in result.metadata["Source"]
-        assert "/-/blob/" in result.metadata["Source"]
 
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata",
@@ -288,15 +251,6 @@ class TestGitMetaDataEndSuite:
 
 
 class TestGitMetaDataResolveRelativePath:
-    def test_gitlab_path_resolution(self) -> None:
-        listener = GitMetaData()
-        listener.platform = "gitlab"
-        with patch.dict(os.environ, {"CI_PROJECT_DIR": "/builds/org/repo"}):
-            result = listener._resolve_relative_path(
-                "/builds/org/repo/robot/test.robot"
-            )
-        assert result == "robot/test.robot"
-
     def test_github_path_resolution(self) -> None:
         listener = GitMetaData()
         listener.platform = "github"
@@ -308,28 +262,20 @@ class TestGitMetaDataResolveRelativePath:
 
     def test_returns_original_when_no_workspace(self) -> None:
         listener = GitMetaData()
-        listener.platform = "gitlab"
+        listener.platform = "github"
         with patch.dict(os.environ, {}, clear=True):
             result = listener._resolve_relative_path("/some/path/test.robot")
         assert result == "/some/path/test.robot"
 
     def test_returns_original_when_path_doesnt_match(self) -> None:
         listener = GitMetaData()
-        listener.platform = "gitlab"
-        with patch.dict(os.environ, {"CI_PROJECT_DIR": "/builds/org/repo"}):
+        listener.platform = "github"
+        with patch.dict(os.environ, {"GITHUB_WORKSPACE": "/home/runner/work"}):
             result = listener._resolve_relative_path("/other/path/test.robot")
         assert result == "/other/path/test.robot"
 
 
 class TestGitMetaDataFormatLinks:
-    def test_format_commit_link_gitlab(self) -> None:
-        listener = GitMetaData()
-        listener.platform = "gitlab"
-        result = listener._format_commit_link(
-            "https://gitlab.com/org/repo", "abc123full", "abc123"
-        )
-        assert result == "[abc123|https://gitlab.com/org/repo/-/commit/abc123full]"
-
     def test_format_commit_link_github(self) -> None:
         listener = GitMetaData()
         listener.platform = "github"
@@ -337,17 +283,6 @@ class TestGitMetaDataFormatLinks:
             "https://github.com/org/repo", "abc123full", "abc123"
         )
         assert result == "[abc123|https://github.com/org/repo/commit/abc123full]"
-
-    def test_format_source_link_gitlab(self) -> None:
-        listener = GitMetaData()
-        listener.platform = "gitlab"
-        result = listener._format_source_link(
-            "https://gitlab.com/org/repo", "abc123", "robot/test.robot"
-        )
-        assert (
-            result
-            == "[robot/test.robot|https://gitlab.com/org/repo/-/blob/abc123/robot/test.robot]"
-        )
 
     def test_format_source_link_github(self) -> None:
         listener = GitMetaData()
@@ -369,8 +304,8 @@ class TestGitMetaDataPipelineAndJobLinks:
         "rfc.git_metadata_listener.collect_ci_metadata",
         return_value={
             "CI": "true",
-            "CI_Platform": "gitlab",
-            "Pipeline_URL": "https://gitlab.com/org/repo/-/pipelines/123",
+            "CI_Platform": "github",
+            "Pipeline_URL": "https://github.com/org/repo/actions/runs/123",
             "Pipeline_ID": "123",
         },
     )
@@ -380,15 +315,15 @@ class TestGitMetaDataPipelineAndJobLinks:
         listener.start_suite(_mock_suite_data(), result)
         assert (
             result.metadata["Pipeline_URL"]
-            == "https://gitlab.com/org/repo/-/pipelines/123"
+            == "https://github.com/org/repo/actions/runs/123"
         )
 
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata",
         return_value={
             "CI": "true",
-            "CI_Platform": "gitlab",
-            "Job_URL": "https://gitlab.com/org/repo/-/jobs/456",
+            "CI_Platform": "github",
+            "Job_URL": "https://github.com/org/repo/actions/runs/456",
             "Job_Name": "test-math",
             "Job_ID": "456",
         },
@@ -398,15 +333,15 @@ class TestGitMetaDataPipelineAndJobLinks:
         result = _mock_suite_result()
         listener.start_suite(_mock_suite_data(), result)
         assert result.metadata["Job_URL"] == (
-            "[test-math|https://gitlab.com/org/repo/-/jobs/456]"
+            "[test-math|https://github.com/org/repo/actions/runs/456]"
         )
 
     @patch(
         "rfc.git_metadata_listener.collect_ci_metadata",
         return_value={
             "CI": "true",
-            "CI_Platform": "gitlab",
-            "Job_URL": "https://gitlab.com/org/repo/-/jobs/789",
+            "CI_Platform": "github",
+            "Job_URL": "https://github.com/org/repo/actions/runs/789",
             "Job_ID": "789",
         },
     )
@@ -415,7 +350,7 @@ class TestGitMetaDataPipelineAndJobLinks:
         result = _mock_suite_result()
         listener.start_suite(_mock_suite_data(), result)
         assert result.metadata["Job_URL"] == (
-            "[Job #789|https://gitlab.com/org/repo/-/jobs/789]"
+            "[Job #789|https://github.com/org/repo/actions/runs/789]"
         )
 
 

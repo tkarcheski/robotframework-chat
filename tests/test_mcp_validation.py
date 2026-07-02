@@ -130,12 +130,10 @@ class TestCICDAndConfig:
         assert "app:" in content
         assert "postgres:" in content
 
-    def test_gitlab_ci_has_pipeline_stages(self) -> None:
-        ci_path = REPO_ROOT / ".gitlab-ci.yml"
-        if not ci_path.is_file():
-            pytest.skip(".gitlab-ci.yml not found")
-        content = ci_path.read_text()
-        assert "stages:" in content
+    def test_no_gitlab_ci_file(self) -> None:
+        """GitLab CI support was removed at source (rfc-monorepo #106/#107):
+        no .gitlab-ci.yml may exist in the repo."""
+        assert not (REPO_ROOT / ".gitlab-ci.yml").exists()
 
     def test_pyproject_lists_robotframework_dependency(self) -> None:
         content = (REPO_ROOT / "pyproject.toml").read_text()

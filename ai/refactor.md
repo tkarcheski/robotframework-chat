@@ -163,9 +163,9 @@ If a module starts doing two things, split it.
 2. Add resource file if needed: `robot/<suite-name>/resources/`
 3. Register in `config/test_suites.yaml`
 4. Add Makefile target: `test-<suite-name>`
-5. Run pipeline generation locally to validate:
+5. Validate the workflow YAML locally:
    ```bash
-   uv run yamllint .gitlab-ci.yml   # the pipeline is static YAML now
+   uv run yamllint .github/workflows/*.yml
    ```
 
 ### Adding New Listeners
@@ -193,7 +193,7 @@ current change:
 | Magic strings for model names | Use constants or config file lookups |
 | Mixed sync/async patterns | Standardize on one approach per module |
 | Test setup duplication | Extract shared fixtures to resource files |
-| Inline CI logic in `.gitlab-ci.yml` | Move to `ci/*.sh` scripts (completed) |
+| Inline CI logic in workflow YAML | Move to Makefile targets / scripts (completed; GitLab CI later removed, #106/#107) |
 
 ---
 
@@ -240,43 +240,38 @@ When reviewing code (whether as a human or an AI agent):
 
 ### Architecture
 
-The CI pipeline follows a strict layering:
+CI runs on GitHub Actions (GitLab CI support was removed — rfc-monorepo
+#106/#107) and follows a strict layering:
 
 ```
-.gitlab-ci.yml   → bare-bones skeleton (stages, rules, artifacts only)
-ci/common.yml    → shared YAML templates (.uv-setup, .robot-test)
-ci/*.sh          → all executable logic (bash scripts)
-Makefile         → ci-* targets wrap scripts for local + CI use
+.github/workflows/*.yml  → workflow YAML (triggers, jobs, artifacts only)
+Makefile                 → targets wrap all executable logic for local + CI use
 ```
 
 ### CI Script Conventions
 
-All scripts in `ci/` must follow these patterns:
+Any shell script invoked from CI must follow these patterns:
 
 - **Shebang:** `#!/usr/bin/env bash`
 - **Strict mode:** `set -euo pipefail` (fail fast, undefined vars are errors)
 - **Verbose on failure:** Print diagnostics, file paths, troubleshooting hints
 - **Validate env vars:** Check required variables before doing work
 - **One concern per script:** lint, test, deploy, etc. — not combined
-- **Runnable locally:** `bash ci/lint.sh` or `make ci-lint` must work on developer machines
+- **Runnable locally:** the wrapping `make` target must work on developer machines
 
 ### When to Modify CI
 
 | Change needed | Where to edit |
 |---------------|---------------|
-| Add/remove a pipeline stage | `.gitlab-ci.yml` |
-| Change trigger rules or artifacts | `.gitlab-ci.yml` |
-| Change what a job actually does | `ci/*.sh` script |
+| Add/remove a job or trigger | `.github/workflows/*.yml` |
+| Change what a job actually does | Makefile target (or the script it wraps) |
 | Add a new test suite to CI | `config/test_suites.yaml` (auto-propagates) |
-| Add shared YAML templates | `ci/common.yml` |
-| Add a new CI script | Create `ci/<name>.sh`, add Makefile target, add job in `.gitlab-ci.yml` |
 
-### Adding a New CI Script
+### Adding a New CI Step
 
-1. Create `ci/<name>.sh` with `#!/usr/bin/env bash` and `set -euo pipefail`
-2. Add a Makefile target: `ci-<name>: ## Description` → `bash ci/<name>.sh`
-3. Add a job in `.gitlab-ci.yml` with `script: [bash ci/<name>.sh]`
-4. Document in `ai/pipelines.md`
+1. Add a Makefile target (wrapping a script if the logic is non-trivial)
+2. Add a step in the relevant `.github/workflows/*.yml` that calls the target
+3. Document in `ai/pipelines.md`
 
 ---
 

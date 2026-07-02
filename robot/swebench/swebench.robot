@@ -9,6 +9,7 @@ Library           Collections
 
 *** Variables ***
 ${SWEBENCH_SPLIT}       test
+${SWEBENCH_DATASET}     %{SWEBENCH_DATASET=princeton-nlp/SWE-bench_Verified}
 ${SWEBENCH_SLICE}       %{SWEBENCH_SLICE=all}
 ${MAX_INSTANCES}        10
 ${DEFAULT_MODEL}        %{DEFAULT_MODEL}
@@ -18,7 +19,7 @@ SWE-bench Patch Generation And Validation
     [Documentation]    Iterate over SWE-bench instances, generate patches, and validate.
     ...               Per-instance failures are recorded but do not abort the loop.
     [Tags]    tier:4    verify:llm    swebench
-    ${instances}=    Load SWEBench Instances    split=${SWEBENCH_SPLIT}    max_instances=${MAX_INSTANCES}    swebench_slice=${SWEBENCH_SLICE}
+    ${instances}=    Load SWEBench Instances    split=${SWEBENCH_SPLIT}    max_instances=${MAX_INSTANCES}    dataset=${SWEBENCH_DATASET}    swebench_slice=${SWEBENCH_SLICE}
     ${failures}=    Create List
     FOR    ${instance}    IN    @{instances}
         ${status}=    Run Keyword And Return Status    Run SWEBench Instance    ${instance}

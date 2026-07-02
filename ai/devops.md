@@ -16,8 +16,8 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| Git version control | Adopted | Git repo with GitLab primary, GitHub mirror |
-| Branch protection rules | Partial | GitLab MR workflow exists; branch protection rules not verified |
+| Git version control | Adopted | Git repo on GitHub (GitLab support removed, rfc-monorepo #106/#107) |
+| Branch protection rules | Partial | GitHub PR workflow exists; branch protection rules not verified |
 | Conventional commit messages | Not Started | No enforced commit message format |
 | Signed commits | Not Started | No GPG/SSH signing requirement |
 | Git hooks (pre-commit) | Adopted | `.pre-commit-config.yaml` — ruff, mypy, YAML/JSON checks |
@@ -30,10 +30,10 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 | Practice | Status | Notes |
 |----------|--------|-------|
-| CI pipeline on every push | Adopted | `.gitlab-ci.yml` — 7 stages |
+| CI pipeline on every push | Adopted | GitHub Actions (`.github/workflows/robot-tests.yml`) |
 | CI on merge requests | Adopted | Lint, test, report stages run on MR events |
 | GitHub Actions CI | Adopted | `.github/workflows/robot-tests.yml` — lint, dashboard pytest, dry-run, robot tests |
-| Dynamic pipeline generation | Retired (2026-06-10 audit) | static `.gitlab-ci.yml`; the generator was deleted |
+| Dynamic pipeline generation | Retired (2026-06-10 audit) | generator deleted; GitLab CI itself removed (#106/#107) |
 | Scheduled pipelines | Adopted | Hourly cron triggers dynamic pipeline with full node/model matrix |
 | Pipeline artifact collection | Adopted | Test results, metrics, review artifacts archived |
 | JUnit report integration | Adopted | Dashboard pytest produces `pytest-results.xml` |
@@ -166,7 +166,7 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 | Semantic versioning | Adopted | `pyproject.toml` + `src/rfc/__init__.py` |
 | Version command | Adopted | `make version` prints current version |
 | Git tags for releases | Adopted | `v*` tags trigger release pipeline |
-| Package publishing (PyPI) | Adopted | `publish-pypi` job in GitLab CI, `ci/release.sh` builds + uploads |
+| Package publishing (PyPI) | Adopted | `.github/workflows/pypi-publish.yml` builds + uploads on `v*` tags |
 | GitHub Releases | Not Started | No release workflow |
 
 ---

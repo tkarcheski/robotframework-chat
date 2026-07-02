@@ -22,12 +22,7 @@ permissions:
   issues: write
   pull-requests: write
 
-# One checkpoint per item PER EVENT TYPE; newer same-type events supersede
-# in-flight runs. The group must include the event name: an issue_comment run
-# (e.g. the auto-assign bot commenting seconds after a PR opens) previously
-# cancelled the pull_request_target run sharing the bare group — and the
-# cancelled run showed as a permanent red "Raise review checkpoint" check on
-# every PR.
+# One checkpoint per item at a time; newer events supersede in-flight runs.
 concurrency:
   group: checkpoint-${{ github.event.issue.number || github.event.pull_request.number }}-${{ github.event_name }}
   cancel-in-progress: true
