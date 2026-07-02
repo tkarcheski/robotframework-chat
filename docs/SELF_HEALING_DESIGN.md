@@ -633,11 +633,11 @@ naive implementations.
 
 | Node | Hardware | VRAM/RAM | Role |
 |------|----------|----------|------|
-| ai1 | P100 GPU + Tenstorrent TPU | 16GB VRAM | Large model training |
-| dev1/dev2 | 4090 GPU | 24GB VRAM | Primary training (small/medium) |
-| mini2 (this machine) | Mac Mini M4 Pro | 64GB unified | Inference, evaluation, orchestration |
-| Mini1 | Mac Mini | varies | Inference node |
-| Framework | Framework laptop | varies | Development, small experiments |
+| training-node | Discrete GPU / accelerator | 16–24GB VRAM | Large model training |
+| gpu-workstation | Consumer GPU (e.g. 4090) | 24GB VRAM | Primary training (small/medium) |
+| orchestrator | Apple silicon (e.g. M4 Pro) | 64GB unified | Inference, evaluation, orchestration |
+| inference-node | Apple silicon Mac mini | varies | Inference node |
+| laptop | Development laptop | varies | Development, small experiments |
 | OpenRouter | External API | N/A | Fallback evaluation, large model access |
 
 ### 7.2 Hardware Routing
@@ -754,8 +754,8 @@ fine_tuning:
     - safety
     - accounting
   hardware:
-    training_node: "dev1"        # default training node
-    eval_node: "mini2"           # default evaluation node
+    training_node: "gpu-workstation"  # default training node
+    eval_node: "orchestrator"         # default evaluation node
 ```
 
 ### 9.2 config/fine_tuning.yaml

@@ -1,0 +1,6 @@
+# core — the RFC harness. This is the always-public surface that the public
+# mirror (robotframework-chat) is generated from. See .mirror/publish.sh.
+name = "core"
+visibility = "public"
+owner = "engineering"
+description = "Harness essentials: src/, robot/, tests/, config/, Docker, CI, docs."

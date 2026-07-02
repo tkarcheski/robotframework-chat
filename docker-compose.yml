@@ -67,7 +67,7 @@ services:
 
   # ── Superset init (one-shot: migrate, create admin, bootstrap) ──────
   superset-init:
-    build: ./superset
+    build: ../modules/ops/superset
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,8 +84,8 @@ services:
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@rfc.local}
     volumes:
-      - ./superset/superset_config.py:/app/superset_config.py:ro
-      - ./superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
+      - ../modules/ops/superset/superset_config.py:/app/superset_config.py:ro
+      - ../modules/ops/superset/bootstrap_dashboards.py:/app/bootstrap_dashboards.py:ro
     networks:
       - rfc-net
     entrypoint: /bin/bash
@@ -107,7 +107,7 @@ services:
 
   # ── Superset web server ─────────────────────────────────────────────
   superset:
-    build: ./superset
+    build: ../modules/ops/superset
     restart: unless-stopped
     depends_on:
       postgres:
@@ -126,7 +126,7 @@ services:
     ports:
       - "${SUPERSET_PORT:-8088}:8088"
     volumes:
-      - ./superset/superset_config.py:/app/superset_config.py:ro
+      - ../modules/ops/superset/superset_config.py:/app/superset_config.py:ro
     networks:
       - rfc-net
     healthcheck:
@@ -137,7 +137,7 @@ services:
 
   # ── RF Metrics (HTML dashboard from output.xml) ─────────────────────
   metrics:
-    build: ./metrics
+    build: ../modules/ops/metrics
     restart: unless-stopped
     environment:
       METRICS_REFRESH_INTERVAL: ${METRICS_REFRESH_INTERVAL:-300}

@@ -7,14 +7,9 @@ These require human decisions, manual setup, or external work.
 
 ## Infrastructure & Hardware
 
-- [ ] **Map nodes to CI runner labels.** The `config/test_suites.yaml` `nodes:` section uses hostnames (`mini1`, `ai1`, `dev1`, etc.). These need to map to self-hosted GitHub Actions runner labels so the scheduler can route jobs to the correct hardware. Decide on label naming convention (e.g., `gpu-4090`, `tpu-tenstorrent`, `apple-m4-16gb`, `apple-m4-64gb`).
-- [ ] **Document hardware specs per node.** Create a hardware inventory (GPU/TPU model, VRAM, system RAM, CPU) so test results can be correlated with hardware capability. Proposed location: `config/test_suites.yaml` under each node entry.
-  - `ai1`: Linux, TenstorrentTPU, 256GB RAM, AMD CPU
-  - `mini1`: Mac Mini M4, 16GB
-  - `mini2`: Mac Mini M4, 64GB
-  - `dev1`: NVIDIA RTX 4090
-  - `dev2`: Laptop, NVIDIA RTX 5070 Mobile, 32GB RAM
-- [ ] **Tenstorrent TPU support.** `ai1` has a Tenstorrent TPU that isn't currently used. Research Tenstorrent's inference stack (tt-metal / tt-buda) and whether Ollama or another serving layer can target it. This is future work but should be tracked.
+- [ ] **Map nodes to GitLab runner tags.** The `config/test_suites.yaml` `nodes:` section uses hostnames. These need to become GitLab CI runner tags so the pipeline scheduler can route jobs to the correct hardware. Decide on tag naming convention (e.g., `gpu-4090`, `tpu-tenstorrent`, `apple-m4-16gb`, `apple-m4-64gb`).
+- [ ] **Document hardware specs per node.** Create a hardware inventory (GPU/TPU model, VRAM, system RAM, CPU) so test results can be correlated with hardware capability. Proposed location: `config/test_suites.yaml` under each node entry (fleet spans Linux GPU/TPU boxes, Apple-silicon Mac minis, and GPU laptops).
+- [ ] **Tenstorrent TPU support.** One fleet node has a Tenstorrent TPU that isn't currently used. Research Tenstorrent's inference stack (tt-metal / tt-buda) and whether Ollama or another serving layer can target it. This is future work but should be tracked.
 - [ ] **Remove the custom Dash dashboard.** Owner confirmed Grafana will replace it. Plan the deprecation: remove `dashboard/` directory, remove `make test-dashboard*` targets, remove dashboard Docker service from `docker-compose.yml`, remove `[dashboard]` optional dependency from `pyproject.toml`.
 
 ---
@@ -94,18 +89,18 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 - [ ] **Add `make test-make` target.** A meta-target that runs a dry-run or smoke test of every other make target to verify they at least parse and start correctly. Could use `make -n` (dry-run) for dangerous targets and actual execution for safe ones.
 - [ ] **Pipeline node auto-discovery.** Pipelines should discover which nodes are online before scheduling jobs. Proposed flow: (1) ping each node's Ollama `/api/tags` endpoint, (2) build a live inventory of online nodes + available models, (3) schedule jobs only to reachable nodes. This replaces hardcoded node lists.
 - [ ] **Model-to-node assignment config.** Owner wants to control which models are loaded on which hosts. Short-term: a `config/model_assignments.yaml` file. Long-term: web UI to manage assignments. The pipeline reads this config and calls `ollama pull` / `ollama rm` to enforce the desired state.
-- [ ] **Node-to-runner-label mapping.** Update `config/test_suites.yaml` nodes to include a `runner_label` field mapping each node to a self-hosted GitHub Actions runner label. Example:
+- [ ] **Node-to-GitLab-tag mapping.** Update `config/test_suites.yaml` nodes to include a `gitlab_tag` field. Update `scripts/generate_pipeline.py` to use these tags when generating child pipeline jobs. Example:
   ```yaml
   nodes:
-    - hostname: dev1
+    - hostname: gpu-workstation
       port: 11434
-      runner_label: gpu-4090
+      gitlab_tag: gpu-4090
       hardware:
         gpu: "NVIDIA RTX 4090"
         vram_gb: 24
         ram_gb: 64
   ```
-- [ ] **Verify GitHub Actions pipeline.** Is the GitHub Actions workflow current and exercising the full node/model matrix?
+- [ ] **Verify GitHub Actions pipeline.** Is the GitHub Actions workflow current, or has it drifted from the GitLab pipeline? If GitLab is the source of truth, consider auto-generating the GitHub workflow from the same config.
 
 ---
 
@@ -177,7 +172,8 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
   - `main` — human-reviewed, tested, stable
   - `claude-code-staging` — AI agent working branch
   - `claude/*` — per-session feature branches (merged via PR)
-  - GitHub Actions runs on both `main` and staging to catch regressions
+  - GitLab CI runs on both `main` and staging to catch regressions
+  - GitHub mirrors for code checks only
   - Owner syncs staging → main after review and testing
 
 ---
@@ -186,7 +182,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 - [ ] **Dashboard is confirmed as prototype.** Migration path:
   1. Identify what Grafana needs to replicate (node monitoring, test triggering)
-  2. Test triggering will move to CLI (`make`) and CI (GitHub Actions) only
+  2. Test triggering will move to CLI (`make`) and CI (GitLab pipelines) only
   3. Once Grafana dashboards cover visualization needs, remove `dashboard/` entirely
   4. Remove: `dashboard/` dir, Docker service, `[dashboard]` extra, `make test-dashboard*` targets
 
@@ -210,20 +206,20 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 - [ ] **Implement 90-day rolling window.** Default retention: 90 days. Older data archived to compressed SQLite files or flat CSV exports. Grafana queries filter to last 90 days by default. Archive job runs weekly via cron or CI scheduled pipeline.
 - [ ] **Public Grafana dashboards.** TRON-themed dashboards should be publicly viewable (no login required for read-only access). Grafana supports anonymous access with a viewer role. Internal tools (triggering tests, managing models) require authentication.
-- [ ] **Internal vs. public separation.** Public: Grafana dashboards (read-only, TRON theme). Internal: make targets, GitHub Actions, model management, database admin. No public write access to anything.
+- [ ] **Internal vs. public separation.** Public: Grafana dashboards (read-only, TRON theme). Internal: make targets, GitLab CI, model management, database admin. No public write access to anything.
 
 ---
 
 ## Alerting & Notifications
 
-- [ ] **CI pipeline failure is the primary alert.** No additional alerting infrastructure needed initially.
+- [ ] **GitLab pipeline failure is the primary alert.** No additional alerting infrastructure needed initially.
 - [ ] **Add Discord notifications (future).** When a pipeline fails or a model regresses, post to a Discord webhook. Low priority — add after the database and Grafana are stable.
 
 ---
 
 ## Secrets Management
 
-- [ ] **All secrets in `.env` files.** No vault, no external secrets manager. `.env` is gitignored. CI uses GitHub Actions secrets. Document all required env vars in `ai/dev.md` and `.env.example`.
+- [ ] **All secrets in `.env` files.** No vault, no external secrets manager. `.env` is gitignored. CI uses GitLab CI/CD variables. Document all required env vars in `ai/dev.md` and `.env.example`.
 
 ---
 
@@ -250,7 +246,7 @@ All tests are verified by Robot Framework. Every test must have Robot or Python 
 
 ## Reminders (Owner-Requested)
 
-- [ ] **TPU integration is next after database.** The Tenstorrent TPU on `ai1` is idle. Database schema is priority #1. Once stable, spike on TPU integration. Expected to be "just another endpoint" but research needed on Tenstorrent's serving stack.
+- [ ] **TPU integration is next after database.** The fleet's Tenstorrent TPU is idle. Database schema is priority #1. Once stable, spike on TPU integration. Expected to be "just another endpoint" but research needed on Tenstorrent's serving stack.
 
 ---
 
