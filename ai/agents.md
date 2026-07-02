@@ -213,7 +213,6 @@ make docker-logs                 # Tail service logs
 make bootstrap                   # First-time Superset setup
 
 # Layer 3: CI pipelines
-make ci-report                   # Generate repo metrics
 make ci-deploy                   # Deploy Superset to remote host
 make run-ci-pipeline             # Run the full CI pipeline locally
 
@@ -221,7 +220,7 @@ make run-ci-pipeline             # Run the full CI pipeline locally
 make ci-release                  # Build and verify PyPI package
 make version                     # Print current version
 
-# CI scripts (called directly from GitHub Actions workflows)
+# CI scripts (called directly by run-ci-pipeline)
 bash ci/lint.sh all              # Run all lint checks
 ```
 
@@ -295,7 +294,7 @@ Robot Framework Test
 │   ├─ Docker Manager (container_manager.py)
 │   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
 │   ├─ Data Models (models.py) ── GradeResult, SafetyResult
-│   ├─ CI Metadata (git_metadata.py) ── GitHub Actions env collection
+│   ├─ CI Metadata (git_metadata.py) ── GitLab CI env collection
 │   ├─ CI Metadata Listener (git_metadata_listener.py) ── attaches CI metadata to output
 │   ├─ DB Listener (db_listener.py) ── archives results to SQL database
 │   ├─ Ollama Timestamp Listener (ollama_timestamp_listener.py) ── timestamps Ollama chats
@@ -337,14 +336,12 @@ robotframework-chat/
 │   ├── devops.md               # DevOps practices tracker
 │   ├── roles/                  # Agent role definitions
 │   └── skills/                 # Task-specific skill tutorials
-├── ci/                         # CI scripts (all pipeline logic lives here)
-│   ├── common.yml              # Shared YAML templates
+├── ci/                         # CI helper scripts
 │   ├── lint.sh                 # Code quality checks
-│   ├── test.sh                 # Test runner with health checks
-│   ├── generate.sh             # Child pipeline generation
-│   ├── report.sh               # Metrics and MR comments
 │   ├── deploy.sh               # Superset deployment
-│   └── review.sh               # Claude Code review
+│   ├── release.sh              # Package build + verify
+│   ├── backup_push.sh          # Results backup
+│   └── audit_markdown.sh       # Markdown reference audit
 ├── Makefile                    # Build, test, deploy, ci-* targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
 ├── .env.example                # Environment variable template
@@ -378,7 +375,8 @@ robotframework-chat/
 ├── superset/                   # Superset configuration
 ├── scripts/                    # Import/query/CI utilities
 ├── docs/                       # Additional documentation
-│   └── TEST_DATABASE.md        # Database schema & usage
+│   ├── TEST_DATABASE.md        # Database schema & usage
+│   └── GITLAB_CI_SETUP.md      # CI/CD setup guide
 ├── humans/                     # Owner decisions & action items
 │   └── TODO.md                 # Actionable items from spec reviews
 ├── data/                       # SQLite database (gitignored)
@@ -399,7 +397,7 @@ Three Robot Framework listeners handle test result collection:
 | Listener | Purpose |
 |----------|---------|
 | `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
-| `rfc.git_metadata_listener.GitMetaData` | Collects GitHub Actions metadata (commit, branch, job URL) and adds it to test output |
+| `rfc.git_metadata_listener.GitMetaData` | Collects GitLab CI metadata (commit, branch, pipeline URL, runner info) and adds it to test output |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama keyword call (Ask LLM, Wait For LLM, etc.) and saves `ollama_timestamps.json` |
 
 All listeners are always active in the Makefile targets and in CI. Use them together:
@@ -423,27 +421,31 @@ The `DbListener` reads `DATABASE_URL` from the environment to decide where to st
 
 ## CI/CD Pipeline
 
-CI runs on **GitHub Actions**, with all logic delegated to bash scripts in
-`ci/` and Makefile targets so jobs are reproducible locally.
+The GitLab CI pipeline uses a six-stage architecture with all logic
+delegated to bash scripts in `ci/` and Makefile targets:
+
+```
+lint → generate → test → report → deploy → review
+```
 
 ### Architecture: Minimal YAML, Modular Scripts
 
-Workflow YAML under `.github/workflows/` stays minimal: pick a runner, call a
-script, collect artifacts. All executable logic lives in:
+`.gitlab-ci.yml` is a bare-bones skeleton (~170 lines). It defines stages,
+variables, rules, and artifacts — nothing else. All executable logic lives in:
 
 | Layer | Location | Role |
 |-------|----------|------|
-| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, release, deploy |
-| **Makefile** | `Makefile` | Targets wrap scripts for local and CI use |
+| **Scripts** | `ci/*.sh` | Reusable bash scripts: lint, test, generate, report, deploy, review |
+| **Templates** | `ci/common.yml` | Shared YAML templates (`.uv-setup`, `.robot-test`) |
+| **Makefile** | `Makefile` | `ci-*` targets wrap scripts for local and CI use |
 
-To modify CI behavior, edit the scripts — not the workflow YAML.
+To modify CI behavior, edit the scripts — not `.gitlab-ci.yml`.
 
 ### CI Scripts
 
 | Script | Purpose | Makefile target |
 |--------|---------|-----------------|
 | `ci/lint.sh` | Run all linters, collect all failures, report summary | (called directly) |
-| `ci/release.sh` | Build + verify sdist/wheel for PyPI | (called directly) |
 | `ci/deploy.sh` | Deploy Superset stack to remote host | `make ci-deploy` |
 
 All scripts follow these conventions:
@@ -451,27 +453,29 @@ All scripts follow these conventions:
 - Source `.env` when present (auto-export via `set -a`)
 - Verbose output on failure (diagnostics, paths, troubleshooting hints)
 - Validate required env vars before proceeding
-- Runnable locally: `bash ci/lint.sh`
+- Runnable locally: `bash ci/lint.sh` or `make ci-lint`
 
 ### Pipeline Data Flow
 
 ```
-test:        math ─────────┐   docker ────────┐   safety ────────┐
+test stage:  math ─────────┐   docker ────────┐   safety ────────┐
              listener→DB   │   listener→DB    │   listener→DB   │
              (per-suite)   │   (per-suite)    │   (per-suite)   │
                            ▼                  ▼                 ▼
-report:                rebot merges output.xml files
+report stage:          rebot merges output.xml files
                            │
                            ├── results/combined/report.html  (one unified report)
                            ├── results/combined/log.html
-                           └── import → DB  (combined run)
+                           └── import → DB  (pipeline-level combined run)
 ```
 
-During the **test** phase, each suite runs with all listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
+During the **test stage**, each suite runs with all listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
 
-During the **report** phase, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a combined run.
+During the **report stage**, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a pipeline-level run.
 
-On the default branch, the Superset stack is deployed/updated on the target host.
+During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
+
+During the **review stage** (MR label `opencode-review` or manual trigger), OpenCode (Kimi K2.5 via OpenRouter) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/agents.md` and `ai/refactor.md`.
 
 ---
 
@@ -513,6 +517,8 @@ after loading `config/test_suites.yaml`:
 |---------|-----------|---------|
 | `DEFAULT_MODEL` | `defaults.model` | `qwen3.5:27b` |
 | `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
+| `GITLAB_API_URL` | `monitoring.gitlab_api_url` | `https://gitlab.example.com` |
+| `GITLAB_PROJECT_ID` | `monitoring.gitlab_project_id` | `42` |
 
 Empty env vars are ignored (YAML defaults are preserved). The `OLLAMA_NODES_LIST`
 env var is handled separately by `dashboard/monitoring.py::_node_list()`.

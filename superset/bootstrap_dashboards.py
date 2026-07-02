@@ -98,7 +98,13 @@ CREATE TABLE IF NOT EXISTS test_results (
     tag_verify VARCHAR(50),
     eval_count INTEGER,
     cache_hit BOOLEAN DEFAULT false,
-    thinking_tokens INTEGER
+    thinking_tokens INTEGER,
+    benchmark TEXT,
+    split TEXT,
+    instance_id TEXT,
+    grader_model TEXT,
+    wall_seconds DOUBLE PRECISION,
+    cost_usd DOUBLE PRECISION
 );
 
 -- Drop heavy text / unused numeric columns that moved to test_result_artifacts
@@ -136,6 +142,14 @@ ALTER TABLE test_results ADD COLUMN IF NOT EXISTS tag_verify VARCHAR(50);
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS eval_count INTEGER;
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cache_hit BOOLEAN DEFAULT false;
 ALTER TABLE test_results ADD COLUMN IF NOT EXISTS thinking_tokens INTEGER;
+-- OpenAI-Evals provenance columns (#622) — keep in sync with
+-- rfc.test_database (the canonical schema) and TEST_RESULTS_FULL_VIEW_BODY.
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS benchmark TEXT;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS split TEXT;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS instance_id TEXT;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS grader_model TEXT;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS wall_seconds DOUBLE PRECISION;
+ALTER TABLE test_results ADD COLUMN IF NOT EXISTS cost_usd DOUBLE PRECISION;
 
 -- Archive tables — heavy per-run / per-result data lives here.
 CREATE TABLE IF NOT EXISTS test_run_artifacts (
@@ -190,6 +204,12 @@ SELECT
     tr.eval_count,
     tr.cache_hit,
     tr.thinking_tokens,
+    tr.benchmark,
+    tr.split,
+    tr.instance_id,
+    tr.grader_model,
+    tr.wall_seconds,
+    tr.cost_usd,
     r.timestamp,
     r.model_name,
     r.test_suite,

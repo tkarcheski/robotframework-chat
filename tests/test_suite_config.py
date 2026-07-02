@@ -16,6 +16,7 @@ from rfc.suite_config import (
     container_profiles,
     nodes,
     master_models,
+    ci_config,
     suite_dropdown_options,
     iq_dropdown_options,
     profile_dropdown_options,
@@ -63,6 +64,10 @@ class TestConvenienceAccessors:
         result = master_models()
         assert isinstance(result, list)
         assert "llama3" in result
+
+    def test_ci_config_returns_dict(self, mock_suite_config):
+        result = ci_config()
+        assert isinstance(result, dict)
 
     def test_run_all_entry_returns_dict(self, mock_suite_config):
         result = run_all_entry()
@@ -143,6 +148,12 @@ class TestEnvVarOverrides:
         with patch.dict(os.environ, {"OLLAMA_ENDPOINT": "http://gpu1:11434"}):
             result = _apply_env_overrides(cfg)
         assert result["defaults"]["ollama_endpoint"] == "http://gpu1:11434"
+
+    def test_gitlab_api_url_overridden_by_env(self):
+        cfg = {"monitoring": {"gitlab_api_url": ""}}
+        with patch.dict(os.environ, {"GITLAB_API_URL": "https://gitlab.example.com"}):
+            result = _apply_env_overrides(cfg)
+        assert result["monitoring"]["gitlab_api_url"] == "https://gitlab.example.com"
 
     def test_empty_env_var_does_not_override(self):
         cfg = {"defaults": {"model": "llama3"}}

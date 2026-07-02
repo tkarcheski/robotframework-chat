@@ -291,27 +291,27 @@ tables.
 
 ## CI/CD Integration
 
-The GitHub Actions pipeline archives results at two levels:
+The GitLab CI pipeline archives results at two levels:
 
 ```
-test:        math ─────────┐   docker ────────┐   safety ────────┐
+test stage:  math ─────────┐   docker ────────┐   safety ────────┐
              listener→DB   │   listener→DB    │   listener→DB   │
              (per-suite)   │   (per-suite)    │   (per-suite)   │
                            ▼                  ▼                 ▼
-report:                rebot merges output.xml files
+report stage:          rebot merges output.xml files
                            │
                            ├── results/combined/report.html  (one unified report)
                            ├── results/combined/log.html
-                           └── import → DB  (combined run)
+                           └── import → DB  (pipeline-level combined run)
 ```
 
-1. **Per-suite archiving** (test phase): The `DbListener` on each test
+1. **Per-suite archiving** (test stage): The `DbListener` on each test
    job archives results as each suite completes.
-2. **Combined archiving** (report phase): `rebot` merges all
+2. **Combined archiving** (report stage): `rebot` merges all
    `output.xml` files, then `import_test_results.py` imports the
    combined result.
 
-Set `DATABASE_URL` as a GitHub Actions secret to archive to PostgreSQL.
+Set `DATABASE_URL` in GitLab CI/CD variables to archive to PostgreSQL.
 When unset, archiving falls back to local SQLite.
 
 ## Database Maintenance

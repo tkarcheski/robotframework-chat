@@ -1,9 +1,9 @@
 """Platform-agnostic Git/CI metadata collection.
 
-Detects whether we're running in GitHub Actions and collects the
-appropriate environment variables into a canonical dictionary. Falls
-back to local git metadata when no known CI is detected. Used by the
-GitMetaData listener, DbListener, and the pre-run modifier.
+Detects whether we're running in GitHub Actions or GitLab CI and
+collects the appropriate environment variables into a canonical
+dictionary. Used by the GitMetaData listener, DbListener, and
+the pre-run modifier.
 """
 
 import os
@@ -16,12 +16,45 @@ def detect_ci_platform() -> Optional[str]:
     """Detect which CI platform is running.
 
     Returns:
-        ``"github"`` for GitHub Actions, or ``None`` when no known CI
-        is detected.
+        ``"github"`` for GitHub Actions, ``"gitlab"`` for GitLab CI,
+        or ``None`` when no known CI is detected.
     """
     if os.getenv("GITHUB_ACTIONS") == "true":
         return "github"
+    if os.getenv("GITLAB_CI") == "true":
+        return "gitlab"
     return None
+
+
+def _collect_gitlab_metadata() -> Dict[str, str]:
+    """Collect metadata from GitLab CI environment variables."""
+    return {
+        "CI": os.getenv("CI", "false"),
+        "CI_Platform": "gitlab",
+        "Project_URL": os.getenv("CI_PROJECT_URL", ""),
+        "Commit_SHA": os.getenv("CI_COMMIT_SHA", ""),
+        "Commit_Short_SHA": os.getenv("CI_COMMIT_SHORT_SHA", ""),
+        "Branch": os.getenv("CI_COMMIT_REF_NAME", ""),
+        "Pipeline_ID": os.getenv("CI_PIPELINE_ID", ""),
+        # Job information
+        "Job_URL": os.getenv("CI_JOB_URL", ""),
+        "Job_ID": os.getenv("CI_JOB_ID", ""),
+        "Job_Name": os.getenv("CI_JOB_NAME", ""),
+        # Merge request information
+        "Merge_Request_IID": os.getenv("CI_MERGE_REQUEST_IID", ""),
+        "Merge_Request_Source_Branch": os.getenv(
+            "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", ""
+        ),
+        "Merge_Request_Target_Branch": os.getenv(
+            "CI_MERGE_REQUEST_TARGET_BRANCH_NAME", ""
+        ),
+        # Repository
+        "Repository_URL": os.getenv("CI_REPOSITORY_URL", ""),
+        "Triggered_By": os.getenv("CI_PIPELINE_SOURCE", ""),
+        # Environment
+        "Test_Environment": os.getenv("CI_ENVIRONMENT_NAME", ""),
+        "User": os.getenv("GITLAB_USER_LOGIN", ""),
+    }
 
 
 def _collect_github_metadata() -> Dict[str, str]:
@@ -99,10 +132,9 @@ def _collect_local_metadata() -> Dict[str, str]:
 def collect_ci_metadata() -> Dict[str, str]:
     """Collect metadata from the current CI environment.
 
-    Auto-detects GitHub Actions and collects the appropriate
-    environment variables into a canonical dictionary with consistent
-    key names. Falls back to local git metadata when no known CI is
-    detected.
+    Auto-detects GitHub Actions or GitLab CI and collects the
+    appropriate environment variables into a canonical dictionary
+    with consistent key names regardless of platform.
 
     Returns:
         Dictionary of CI metadata with empty values filtered out.
@@ -112,6 +144,8 @@ def collect_ci_metadata() -> Dict[str, str]:
     metadata: Dict[str, str]
     if platform == "github":
         metadata = _collect_github_metadata()
+    elif platform == "gitlab":
+        metadata = _collect_gitlab_metadata()
     else:
         metadata = _collect_local_metadata()
 

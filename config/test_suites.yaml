@@ -1,8 +1,11 @@
 # Test Suite Configuration - Single Source of Truth
 #
-# This file drives test configuration for the dashboard and runners.
+# This file drives GitLab CI pipelines and test configuration.
+# Changes here automatically propagate to:
+#   - GitLab CI pipeline (regular and dynamic pipeline generation)
 #
 # See src/rfc/suite_config.py for the Python loader.
+# See scripts/generate_pipeline.py for CI pipeline generation.
 
 defaults:
   iq_levels: ["70", "80", "90", "100", "110", "120", "130", "140", "150", "160"]
@@ -25,18 +28,11 @@ defaults:
 nodes:
   - hostname: localhost
     port: 11434
-  - hostname: Mini1s-Mac-Mini
-    port: 11434
-  - hostname: Mini2s-Mac-Mini
-    port: 11434
-  - hostname: ai1
-    port: 11434
-  - hostname: ai2
-    port: 11434
-  - hostname: dev1
-    port: 11434
-  - hostname: dev2
-    port: 11434
+  # Add your fleet's Ollama hosts here (or set OLLAMA_NODES_LIST), e.g.:
+  # - hostname: gpu-workstation
+  #   port: 11434
+  # - hostname: mac-mini
+  #   port: 11434
 
 # ---------------------------------------------------------------------------
 # Master Models List
@@ -212,7 +208,7 @@ test_suites:
   openai-evals:
     label: "OpenAI Evals"
     path: "robot/openai_evals"
-    description: "OpenAI Evals harness scaffolding — dataset loader and llm_judge grader integration"
+    description: "Umbrella suite for the OpenAI-Evals benchmark family (#561/#562). Scaffolding only for now (#621): shared dataset loader (eval_datasets) + pluggable graders (exact/regex/llm_judge) + results-provenance columns. Child benchmark suites (#563/#564/#565/#566/#567) fan out under this group as they land; the stub is a no-op placeholder until then."
 
   react:
     label: "ReAct Loop"
@@ -340,3 +336,166 @@ container_profiles:
     label: "Performance (1.0 CPU, 1GB)"
     cpu: 1.0
     memory_mb: 1024
+
+# ---------------------------------------------------------------------------
+# CI Configuration
+#
+# Listeners, job grouping, and options used by generate_pipeline.py to
+# produce GitLab CI child pipelines.
+# ---------------------------------------------------------------------------
+ci:
+  listeners:
+    - "rfc.db_listener.DbListener"
+    - "rfc.git_metadata_listener.GitMetaData"
+    - "rfc.ollama_timestamp_listener.OllamaTimestampListener"
+    - "rfc.chat_log_listener.ChatLogListener"
+    - "rfc.agent_workflow_listener.AgentWorkflowListener"
+    - "rfc.agentic_harness_listener.AgenticHarnessListener"
+    - "rfc.dialog_listener.DialogListener"
+    - "rfc.generative_listener.GenerativeListener"
+
+  # Job groups: combine multiple atomic suites into a single CI job.
+  # Suites not listed here run as individual jobs.
+  job_groups:
+    robot-math-tests:
+      path: "robot/math/"
+      output_dir: "results/math"
+      tags: ["ollama"]
+
+    robot-docker-tests:
+      path: "robot/docker/"
+      output_dir: "results/docker"
+      tags: ["ollama", "docker"]
+
+    robot-accounting-tests:
+      path: "robot/accounting/"
+      output_dir: "results/accounting"
+      tags: ["ollama"]
+
+    robot-safety-tests:
+      path: "robot/safety/"
+      output_dir: "results/safety"
+      tags: ["ollama"]
+
+    robot-refusal-calibration-tests:
+      path: "robot/refusal_calibration/"
+      output_dir: "results/refusal_calibration"
+      tags: ["ollama"]
+
+    robot-c-interview-tests:
+      path: "robot/c_interview/"
+      output_dir: "results/c_interview"
+      tags: ["ollama"]
+
+    robot-ceo-tests:
+      path: "robot/ceo/"
+      output_dir: "results/ceo"
+      tags: ["openai", "agentic"]
+
+    robot-creativity-tests:
+      path: "robot/creativity/"
+      output_dir: "results/creativity"
+      tags: ["ollama"]
+
+    robot-multi-turn-tests:
+      path: "robot/multi_turn/"
+      output_dir: "results/multi_turn"
+      tags: ["ollama"]
+
+    robot-adversarial-tests:
+      path: "robot/adversarial/"
+      output_dir: "results/adversarial"
+      tags: ["ollama"]
+
+    robot-persona-tests:
+      path: "robot/persona/"
+      output_dir: "results/persona"
+      tags: ["ollama"]
+
+    robot-quantization-tests:
+      path: "robot/quantization/"
+      output_dir: "results/quantization"
+      tags: ["ollama"]
+
+    robot-ifeval-tests:
+      path: "robot/ifeval/"
+      output_dir: "results/ifeval"
+      tags: ["ollama"]
+
+    robot-hallucination-tests:
+      path: "robot/hallucination/"
+      output_dir: "results/hallucination"
+      tags: ["ollama"]
+
+    robot-swebench-tests:
+      path: "robot/swebench/"
+      output_dir: "results/swebench"
+      tags: ["ollama", "docker", "swebench"]
+
+    # OpenAI-Evals umbrella (#561/#562). Scaffolding only (#621): the stub
+    # suite is a no-op until child benchmark suites fan out under this group.
+    openai_evals:
+      path: "robot/openai_evals/"
+      output_dir: "results/openai_evals"
+      tags: ["openai-evals"]
+
+    robot-agentic-coding-tests:
+      path: "robot/agentic_coding/"
+      output_dir: "results/agentic_coding"
+      tags: ["agentic", "coding-agent"]
+
+    robot-causal-reasoning-tests:
+      path: "robot/causal_reasoning/"
+      output_dir: "results/causal_reasoning"
+    robot-sycophancy-tests:
+      path: "robot/sycophancy/"
+      output_dir: "results/sycophancy"
+      tags: ["ollama"]
+
+    robot-temporal-reasoning-tests:
+      path: "robot/temporal_reasoning/"
+      output_dir: "results/temporal_reasoning"
+      tags: ["ollama"]
+
+    robot-epistemic-calibration-tests:
+      path: "robot/epistemic_calibration/"
+      output_dir: "results/epistemic_calibration"
+    robot-extraction-tests:
+      path: "robot/extraction/"
+      output_dir: "results/extraction"
+      tags: ["ollama"]
+
+    robot-code-review-tests:
+      path: "robot/code_review/"
+      output_dir: "results/code_review"
+      tags: ["ollama"]
+
+  superset-dashboards:
+    label: "Superset Dashboards"
+    path: "robot/superset/dashboards.robot"
+    description: "Browser-based Superset dashboard evaluation with LLM feedback"
+    extra_deps: ["playwright"]
+
+  github-review:
+    label: "GitHub Repo Review"
+    path: "robot/github/tests/repo_review.robot"
+    description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
+    extra_deps: ["playwright"]
+
+# ---------------------------------------------------------------------------
+# Monitoring Configuration
+#
+# Settings for Ollama host monitoring and GitLab pipeline tracking.
+#
+# To enable GitLab pipeline monitoring, either:
+#   1. Set GITLAB_API_URL, GITLAB_PROJECT_ID, GITLAB_TOKEN env vars, or
+#   2. Fill in the gitlab_api_url and gitlab_project_id fields below.
+# ---------------------------------------------------------------------------
+monitoring:
+  poll_interval_seconds: 30
+  history_hours: 24
+  # GitLab API settings (set via env vars or fill in here)
+  gitlab_api_url: ""
+  gitlab_project_id: ""
+  gitlab_token_env: "GITLAB_TOKEN"
+  pipeline_count: 20

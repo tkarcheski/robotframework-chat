@@ -55,11 +55,6 @@ class TestVersionConsistency:
         assert "build" in dep_names, "build package missing from dev dependencies"
         assert "twine" in dep_names, "twine package missing from dev dependencies"
 
-    def test_bump_version_script_exists(self) -> None:
-        """scripts/bump_version.py must exist."""
-        bump_script = ROOT / "scripts" / "bump_version.py"
-        assert bump_script.is_file(), "scripts/bump_version.py not found"
-
     def test_pyproject_has_urls(self) -> None:
         """pyproject.toml must have project.urls for PyPI listing."""
         data = tomllib.loads((ROOT / "pyproject.toml").read_text())
