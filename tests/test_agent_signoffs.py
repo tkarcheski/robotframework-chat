@@ -28,7 +28,9 @@ class TestEvaluateCommits:
         assert evaluate_commits([_commit()]) == []
 
     def test_human_commit_exempt(self) -> None:
-        commit = _commit(email="tyler.karcheski@gmail.com", signoffs=[], model="")
+        commit = _commit(
+            email="tkarcheski@users.noreply.github.com", signoffs=[], model=""
+        )
         assert evaluate_commits([commit]) == []
 
     def test_missing_signoff_fails(self) -> None:

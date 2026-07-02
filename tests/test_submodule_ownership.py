@@ -38,7 +38,11 @@ class TestIsAgentEmail:
 
     @pytest.mark.parametrize(
         "email",
-        ["tyler.karcheski@gmail.com", "someone@example.com", "noreply@anthropic.com"],
+        [
+            "tkarcheski@users.noreply.github.com",
+            "someone@example.com",
+            "noreply@anthropic.com",
+        ],
     )
     def test_human_identities(self, email: str) -> None:
         assert not is_agent_email(email)
@@ -70,7 +74,7 @@ class TestEvaluateChanges:
             GitlinkChange(
                 path="results",
                 commit="abc1234",
-                author_email="tyler.karcheski@gmail.com",
+                author_email="tkarcheski@users.noreply.github.com",
             ),
             GitlinkChange(
                 path="monitoring/logs",

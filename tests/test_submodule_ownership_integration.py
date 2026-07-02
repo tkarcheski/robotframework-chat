@@ -24,7 +24,7 @@ SCRIPT = (
 
 OWNER = "test-design@agents.rfc"
 NON_OWNER = "engineering@agents.rfc"
-HUMAN = "tyler.karcheski@gmail.com"
+HUMAN = "tkarcheski@users.noreply.github.com"
 
 # Arbitrary valid object ids to use as fake submodule pointers.
 SHA_A = "a" * 40

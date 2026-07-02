@@ -39,11 +39,9 @@ venv.bak/
 *.swo
 *~
 
-# Robot Framework results live in the `results/` submodule
-# (github.com/tkarcheski/robotframework-chat-results). output.xml is LFS-tracked
-# there; heavy HTML / logs are ignored by the submodule's own .gitignore.
-# When the submodule is not initialized (e.g. CI / cloud sessions), ignore the
-# whole directory so dryrun / local run artifacts don't appear as untracked.
+# Robot Framework results are archived externally (output.xml via LFS);
+# ignore the whole directory so dryrun / local run artifacts don't appear
+# as untracked.
 results/
 *.log
 !pilots/**/*.log
