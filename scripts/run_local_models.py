@@ -531,6 +531,10 @@ def run_model_suites(
             **os.environ,
             "DEFAULT_MODEL": job.model,
             "OLLAMA_ENDPOINT": endpoint,
+            # Attribute results to the TARGET Ollama node: DbListener stamps
+            # RFC_HOSTNAME (falling back to platform.node() — the controller),
+            # so without this every host panel collapses onto one machine.
+            "RFC_HOSTNAME": node_name,
         }
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
@@ -912,7 +916,52 @@ def run_provider_runs(
 # ---------------------------------------------------------------------------
 
 
-def _print_summary(results: list[RunResult]) -> None:
+def _print_host_health(
+    node_list: list[dict[str, Any]], discovered: list[dict[str, Any]]
+) -> None:
+    """One line per CONFIGURED host — including the ones discovery dropped.
+
+    An unreachable or model-less host used to vanish with zero output (the
+    2026-07-03 mini2 failure mode); now it prints an OFFLINE / 0-model line
+    plus a WARNING so a silently idle host is impossible.
+    """
+    if not node_list:
+        return
+    by_host = {n["hostname"]: n for n in discovered}
+    print("\n  Host health:")
+    warnings: list[str] = []
+    for node in node_list:
+        hostname = node["hostname"]
+        name = node.get("name", hostname)
+        port = node.get("port", 11434)
+        found = by_host.get(hostname)
+        if found is None:
+            state = f"OFFLINE — tcp probe to {hostname}:{port} failed"
+            warnings.append(
+                f"configured host '{name}' is unreachable ({hostname}:{port}) "
+                "— it will receive no jobs"
+            )
+        elif not found["models"]:
+            state = f"ONLINE — 0 model(s) at {found['endpoint']}"
+            warnings.append(
+                f"configured host '{name}' answers but reports 0 model(s) "
+                "— it will receive no jobs"
+            )
+        else:
+            loaded = len(found.get("loaded_models", []))
+            state = (
+                f"ONLINE — {len(found['models'])} model(s), "
+                f"{loaded} loaded, {found['endpoint']}"
+            )
+        print(f"    {name:12s} {state}")
+    for w in warnings:
+        print(f"  WARNING: {w}")
+    print()
+
+
+def _print_summary(
+    results: list[RunResult], configured_nodes: list[str] | None = None
+) -> None:
     """Print a human-readable summary of all runs."""
     if not results:
         print("\nNo test runs were executed.")
@@ -940,6 +989,15 @@ def _print_summary(results: list[RunResult]) -> None:
         print("\n  Models skipped (preflight failed):")
         for r in skipped:
             print(f"    - {r.model}@{r.node}")
+
+    if configured_nodes:
+        counts: dict[str, int] = {n: 0 for n in configured_nodes}
+        for r in results:
+            counts[r.node] = counts.get(r.node, 0) + 1
+        print("\n  Per-host tally:")
+        for node, count in counts.items():
+            marker = "  <- got NO work this iteration" if count == 0 else ""
+            print(f"    {node:12s} {count} run(s){marker}")
 
     print()
 
@@ -1183,6 +1241,7 @@ def run_iteration_loop(
                 max_workers=discovery_cfg.get("max_workers", 64),
             )
 
+            _print_host_health(node_list, nodes_with_models)
             _print_discovered_nodes(nodes_with_models)
 
             suites = config.get("test_suites", [])
@@ -1222,7 +1281,10 @@ def run_iteration_loop(
                     time.sleep(_EMPTY_ITERATION_IDLE_SECONDS)
                 continue
 
-            _print_summary(results)
+            _print_summary(
+                results,
+                configured_nodes=[n.get("name", n["hostname"]) for n in node_list],
+            )
 
             # Verify data landed in the database.
             if not dry_run:

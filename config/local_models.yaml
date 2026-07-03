@@ -33,82 +33,82 @@ discovery:
 # ---------------------------------------------------------------------------
 test_suites:
   - name: "math"
-    path: "robot/math/"
+    path: "robot/tier2/math/"
     description: "Basic arithmetic and IQ-graded math reasoning"
     timeout_seconds: 300
 
   - name: "accounting"
-    path: "robot/accounting/"
+    path: "robot/tier2/accounting/"
     description: "Applied accounting and financial math skill measurements"
     timeout_seconds: 300
 
   - name: "safety"
-    path: "robot/safety/"
+    path: "robot/tier2/safety/"
     description: "Adversarial prompt injection and jailbreak tests"
     timeout_seconds: 300
 
   - name: "refusal-calibration"
-    path: "robot/refusal_calibration/"
+    path: "robot/tier2/refusal_calibration/"
     description: "Over-refusal detection on benign edge-case prompts"
     timeout_seconds: 300
 
   - name: "docker-python"
-    path: "robot/docker/python/tests/"
+    path: "robot/tier4/docker/python/tests/"
     description: "Python code generation in Docker containers"
     timeout_seconds: 300
 
   - name: "docker-llm"
-    path: "robot/docker/llm/tests/"
+    path: "robot/tier4/docker/llm/tests/"
     description: "Multi-model LLM testing in Docker"
     timeout_seconds: 300
 
   - name: "docker-shell"
-    path: "robot/docker/shell/tests/"
+    path: "robot/tier4/docker/shell/tests/"
     description: "Shell command execution tests in Docker"
     timeout_seconds: 300
 
   - name: "docker-bash"
-    path: "robot/docker/bash/tests/"
+    path: "robot/tier4/docker/bash/tests/"
     description: "Bash scripting tests in Docker"
     timeout_seconds: 300
 
   - name: "docker-c"
-    path: "robot/docker/c/tests/"
+    path: "robot/tier4/docker/c/tests/"
     description: "C programming tests in Docker"
     timeout_seconds: 300
 
   - name: "docker-rust"
-    path: "robot/docker/rust/tests/"
+    path: "robot/tier4/docker/rust/tests/"
     description: "Rust programming tests in Docker"
     timeout_seconds: 300
 
   - name: "ceo"
-    path: "robot/ceo/"
+    path: "robot/tier3/ceo/"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP, patent, licensing"
     timeout_seconds: 600
 
   - name: "superset"
-    path: "robot/superset/"
+    path: "robot/tier2/superset/"
     description: "PostgreSQL connectivity check and host info registration"
     timeout_seconds: 60
 
   - name: "legal"
-    path: "robot/legal/"
+    path: "robot/tier2/legal/"
     description: "Legal reasoning and analysis tests"
     timeout_seconds: 300
 
   - name: "task-management"
-    path: "robot/task_management/"
+    path: "robot/tier2/task_management/"
     description: "Task management and planning tests"
     timeout_seconds: 300
 
   - name: "c-interview"
-    path: "robot/c_interview/"
+    path: "robot/tier2/c_interview/"
     description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
     timeout_seconds: 300
 
   - name: "benchmark"
-    path: "robot/benchmark/"
+    path: "robot/tier0/benchmark/"
     description: "Token output throughput and completion ratio benchmark (512-65536 tokens)"
     timeout_seconds: 1800
     # Drives num_ctx to max_tokens*2+512 = 131,584 at the 65,536-token level,
@@ -117,142 +117,142 @@ test_suites:
     min_context_tokens: 131584
 
   - name: "creativity"
-    path: "robot/creativity/"
+    path: "robot/tier3/creativity/"
     description: "LLM humor, joke creation, context awareness, and creative judging"
     timeout_seconds: 600
 
   - name: "multi-turn"
-    path: "robot/multi_turn/"
+    path: "robot/tier2/multi_turn/"
     description: "Context retention, instruction-following drift, and topic handoff isolation"
     timeout_seconds: 600
 
   - name: "adversarial"
-    path: "robot/adversarial/"
+    path: "robot/tier2/adversarial/"
     description: "Covert adversarial prompt injection tests with hidden instructions"
     timeout_seconds: 300
 
   - name: "persona"
-    path: "robot/persona/"
+    path: "robot/tier2/persona/"
     description: "Multi-turn persona consistency testing under adversarial pressure"
     timeout_seconds: 600
 
   - name: "quantization"
-    path: "robot/quantization/"
+    path: "robot/tier2/quantization/"
     description: "Quantization degradation comparison (Q4 vs Q8)"
     timeout_seconds: 600
 
   - name: "consistency"
-    path: "robot/consistency/tests/"
+    path: "robot/tier2/consistency/tests/"
     description: "Temperature & sampling consistency (temp=0 determinism, temp=0.7 variance)"
     timeout_seconds: 900
 
   - name: "bias"
-    path: "robot/bias/"
+    path: "robot/tier2/bias/"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
     timeout_seconds: 600
 
   - name: "format"
-    path: "robot/format/"
+    path: "robot/tier1/format/"
     description: "Format compliance: structured output, length, and negative constraints"
     timeout_seconds: 300
 
   - name: "gaia"
-    path: "robot/gaia/"
+    path: "robot/tier2/gaia/"
     description: "GAIA-style tool-use tests for LLM tool selection and invocation"
     timeout_seconds: 300
 
   - name: "json-schema"
-    path: "robot/json_schema/"
+    path: "robot/tier2/json_schema/"
     description: "JSON schema validation with retry logic and parse failure rate measurement"
     timeout_seconds: 300
 
   - name: "ifeval"
-    path: "robot/ifeval/"
+    path: "robot/tier1/ifeval/"
     description: "Instruction following evaluation with deterministic constraint checking (incl. google/IFEval HF subset)"
     timeout_seconds: 900
 
   - name: "multilingual"
-    path: "robot/multilingual/"
+    path: "robot/tier1/multilingual/"
     description: "Cross-language ifeval-style constraint checks (Spanish, German, Japanese)"
     timeout_seconds: 300
 
   - name: "hallucination"
-    path: "robot/hallucination/"
+    path: "robot/tier2/hallucination/"
     description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
     timeout_seconds: 600
 
   - name: "swebench"
-    path: "robot/swebench/"
+    path: "robot/tier4/swebench/"
     description: "SWE-bench patch generation and validation"
     timeout_seconds: 7200
 
   - name: "openai-evals"
-    path: "robot/openai_evals/"
+    path: "robot/tier0/openai_evals/"
     description: "OpenAI-Evals umbrella suite (#561); scaffolding stub only until child benchmark suites land (#621)"
     timeout_seconds: 300
 
   - name: "react"
-    path: "robot/react/"
+    path: "robot/tier2/react/"
     description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
     timeout_seconds: 300
 
   - name: "meta-learning"
-    path: "robot/meta_learning/"
+    path: "robot/tier2/meta_learning/"
     description: "In-context skill retention tests — teach, distract, then verify skill application"
     timeout_seconds: 300
 
   - name: "tool-hallucination"
-    path: "robot/tool_hallucination/"
+    path: "robot/tier2/tool_hallucination/"
     description: "Tool hallucination detection — real vs fake tool selection precision"
     timeout_seconds: 300
 
   - name: "tool-call-schema"
-    path: "robot/tool_call_schema/"
+    path: "robot/tier2/tool_call_schema/"
     description: "Tool/function-call schema accuracy — required fields, enums, types, ambiguous-signature selection"
     timeout_seconds: 300
 
   - name: "superset-dashboards"
-    path: "robot/superset/dashboards.robot"
+    path: "robot/tier2/superset/dashboards.robot"
     description: "Browser-based Superset dashboard evaluation with LLM feedback"
     timeout_seconds: 600
 
   - name: "github-review"
-    path: "robot/github/"
+    path: "robot/tier2/github/"
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     timeout_seconds: 600
 
   - name: "agentic-injection"
-    path: "robot/agentic_injection/"
+    path: "robot/tier2/agentic_injection/"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, files)"
     timeout_seconds: 600
 
   - name: "context-window"
-    path: "robot/context_window/tests/"
+    path: "robot/tier2/context_window/tests/"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
     timeout_seconds: 600
 
   - name: "extraction"
-    path: "robot/extraction/"
+    path: "robot/tier1/extraction/"
     description: "Named entity and key-value extraction from unstructured text with deterministic Python matching"
     timeout_seconds: 300
 
   - name: "code-review"
-    path: "robot/code_review/"
+    path: "robot/tier1/code_review/"
     description: "Bug detection and security vulnerability identification via multiple-choice questions"
     timeout_seconds: 300
 
   - name: "win-win-win"
-    path: "robot/win_win_win/"
+    path: "robot/tier2/win_win_win/"
     description: "Behavioral tests for the win-win-win-interview AgentSkill (LLM-as-judge)"
     timeout_seconds: 600
 
   - name: "dialog"
-    path: "robot/dialog/tests/"
+    path: "robot/tier1/dialog/tests/"
     description: "End-to-end dialog recorder persistence against the DATABASE_URL backend (#437)"
     timeout_seconds: 300
 
   - name: "hitl"
-    path: "robot/hitl/tests/"
+    path: "robot/tier1/hitl/tests/"
     description: "Human-in-the-Loop MVP (#384): goal/clarification/approval/input flows with fail-closed approval gating"
     timeout_seconds: 300
 

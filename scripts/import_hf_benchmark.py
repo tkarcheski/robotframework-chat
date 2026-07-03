@@ -13,7 +13,7 @@ Usage:
     uv run python scripts/import_hf_benchmark.py ifeval --limit 50
     uv run python scripts/import_hf_benchmark.py code_review_defect --limit 50
     uv run python scripts/import_hf_benchmark.py ifeval --limit 25 \
-        --output robot/ifeval/variables/ifeval_hf.yaml
+        --output robot/tier1/ifeval/variables/ifeval_hf.yaml
 
 How to add the next benchmark
 -----------------------------
@@ -236,7 +236,7 @@ BENCHMARKS: Dict[str, BenchmarkSpec] = {
         split="train",
         license_id="Apache-2.0",
         variable_name="IFEVAL_HF",
-        default_output=Path("robot/ifeval/variables/ifeval_hf.yaml"),
+        default_output=Path("robot/tier1/ifeval/variables/ifeval_hf.yaml"),
         converter=convert_ifeval_rows,
         sampling_note=IFEVAL_SAMPLING_NOTE,
         supported_instructions=SUPPORTED_INSTRUCTIONS,
@@ -247,7 +247,7 @@ BENCHMARKS: Dict[str, BenchmarkSpec] = {
         split="test",
         license_id="C-UDA-1.0",
         variable_name="CODE_REVIEW_DEFECT_HF",
-        default_output=Path("robot/code_review/variables/defect_detection_hf.yaml"),
+        default_output=Path("robot/tier1/code_review/variables/defect_detection_hf.yaml"),
         converter=convert_defect_detection_rows,
         sampling_note=DEFECT_SAMPLING_NOTE,
     ),
