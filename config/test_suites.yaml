@@ -253,6 +253,11 @@ test_suites:
     path: "robot/harness"
     description: "End-to-end integration tests for the AgenticHarnessListener: a Robot run with the listener attached persists agentic_metrics rows per test case keyed to the harness session, with skip-and-log tolerance for DB-down and no-session runs"
 
+  hitl:
+    label: "Human-in-the-Loop Flows"
+    path: "robot/hitl/tests"
+    description: "HITL MVP (#384): goal, clarification, approval, and input interactions with fail-closed approval gating bound to the exact action id and args digest; includes the clarification-must-not-authorize negative case"
+
   context-window:
     label: "Context Window Stress"
     path: "robot/context_window/tests"

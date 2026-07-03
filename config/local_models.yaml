@@ -251,6 +251,11 @@ test_suites:
     description: "End-to-end dialog recorder persistence against the DATABASE_URL backend (#437)"
     timeout_seconds: 300
 
+  - name: "hitl"
+    path: "robot/hitl/tests/"
+    description: "Human-in-the-Loop MVP (#384): goal/clarification/approval/input flows with fail-closed approval gating"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # External OpenAI-compatible providers (issue #507)
 #
