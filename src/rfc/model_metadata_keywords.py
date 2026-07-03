@@ -6,7 +6,7 @@ when the optional ``playwright`` extra is not installed.  When the Browser
 library is missing, the research keyword raises :class:`SkipExecution` so
 the surrounding test is skipped rather than failed.
 
-Pairs with ``robot/ci/fetch_model_metadata.robot``.
+Pairs with ``robot/tier1/ci/fetch_model_metadata.robot``.
 """
 
 from __future__ import annotations

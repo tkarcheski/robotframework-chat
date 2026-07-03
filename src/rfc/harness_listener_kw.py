@@ -18,7 +18,7 @@ Workflow per test:
 No LLM is invoked: the inner tests emit synthetic Ollama-shaped metric
 payloads, so the suite is hermetic and parallel-safe (tmpdirs only).
 
-Used by ``robot/harness/test_agentic_harness_listener_integration.robot``
+Used by ``robot/tier1/harness/test_agentic_harness_listener_integration.robot``
 (tier:1, verify:python).
 """
 

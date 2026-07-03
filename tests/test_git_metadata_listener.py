@@ -156,11 +156,11 @@ class TestGitMetaDataStartSuite:
         listener = GitMetaData()
         with patch.dict(os.environ, {"GITHUB_WORKSPACE": "/home/runner/work/repo"}):
             data = _mock_suite_data(
-                source="/home/runner/work/repo/robot/math/tests/test.robot"
+                source="/home/runner/work/repo/robot/tier2/math/tests/test.robot"
             )
             result = _mock_suite_result()
             listener.start_suite(data, result)
-        assert "robot/math/tests/test.robot" in result.metadata["Source"]
+        assert "robot/tier2/math/tests/test.robot" in result.metadata["Source"]
         assert "/blob/" in result.metadata["Source"]
 
     @patch(

@@ -100,7 +100,94 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
             f"Supported: 'ollama', 'openai', 'vllm'."
         )
 
-    return _maybe_wrap_with_graylog(_maybe_wrap_with_cache(client))
+    return _maybe_wrap_with_graylog(
+        _maybe_wrap_with_console(_maybe_wrap_with_cache(client))
+    )
+
+
+def _preview(text: str, limit: int = 120) -> str:
+    """Collapse whitespace to single spaces and truncate for a one-line feed."""
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
+class _ConsoleFeedProvider:
+    """Live per-call feed to the Robot console (``LLM_CONSOLE_FEED_ENABLED=1``).
+
+    Emits exactly ONE self-contained line per ``generate()``:
+
+        [<node>/<model>] <prompt preview> -> <response preview> (1.2s, 42 tok/s)
+
+    Node = ``RFC_HOSTNAME`` (the run controller sets it to the target Ollama
+    node) with the endpoint host as fallback. Parallel host-scheduler runs are
+    separate ``robot`` processes sharing one terminal, so single-line prefixed
+    events are the interleaving-safe format. The ollama warm-up probe
+    (``generate("ping")``) is suppressed. Failures emit an ERROR line and
+    re-raise — the feed observes, never swallows.
+    """
+
+    def __init__(self, inner: LLMProvider) -> None:
+        self.__wrapped__ = inner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.__wrapped__, name)
+
+    def _node(self) -> str:
+        node = os.getenv("RFC_HOSTNAME", "")
+        if node:
+            return node
+        base_url = getattr(self.__wrapped__, "base_url", "")
+        try:
+            from urllib.parse import urlparse
+
+            return urlparse(base_url).hostname or "?"
+        except (ValueError, AttributeError):
+            return "?"
+
+    def _emit(self, message: str) -> None:
+        try:
+            from robot.api import logger as robot_logger
+
+            robot_logger.console(message)
+        except ImportError:  # outside a Robot run: plain stdout still streams
+            print(message, flush=True)
+
+    def generate(self, prompt: str, *args: Any, **kwargs: Any) -> str:
+        import time as _time
+
+        prefix = f"[{self._node()}/{getattr(self.__wrapped__, 'model', '?')}]"
+        start = _time.monotonic()
+        try:
+            text = self.__wrapped__.generate(prompt, *args, **kwargs)
+        except Exception as exc:
+            elapsed = _time.monotonic() - start
+            self._emit(
+                f"{prefix} {_preview(prompt)} -> ERROR: {_preview(str(exc))} "
+                f"({elapsed:.1f}s)"
+            )
+            raise
+        if str(prompt).strip().lower() == "ping":  # ollama ensure_ready warm-up
+            return text
+        elapsed = _time.monotonic() - start
+        metrics = getattr(self.__wrapped__, "last_metrics", None) or {}
+        rate = metrics.get("eval_rate")
+        rate_s = f", {rate} tok/s" if rate else ""
+        self._emit(
+            f"{prefix} {_preview(prompt)} -> {_preview(text)} ({elapsed:.1f}s{rate_s})"
+        )
+        return text
+
+
+def _maybe_wrap_with_console(client: LLMProvider) -> LLMProvider:
+    """Wrap *client* in the live console feed when ``LLM_CONSOLE_FEED_ENABLED=1``.
+
+    Opt-in and dependency-free, mirroring :func:`_maybe_wrap_with_cache` /
+    :func:`_maybe_wrap_with_graylog`. Placed inside the Graylog wrapper but
+    outside the cache so cache hits still show up in the live feed.
+    """
+    if os.getenv("LLM_CONSOLE_FEED_ENABLED", "") != "1":
+        return client
+    return _ConsoleFeedProvider(client)
 
 
 def _maybe_wrap_with_graylog(client: LLMProvider) -> LLMProvider:

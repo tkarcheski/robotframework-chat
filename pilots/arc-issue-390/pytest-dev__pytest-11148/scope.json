@@ -1,7 +1,0 @@
-{
-  "source": "files touched by gold.patch",
-  "expected_files": [
-    "src/_pytest/pathlib.py"
-  ],
-  "prohibited_scope": "all files not listed in expected_files"
-}

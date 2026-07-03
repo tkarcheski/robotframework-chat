@@ -73,11 +73,13 @@ def _init_repo_with_resource(root: Path) -> None:
         cwd=root,
         check=True,
     )
-    robot_dir = root / "robot" / "safety"
+    robot_dir = root / "robot" / "tier2" / "safety"
     robot_dir.mkdir(parents=True)
     (robot_dir / "safety.resource").write_text("*** Keywords ***\n")
     (root / "robot" / "untracked.resource").write_text("*** Keywords ***\n")
-    subprocess.run(["git", "add", "robot/safety/safety.resource"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "add", "robot/tier2/safety/safety.resource"], cwd=root, check=True
+    )
     subprocess.run(
         [
             "git",
@@ -100,7 +102,7 @@ class TestSnapshotSkills:
         _init_repo_with_resource(tmp_path)
         skills = snapshot_skills("sess-1", RECORDED_AT, repo_root=str(tmp_path))
         by_path = {s.skill_path: s for s in skills}
-        tracked = by_path["robot/safety/safety.resource"]
+        tracked = by_path["robot/tier2/safety/safety.resource"]
         assert tracked.session_id == "sess-1"
         assert tracked.recorded_at == RECORDED_AT
         assert tracked.skill_name == "safety"

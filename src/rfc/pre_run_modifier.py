@@ -38,7 +38,7 @@ class ModelAwarePreRunModifier:
         self.ollama_endpoint = (
             ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
-        self.config_path = config_path or "robot/ci/models.yaml"
+        self.config_path = config_path or "robot/tier1/ci/models.yaml"
         self.default_model = default_model or os.getenv("DEFAULT_MODEL") or ""
         if not self.default_model:
             raise ValueError(
