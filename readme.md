@@ -20,9 +20,9 @@ A Robot Framework-based test harness for systematically testing Large Language M
 ### Installation (Linux / macOS)
 
 ```bash
-make install                # Install all dependencies
+make install                # Install all dependencies (runs uv sync with extras)
 pre-commit install          # Install pre-commit hooks
-ollama pull phi4:14b         # Pull default LLM model (optional)
+ollama pull qwen3:32b       # Pull default LLM model (optional)
 ```
 
 ### Installation (Windows)
@@ -33,7 +33,7 @@ It requires only Python and `uv` — no `make`, `bash`, or Unix tools needed.
 ```powershell
 uv run python tasks.py install      # Install all dependencies
 uv run pre-commit install           # Install pre-commit hooks
-ollama pull qwen3.5:27b             # Pull default LLM model (optional)
+ollama pull qwen3:32b               # Pull default LLM model (optional)
 uv run python tasks.py help         # List all available targets
 ```
 
@@ -43,6 +43,7 @@ uv run python tasks.py help         # List all available targets
 
 ```bash
 # Linux / macOS
+make robot-dryrun           # Validate all suites parse (no LLM calls — fast sanity check)
 make robot                  # Run all Robot Framework test suites
 make robot-math             # Run math tests
 make robot-docker           # Run Docker tests
@@ -75,13 +76,13 @@ Open <http://localhost:8088> to view the dashboard.
 
 ### Pulling Models
 
-The default model is `phi4:14b` (set via `DEFAULT_MODEL` in `.env`).
+The default model is `qwen3:32b` (set via `DEFAULT_MODEL` in `.env`).
 Pull additional models depending on how many you want to test against:
 
 **Starter (3 models):**
 
 ```bash
-ollama pull phi4:14b
+ollama pull qwen3:32b
 ollama pull llama3.2:latest
 ollama pull gemma2:latest
 ```
@@ -89,7 +90,7 @@ ollama pull gemma2:latest
 **Standard (4–5 models):**
 
 ```bash
-ollama pull phi4:14b
+ollama pull qwen3:32b
 ollama pull llama3.2:latest
 ollama pull gemma2:latest
 ollama pull mistral:latest
@@ -223,7 +224,7 @@ make discover-local-nodes
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | Provider backend (`ollama` or `openai`) |
 | `OLLAMA_ENDPOINT` | `http://localhost:11434` | Ollama API endpoint |
-| `DEFAULT_MODEL` | `phi4:14b` | Model used for standard test runs |
+| `DEFAULT_MODEL` | `qwen3:32b` | Model used for standard test runs |
 | `OLLAMA_TIMEOUT` | `5400` | Request timeout in seconds (90 min) |
 | `OLLAMA_NODES_LIST` | `localhost` | Comma-separated Ollama hostnames |
 
@@ -331,8 +332,8 @@ See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/a
 | [docs/GRAFANA_SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/GRAFANA_SUPERSET_SETUP.md) | Superset visualization stack setup (Grafana deferred to v2+) |
 | [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |
-| [ai/ROLES.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/ROLES.md) | Four-role agent system — engineering, test-design, project-management, design |
-| [ai/GIT.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/GIT.md) | Git topology contract for concurrent agent operation (worktrees, identities, submodule ownership) |
+| [.claude/agents/](https://github.com/tkarcheski/robotframework-chat/tree/main/.claude/agents) | Role prompts for the four-role agent system — engineering, test-design, project-management, design |
+| [CHANGELOG.md](https://github.com/tkarcheski/robotframework-chat/blob/main/CHANGELOG.md) | Release history since v1.4.3, thematic per minor line |
 
 ---
 
@@ -347,13 +348,28 @@ This repo runs a **four-role agent system** for continuous development and quali
 | **project-management** | Triages issues, sets priorities, monitors CI health, grooms the backlog |
 | **design** | Architecture RFCs, system-wide improvements, open-ended design exploration |
 
-The roles communicate through GitHub labels (`status:*`, `P0–P3`, `from:*`, `type:*`) and run concurrently in isolated git worktrees. See [`ai/ROLES.md`](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/ROLES.md) for the full contract and [`ai/GIT.md`](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/GIT.md) for the git topology. Role prompts live in [`.claude/agents/`](https://github.com/tkarcheski/robotframework-chat/blob/main/.claude/agents/).
+The roles communicate through GitHub labels (`status:*`, `P0–P3`, `from:*`, `type:*`) and run concurrently in isolated git worktrees. Role prompts live in [`.claude/agents/`](https://github.com/tkarcheski/robotframework-chat/tree/main/.claude/agents); the full role contract and git topology docs are maintained in the private development monorepo.
 
 ---
 
 ## Contributing
 
-1. Read [ai/dev.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/dev.md) for the development workflow and TDD discipline
+### How this repo is published
+
+This repository is the **public mirror** of a private development monorepo.
+Development lands in the monorepo, whose publisher assembles the public
+surface and opens a normal, reviewable pull request against the
+`claude-code-staging` branch (`publish.sh --pr`); a publish allowlist
+controls exactly which paths ship publicly. The owner reviews and merges
+publish PRs — nothing is merged with failing checks — and `main` is
+release-only. Issues and pull requests opened here are welcome: they are
+triaged on this repo and forward-ported into the monorepo when accepted.
+
+### Development workflow
+
+1. Read [CLAUDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/CLAUDE.md) for the development workflow and TDD discipline
 2. Follow the code style guidelines in [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/agents.md)
 3. Add tests for new features (see [ai/testing.md](https://github.com/tkarcheski/robotframework-chat/blob/main/ai/testing.md) for grading tiers)
 4. Run `pre-commit run --all-files` before committing
+
+See [CHANGELOG.md](https://github.com/tkarcheski/robotframework-chat/blob/main/CHANGELOG.md) for release history.

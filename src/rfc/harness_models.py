@@ -127,3 +127,34 @@ class DialogTurn:
     completion_tokens: int = -1
     latency_ms: float = -1.0
     id: str = ""
+
+
+# Human-in-the-Loop interaction vocabulary (#384, MVP). Settled with
+# @rpelevin on the issue: the kinds share one table/inbox, but only
+# ``approval`` rows ever carry execution authority (see rfc.hitl_gate).
+HITL_KINDS: tuple[str, ...] = ("goal", "clarification", "approval", "input")
+HITL_STATUSES: tuple[str, ...] = ("pending", "approved", "denied", "expired")
+
+
+@dataclass
+class HitlInteraction:
+    """One human-in-the-loop interaction (#384).
+
+    ``target_action_id`` and ``args_digest`` are required only for
+    approvals; on other kinds they are recorded as context and never
+    grant authority (the gate keys on ``kind == 'approval'``).
+    ``expires_at`` "" means the row never times out — but an approval
+    without an expiry fails closed at the gate.
+    """
+
+    session_id: str
+    kind: str  # 'goal' | 'clarification' | 'approval' | 'input'
+    prompt: str
+    created_at: str  # UTC ISO-8601
+    response: str = ""
+    target_action_id: str = ""  # approvals: the exact pending action bound
+    args_digest: str = ""  # approvals: sha256 over canonical action args
+    status: str = "pending"  # 'pending' | 'approved' | 'denied' | 'expired'
+    resolved_at: str = ""
+    expires_at: str = ""
+    id: str = ""  # backend assigns uuid4().hex when blank

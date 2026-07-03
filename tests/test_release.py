@@ -68,6 +68,57 @@ class TestVersionConsistency:
         keywords = data["project"]["keywords"]
         assert len(keywords) > 0
 
+    def test_version_is_at_least_1_18(self) -> None:
+        """New public suites since 1.17.5 (OpenAI Evals, SWE-bench Verified
+        knobs) require a minor bump to 1.18.0 per the version-bump policy."""
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        version = data["project"]["version"]
+        parts = tuple(int(p) for p in version.split("-")[0].split("."))
+        assert parts >= (1, 18, 0), f"Expected >= 1.18.0, got {version}"
+
+
+class TestChangelog:
+    """Validate core/CHANGELOG.md exists and tracks the release history."""
+
+    @staticmethod
+    def _changelog_text() -> str:
+        path = ROOT / "CHANGELOG.md"
+        assert path.is_file(), "core/CHANGELOG.md not found"
+        return path.read_text()
+
+    def test_changelog_exists(self) -> None:
+        """CHANGELOG.md must exist at the core (public) root."""
+        assert (ROOT / "CHANGELOG.md").is_file()
+
+    def test_changelog_has_unreleased_top_section(self) -> None:
+        """The first version heading must be the Unreleased section."""
+        text = self._changelog_text()
+        headings = re.findall(r"^## (.+)$", text, re.MULTILINE)
+        assert headings, "CHANGELOG.md has no '## ' version headings"
+        assert "Unreleased" in headings[0], (
+            f"Top section must be Unreleased, got: {headings[0]}"
+        )
+
+    def test_changelog_top_section_matches_pyproject_version(self) -> None:
+        """The Unreleased heading must carry the current pyproject version."""
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        version = data["project"]["version"]
+        text = self._changelog_text()
+        headings = re.findall(r"^## (.+)$", text, re.MULTILINE)
+        assert version in headings[0], (
+            f"Top CHANGELOG heading {headings[0]!r} does not mention "
+            f"pyproject version {version}"
+        )
+
+    def test_changelog_covers_every_minor_line_since_1_5(self) -> None:
+        """Every minor line 1.5 through 1.17 must have a section heading."""
+        text = self._changelog_text()
+        headings = " ".join(re.findall(r"^## (.+)$", text, re.MULTILINE))
+        missing = [
+            f"1.{minor}" for minor in range(5, 18) if f"1.{minor}" not in headings
+        ]
+        assert not missing, f"CHANGELOG.md missing minor lines: {missing}"
+
 
 class TestGitHubActionsPublishWorkflow:
     """Validate .github/workflows/pypi-publish.yml configuration."""

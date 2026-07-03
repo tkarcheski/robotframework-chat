@@ -17,6 +17,8 @@ import uuid
 from typing import Any, Optional, Sequence
 
 from .harness_models import (
+    HITL_KINDS,
+    HITL_STATUSES,
     AgenticDecision,
     AgenticHarness,
     AgenticMetric,
@@ -24,6 +26,7 @@ from .harness_models import (
     AgenticSkill,
     DialogRecording,
     DialogTurn,
+    HitlInteraction,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,6 +146,28 @@ CREATE TABLE IF NOT EXISTS dialog_turns (
     UNIQUE (recording_id, turn_number)
 );
 CREATE INDEX IF NOT EXISTS idx_dialog_turns_recording ON dialog_turns(recording_id);
+
+-- Human-in-the-Loop interactions (#384). session_id joins
+-- agentic_harnesses.session_id but is deliberately not an FK: sessions
+-- may be bracketed in a different DATABASE_URL (see save_recording's
+-- dangling-session note) and losing a pending approval record to an FK
+-- reject would be worse than a loose join — the fail-closed gate in
+-- rfc.hitl_gate is the safety mechanism, not referential integrity.
+CREATE TABLE IF NOT EXISTS hitl_interactions (
+    id               TEXT PRIMARY KEY,
+    session_id       TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    prompt           TEXT NOT NULL,
+    response         TEXT,
+    target_action_id TEXT,
+    args_digest      TEXT,
+    status           TEXT NOT NULL DEFAULT 'pending',
+    created_at       TEXT NOT NULL,
+    resolved_at      TEXT,
+    expires_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_hitl_session ON hitl_interactions(session_id);
+CREATE INDEX IF NOT EXISTS idx_hitl_action  ON hitl_interactions(target_action_id);
 """
 
 _SQLITE_MIGRATIONS: list[str] = []  # placeholder for future column adds
@@ -243,6 +268,32 @@ def _turn_from_row(row: "Sequence[Any]") -> DialogTurn:
     )
 
 
+_HITL_COLUMNS = (
+    "id, session_id, kind, prompt, response, target_action_id, "
+    "args_digest, status, created_at, resolved_at, expires_at"
+)
+
+
+def _hitl_from_row(row: "Sequence[Any]") -> HitlInteraction:
+    """Map a positional row (ordered as ``_HITL_COLUMNS``) to a dataclass.
+
+    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
+    """
+    return HitlInteraction(
+        id=row[0],
+        session_id=row[1],
+        kind=row[2],
+        prompt=row[3],
+        response=row[4] or "",
+        target_action_id=row[5] or "",
+        args_digest=row[6] or "",
+        status=row[7],
+        created_at=row[8],
+        resolved_at=row[9] or "",
+        expires_at=row[10] or "",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Backend ABC
 # ---------------------------------------------------------------------------
@@ -313,6 +364,28 @@ class _HarnessBackend(abc.ABC):
 
     @abc.abstractmethod
     def get_turns(self, recording_id: str) -> list[DialogTurn]: ...
+
+    @abc.abstractmethod
+    def save_interaction(self, interaction: HitlInteraction) -> str: ...
+
+    @abc.abstractmethod
+    def get_interaction(self, interaction_id: str) -> Optional[HitlInteraction]: ...
+
+    @abc.abstractmethod
+    def resolve_interaction(
+        self, interaction_id: str, status: str, response: str, resolved_at: str
+    ) -> bool:
+        """Compare-and-set a pending row to a terminal status.
+
+        Returns True when the row transitioned; False when it was missing
+        or no longer pending (callers treat False as fail-closed).
+        """
+        ...
+
+    @abc.abstractmethod
+    def list_interactions(
+        self, session_id: str, *, kind: str = "", status: str = ""
+    ) -> list[HitlInteraction]: ...
 
     @abc.abstractmethod
     def get_version(self) -> str: ...
@@ -722,6 +795,72 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             ).fetchall()
         return [_turn_from_row(r) for r in rows]
 
+    def save_interaction(self, interaction: HitlInteraction) -> str:
+        row_id = interaction.id or uuid.uuid4().hex
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute(
+                f"""
+                INSERT INTO hitl_interactions ({_HITL_COLUMNS})
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,  # noqa: S608 — column list is a module constant
+                (
+                    row_id,
+                    interaction.session_id,
+                    interaction.kind,
+                    interaction.prompt,
+                    interaction.response or None,
+                    interaction.target_action_id or None,
+                    interaction.args_digest or None,
+                    interaction.status,
+                    interaction.created_at,
+                    interaction.resolved_at or None,
+                    interaction.expires_at or None,
+                ),
+            )
+        return row_id
+
+    def get_interaction(self, interaction_id: str) -> Optional[HitlInteraction]:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                f"SELECT {_HITL_COLUMNS} FROM hitl_interactions WHERE id = ?",  # noqa: S608
+                (interaction_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _hitl_from_row(row)
+
+    def resolve_interaction(
+        self, interaction_id: str, status: str, response: str, resolved_at: str
+    ) -> bool:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE hitl_interactions "
+                "SET status = ?, response = ?, resolved_at = ? "
+                "WHERE id = ? AND status = 'pending'",
+                (status, response or None, resolved_at, interaction_id),
+            )
+            return cursor.rowcount > 0
+
+    def list_interactions(
+        self, session_id: str, *, kind: str = "", status: str = ""
+    ) -> list[HitlInteraction]:
+        sql = (
+            f"SELECT {_HITL_COLUMNS} FROM hitl_interactions "  # noqa: S608
+            "WHERE session_id = ? "
+        )
+        params: tuple = (session_id,)
+        if kind:
+            sql += "AND kind = ? "
+            params = params + (kind,)
+        if status:
+            sql += "AND status = ? "
+            params = params + (status,)
+        sql += "ORDER BY created_at, id"
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_hitl_from_row(r) for r in rows]
+
     def get_version(self) -> str:
         with sqlite3.connect(self.db_path) as conn:
             return str(conn.execute("SELECT sqlite_version()").fetchone()[0])
@@ -736,6 +875,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             "agentic_decisions",
             "dialog_recordings",
             "dialog_turns",
+            "hitl_interactions",
         }:
             raise ValueError(f"unknown harness table: {table_name}")
         with sqlite3.connect(self.db_path) as conn:
@@ -916,6 +1056,24 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             UniqueConstraint(
                 "recording_id", "turn_number", name="uq_turns_recording_number"
             ),
+        )
+        # No FK to agentic_harnesses — see the comment on the SQLite schema.
+        self._hitl = Table(
+            "hitl_interactions",
+            self.metadata,
+            Column("id", String, primary_key=True),
+            Column("session_id", String, nullable=False),
+            Column("kind", String, nullable=False),
+            Column("prompt", String, nullable=False),
+            Column("response", String),
+            Column("target_action_id", String),
+            Column("args_digest", String),
+            Column("status", String, nullable=False),
+            Column("created_at", String, nullable=False),
+            Column("resolved_at", String),
+            Column("expires_at", String),
+            Index("idx_hitl_session", "session_id"),
+            Index("idx_hitl_action", "target_action_id"),
         )
         # SQLite ignores FK constraints unless PRAGMA foreign_keys=ON is set
         # on every connection. Postgres enforces FKs unconditionally.
@@ -1313,6 +1471,92 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             rows = conn.execute(stmt).fetchall()
         return [_turn_from_row(r) for r in rows]
 
+    def save_interaction(self, interaction: HitlInteraction) -> str:
+        row_id = interaction.id or uuid.uuid4().hex
+        with self.engine.begin() as conn:
+            conn.execute(
+                self._hitl.insert(),
+                {
+                    "id": row_id,
+                    "session_id": interaction.session_id,
+                    "kind": interaction.kind,
+                    "prompt": interaction.prompt,
+                    "response": interaction.response or None,
+                    "target_action_id": interaction.target_action_id or None,
+                    "args_digest": interaction.args_digest or None,
+                    "status": interaction.status,
+                    "created_at": interaction.created_at,
+                    "resolved_at": interaction.resolved_at or None,
+                    "expires_at": interaction.expires_at or None,
+                },
+            )
+        return row_id
+
+    def get_interaction(self, interaction_id: str) -> Optional[HitlInteraction]:
+        cols = self._hitl.c
+        stmt = self._select(
+            cols.id,
+            cols.session_id,
+            cols.kind,
+            cols.prompt,
+            cols.response,
+            cols.target_action_id,
+            cols.args_digest,
+            cols.status,
+            cols.created_at,
+            cols.resolved_at,
+            cols.expires_at,
+        ).where(cols.id == interaction_id)
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).fetchone()
+        if row is None:
+            return None
+        return _hitl_from_row(row)
+
+    def resolve_interaction(
+        self, interaction_id: str, status: str, response: str, resolved_at: str
+    ) -> bool:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                self._hitl.update()
+                .where(
+                    (self._hitl.c.id == interaction_id)
+                    & (self._hitl.c.status == "pending")
+                )
+                .values(
+                    status=status,
+                    response=response or None,
+                    resolved_at=resolved_at,
+                )
+            )
+            return bool(result.rowcount)
+
+    def list_interactions(
+        self, session_id: str, *, kind: str = "", status: str = ""
+    ) -> list[HitlInteraction]:
+        cols = self._hitl.c
+        stmt = self._select(
+            cols.id,
+            cols.session_id,
+            cols.kind,
+            cols.prompt,
+            cols.response,
+            cols.target_action_id,
+            cols.args_digest,
+            cols.status,
+            cols.created_at,
+            cols.resolved_at,
+            cols.expires_at,
+        ).where(cols.session_id == session_id)
+        if kind:
+            stmt = stmt.where(cols.kind == kind)
+        if status:
+            stmt = stmt.where(cols.status == status)
+        stmt = stmt.order_by(cols.created_at, cols.id)
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+        return [_hitl_from_row(r) for r in rows]
+
     def get_version(self) -> str:
         return self.engine.dialect.name
 
@@ -1325,6 +1569,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             "agentic_decisions": self._decisions,
             "dialog_recordings": self._recordings,
             "dialog_turns": self._turns,
+            "hitl_interactions": self._hitl,
         }
         if table_name not in table_map:
             raise ValueError(f"unknown harness table: {table_name}")
@@ -1469,6 +1714,50 @@ class HarnessDatabase:
 
     def get_turns(self, recording_id: str) -> list[DialogTurn]:
         return self._backend.get_turns(recording_id)
+
+    def save_interaction(self, interaction: HitlInteraction) -> str:
+        """Persist an HITL interaction (#384), validating the vocabulary.
+
+        The kind/status enums are enforced here (single choke point for
+        both backends) so a typo like ``kind='evaluation'`` cannot mint a
+        row the approval gate would have to reason about.
+        """
+        if interaction.kind not in HITL_KINDS:
+            raise ValueError(
+                f"unknown HITL kind {interaction.kind!r}; expected one of {HITL_KINDS}"
+            )
+        if interaction.status not in HITL_STATUSES:
+            raise ValueError(
+                f"unknown HITL status {interaction.status!r}; "
+                f"expected one of {HITL_STATUSES}"
+            )
+        return self._backend.save_interaction(interaction)
+
+    def get_interaction(self, interaction_id: str) -> Optional[HitlInteraction]:
+        return self._backend.get_interaction(interaction_id)
+
+    def resolve_interaction(
+        self, interaction_id: str, status: str, response: str, resolved_at: str
+    ) -> bool:
+        """Compare-and-set a pending interaction to a terminal status.
+
+        Returns True when the row transitioned, False when it was missing
+        or already resolved/expired — callers must treat False as
+        fail-closed, never as success.
+        """
+        terminal = ("approved", "denied", "expired")
+        if status not in terminal:
+            raise ValueError(
+                f"cannot resolve to status {status!r}; expected one of {terminal}"
+            )
+        return self._backend.resolve_interaction(
+            interaction_id, status, response, resolved_at
+        )
+
+    def list_interactions(
+        self, session_id: str, *, kind: str = "", status: str = ""
+    ) -> list[HitlInteraction]:
+        return self._backend.list_interactions(session_id, kind=kind, status=status)
 
     def get_version(self) -> str:
         return self._backend.get_version()

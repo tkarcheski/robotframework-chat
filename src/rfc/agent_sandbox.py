@@ -59,6 +59,33 @@ _SANDBOX_BASE_BRANCH = "claude-code-staging"
 _REQUIRED_SCENARIO_KEYS = ("scenario_id", "task", "test_command")
 
 
+class ApprovalGate(Protocol):
+    """Human-in-the-Loop approval hook for destructive execution (#384).
+
+    Satisfied by :class:`rfc.hitl_gate.HitlApprovalGate`. ``require`` must
+    raise (``HitlApprovalError``) unless an approved, unexpired
+    ``hitl_interactions`` row binds exactly this action id and args digest.
+    """
+
+    def require(self, target_action_id: str, args: Mapping[str, Any]) -> None: ...
+
+
+def sandbox_action_id(scenario_id: str, variant: str) -> str:
+    """Canonical HITL action id for one sandboxed scenario run."""
+    return f"agent-sandbox:{scenario_id}:{variant}"
+
+
+def sandbox_action_args(
+    scenario_id: str, variant: str, agent_id: str
+) -> dict[str, str]:
+    """Canonical HITL action args for one sandboxed scenario run.
+
+    The approval-request side must digest exactly these args (via
+    ``rfc.hitl_gate.compute_args_digest``) for the gate to open.
+    """
+    return {"scenario_id": scenario_id, "variant": variant, "agent_id": agent_id}
+
+
 class ContainerBackend(Protocol):
     """The slice of ContainerManager the sandbox needs (injectable in tests)."""
 
@@ -215,10 +242,15 @@ class AgentSandbox:
         limits: SandboxLimits,
         manager: ContainerBackend | None = None,
         scenarios_root: Path | None = None,
+        approval_gate: ApprovalGate | None = None,
     ) -> None:
         self.limits = limits
         self._manager = manager
         self._scenarios_root = scenarios_root or DEFAULT_SANDBOX_SCENARIOS_ROOT
+        # HITL enforcement (#384): when a gate is configured, run_scenario
+        # refuses to touch Docker unless the exact action is approved.
+        # None keeps the historical ungated behaviour (opt-in per harness).
+        self._approval_gate = approval_gate
 
     @property
     def manager(self) -> ContainerBackend:
@@ -279,8 +311,18 @@ class AgentSandbox:
         variant: str = "good",
         agent_id: str = "claude-code",
     ) -> SandboxResult:
-        """Seed, run the agent variant, and verify the resulting worktree."""
+        """Seed, run the agent variant, and verify the resulting worktree.
+
+        With an ``approval_gate`` configured, execution is blocked fail-closed
+        (before any container exists) unless an approved ``hitl_interactions``
+        row matches this exact action id + args digest (#384).
+        """
         resolved = self._resolve_scenario(scenario)
+        if self._approval_gate is not None:
+            self._approval_gate.require(
+                sandbox_action_id(resolved.scenario_id, variant),
+                sandbox_action_args(resolved.scenario_id, variant, agent_id),
+            )
         script = resolved.agent_script(variant)
         config = self._container_config(resolved.scenario_id, variant)
         wall_clock = self.limits.wall_clock_seconds
