@@ -43,7 +43,8 @@ Every new session begins with a repo health check, before writing any code:
    make code-quality-check
    make robot-dryrun
    ```
-3. **Scan for staleness:** check `humans/TODO.md`; look for `TODO`/`FIXME`/dead
+3. **Scan for staleness:** check the owner backlog (`modules/ops/humans/TODO.md`
+   in the private monorepo; skip if absent); look for `TODO`/`FIXME`/dead
    code in files you'll touch; flag findings to the user (fix now / defer /
    ignore).
 4. **Ask clarifying questions** (see § Questions).

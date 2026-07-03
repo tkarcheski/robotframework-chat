@@ -80,3 +80,11 @@
 - [ ] Type hints on all new Python code
 - [ ] Commit history is atomic and bisectable
 - [ ] Version bump confirmed with user (`pyproject.toml` + `src/rfc/__init__.py`)
+
+## Sign-off gate (engineering PRs — both required before a human merges)
+
+<!-- The reviewing roles set these, not the author. See modules/agents/ROLES.md rule 3. -->
+
+- [ ] **test-design** signed off — `TEST-PLAN: PASS` + `signoff:test-design` label (coverage incl. integration verified)
+- [ ] **design** signed off — `DESIGN: PASS` + `signoff:design` label (right thing, right shape, promotion-safe)
+- [ ] `sign-off gate` CI check is green (both labels present, no stale verdict)
