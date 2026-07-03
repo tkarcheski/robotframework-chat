@@ -610,7 +610,7 @@ naive implementations.
 | `config/fine_tuning.yaml` | Training hyperparameters |
 | `tests/test_self_healing.py` | Unit tests for decorator + listener |
 | `tests/test_fine_tuning.py` | Unit tests for pipeline |
-| `robot/ci/self_healing_smoke.robot` | Integration smoke test |
+| `robot/tier1/ci/self_healing_smoke.robot` | Integration smoke test |
 
 ### 6.3 Existing Patterns Reused
 
@@ -818,7 +818,7 @@ uv run pytest tests/test_fine_tuning.py     # pipeline, dataset builder, registr
 
 ```bash
 # Robot suite that intentionally triggers failures and verifies healing
-make robot -s robot/ci/self_healing_smoke.robot
+make robot -s robot/tier1/ci/self_healing_smoke.robot
 
 # Dry run to verify listener registration
 make robot-dryrun
@@ -844,7 +844,7 @@ python scripts/nightly_finetune.py --full
 
 # Verify deployment
 ollama list | grep ft
-make robot -s robot/math  # run against fine-tuned model
+make robot -s robot/tier2/math  # run against fine-tuned model
 ```
 
 ### 10.5 Pre-Commit

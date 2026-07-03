@@ -244,17 +244,17 @@ class TestSnapshots:
             [
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/safety/safety.resource",
+                    skill_path="robot/tier2/safety/safety.resource",
                     recorded_at=NOW,
                 ),
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/math/math.resource",
+                    skill_path="robot/tier2/math/math.resource",
                     recorded_at=NOW,
                 ),
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/docker/bash/bash.resource",
+                    skill_path="robot/tier4/docker/bash/bash.resource",
                     recorded_at=NOW,
                 ),
             ]
@@ -263,9 +263,9 @@ class TestSnapshots:
         # Re-fetch by id to verify positional alignment.
         skills = harness_db.get_skills("s1")
         skills_by_path = {s.skill_path: s.id for s in skills}
-        assert skills_by_path["robot/safety/safety.resource"] == ids[0]
-        assert skills_by_path["robot/math/math.resource"] == ids[1]
-        assert skills_by_path["robot/docker/bash/bash.resource"] == ids[2]
+        assert skills_by_path["robot/tier2/safety/safety.resource"] == ids[0]
+        assert skills_by_path["robot/tier2/math/math.resource"] == ids[1]
+        assert skills_by_path["robot/tier4/docker/bash/bash.resource"] == ids[2]
 
 
 class TestMetrics:
@@ -366,7 +366,7 @@ class TestCascades:
             [
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/safety/safety.resource",
+                    skill_path="robot/tier2/safety/safety.resource",
                     recorded_at=NOW,
                 )
             ]
@@ -417,7 +417,7 @@ class TestCascades:
                 [
                     AgenticSkill(
                         session_id="no-such-session",
-                        skill_path="robot/safety/safety.resource",
+                        skill_path="robot/tier2/safety/safety.resource",
                         recorded_at=NOW,
                     )
                 ]

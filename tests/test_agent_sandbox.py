@@ -4,7 +4,7 @@ The sandbox itself talks to Docker through the ContainerManager interface;
 these tests inject a fake manager so the harness logic (scenario loading,
 manifest diffing, churn detection, AgentRun assembly, cleanup) is verified
 hermetically. The real-Docker path is exercised by
-robot/agentic_coding/tests/test_sandboxed.robot.
+robot/tier4/agentic_coding/tests/test_sandboxed.robot.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ the rest of the suite's verifiers consume.
 
 Scenario fixture layout::
 
-    robot/agentic_coding/fixtures/sandbox/
+    robot/tier4/agentic_coding/fixtures/sandbox/
       <scenario_id>/
         scenario.yaml      # task, test_command, allowed_paths, agent variants
         repo/              # disposable repo seeded into the container
@@ -39,6 +39,7 @@ from rfc.agent_run import AgentCommand, AgentRun
 DEFAULT_SANDBOX_SCENARIOS_ROOT = (
     Path(__file__).resolve().parent.parent.parent
     / "robot"
+    / "tier4"
     / "agentic_coding"
     / "fixtures"
     / "sandbox"

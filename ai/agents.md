@@ -152,15 +152,15 @@ pre-commit install
 
 # Run tests
 uv run pytest
-uv run robot -d results robot/math
-uv run robot -d results robot/docker/python
-uv run robot -d results robot/safety
+uv run robot -d results robot/tier2/math
+uv run robot -d results robot/tier4/docker/python
+uv run robot -d results robot/tier2/safety
 
 # Run specific test
 uv run robot -d results -t "Test Name" robot/path/tests/file.robot
 
 # Run by tag
-uv run robot -d results -i IQ:120 robot/docker/python
+uv run robot -d results -i IQ:120 robot/tier4/docker/python
 
 # Run dashboard
 uv sync --extra dashboard
@@ -406,7 +406,7 @@ uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
   --listener rfc.git_metadata_listener.GitMetaData \
   --listener rfc.ollama_timestamp_listener.OllamaTimestampListener \
-  robot/math/tests/
+  robot/tier2/math/tests/
 ```
 
 The `DbListener` reads `DATABASE_URL` from the environment to decide where to store results:
@@ -583,5 +583,5 @@ calls, state evolution), use `AgentWorkflowKeywords`:
   the `agent_workflow` RFC_DATA payload at end-of-test and persists
   via `AgentWorkflowDatabase` (SQLite or PostgreSQL).
 
-Example tests live under `robot/agent_workflows/tests/`. Suite README:
-`robot/agent_workflows/README.md`.
+Example tests live under `robot/tier3/agent_workflows/tests/`. Suite README:
+`robot/tier3/agent_workflows/README.md`.

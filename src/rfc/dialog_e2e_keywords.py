@@ -6,7 +6,7 @@ end-to-end against a real database backend (PostgreSQL via
 
 - ``Run Dialog Fixture Suite`` spawns a *child* Robot Framework run
   with ``rfc.dialog_listener.DialogListener`` attached against the
-  fixture suite ``robot/dialog/fixtures/record_dialog_fixture.robot``,
+  fixture suite ``robot/tier1/dialog/fixtures/record_dialog_fixture.robot``,
   which opens a recording bracket, emits turns, and closes it. The
   database URL travels via the ``DIALOG_DATABASE_URL`` env var because
   Robot's ``--listener Name:arg`` syntax splits on ``:`` and would

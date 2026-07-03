@@ -121,9 +121,9 @@ Sandboxed code execution in disposable containers.
 | 5.1 | Container manager | Complete | `src/rfc/container_manager.py` |
 | 5.2 | Docker keywords (7 keywords) | Complete | `src/rfc/docker_keywords.py` |
 | 5.3 | Container profiles (MINIMAL/STANDARD/PERFORMANCE) | Complete | `config/test_suites.yaml` |
-| 5.4 | Python code execution tests | Complete | `robot/docker/python/tests/` |
-| 5.5 | Shell command execution tests | Complete | `robot/docker/shell/tests/` |
-| 5.6 | Multi-model LLM-in-Docker tests | Complete | `robot/docker/llm/tests/` |
+| 5.4 | Python code execution tests | Complete | `robot/tier4/docker/python/tests/` |
+| 5.5 | Shell command execution tests | Complete | `robot/tier4/docker/shell/tests/` |
+| 5.6 | Multi-model LLM-in-Docker tests | Complete | `robot/tier4/docker/llm/tests/` |
 | 5.7 | Dynamic port allocation | Complete | `Find Available Port` keyword |
 | 5.8 | Resource limits (CPU/memory/disk) | Complete | Configurable per-container |
 
@@ -178,9 +178,9 @@ Integration test suites under `robot/`.
 
 | # | Requirement | Status | Notes |
 |---|-------------|--------|-------|
-| 8.1 | Math reasoning tests | Complete | `robot/math/tests/` |
-| 8.2 | Docker execution tests (Python, shell, LLM) | Complete | `robot/docker/*/tests/` |
-| 8.3 | Safety tests (injection, extraction, jailbreak, indirect) | Complete | `robot/safety/tests/` |
+| 8.1 | Math reasoning tests | Complete | `robot/tier2/math/tests/` |
+| 8.2 | Docker execution tests (Python, shell, LLM) | Complete | `robot/tier4/docker/*/tests/` |
+| 8.3 | Safety tests (injection, extraction, jailbreak, indirect) | Complete | `robot/tier2/safety/tests/` |
 | 8.4 | Dashboard Playwright tests | Complete | `robot/dashboard/tests/` |
 | 8.5 | Tier tagging on all tests | Functional | Required by rules; compliance not fully audited |
 | 8.6 | Tool-call testing | Planned | Structured function call generation |
@@ -188,7 +188,7 @@ Integration test suites under `robot/`.
 | 8.8 | Humor evaluation | Planned | Subjective, Tier 2–3 grading |
 | 8.9 | Storytelling evaluation | Planned | Narrative coherence checks |
 | 8.10 | Role-play evaluation | Planned | Character consistency across turns |
-| 8.11 | Model metadata collection suite | Planned | `robot/ci/model_metadata.robot` |
+| 8.11 | Model metadata collection suite | Planned | `robot/tier1/ci/model_metadata.robot` |
 
 ---
 

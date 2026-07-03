@@ -41,7 +41,7 @@ listener:
 uv run robot -d results/math \
   --listener rfc.db_listener.DbListener \
   --listener rfc.git_metadata_listener.GitMetaData \
-  robot/math/tests/
+  robot/tier2/math/tests/
 ```
 
 The `DbListener` hooks into Robot Framework's lifecycle:
