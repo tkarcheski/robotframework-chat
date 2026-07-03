@@ -124,7 +124,10 @@ def _host(
 
 
 def _jobs(*models: str) -> list[Job]:
-    return [Job(model=m, suite={"name": "math", "path": "robot/math/"}) for m in models]
+    return [
+        Job(model=m, suite={"name": "math", "path": "robot/tier2/math/"})
+        for m in models
+    ]
 
 
 class TestPickNextJob:

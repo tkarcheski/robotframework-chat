@@ -389,7 +389,7 @@ class IFEvalKeywords:
     def run_ifeval_dataset_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Run one imported google/IFEval dataset item end to end.
 
-        *item* is an entry from ``robot/ifeval/variables/ifeval_hf.yaml``:
+        *item* is an entry from ``robot/tier1/ifeval/variables/ifeval_hf.yaml``:
         ``{"key": int, "prompt": str, "instructions": [{"id": ..., "kwargs":
         {...}}]}``.  Sends the prompt to the LLM, strips ``<think>`` tags,
         then checks every instruction (strict prompt-level accuracy: all

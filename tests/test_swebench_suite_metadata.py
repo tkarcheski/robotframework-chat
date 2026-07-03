@@ -25,7 +25,7 @@ def _suites() -> dict:
 class TestSwebenchSuiteMetadata:
     def test_registered_with_expected_path(self) -> None:
         entry = _suites()["swebench"]
-        assert entry["path"] == "robot/swebench"
+        assert entry["path"] == "robot/tier4/swebench"
         assert entry["label"] == "SWE-bench Evaluation"
 
     def test_description_is_specific_and_accurate(self) -> None:

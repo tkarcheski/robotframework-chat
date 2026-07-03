@@ -1,0 +1,160 @@
+*** Settings ***
+Documentation     LLM-in-Docker multi-model comparison tests
+Resource          ../../../../resources/llm_containers.resource
+Resource          ../../../../resources/container_profiles.resource
+Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
+Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
+Library           Collections
+Library           String
+
+Test Timeout      250 minutes
+
+Test Tags         llm    multi-model    docker
+
+*** Variables ***
+${CODE_PROMPT}          Write a Python function to sort a list of integers efficiently
+${ALGO_PROMPT}          Explain the time and space complexity of merge sort with code example
+${DEBUG_PROMPT}         Find and fix the bug in this code: def add(a, b): return a + b + 1
+
+*** Keywords ***
+Extract Code From Response
+    [Documentation]    Extract first markdown code block from LLM response (python or generic)
+    [Arguments]    ${text}
+
+    # Use DOTALL so '.' matches newlines
+    ${pattern}=    Set Variable    (?s)```python\s*(.*?)\s*```
+    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
+
+    ${count}=    Get Length    ${matches}
+    IF    ${count} > 0
+        ${code}=    Set Variable    ${matches}[0]
+        RETURN    ${code}
+    END
+
+    # Fallback to any fenced code block
+    ${pattern}=    Set Variable    (?s)```\s*(.*?)\s*```
+    ${matches}=    Get Regexp Matches    ${text}    ${pattern}    1
+    ${count}=    Get Length    ${matches}
+    IF    ${count} > 0
+        ${code}=    Set Variable    ${matches}[0]
+        RETURN    ${code}
+    END
+
+    # Return full text if no code block found
+    RETURN    ${text}
+
+Check Ollama Health On Endpoint
+    [Arguments]    ${endpoint}
+    ${response}=    GET    ${endpoint}/api/tags    timeout=5    expected_status=any
+    Should Be Equal As Integers    ${response.status_code}    200
+
+*** Test Cases ***
+Compare Models On Code Generation (IQ:130)
+    [Documentation]    Can the LLM generate a working Python sort function and pass quality grading?
+    [Tags]    IQ:130    comparison    code-generation    tier:4    verify:llm
+    [Setup]    Switch LLM Model    llama3
+
+    # Generate code with current model
+    ${response}=    LLM.Ask LLM    ${CODE_PROMPT}
+    ${code}=    Extract Code From Response    ${response}
+
+    # Execute the generated code
+    ${test_script}=    Catenate    SEPARATOR=\n
+    ...    ${code}
+    ...    print(sort_list([3, 1, 4, 1, 5, 9, 2, 6]))
+    ...    print(sort_list([]))
+    ...    print(sort_list([5]))
+
+    ${result}=    Docker.Execute Python In Container    ${test_script}    timeout=15
+
+    # Verify it works
+    Should Be Equal As Integers    ${result}[exit_code]    0
+    Should Contain    ${result}[stdout]    [1, 1, 2, 3, 4, 5, 6, 9]
+
+    # Grade the response
+    ${score}    ${reason}=    LLM.Grade Answer    ${CODE_PROMPT}    working sort function    ${response}
+    Should Be Equal As Integers    ${score}    1
+
+LLM Algorithm Explanation (IQ:120)
+    [Documentation]    Can the LLM explain merge sort's time complexity (O(n log n)) and space complexity?
+    [Tags]    IQ:120    algorithm    explanation    tier:4    verify:robot
+
+    ${response}=    LLM.Ask LLM    ${ALGO_PROMPT}
+
+    # Should contain complexity analysis
+    Should Contain    ${response}    O(n log n)
+    Should Contain    ${response}    space
+
+    # Try to extract and run code
+    ${code}=    Extract Code From Response    ${response}
+    Run Keyword And Ignore Error    Docker.Execute Python In Container    ${code}    timeout=10
+
+LLM Container Resource Usage (IQ:110)
+    [Documentation]    Can the LLM container stay under 4GB memory during inference?
+    [Tags]    IQ:110    monitoring    resources    tier:4    verify:robot
+
+    # Start a request
+    ${response}=    LLM.Ask LLM    Write a short Python script to calculate prime numbers
+
+    # Check container metrics
+    ${metrics}=    Get Container Metrics During Test
+
+    # Log resource usage
+    Log    LLM inference used ${metrics}[cpu_percent]% CPU and ${metrics}[memory_usage_mb] MB memory
+
+    # Memory should be reasonable (< 4GB)
+    Should Be True    ${metrics}[memory_usage_mb] < 4096
+
+Custom LLM Configuration (IQ:140)
+    [Documentation]    Can a custom Ollama container (1 CPU, 2GB) serve inference for 'What is 2+2?'?
+    [Tags]    IQ:140    custom-config    tier:4    verify:robot
+
+    # Skip-and-log when Docker is unavailable on this host: a missing daemon
+    # is an environment gap, not a model failure, and must not redden every
+    # matrix pass for every model (#517, CLAUDE.md skip-and-log).
+    ${docker_available}=    Docker.Docker Is Available
+    Skip If    not ${docker_available}
+    ...    Docker unavailable on this host — skipping custom-container test (#517)
+
+    # Find available port for custom container
+    ${custom_port}=    Docker.Find Available Port    11434    11500
+    ${custom_port_mapping}=    Create Dictionary    11434/tcp=${custom_port}
+
+    # Create custom Ollama container with more resources
+    ${custom_config}=    Create Dictionary
+    ...    image=ollama/ollama:latest
+    ...    cpu_cores=1.0
+    ...    memory_mb=2048
+    ...    scratch_mb=512
+    ...    network_mode=bridge
+    ...    ports=${custom_port_mapping}
+    ...    read_only=False
+
+    ${timestamp}=    Evaluate    int(__import__('time').time())
+    ${container_name}=    Set Variable    rfc-ollama-custom-${timestamp}
+    ${container}=    Docker.Create Configurable Container    ${custom_config}    ${container_name}
+
+    # Wait for API to be ready. If the container never binds / becomes healthy
+    # (the observed localhost:11435 connection-refused failure), that is an
+    # environment/provisioning gap — skip-and-log rather than fail the matrix
+    # cell (#517). Stop the half-started container first.
+    ${custom_endpoint}=    Set Variable    http://localhost:${custom_port}
+    ${healthy}=    Run Keyword And Return Status
+    ...    Wait Until Keyword Succeeds    60s    2s    Check Ollama Health On Endpoint    ${custom_endpoint}
+    IF    not ${healthy}
+        Run Keyword And Ignore Error    Docker.Stop Container    ${container}
+        Skip    Custom Ollama container did not become healthy on ${custom_endpoint} — skipping (#517)
+    END
+
+    # Pull model
+    Docker.Execute In Container    ${container}    ollama pull llama3    timeout=300
+
+    # Test inference
+    LLM.Set LLM Endpoint    ${custom_endpoint}
+    LLM.Set LLM Model    llama3
+
+    ${response}=    LLM.Ask LLM    What is 2 + 2?
+    Should Contain    ${response}    4
+
+    # Cleanup
+    [Teardown]    Run Keyword And Ignore Error    Docker.Stop Container    ${container}
