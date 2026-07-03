@@ -89,7 +89,8 @@ See [agents.md](agents.md) for the full project architecture.
 ## Model-to-Node Assignment (Planned)
 
 > **Owner decision (2026-02-19):** Owner wants to control which models are
-> loaded on which hosts. See `humans/TODO.md` § Model-to-node assignment config.
+> loaded on which hosts. Tracked in the owner backlog (private monorepo)
+> § Model-to-node assignment config.
 
 Short-term: a `config/model_assignments.yaml` file.
 Long-term: web UI to manage assignments.
@@ -111,8 +112,7 @@ Long-term: web UI to manage assignments.
 ## AI-Powered Code Review Stage (Planned)
 
 > **Owner decision (2026-02-19):** The AI review stage should approve/deny PRs,
-> grade code quality, and generate full reports. See `humans/TODO.md` § AI-Powered
-> Code Review in CI.
+> grade code quality, and generate full reports.
 
 Removed 2026-06-10 (CI/CD audit): PR review is handled by Codex (auto-assign) and the Claude heartbeat sweep.
 Planned: AI agent reviews both code diff AND pipeline results, posts structured

@@ -68,7 +68,7 @@ Read `ai/testing.md` for grading tiers and test rules.
    and keyword names are common. If a referenced file or symbol doesn't exist,
    search for the closest match before asking.
 3. **Check for contradictions.** If a request conflicts with a confirmed decision
-   in `ai/testing.md` or `humans/TODO.md`, flag it. Quote the conflicting
+   in `ai/testing.md` or the owner backlog (private monorepo), flag it. Quote the conflicting
    decision and ask the user to confirm they want to override it.
 4. **Verify commands before running.** If the user gives you a shell command,
    read it carefully. Check for missing flags, wrong target names, dangerous

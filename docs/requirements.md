@@ -5,7 +5,7 @@ Single source of truth for all project requirements and their current status.
 Migrated from `ai/FEATURES.md` on 2026-03-04.
 
 > **Cross-references:** See `ai/testing.md` for grading tiers and test rules.
-> See `humans/TODO.md` for owner action items.
+> See the owner backlog (`modules/ops/humans/TODO.md`, private monorepo) for owner action items.
 
 ## Status Definitions
 

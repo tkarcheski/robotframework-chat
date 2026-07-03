@@ -6,7 +6,8 @@ with current adoption status.
 Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 > **Cross-references:** See `ai/testing.md` for grading tiers and test rules,
-> `humans/TODO.md` for actionable items.
+> and the owner backlog (`modules/ops/humans/TODO.md`, private monorepo) for
+> actionable items.
 
 **Legend:** Adopted / Partial / Not Started
 
@@ -221,14 +222,15 @@ Updated as of 2026-02-17. Owner decisions from spec review added 2026-02-19.
 
 ## Owner Decisions Affecting DevOps (2026-02-19 Spec Review)
 
-These decisions from the spec review session impact DevOps practices:
+These decisions from the spec review session impact DevOps practices ("owner
+backlog" = `modules/ops/humans/TODO.md` in the private monorepo):
 
 | Decision | Impact | See |
 |----------|--------|-----|
-| 90-day data retention | Need cleanup cron/CI job | `humans/TODO.md` § Data Retention |
-| Semver auto-bump on merge to main | Need CI pipeline rule + version script | `humans/TODO.md` § Versioning |
-| Discord notifications (future) | New CI integration after DB/Superset stable | `humans/TODO.md` § Alerting |
-| `make test-make` meta-target | Smoke-test all make targets | `humans/TODO.md` § CI/CD |
+| 90-day data retention | Need cleanup cron/CI job | owner backlog § Data Retention |
+| Semver auto-bump on merge to main | Need CI pipeline rule + version script | owner backlog § Versioning |
+| Discord notifications (future) | New CI integration after DB/Superset stable | owner backlog § Alerting |
+| `make test-make` meta-target | Smoke-test all make targets | owner backlog § CI/CD |
 | Makefile parity with pipeline | Fix 24 broken targets | `docs/requirements.md` § CI/CD |
 | Secrets stay in `.env` | No vault needed | `.env.example` |
 | Branching: main / staging / claude/* | Document and enforce | `ai/pipelines.md` § Branching Model |
