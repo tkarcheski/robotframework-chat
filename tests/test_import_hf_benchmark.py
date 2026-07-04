@@ -248,7 +248,7 @@ class TestDefectRegistry:
         assert spec.variable_name == "CODE_REVIEW_DEFECT_HF"
         assert spec.license_id == "C-UDA-1.0"
         assert str(spec.default_output) == (
-            "robot/code_review/variables/defect_detection_hf.yaml"
+            "robot/tier1/code_review/variables/defect_detection_hf.yaml"
         )
         assert spec.sampling_note  # sampling strategy documented in YAML header
 
