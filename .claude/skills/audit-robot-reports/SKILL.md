@@ -20,11 +20,12 @@ when_to_use: >-
 ## What this is
 
 `make run-local-models` runs every suite in `config/local_models.yaml` against
-every model discovered on the local Ollama fleet, writing one `output.xml` per
-(model, suite, host, session) under the `results/` submodule. After enough runs
-pile up the useful question is **coverage**: which models have actually been
-measured against which suites for the current rfc version, and where are the
-gaps?
+every model available on the curated hosts listed in `host-config.toml`
+(git-ignored, machine-local — see `host-config.toml.example`), writing one
+`output.xml` per (model, suite, host, session) under the `results/` submodule.
+After enough runs pile up the useful question is **coverage**: which models have
+actually been measured against which suites for the current rfc version, and
+where are the gaps?
 
 This skill answers that. The real parsing/matrix/markdown logic lives in
 `scripts/audit_robot_reports.py` (tested, type-hinted) so the Makefile pipeline
