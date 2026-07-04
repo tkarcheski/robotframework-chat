@@ -47,9 +47,9 @@ layout and will produce confusing paths elsewhere.
 ## Step 2 — Gather inputs
 
 **Role sessions skip the question.** If you are a role agent (engineering,
-test-design, project-management, design), `ai/GIT.md` already dictates both
-inputs: `BRANCH="<type>/<issue-number>-<slug>"` (no random suffix) and
-`BASE="origin/claude-code-staging"`. Use them and go straight to Step 3 with
+test-design, project-management, design), `CLAUDE.md § Session startup` already
+dictates both inputs: `BRANCH="<type>/<issue-number>-<slug>"` (no random suffix)
+and `BASE="origin/claude-code-staging"`. Use them and go straight to Step 3 with
 plain `git worktree add` (no `-B` — see below).
 
 Otherwise, ask **one** multiple-choice question that bundles both inputs. Use
@@ -95,7 +95,7 @@ erroring out. That's the user's reference command and matches how they like to
 work — collisions on `claude/<slug>-<rand5>` are vanishingly unlikely thanks
 to the random suffix, but `-B` keeps the skill idempotent.
 
-**Exception — role-contract branches (`<type>/<n>-<slug>`, per `ai/GIT.md`):
+**Exception — role-contract branches (`<type>/<n>-<slug>`, per `CLAUDE.md § Session startup`):
 use plain `git worktree add`, never `-B`.** These names are deterministic, so
 a collision means the branch genuinely exists (another session's work);
 `-B` would silently reset it. Let the command fail loudly and investigate.
@@ -134,7 +134,7 @@ uv sync
 #     targets (robot runs, results archiving) assume they exist.
 git submodule update --init
 
-# 4d. Role sessions only: set the worktree-scoped role identity per ai/GIT.md
+# 4d. Role sessions only: set the worktree-scoped role identity per CLAUDE.md § Role system
 #     (plain `git config` here would rewrite the SHARED .git/config and
 #     re-identify every other session — the --worktree flag is mandatory).
 git config extensions.worktreeConfig true
