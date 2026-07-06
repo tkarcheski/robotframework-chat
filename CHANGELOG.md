@@ -17,6 +17,17 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.19.0] — Unreleased
+
+### Added
+
+- **RSI-model priority test lane** (#648): `rfc.rsi_priority` update-detection
+  module (`extract_digest` / `needs_retest` over Ollama `/api/tags` digests)
+  and `scripts/rsi_priority_watcher.py`, which polls the RSI tag and runs a
+  curated fast suite set immediately when the model is re-published, reusing
+  the run-local-models command builder so results archive through the same
+  listeners.
+
 ## [1.18.0] — Unreleased
 
 The clean-public-repo wave: everything that ships to the public mirror was
