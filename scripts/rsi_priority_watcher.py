@@ -156,15 +156,11 @@ def _run_rsi_suites(
 def _parse_endpoint(spec: str) -> tuple[str, str]:
     """Parse a ``NAME=URL`` --endpoint value into a (name, url) pair."""
     if "=" not in spec:
-        raise argparse.ArgumentTypeError(
-            f"--endpoint must be NAME=URL, got: {spec!r}"
-        )
+        raise argparse.ArgumentTypeError(f"--endpoint must be NAME=URL, got: {spec!r}")
     name, url = spec.split("=", 1)
     name, url = name.strip(), url.strip()
     if not name or not url:
-        raise argparse.ArgumentTypeError(
-            f"--endpoint must be NAME=URL, got: {spec!r}"
-        )
+        raise argparse.ArgumentTypeError(f"--endpoint must be NAME=URL, got: {spec!r}")
     return name, url
 
 
@@ -184,9 +180,7 @@ def _resolve_hosts(args: argparse.Namespace) -> list[tuple[str, str]]:
 def watch(args: argparse.Namespace) -> int:
     """Main poll/react loop. Returns a process exit code."""
     config = load_local_config()
-    suites = _select_suites(
-        config, names=args.suites, all_suites=args.all_suites
-    )
+    suites = _select_suites(config, names=args.suites, all_suites=args.all_suites)
     if not suites:
         _log("no suites selected; nothing to do")
         return 1
