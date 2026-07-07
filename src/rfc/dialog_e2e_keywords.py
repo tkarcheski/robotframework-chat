@@ -1,22 +1,11 @@
 """Dialog recorder end-to-end keywords (#437).
 
-Robot keyword library proving the #409 dialog recorder works
-end-to-end against a real database backend (PostgreSQL via
-``DATABASE_URL``, SQLAlchemy path):
-
-- ``Run Dialog Fixture Suite`` spawns a *child* Robot Framework run
-  with ``rfc.dialog_listener.DialogListener`` attached against the
-  fixture suite ``robot/tier1/dialog/fixtures/record_dialog_fixture.robot``,
-  which opens a recording bracket, emits turns, and closes it. The
-  database URL travels via the ``DIALOG_DATABASE_URL`` env var because
-  Robot's ``--listener Name:arg`` syntax splits on ``:`` and would
-  mangle a URL.
-- ``Assert Dialog Recording Persisted`` then verifies through
-  :class:`rfc.harness_db.HarnessDatabase` that exactly one
-  ``dialog_recordings`` row exists, ``ended_at`` is set, and the
-  ``dialog_turns`` rows are FK-intact with sequential turn numbers.
-- ``Emit Dialog Turn`` lets the fixture emit deterministic
-  ``dialog_turn`` RFC_DATA events without any LLM call (tier:1).
+Proves the #409 dialog recorder works end-to-end against a real database
+(PostgreSQL via ``DATABASE_URL``): a child Robot run with ``DialogListener``
+attached records a bracket of turns, then assertions verify the
+``dialog_recordings`` / ``dialog_turns`` rows persisted intact. The database
+URL travels via the ``DIALOG_DATABASE_URL`` env var because Robot's
+``--listener Name:arg`` syntax splits on ``:`` and would mangle a URL.
 """
 
 from __future__ import annotations
@@ -70,17 +59,8 @@ class DialogE2EKeywords:
     def emit_dialog_turn(self, recording_id: str, role: str, content: str = "") -> None:
         """Emit one deterministic ``dialog_turn`` RFC_DATA event.
 
-        Mirrors the payload ``Ask LLM`` emits inside a recording bracket
-        (src/rfc/keywords.py) without invoking any LLM, keeping the
-        fixture suite tier:1.
-
-        Args:
-            recording_id: Active recording id from ``Start Dialog Recording``.
-            role: Turn role — one of ``user``, ``assistant``, ``tool``.
-            content: Turn content text.
-
-        Raises:
-            ValueError: If recording_id is empty or role is unknown.
+        Mirrors the ``Ask LLM`` recording-bracket payload without an LLM call,
+        keeping the fixture suite tier:1.
         """
         if not recording_id:
             raise ValueError("recording_id must not be empty")
@@ -105,22 +85,9 @@ class DialogE2EKeywords:
     ) -> Dict[str, Any]:
         """Run the dialog fixture suite in a child robot process.
 
-        Attaches ``DialogListener`` via ``--listener`` so the recording
-        events flow through the real listener → HarnessDatabase →
-        database path (the exact production wiring).
-
-        Args:
-            output_dir: Directory for the child run's robot output.
-            database_url: Database the listener should persist to,
-                passed via ``DIALOG_DATABASE_URL``. Empty means the
-                listener runs unconfigured (no persistence).
-
-        Returns:
-            Dict with ``rc`` (child exit code), ``recording_id`` (read
-            from the fixture's id file, "" if missing), ``output_xml``
-            (child output path), ``warning_found`` (True if a
-            DialogListener DB-failure warning appeared in the child's
-            output), plus raw ``stdout``/``stderr``.
+        Attaches ``DialogListener`` via ``--listener`` so events flow through
+        the real listener → HarnessDatabase → database path. Empty
+        ``database_url`` leaves the listener unconfigured (no persistence).
         """
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -180,20 +147,8 @@ class DialogE2EKeywords:
     ) -> Dict[str, Any]:
         """Assert the recorded dialog landed intact in the database.
 
-        Checks: one ``dialog_recordings`` row exists for the id,
-        ``ended_at`` is set, exactly ``expected_turns`` FK-linked
-        ``dialog_turns`` rows exist with sequential turn numbers 1..N.
-
-        Args:
-            database_url: Database to query (e.g. ``DATABASE_URL``).
-            recording_id: Recording id returned by the fixture run.
-            expected_turns: Expected number of dialog_turns rows.
-
-        Returns:
-            Summary dict (recording_id, ended_at, turns, roles).
-
-        Raises:
-            AssertionError: On any persistence gap.
+        Checks one ``dialog_recordings`` row with ``ended_at`` set and exactly
+        ``expected_turns`` FK-linked ``dialog_turns`` numbered 1..N.
         """
         expected = int(expected_turns)
         db = HarnessDatabase(database_url=database_url)
@@ -228,12 +183,7 @@ class DialogE2EKeywords:
 
     @keyword("Delete Dialog Recording")
     def delete_dialog_recording(self, database_url: str, recording_id: str) -> None:
-        """Remove a recording and its turns (test cleanup, idempotent).
-
-        Args:
-            database_url: Database to delete from.
-            recording_id: Recording id to remove.
-        """
+        """Remove a recording and its turns (test cleanup, idempotent)."""
         try:
             from sqlalchemy import create_engine, text
         except ImportError as exc:  # pragma: no cover - superset extra installed in CI
@@ -259,11 +209,8 @@ class DialogE2EKeywords:
     def dialog_database_reachable(self, database_url: str) -> bool:
         """Return True if the dialog tables are reachable at the URL.
 
-        Constructing :class:`HarnessDatabase` also runs ``create_all``,
-        so a True result guarantees the dialog tables exist.
-
-        Args:
-            database_url: Database URL to probe.
+        Constructing :class:`HarnessDatabase` also runs ``create_all``, so a
+        True result guarantees the dialog tables exist.
         """
         try:
             db = HarnessDatabase(database_url=database_url)

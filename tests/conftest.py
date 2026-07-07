@@ -26,7 +26,7 @@ def mock_suite_config():
             "profile": "STANDARD",
         },
         "test_suites": {
-            "math": {"label": "Math Tests", "path": "robot/tier2/math/tests"},
+            "math": {"label": "Math Tests", "path": "robot/20__tier2/math/tests"},
         },
         "iq_levels": ["70", "80", "90", "100", "110", "120"],
         "container_profiles": {

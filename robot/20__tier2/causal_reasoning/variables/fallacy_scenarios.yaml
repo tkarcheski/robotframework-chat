@@ -1,0 +1,100 @@
+# Logical fallacy detection scenarios for causal arguments
+#
+# Each entry has:
+#   argument:        the flawed causal argument
+#   expected_letter: A (post hoc), B (confounding), C (reverse causation), D (no fallacy)
+#   fallacy_name:    human-readable name of the fallacy
+#   explanation:     why this is the correct answer
+
+FALLACY_SCENARIOS:
+  # ── A: Post hoc ergo propter hoc ────────────────────────────────────────
+  - argument: >
+      Every time I wash my car, it rains within 48 hours. I have tested this
+      dozens of times. Therefore, washing my car causes it to rain.
+    expected_letter: A
+    fallacy_name: Post hoc ergo propter hoc
+    explanation: >
+      The car wash merely precedes the rain; it does not cause it. Rain in many
+      climates is frequent enough that almost any action will be followed by rain
+      within two days. Temporal sequence does not imply causation.
+
+  - argument: >
+      A patient started taking a herbal supplement on Monday. By Friday their
+      cold symptoms had disappeared. The supplement clearly cured the cold.
+    expected_letter: A
+    fallacy_name: Post hoc ergo propter hoc
+    explanation: >
+      Colds typically resolve on their own within 5–7 days. The supplement merely
+      preceded recovery; the recovery would likely have occurred without it.
+
+  - argument: >
+      The economy began improving six months after the new trade policy was
+      introduced. This proves the trade policy caused the economic recovery.
+    expected_letter: A
+    fallacy_name: Post hoc ergo propter hoc
+    explanation: >
+      Economic cycles have many drivers. The improvement followed the policy but
+      could have been caused by global market conditions, prior policy effects,
+      or natural business-cycle recovery. Sequence alone does not establish cause.
+
+  # ── B: Confounding variable ──────────────────────────────────────────────
+  - argument: >
+      Cities with a larger number of police officers consistently have higher
+      crime rates. We should reduce the number of police to lower crime.
+    expected_letter: B
+    fallacy_name: Confounding variable
+    explanation: >
+      City size (or pre-existing crime levels) is the confounder: larger, more
+      crime-prone cities hire more police officers AND have more crime. The police
+      presence is a response to crime, not its cause.
+
+  - argument: >
+      People who go to hospital frequently are much more likely to die than people
+      who rarely visit hospitals. Hospitals must be making people sick.
+    expected_letter: B
+    fallacy_name: Confounding variable (also reverse causation)
+    explanation: >
+      Illness severity is the confounder: seriously ill people visit hospitals more
+      AND have higher mortality. Hospitals are treating sick people, not causing
+      their illness.
+
+  - argument: >
+      Data show that students who receive private tutoring perform worse on
+      standardised tests than those who do not. Tutoring must be harmful to learning.
+    expected_letter: B
+    fallacy_name: Confounding variable
+    explanation: >
+      Academic difficulty is the confounder: students who are struggling seek
+      tutoring AND score lower. The tutoring is a response to existing difficulty,
+      not its cause.
+
+  # ── C: Reverse causation ────────────────────────────────────────────────
+  - argument: >
+      People who carry umbrellas are much more likely to get rained on than people
+      who leave their umbrellas at home. Umbrellas must attract rain.
+    expected_letter: C
+    fallacy_name: Reverse causation
+    explanation: >
+      People carry umbrellas when they expect or experience rain. The rain causes
+      umbrella use, not the reverse. This is a textbook example of reverse causation.
+
+  - argument: >
+      Successful companies tend to spend more on marketing. Therefore, heavy
+      spending on marketing is what makes companies successful.
+    expected_letter: C
+    fallacy_name: Reverse causation (partly)
+    explanation: >
+      Causality runs both ways, but partly in reverse: companies that are already
+      successful have more revenue to spend on marketing. Revenue drives marketing
+      budget as much as (or more than) marketing drives revenue.
+
+  # ── D: No fallacy (genuine causation) ───────────────────────────────────
+  - argument: >
+      When a light switch is flipped to the ON position in a properly wired room,
+      the lights turn on. Flipping the switch causes the lights to illuminate.
+    expected_letter: D
+    fallacy_name: No fallacy
+    explanation: >
+      Flipping the switch completes an electrical circuit, which directly and
+      mechanically causes the light to turn on. This is a genuine causal
+      relationship with a clear physical mechanism.

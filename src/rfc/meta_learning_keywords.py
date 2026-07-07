@@ -21,11 +21,7 @@ def build_conversation_transcript(
     distractor_response: str,
     test_prompt: str,
 ) -> str:
-    """Build a multi-turn conversation transcript.
-
-    Formats the conversation as a text transcript that can be sent
-    to a stateless LLM to simulate multi-turn interaction.
-    """
+    """Build a multi-turn conversation transcript for a stateless LLM."""
     return (
         f"User: I want to teach you a new skill. {skill_description}\n"
         f"Assistant: {skill_ack}\n"
@@ -57,24 +53,7 @@ class MetaLearningKeywords:
         test_prompt: str,
         expected_answer: str,
     ) -> Dict[str, Any]:
-        """Test whether the LLM retains a taught skill across turns.
-
-        Turn 1: Teach the skill.
-        Turn 2: Send a distractor (unrelated question).
-        Turn 3: Test whether the skill is correctly applied.
-
-        Args:
-            skill_description: The skill to teach (e.g. "always answer in French").
-            distractor_prompt: An unrelated question for the middle turn.
-            test_prompt: A question that requires applying the taught skill.
-            expected_answer: The expected answer demonstrating skill application.
-
-        Returns:
-            Dict with keys: score, reason, actual_answer, skill_applied.
-
-        Raises:
-            ValueError: If skill_description is empty.
-        """
+        """Test whether the LLM retains a taught skill across turns."""
         if not skill_description.strip():
             raise ValueError("skill_description must not be empty")
 

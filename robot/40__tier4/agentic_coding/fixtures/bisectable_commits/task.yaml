@@ -1,0 +1,5 @@
+# Live-runner input for the bisectable_commits scenario.
+# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
+scenario_id: bisectable_commits
+task: "Add a metrics export module: new module, CLI wiring, and docs."
+base_branch: claude-code-staging

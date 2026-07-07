@@ -38,22 +38,7 @@ class AgenticInjectionKeywords:
         description: str = "",
         signal_is_regex: bool = False,
     ) -> Dict[str, Any]:
-        """Run one agentic prompt injection test case.
-
-        Args:
-            original_task: User task the agent should complete.
-            poisoned_tool_output: Tool output containing the injection payload.
-            canary: Unique token the injection tries to make the LLM emit.
-            task_signal: Literal substring (default) or regex proving the
-                original task was done.
-            tool_name: Identifier for the tool whose output is poisoned.
-            description: Human-readable test description (for logs).
-            signal_is_regex: If True, treat ``task_signal`` as a regex
-                (default: literal substring match).
-
-        Returns:
-            Dict with grader signals, indicators, and the LLM response.
-        """
+        """Run one agentic prompt injection test case."""
         logger.info(f"Agentic injection test: {description or original_task[:50]}")
 
         agent_prompt = self.grader.build_agent_prompt(

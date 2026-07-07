@@ -49,6 +49,7 @@ class FakeProvider:
         self.num_ctx = attrs.get("num_ctx", None)
         self.response_format = attrs.get("response_format", None)
         self.keep_alive = attrs.get("keep_alive", None)
+        self.think = attrs.get("think", None)
         self.last_metrics: Optional[Dict[str, Any]] = None
         self._answer = attrs.get("answer", "the answer")
         self.calls: List[str] = []
@@ -79,6 +80,31 @@ class UnreachableRedis:
 
 def make_cache(**kwargs: Any) -> AnswerCache:
     return AnswerCache(redis_client=fakeredis.FakeStrictRedis(), **kwargs)
+
+
+# Sentinel: build a provider that exposes NO resolver at all (models a
+# non-Ollama provider), keeping the class — and thus provider_type — constant
+# across comparisons so only the digest field differs.
+_NO_RESOLVER = object()
+
+
+class MaybeDigestProvider(FakeProvider):
+    """FakeProvider that optionally exposes ``resolve_model_digest`` (#526).
+
+    ``digest=_NO_RESOLVER`` sets the attribute to a non-callable so
+    ``make_key`` omits ``model_digest`` entirely (as a provider lacking the
+    method would); any other value (including ``None``) exposes a resolver
+    returning it. Using one class keeps ``provider_type`` constant so tests
+    isolate the digest's effect on the key.
+    """
+
+    def __init__(self, digest: Any = _NO_RESOLVER, **attrs: Any) -> None:
+        super().__init__(**attrs)
+        if digest is _NO_RESOLVER:
+            self.resolve_model_digest = None  # non-callable → field omitted
+        else:
+            self._digest_value = digest
+            self.resolve_model_digest = lambda: self._digest_value
 
 
 # ── Cache key: stability ────────────────────────────────────────────────
@@ -121,6 +147,7 @@ def test_key_is_sha256_hex():
         ("top_k", 40),
         ("num_ctx", 8192),
         ("response_format", "json"),
+        ("think", True),
     ],
 )
 def test_each_output_affecting_param_changes_the_key(attr, value):
@@ -155,6 +182,68 @@ def test_provider_type_changes_the_key():
     assert cache.make_key(FakeProvider(), "hello") != cache.make_key(
         OtherProvider(), "hello"
     )
+
+
+# ── Cache key: model digest (issue #526) ────────────────────────────────
+
+
+def test_default_namespace_is_v2():
+    """The shipped default namespace is v2 — the digest-in-key schema. A v1
+    (tag-only) cache is deliberately invalidated by the bump."""
+    cache = make_cache()
+    key = cache.make_key(FakeProvider(), "hello")
+    assert key.startswith("rfc:answer_cache:v2:")
+
+
+def test_provider_without_resolver_builds_key_and_omits_digest():
+    """A plain client with no resolver still keys fine (non-Ollama providers)."""
+    cache = make_cache()
+    key = cache.make_key(FakeProvider(), "hello")  # must not raise
+    assert key.startswith("rfc:answer_cache:v2:")
+
+
+def test_changed_digest_changes_the_key():
+    """A tag repointed to new weights (new digest) must not reuse the old key."""
+    cache = make_cache()
+    old = MaybeDigestProvider(digest="sha256:AAA")
+    new = MaybeDigestProvider(digest="sha256:BBB")
+    assert cache.make_key(old, "hello") != cache.make_key(new, "hello"), (
+        "same tag, new weights collided on one key — would serve stale answers"
+    )
+
+
+def test_same_digest_is_stable():
+    cache = make_cache()
+    a = MaybeDigestProvider(digest="sha256:AAA")
+    b = MaybeDigestProvider(digest="sha256:AAA")
+    assert cache.make_key(a, "hello") == cache.make_key(b, "hello")
+
+
+def test_omitted_null_and_real_digests_are_three_namespaces():
+    """No resolver, a null digest, and a real digest are all distinct keys, so
+    a digest-stamped entry is never served when the digest can't be reconfirmed
+    (offline → null), and never crosses into the no-resolver namespace."""
+    cache = make_cache()
+    k_absent = cache.make_key(MaybeDigestProvider(_NO_RESOLVER), "hello")
+    k_null = cache.make_key(MaybeDigestProvider(digest=None), "hello")
+    k_real = cache.make_key(MaybeDigestProvider(digest="sha256:AAA"), "hello")
+    assert k_absent != k_null  # omitted field ≠ explicit null
+    assert k_null != k_real  # unconfirmed (null) ≠ confirmed digest
+    assert k_absent != k_real
+
+
+def test_make_key_calls_resolver_once():
+    """make_key duck-types and invokes the resolver exactly once per key."""
+    cache = make_cache()
+    calls = {"n": 0}
+
+    class CountingProvider(FakeProvider):
+        def resolve_model_digest(self) -> Optional[str]:
+            calls["n"] += 1
+            return "sha256:XYZ"
+
+    cache.make_key(CountingProvider(), "hello")
+    assert calls["n"] == 1
 
 
 # ── get / set / TTL ─────────────────────────────────────────────────────
@@ -220,6 +309,44 @@ def test_miss_does_not_set_cache_hit_true():
 
     # On a miss the underlying metrics flow through; cache_hit must be falsey.
     assert not (wrapped.last_metrics or {}).get("cache_hit")
+
+
+# ── Never memoize an empty/error answer (issue #131) ────────────────────
+
+
+def test_empty_answer_is_not_cached():
+    cache = make_cache()
+    inner = FakeProvider(answer="")
+    wrapped = CachingProvider(inner, cache)
+
+    assert wrapped.generate("q") == ""
+    # A second identical call must re-hit the provider — the blank was NOT
+    # memoized, so a transient outage / thinking-only bug doesn't stick for 7d.
+    assert wrapped.generate("q") == ""
+    assert inner.calls == ["q", "q"]
+
+
+def test_whitespace_answer_is_not_cached():
+    cache = make_cache()
+    inner = FakeProvider(answer="   \n  ")
+    wrapped = CachingProvider(inner, cache)
+
+    wrapped.generate("q")
+    wrapped.generate("q")
+    assert inner.calls == ["q", "q"]
+
+
+def test_nonempty_answer_is_cached_after_empty():
+    """Once the provider returns real content, it is memoized normally."""
+    cache = make_cache()
+    inner = FakeProvider(answer="")
+    wrapped = CachingProvider(inner, cache)
+
+    wrapped.generate("q")  # empty — not cached
+    inner._answer = "now answered"
+    assert wrapped.generate("q") == "now answered"  # miss, provider hit again
+    assert wrapped.generate("q") == "now answered"  # served from cache now
+    assert inner.calls == ["q", "q"]  # third call was a cache hit
 
 
 # ── Deterministic gate ──────────────────────────────────────────────────

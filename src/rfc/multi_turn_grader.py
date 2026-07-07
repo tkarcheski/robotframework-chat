@@ -27,18 +27,9 @@ class MultiTurnGrader:
     ) -> GradeResult:
         """Grade whether LLM responses are consistent about a stated fact.
 
-        Args:
-            fact_description: The fact that was established (e.g. "User's
-                birthday is March 15").
-            responses: All LLM-generated responses in the conversation.
-            probe_indices: Indices into *responses* where the fact was probed.
-
-        Returns:
-            GradeResult with consistency score and reason.
-
-        An empty/whitespace-only probe response is treated as a failure
-        rather than vacuous consistency. If every probed response is
-        empty the grader returns score 0.0 without calling the judge.
+        An empty/whitespace-only probe response is treated as a failure rather
+        than vacuous consistency; if every probed response is empty the grader
+        returns 0.0 without calling the judge.
         """
         probe_texts = []
         non_empty_probes = 0
@@ -88,20 +79,10 @@ Format:
         constraint: str,
         response: str,
     ) -> GradeResult:
-        """Grade whether a single response complies with a constraint.
-
-        Args:
-            constraint: The instruction constraint (e.g. "respond only in
-                bullet points").
-            response: The LLM response to evaluate.
-
-        Returns:
-            GradeResult with compliance score (1.0 = compliant, 0.0 = not).
-        """
+        """Grade whether a single response complies with a constraint (1.0 = compliant)."""
         if not response or not response.strip():
-            # An empty response cannot demonstrate compliance with any
-            # constraint. Score it 0.0 directly rather than asking a
-            # judge to interpret silence.
+            # An empty response cannot demonstrate compliance; score 0.0
+            # directly rather than asking a judge to interpret silence.
             return GradeResult(
                 score=0.0,
                 reason="Empty response — model produced no content to evaluate",
@@ -140,16 +121,7 @@ Format:
         new_topic: str,
         response: str,
     ) -> GradeResult:
-        """Grade whether a response to a new topic avoids bleeding prior context.
-
-        Args:
-            prior_topic: Description of the previous topic.
-            new_topic: Description of the new topic the user switched to.
-            response: The LLM's response to the new topic.
-
-        Returns:
-            GradeResult with isolation score (1.0 = no bleed, 0.0 = full bleed).
-        """
+        """Grade whether a response to a new topic avoids bleeding prior context (1.0 = no bleed)."""
         if not response or not response.strip():
             return GradeResult(
                 score=0.0,

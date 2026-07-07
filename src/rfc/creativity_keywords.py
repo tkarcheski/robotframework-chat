@@ -67,9 +67,8 @@ class CreativityKeywords:
     def creativity_grader(self) -> CreativityGrader:
         """Lazily build a panel-backed grader from CREATIVITY_GRADER_MODELS.
 
-        Raises MissingEnvironmentError (ROBOT_SKIP_EXECUTION) if the env var is unset
-        or has fewer than 3 models. This skips the test rather than silently
-        falling back to the generation client (issue #260).
+        Raises MissingEnvironmentError to skip (not silently fall back to the
+        generation client) when the panel is unavailable (issue #260).
         """
         if self._creativity_grader is None:
             self._creativity_grader = CreativityGrader(self._build_judge_panel())
@@ -79,10 +78,9 @@ class CreativityKeywords:
     def _canonical_model(name: str) -> str:
         """Normalize a model name so tag aliases compare equal.
 
-        Ollama treats an untagged name as ``:latest`` and is case-insensitive,
-        so 'Qwen2', 'qwen2', and 'qwen2:latest' all refer to the same model.
-        Canonicalising before the dedupe and self-grading-overlap checks
-        prevents alias forms from bypassing those guards (#260).
+        Ollama treats an untagged, case-insensitive name as ``:latest``, so
+        canonicalising keeps alias forms from bypassing the dedupe and
+        self-grading-overlap guards (#260).
         """
         canon = name.strip().lower()
         if ":" not in canon:
@@ -131,18 +129,7 @@ class CreativityKeywords:
 
     @keyword("Ask For Joke")
     def ask_for_joke(self, prompt: str, max_tokens: int = 512) -> str:
-        """Ask the LLM to generate a joke with creativity-tuned parameters.
-
-        Sets temperature to 0.7 for creative generation, then restores
-        the original temperature after the call.
-
-        Args:
-            prompt: The joke prompt to send to the LLM.
-            max_tokens: Maximum tokens for the response.
-
-        Returns:
-            The joke text produced by the LLM.
-        """
+        """Ask the LLM to generate a joke with creativity-tuned parameters."""
         logger.info(f"Asking for joke: {prompt}")
         original_temperature = self.client.temperature
         original_max_tokens = self.client.max_tokens
@@ -167,18 +154,7 @@ class CreativityKeywords:
 
     @keyword("Ask With Conversation")
     def ask_with_conversation(self, messages: List[Dict[str, str]]) -> str:
-        """Send a multi-turn conversation to the LLM and get the response.
-
-        Builds a single prompt from the conversation history and asks the
-        LLM to continue. This simulates multi-turn context awareness.
-
-        Args:
-            messages: List of dicts with 'role' and 'content' keys.
-                      Roles: 'user', 'assistant', 'system'.
-
-        Returns:
-            The LLM's response to the final message in the conversation.
-        """
+        """Send a multi-turn conversation to the LLM and get the response."""
         prompt = self._build_conversation_prompt(messages)
         logger.info(f"Conversation prompt:\n{prompt}")
 
@@ -199,18 +175,8 @@ class CreativityKeywords:
     ) -> Tuple[float, str]:
         """Grade a joke on humor, creativity, originality, and relevance.
 
-        An empty/whitespace-only joke is scored 0.0 directly without
-        calling the underlying LLM-judge grader; the upstream retry loop
-        relies on this returning rather than raising so it can decide
-        whether to escalate or surface :class:`EmptyLLMResponseError`.
-
-        Args:
-            prompt: The original joke prompt.
-            joke: The joke text to grade.
-            expected_traits: Description of expected traits.
-
-        Returns:
-            Tuple of (score, reason).
+        An empty joke scores 0.0 by returning (not raising) so the retry loop
+        can decide whether to escalate or surface EmptyLLMResponseError.
         """
         if not joke or not joke.strip():
             score, reason = 0.0, "Empty joke — model produced no content"
@@ -230,17 +196,7 @@ class CreativityKeywords:
         response: str,
         expected: str,
     ) -> Tuple[float, str]:
-        """Grade whether the LLM maintained conversational context.
-
-        Args:
-            scenario_description: What this test is checking.
-            conversation: The conversation history (string or list of message dicts).
-            response: The LLM's response to evaluate.
-            expected: What the response should demonstrate.
-
-        Returns:
-            Tuple of (score, reason).
-        """
+        """Grade whether the LLM maintained conversational context."""
         if isinstance(conversation, list):
             conversation = self._build_conversation_prompt(conversation)
         result = self._context_grader.grade_context(
@@ -257,19 +213,7 @@ class CreativityKeywords:
         expected_traits: str,
         max_retries: int = 3,
     ) -> Tuple[float, str, str]:
-        """Ask for a joke and grade it; retry with more tokens and richer prompts.
-
-        On failure, both increases max_tokens by 8x AND enriches the prompt
-        with more specific creative instructions.
-
-        Args:
-            prompt: The joke prompt.
-            expected_traits: Traits to grade against.
-            max_retries: Maximum number of retries (default 3).
-
-        Returns:
-            Tuple of (score, reason, joke) from the final attempt.
-        """
+        """Ask for a joke and grade it; retry with more tokens and richer prompts."""
         max_retries = int(max_retries)
         current_max_tokens = 512
         retries_used = 0

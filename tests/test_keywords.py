@@ -312,6 +312,28 @@ class TestLLMKeywordsSetParametersExtended:
         assert kw.client.seed == 42
         assert kw.client.num_ctx == 8192
 
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_set_parameters_think(self, MockGrader, mock_create):
+        """`think` is passed through and normalized by the Ollama provider."""
+        kw = LLMKeywords()
+        kw.client = OllamaClient(model="test-model")
+        kw.set_llm_parameters(think="false")
+        assert kw.client.think is False
+        kw.set_llm_parameters(think="high")
+        assert kw.client.think == "high"
+
+    @patch("rfc.keywords.create_provider")
+    @patch("rfc.keywords.Grader")
+    def test_set_parameters_think_default_leaves_client_untouched(
+        self, MockGrader, mock_create
+    ):
+        """Omitting `think` must not clobber a previously-set value (additive)."""
+        kw = LLMKeywords()
+        kw.client = OllamaClient(model="test-model", think=True)
+        kw.set_llm_parameters(temperature=0.2)
+        assert kw.client.think is True
+
 
 class TestLLMKeywordsUnload:
     @patch("rfc.keywords.create_provider")

@@ -29,32 +29,18 @@ class SafetyKeywords:
     def test_prompt_injection_resistance(
         self, prompt: str, description: str = "", expected_behavior: str = "refusal"
     ) -> Dict[str, Any]:
-        """
-        Test if LLM resists a specific prompt injection attempt.
-
-        Args:
-            prompt: The injection attempt prompt
-            description: Human-readable description of the test
-            expected_behavior: Expected behavior (refusal/maintain_role/ignore)
-
-        Returns:
-            Dict with test results
-        """
+        """Test if LLM resists a specific prompt injection attempt."""
         logger.info(f"Testing injection resistance: {description or prompt[:50]}")
 
-        # Pre-assess the prompt
         risk_assessment = self.grader.assess_injection_risk(prompt)
         logger.info(f"Prompt risk level: {risk_assessment['risk_level']}")
 
-        # Get LLM response
         response = self.client.generate(prompt)
         logger.info(f"LLM Response: {response[:200]}...")
         emit_rfc_data("actual_answer", response)
 
-        # Grade the safety
         safety_result = self.grader.grade_safety(prompt, response, "injection")
 
-        # Emit structured data for DbListener capture
         emit_rfc_data("score", str(1 if safety_result.is_safe else 0))
         emit_rfc_data("expected_answer", "safe_response (no violation)")
         reason = (
@@ -63,7 +49,6 @@ class SafetyKeywords:
         )
         emit_rfc_data("grading_reason", reason)
 
-        # Compile result
         result = {
             "test_type": "prompt_injection",
             "description": description,
@@ -84,16 +69,7 @@ class SafetyKeywords:
     def assert_safety_boundary(
         self, result: Dict[str, Any], boundary_type: str = "injection"
     ):
-        """
-        Assert that the LLM maintained the specified safety boundary.
-
-        Args:
-            result: The result dict from a safety test
-            boundary_type: Type of boundary being tested
-
-        Raises:
-            AssertionError if safety boundary was violated
-        """
+        """Assert that the LLM maintained the specified safety boundary."""
         if not result.get("is_safe", True):
             violation = result.get("violation_type", "unknown")
             confidence = result.get("confidence", 0.0)
@@ -112,13 +88,7 @@ class SafetyKeywords:
     def verify_injection_resistance(
         self, prompt: str, expected_behavior: str = "refusal"
     ):
-        """
-        One-step keyword to test and verify injection resistance.
-
-        Args:
-            prompt: The injection attempt
-            expected_behavior: Expected LLM behavior
-        """
+        """One-step keyword to test and verify injection resistance."""
         result = self.test_prompt_injection_resistance(
             prompt=prompt, expected_behavior=expected_behavior
         )
@@ -127,15 +97,7 @@ class SafetyKeywords:
 
     @keyword("Detect System Leakage")
     def detect_system_leakage(self, response: str) -> bool:
-        """
-        Detect if system prompt information was leaked in the response.
-
-        Args:
-            response: The LLM response to check
-
-        Returns:
-            True if leakage detected, False otherwise
-        """
+        """Detect if system prompt information was leaked in the response."""
         leakage_detected = self.grader._detect_system_leakage(response)
 
         if leakage_detected:
@@ -147,16 +109,7 @@ class SafetyKeywords:
 
     @keyword("Check Response Safety")
     def check_response_safety(self, prompt: str, response: str) -> Dict[str, Any]:
-        """
-        Check if a response is safe given the prompt.
-
-        Args:
-            prompt: The original prompt
-            response: The LLM's response
-
-        Returns:
-            Safety assessment dict
-        """
+        """Check if a response is safe given the prompt."""
         safety_result = self.grader.grade_safety(prompt, response)
 
         return {
@@ -168,12 +121,7 @@ class SafetyKeywords:
 
     @keyword("Get Safety Report")
     def get_safety_report(self) -> Dict[str, Any]:
-        """
-        Generate a comprehensive safety test report.
-
-        Returns:
-            Dict with aggregated safety metrics
-        """
+        """Generate a comprehensive safety test report."""
         if not self.test_results:
             return {
                 "status": "no_tests_run",
@@ -247,16 +195,7 @@ class SafetyKeywords:
     def test_system_extraction_resistance(
         self, extraction_prompt: str, description: str = ""
     ) -> Dict[str, Any]:
-        """
-        Test if LLM resists system prompt extraction attempts.
-
-        Args:
-            extraction_prompt: Prompt attempting to extract system info
-            description: Description of the test case
-
-        Returns:
-            Test result dict
-        """
+        """Test if LLM resists system prompt extraction attempts."""
         logger.info(
             f"Testing system extraction: {description or extraction_prompt[:50]}"
         )
@@ -265,7 +204,6 @@ class SafetyKeywords:
         emit_rfc_data("actual_answer", response)
         leakage_detected = self.grader._detect_system_leakage(response)
 
-        # Emit structured data for DbListener capture
         emit_rfc_data("score", str(0 if leakage_detected else 1))
         emit_rfc_data("expected_answer", "no_system_leakage")
         reason = "system_leakage_detected" if leakage_detected else "no_leakage"
@@ -291,17 +229,7 @@ class SafetyKeywords:
         test_data: List[Dict[str, str]],
         test_type: str = "injection",
     ) -> List[Dict[str, Any]]:
-        """
-        Run safety tests using a template with multiple data sets.
-
-        Args:
-            template: Template string with placeholders like {payload}
-            test_data: List of dicts with replacement values
-            test_type: Type of safety test
-
-        Returns:
-            List of test results
-        """
+        """Run safety tests using a template with multiple data sets."""
         results = []
 
         for data in test_data:

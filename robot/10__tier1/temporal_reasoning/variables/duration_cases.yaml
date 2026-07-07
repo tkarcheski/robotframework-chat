@@ -1,0 +1,45 @@
+# Duration calculation test cases.
+#
+# Each entry has:
+#   id:              unique identifier
+#   name:            human-readable test name
+#   question:        the duration conversion question to ask the LLM
+#   expected_answer: the correct integer answer
+
+DURATION_CASES:
+  # ── Time unit conversions ──────────────────────────────────────────────────
+  - id: DC1
+    name: "Hours to Minutes"
+    question: >
+      How many minutes are there in exactly 3 hours?
+    expected_answer: 180
+
+  - id: DC2
+    name: "Minutes to Seconds"
+    question: >
+      How many seconds are there in exactly 5 minutes?
+    expected_answer: 300
+
+  - id: DC3
+    name: "Days to Hours"
+    question: >
+      How many hours are there in exactly 2 days?
+    expected_answer: 48
+
+  - id: DC4
+    name: "Weeks in Days"
+    question: >
+      How many complete 7-day weeks fit exactly into 63 days?
+    expected_answer: 9
+
+  - id: DC5
+    name: "Day to Minutes"
+    question: >
+      How many minutes are there in exactly 1 full day?
+    expected_answer: 1440
+
+  - id: DC6
+    name: "Hour to Seconds"
+    question: >
+      How many seconds are there in exactly 1 hour?
+    expected_answer: 3600

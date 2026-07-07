@@ -52,11 +52,7 @@ def _parse_expected_keys(expected_keys: str) -> list[str]:
 def _compute_key_score(
     parsed: dict[str, Any], expected: list[str]
 ) -> tuple[float, list[str]]:
-    """Compute partial-credit score based on key presence.
-
-    Returns (score, missing_keys) where score ranges from 0.0 to 1.0.
-    Parse credit (0.5) + key fraction credit (0.5 * keys_found/keys_expected).
-    """
+    """Return (score, missing): 0.5 parse credit + 0.5 * fraction of keys present."""
     if not expected:
         return 1.0, []
     present = [k for k in expected if k in parsed]
@@ -71,19 +67,7 @@ class FormatKeywords:
 
     @keyword("Validate JSON Response")
     def validate_json_response(self, response: str, expected_keys: str) -> float:
-        """Parse JSON from response and validate expected keys.
-
-        Supports JSON objects and arrays (validates keys of first element).
-        Extracts JSON from markdown code fences if present.
-
-        Args:
-            response: Raw LLM response that should contain JSON.
-            expected_keys: Comma-separated list of expected keys.
-
-        Returns:
-            Score from 0.0 to 1.0. Partial credit: 0.5 for valid parse
-            but missing keys, 1.0 for all keys present.
-        """
+        """Parse JSON from response and validate expected keys."""
         keys = _parse_expected_keys(expected_keys)
         text = _strip_code_fences(response)
         try:
@@ -137,15 +121,7 @@ class FormatKeywords:
 
     @keyword("Validate YAML Response")
     def validate_yaml_response(self, response: str, expected_keys: str) -> float:
-        """Parse YAML from response and validate expected keys.
-
-        Args:
-            response: Raw LLM response that should contain YAML.
-            expected_keys: Comma-separated list of expected top-level keys.
-
-        Returns:
-            Score from 0.0 to 1.0.
-        """
+        """Parse YAML from response and validate expected keys."""
         keys = _parse_expected_keys(expected_keys)
         text = _strip_code_fences(response)
         try:
@@ -175,17 +151,7 @@ class FormatKeywords:
         expected_columns: int,
         min_rows: int = 1,
     ) -> float:
-        """Parse CSV from response and validate structure.
-
-        Args:
-            response: Raw LLM response that should contain CSV.
-            expected_columns: Expected number of columns.
-            min_rows: Minimum number of data rows (excluding header).
-
-        Returns:
-            Score from 0.0 to 1.0. Partial credit for parseable but
-            wrong structure.
-        """
+        """Parse CSV from response and validate structure."""
         expected_columns = int(expected_columns)
         min_rows = int(min_rows)
         text = _strip_code_fences(response)
@@ -216,7 +182,6 @@ class FormatKeywords:
 
         emit_rfc_data("parse_valid", "true")
 
-        # Header is first row; data rows are the rest
         actual_columns = len(rows[0])
         data_row_widths = [len(r) for r in rows[1:]]
         data_rows = len(data_row_widths)
@@ -244,29 +209,16 @@ class FormatKeywords:
 
     @keyword("Count Sentences")
     def count_sentences(self, text: str) -> int:
-        """Count sentences in text using punctuation splitting.
-
-        Handles common abbreviations (Mr., Dr., etc.) to avoid
-        false splits. Text without trailing punctuation counts as
-        one sentence if non-empty.
-
-        Args:
-            text: Text to count sentences in.
-
-        Returns:
-            Number of sentences (0 for empty text).
-        """
+        """Count sentences in text using punctuation splitting."""
         if not text or not text.strip():
             emit_rfc_data("sentence_count", "0")
             emit_rfc_data("response_empty", "true")
             return 0
 
-        # Find all positions where sentence-ending punctuation occurs
         count = 0
         for match in _SENTENCE_SPLIT.finditer(text):
             pos = match.start()
             if text[pos] == ".":
-                # Check if the period is preceded by an abbreviation
                 prefix = text[:pos].rstrip()
                 words = prefix.split()
                 last_word = words[-1].lower().rstrip(".") if words else ""
@@ -282,7 +234,7 @@ class FormatKeywords:
                         continue
             count += 1
 
-        # If text has content but no sentence-ending punctuation, count as 1
+        # Content with no sentence-ending punctuation still counts as one sentence
         if count == 0 and text.strip():
             count = 1
 
@@ -291,14 +243,7 @@ class FormatKeywords:
 
     @keyword("Count Words")
     def count_words(self, text: str) -> int:
-        """Count words in text using whitespace splitting.
-
-        Args:
-            text: Text to count words in.
-
-        Returns:
-            Word count (0 for empty or whitespace-only text).
-        """
+        """Count words in text using whitespace splitting."""
         if not text or not text.strip():
             emit_rfc_data("word_count", "0")
             emit_rfc_data("response_empty", "true")
@@ -309,18 +254,7 @@ class FormatKeywords:
 
     @keyword("Check Forbidden Words")
     def check_forbidden_words(self, response: str, forbidden_words: str) -> list[str]:
-        """Check for forbidden words in response using word-boundary matching.
-
-        Case-insensitive. Uses ``\\b`` word boundaries to avoid matching
-        substrings (e.g. 'show' does not match forbidden word 'how').
-
-        Args:
-            response: LLM response text to check.
-            forbidden_words: Comma-separated list of forbidden words.
-
-        Returns:
-            List of forbidden words found (empty if none).
-        """
+        """Check for forbidden words with ``\\b`` boundaries ('show' does not match 'how')."""
         words = _parse_expected_keys(forbidden_words)
         if not response or not response.strip():
             # An empty response trivially has no forbidden words, but

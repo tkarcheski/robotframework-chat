@@ -14,6 +14,7 @@ from rfc.make_model_cards import (
     render_metadata_table,
     slugify,
 )
+from rfc.ollama import OllamaClient
 
 
 class TestSlugify:
@@ -404,7 +405,7 @@ class TestMainCLI:
     """Test CLI entry point."""
 
     @patch("rfc.make_model_cards.TestDatabase")
-    @patch("rfc.make_model_cards.OllamaClient")
+    @patch("rfc.make_model_cards.create_provider")
     @patch("rfc.make_model_cards.get_distinct_models")
     @patch("rfc.make_model_cards.compute_metrics")
     @patch("rfc.make_model_cards.fetch_model_metadata")
@@ -444,7 +445,7 @@ class TestMainCLI:
             "context_window": "2048",
         }
         mock_swot.return_value = "SWOT text"
-        mock_ollama_instance = MagicMock()
+        mock_ollama_instance = MagicMock(spec=OllamaClient)
         mock_ollama_instance.is_available.return_value = True
         mock_ollama.return_value = mock_ollama_instance
 
@@ -459,3 +460,21 @@ class TestMainCLI:
             assert card_file.exists()
             content = card_file.read_text()
             assert "# Model Card: test_model" in content
+
+
+class TestBuildLLMProviderWrapperApplication:
+    """The SWOT provider must be built through create_provider so the
+    instrumentation wrappers apply; unwrap_provider() must still reach the
+    concrete OllamaClient (#130)."""
+
+    def test_provider_is_wrapped_and_unwraps_to_ollama(self, monkeypatch) -> None:
+        from rfc.llm_client import unwrap_provider
+        from rfc.make_model_cards import _build_llm_provider
+
+        monkeypatch.setenv("LLM_CONSOLE_FEED_ENABLED", "1")
+        provider = _build_llm_provider("http://localhost:11434", "test-model")
+
+        assert not isinstance(provider, OllamaClient), (
+            "provider should be wrapped, not a bare OllamaClient"
+        )
+        assert isinstance(unwrap_provider(provider), OllamaClient)

@@ -128,19 +128,13 @@ class JSONSchemaKeywords:
         self.llm_library_alias = llm_library_alias
 
     def _get_configured_client(self) -> Any:
-        """Get the currently configured LLM client from LLMKeywords, or lazily create one.
-
-        In Robot Framework suite execution, this returns the LLMKeywords instance's
-        client, which respects LLM.Set LLM Parameters() configuration. In unit tests
-        or non-Robot contexts, creates a provider on-demand (lazy initialization).
-        """
+        """Return the LLMKeywords client (respects Set LLM Parameters); lazily create one outside Robot."""
         try:
             from robot.libraries.BuiltIn import BuiltIn  # type: ignore[import-not-found]
 
             llm_library = BuiltIn().get_library_instance(self.llm_library_alias)
             return llm_library.client  # type: ignore[attr-defined]
         except Exception:
-            # Lazy initialization: create provider only when needed
             if self.client is None:
                 self.client = create_provider(
                     timeout=self.timeout, max_retries=self.max_retries
@@ -154,11 +148,7 @@ class JSONSchemaKeywords:
         schema: str,
         schema_name: str = "custom",
     ) -> float:
-        """Parse `response` as JSON and validate against `schema`.
-
-        Returns 1.0 for full pass, 0.5 for valid parse with schema errors,
-        and 0.0 for parse failure or invalid schema.
-        """
+        """Validate `response` JSON: 1.0 pass, 0.5 schema errors, 0.0 parse failure."""
         try:
             schema_obj = json.loads(schema)
         except (json.JSONDecodeError, ValueError) as e:
@@ -206,11 +196,7 @@ class JSONSchemaKeywords:
         schema_name: str = "custom",
         max_retries: Optional[int] = None,
     ) -> tuple[float, int]:
-        """Ask the LLM for JSON and validate it, retrying on failure.
-
-        Returns (final_score, attempt_number). Stops early on a perfect score.
-        Uses the configured LLM client from LLMKeywords if available.
-        """
+        """Ask the LLM for JSON with retries; return (final_score, attempt_number)."""
         retries = int(max_retries) if max_retries is not None else self.max_retries
 
         try:

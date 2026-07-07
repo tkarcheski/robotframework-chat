@@ -1,39 +1,12 @@
 """Deterministic verifiers over :class:`AgentRun` artifacts.
 
-Each verifier raises :class:`VerificationFailure` on failure with a clear
-human-readable reason. All checks in this module are Tier 1: pure Python logic
-over a normalized artifact, no LLM calls, no network, no I/O.
-
-Verifiers treat ``bash -lc "A && B"`` shell-wrapper invocations as if the inner
-subcommands were run directly, so agents that bundle commands are not penalized.
-
-Scope boundary (tier:1 ``verify:python``, capped per owner decision — see
-``ai/testing.md`` "Tier 1" section). These verifiers guarantee STRUCTURAL
-commit-gating over the *normalized* ``AgentRun``:
-
-  * operator-aware effective status (an ``&&``/``||``/``;``/``|``/``&`` chain's
-    exit code is interpreted, not assumed) — ``_effective_status``;
-  * a drop-a-side fragment denylist for conflict resolutions —
-    ``_DROP_A_SIDE_FRAGMENTS``;
-  * tokenized command identity for the load-bearing verbs (``git commit``,
-    ``git checkout <sha>``) — ``_is_git_commit`` / ``_is_head_checkout``.
-
-They are NOT a shell interpreter and do NOT certify worktree CONTENTS. The
-artifact records command tokens, exit codes, and changed *paths* — never file
-contents, full shell grammar, or live per-command capture. Consequently the
-following are explicitly OUT OF SCOPE and deferred to the tier:4 sandbox pilot
-(#390), which can diff the actual worktree against the contract:
-
-  * arbitrary shell-grammar evasion (pathspec checkout without ``--``, ``echo``
-    of a needle, abbreviated/prefix revisions, rebase-continuation tokenizing
-    beyond the current denylist, ``&`` content effects);
-  * content-level claims ("both conflict sides preserved", "the upstream change
-    was actually applied");
-  * live-runner per-command capture nuances (fixture wording for runners that
-    do not inject the scenario event).
-
-Chasing these at tier:1 by widening the denylist/tokenizer is a runaway loop
-with no fixed point and is intentionally not done here.
+Each verifier raises :class:`VerificationFailure` with a human-readable reason.
+All checks are Tier 1: pure Python over a normalized artifact — no LLM, network,
+or I/O. ``bash -lc "A && B"`` wrappers are treated as if the inner subcommands
+ran directly, so bundling is not penalized. Scope (tier:1 ``verify:python``, see
+``ai/testing.md`` "Tier 1"): STRUCTURAL commit-gating only. These are NOT a shell
+interpreter and do NOT certify worktree CONTENTS — content-level claims and
+shell-grammar evasion are out of scope, deferred to the tier:4 sandbox (#390).
 """
 
 from __future__ import annotations
@@ -229,11 +202,7 @@ def assert_commands_appear_in_order(
 
     Subcommands from ``bash -lc "A && B"`` wrappers are flattened, so needles
     that ran as part of the same wrapped invocation still satisfy ordering.
-
-    Raises:
-        ValueError: If ``ordered_needles`` is empty. An empty needle list
-            would vacuously pass even against an empty agent run, hiding
-            misconfigured tests.
+    Empty ``ordered_needles`` raises ``ValueError`` (it would vacuously pass).
     """
     if not ordered_needles:
         raise ValueError(
@@ -384,12 +353,10 @@ _DROP_A_SIDE_FRAGMENTS = (
 
 _REBASE_SUBCOMMAND_MODIFIERS = ("--continue", "--abort", "--skip")
 
-# Commands that move HEAD / rewrite the worktree, ending a replay checkpoint:
-# a test recorded after one of these ran against a different commit, so it
-# can no longer certify the checked-out SHA (#503).
-# Git subcommands that always advance or rewrite HEAD and leave a clean
-# worktree, so a test run after one of them no longer exercises the replayed
-# commit even though ``changed_paths_after`` is empty (#503 round 10).
+# Git subcommands that always advance or rewrite HEAD, ending a replay
+# checkpoint: a test recorded after one of these ran against a different commit
+# and no longer certifies the checked-out SHA, even when ``changed_paths_after``
+# is empty (#503 round 10).
 _HEAD_MOVING_SUBCOMMANDS = frozenset(
     {"checkout", "switch", "cherry-pick", "merge", "rebase", "revert"}
 )
@@ -554,15 +521,8 @@ def assert_rebase_resolved_without_dropping_changes(
     clean synchronization rebase earlier in the session is not mistaken for
     the conflicted one.
 
-    Scope (tier:1, capped): this is a STRUCTURAL check. It proves the run took
-    the merge-not-drop *shape* — a denylisted drop-a-side fragment is absent,
-    the conflicting path reappears in a later edit, and ``rebase --continue``
-    exits green. It does NOT verify CONTENT. ``AgentCommand`` records changed
-    paths, not file contents, so a one-side overwrite via an unrecognized
-    command (heredoc, abbreviated revision, pathspec checkout without ``--``)
-    passes this check. Content-level verification of "both intents preserved"
-    is out of scope and deferred to the tier:4 sandbox (#390), which can diff
-    the actual worktree. See the module docstring and ``ai/testing.md``.
+    Structural only: proves the merge-not-drop shape, not file contents (see
+    the module scope boundary; content is deferred to the tier:4 sandbox #390).
     """
     rebase_indices = [
         idx for idx, cmd in enumerate(run.commands) if _is_initial_rebase(cmd)
@@ -656,11 +616,8 @@ def assert_no_commit_while_tests_red(
     command can exit 0 while the test failed, so a commit relying on it is a
     violation (#503).
 
-    Scope (tier:1, capped): STRUCTURAL gating only. The commit verb is matched
-    by tokenized identity (``_is_git_commit``) and gating is decided from the
-    chain's operators (``_effective_status``); whether the test text names a
-    real executable, or could be spoofed by an ``echo``, is a shell-grammar
-    concern out of scope here and deferred to the tier:4 sandbox (#390).
+    Structural gating only: commit and test are matched by tokenized identity
+    and the chain operators; shell-grammar spoofing is deferred to #390.
     """
     last_test_status: str | None = None
     last_test_cmd: AgentCommand | None = None
@@ -740,15 +697,9 @@ def assert_every_commit_is_green(
     0, before any further checkout moves the worktree elsewhere. Live adapters
     produce these commands by replaying the branch; fixtures record them.
 
-    Scope (tier:1, capped): this is a STRUCTURAL replay-shape check over the
-    recorded tokens, exit codes, and changed paths. It matches the load-bearing
-    verbs by tokenized identity (``_is_head_checkout``) and reads the chain's
-    effective status (``_effective_status``); it is not a shell interpreter.
-    SHA identity is by full hash as recorded (``%H``) — abbreviated/prefix
-    revisions, pathspec checkouts without ``--``, and ``echo``-style needles
-    are not resolved here. Worktree-content certification of the replayed
-    commit is out of scope and deferred to the tier:4 sandbox (#390). See the
-    module docstring and ``ai/testing.md``.
+    Structural replay-shape check only (tokens, exit codes, changed paths); it
+    is not a shell interpreter and does not certify worktree content (see the
+    module scope boundary; content is deferred to the tier:4 sandbox #390).
     """
     if not run.commits:
         raise VerificationFailure(

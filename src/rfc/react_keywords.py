@@ -22,12 +22,7 @@ _REACT_RE = re.compile(
 
 
 def parse_react_response(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Parse an LLM response for ACTION or FINAL_ANSWER directives.
-
-    Returns:
-        A tuple of ``(directive, value)`` where directive is
-        ``"ACTION"``, ``"FINAL_ANSWER"``, or ``None`` if unparseable.
-    """
+    """Parse an LLM response for ACTION or FINAL_ANSWER directives."""
     match = _REACT_RE.search(text)
     if match is None:
         return None, None
@@ -59,19 +54,7 @@ class ReActKeywords:
         expected_answer: str,
         max_steps: int = 5,
     ) -> Dict[str, Any]:
-        """Execute a ReAct reasoning loop and grade the outcome.
-
-        Args:
-            question: The question for the LLM to answer.
-            tool_descriptions: Newline-separated tool descriptions.
-            tool_results: JSON dict mapping ``"tool_name(args)"`` to result strings.
-            expected_answer: Expected final answer for grading.
-            max_steps: Maximum reasoning steps allowed.
-
-        Returns:
-            Dict with keys: score, steps_used, max_steps, final_answer,
-            budget_exceeded, reason, trace.
-        """
+        """Execute a ReAct reasoning loop and grade the outcome."""
         max_steps = int(max_steps)
         tools_map: Dict[str, str] = json.loads(tool_results)
         trace: list[Dict[str, str]] = []

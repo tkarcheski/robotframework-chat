@@ -5,11 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
+from rfc.ollama import OllamaClient
 from rfc.pre_run_modifier import ModelAwarePreRunModifier, main
 
 
 class TestPreRunModifierInit:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_missing_model_raises(self, MockClient):
         """No silent fallback: instantiation must fail when DEFAULT_MODEL is unset.
 
@@ -23,7 +24,7 @@ class TestPreRunModifierInit:
             with pytest.raises(ValueError, match="No model configured"):
                 ModelAwarePreRunModifier()
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_custom_args(self, MockClient):
         mod = ModelAwarePreRunModifier(
             ollama_endpoint="http://custom:11434",
@@ -37,7 +38,7 @@ class TestPreRunModifierInit:
     @patch.dict(
         os.environ, {"OLLAMA_ENDPOINT": "http://env:11434", "DEFAULT_MODEL": "phi3"}
     )
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_env_vars(self, MockClient):
         mod = ModelAwarePreRunModifier()
         assert mod.ollama_endpoint == "http://env:11434"
@@ -45,7 +46,7 @@ class TestPreRunModifierInit:
 
 
 class TestLoadModelConfig:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_load_existing_config(self, MockClient, tmp_path):
         config_file = tmp_path / "models.yaml"
         config_file.write_text(yaml.dump({"models": {"llama3": {"parameters": "8B"}}}))
@@ -58,7 +59,7 @@ class TestLoadModelConfig:
         assert "llama3" in mod.model_config
         assert mod.model_config["llama3"]["parameters"] == "8B"
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_load_missing_config(self, MockClient):
         mod = ModelAwarePreRunModifier(
             config_path="/nonexistent/models.yaml", default_model="test-model"
@@ -66,7 +67,7 @@ class TestLoadModelConfig:
         mod._load_model_config()
         assert mod.model_config == {}
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_load_invalid_yaml(self, MockClient, tmp_path):
         config_file = tmp_path / "bad.yaml"
         config_file.write_text(": invalid: yaml: [")
@@ -78,9 +79,9 @@ class TestLoadModelConfig:
 
 
 class TestQueryAvailableModels:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_successful_query(self, MockClient):
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=OllamaClient)
         mock_client.list_models.return_value = ["llama3", "mistral", "phi3"]
         MockClient.return_value = mock_client
 
@@ -89,9 +90,9 @@ class TestQueryAvailableModels:
 
         assert mod.available_models == ["llama3", "mistral", "phi3"]
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_query_fails_uses_default(self, MockClient):
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=OllamaClient)
         mock_client.list_models.side_effect = Exception("connection refused")
         MockClient.return_value = mock_client
 
@@ -102,7 +103,7 @@ class TestQueryAvailableModels:
 
 
 class TestFilterTestsByModels:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_no_model_tags_keeps_all(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3"]
@@ -118,7 +119,7 @@ class TestFilterTestsByModels:
         mod._filter_tests_by_models(suite)
         assert len(suite.tests) == 1
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_removes_tests_requiring_unavailable_model(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3"]
@@ -139,7 +140,7 @@ class TestFilterTestsByModels:
         assert test1 not in suite.tests
         assert test2 in suite.tests
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_keeps_tests_with_available_model(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.available_models = ["llama3", "codellama"]
@@ -157,7 +158,7 @@ class TestFilterTestsByModels:
 
 
 class TestAddMetadata:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_adds_ci_metadata(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.ci_metadata = {"Branch": "main", "Commit_SHA": "abc123"}
@@ -171,7 +172,7 @@ class TestAddMetadata:
         assert suite.metadata["Commit_SHA"] == "abc123"
         assert "All_Available_Models" in suite.metadata
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_adds_model_info(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.ci_metadata = {}
@@ -190,7 +191,7 @@ class TestAddMetadata:
         assert suite.metadata["Model_Name"] == "LLaMA 3"
         assert suite.metadata["Model_Organization"] == "Meta"
 
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_skips_empty_metadata(self, MockClient):
         mod = ModelAwarePreRunModifier(default_model="llama3")
         mod.ci_metadata = {"Branch": "main", "Tag": ""}
@@ -208,14 +209,14 @@ class TestAddMetadata:
 
 
 class TestPreRunModifierStartSuite:
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     @patch("rfc.pre_run_modifier.collect_ci_metadata", return_value={"Branch": "main"})
     def test_start_suite_runs_full_pipeline(self, _mock_ci, MockClient, tmp_path):
         """start_suite should gather CI metadata, load config, query models, filter, and add metadata."""
         config_file = tmp_path / "models.yaml"
         config_file.write_text(yaml.dump({"models": {"llama3": {"parameters": "8B"}}}))
 
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=OllamaClient)
         mock_client.list_models.return_value = ["llama3", "phi4:14b"]
         MockClient.return_value = mock_client
 
@@ -244,9 +245,9 @@ class TestPreRunModifierStartSuite:
 
 class TestPreRunModifierMain:
     @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_main_with_models(self, MockClient, capsys):
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=OllamaClient)
         mock_client.list_models.return_value = ["llama3"]
         MockClient.return_value = mock_client
 
@@ -256,12 +257,36 @@ class TestPreRunModifierMain:
         assert result == 0
 
     @patch.dict(os.environ, {"DEFAULT_MODEL": "llama3"})
-    @patch("rfc.pre_run_modifier.OllamaClient")
+    @patch("rfc.pre_run_modifier.create_provider")
     def test_main_no_models(self, MockClient, capsys):
-        mock_client = MagicMock()
+        mock_client = MagicMock(spec=OllamaClient)
         mock_client.list_models.side_effect = Exception("offline")
         MockClient.return_value = mock_client
 
         main()
         captured = capsys.readouterr()
         assert "Available models" in captured.out
+
+
+# ── create_provider wrapper application (#130) ───────────────────────
+
+
+class TestPreRunModifierWrapperApplication:
+    """The modifier must build its client through create_provider so the
+    instrumentation wrappers apply; unwrap_provider() must still reach the
+    concrete OllamaClient for model discovery (#130)."""
+
+    def test_client_is_wrapped_and_unwraps_to_ollama(self, monkeypatch):
+        from rfc.llm_client import unwrap_provider
+
+        monkeypatch.setenv("LLM_CONSOLE_FEED_ENABLED", "1")
+        # Real create_provider runs (no network in __init__); the console-feed
+        # wrapper should be applied around a concrete OllamaClient.
+        mod = ModelAwarePreRunModifier(
+            ollama_endpoint="http://localhost:11434", default_model="test-model"
+        )
+
+        assert not isinstance(mod._client, OllamaClient), (
+            "provider should be wrapped, not a bare OllamaClient"
+        )
+        assert isinstance(unwrap_provider(mod._client), OllamaClient)

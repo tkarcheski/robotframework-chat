@@ -1,14 +1,7 @@
 """Robot Framework keywords for testing AgentSkill behaviors.
 
-Wraps an LLM client and a :class:`SkillGrader` so Robot suites can:
-
-  * load a SKILL.md from disk (file or directory containing ``SKILL.md``),
-  * ask the LLM a prompt with the skill content prepended as context,
-  * grade the response against a list of expected and prohibited behaviors,
-  * assert the result and raise a detailed ``AssertionError`` on failure.
-
-The keywords are designed for tier:2 verify:llm suites where the response
-is graded by an LLM-as-judge.
+Loads a SKILL.md, prompts the LLM with it as context, and grades the
+response via :class:`SkillGrader` (tier:2 verify:llm, LLM-as-judge).
 """
 
 from __future__ import annotations
@@ -82,13 +75,7 @@ class SkillKeywords:
 
     @keyword("Skip Unless Skill Available")
     def skip_unless_skill_available(self, skill_path: str) -> None:
-        """Skip the suite when no skill is present at *skill_path*.
-
-        Lets a suite be registered in the local-model runner without
-        deterministically hard-failing: when the skill has not been checked
-        out, the suite is skipped with a clear message instead of every test
-        raising FileNotFoundError.
-        """
+        """Skip (not fail) the suite when no skill checkout exists at *skill_path*."""
         if self._skill_available(skill_path):
             logger.info(f"Skill available at {skill_path}")
             return
@@ -158,8 +145,8 @@ class SkillKeywords:
     ) -> SkillGradeResult:
         """End-to-end: ask with skill, grade, return the result.
 
-        ``test_case`` must contain ``id`` and ``prompt`` keys; optional keys
-        are ``expected_behaviors`` (list[str]) and ``must_not`` (list[str]).
+        ``test_case`` requires ``id`` and ``prompt``; optional
+        ``expected_behaviors`` and ``must_not``.
         """
         test_id = str(test_case["id"])
         prompt = str(test_case["prompt"])

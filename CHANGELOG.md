@@ -45,6 +45,11 @@ audited, scrubbed, and re-plumbed, plus new evaluation surface since 1.17.5.
   shipped Verified upgrade.
 - **DeepWiki badge**: the readme now links the auto-generated project wiki on
   DeepWiki (#630).
+- **Graylog onboarding surface**: a `make graylog-doctor` preflight that checks
+  each hop a log event takes (submodule checked out, sender packages importable,
+  GELF inputs reachable, LLM streaming enabled), a harness-side runbook at
+  `core/docs/graylog.md` (install → run → verify → troubleshoot, with the event
+  schema), and a documented `GRAYLOG_*` block in `.env.example`.
 - **This changelog.**
 
 ### Changed
@@ -79,6 +84,10 @@ audited, scrubbed, and re-plumbed, plus new evaluation surface since 1.17.5.
   webhook runs no longer cancel each other (#638).
 - Graylog make targets are layout-agnostic and skip-and-log when run outside
   the monorepo.
+- Dead Graylog install references in `modules/ops/graylog` docs (a
+  non-existent `core/requirements-graylog.txt` and a self-link that didn't
+  resolve) now point at real paths; the `core/docs/graylog.md` the docs
+  referenced now exists.
 
 ## [1.17.x] — 2026-06-12 → 2026-06-17
 

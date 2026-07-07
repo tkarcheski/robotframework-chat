@@ -53,10 +53,18 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Redis (Superset cache) ──────────────────────────────────────────
+  # ── Redis (Superset cache + answer cache) ───────────────────────────
+  # Superset uses db 0 (cache) and db 2 (ratelimit), both in-network. The
+  # answer cache (db 1) is reached from host-side `robot` runs, so Redis must
+  # publish a host port — otherwise REDIS_URL=redis://localhost:6379/1 is
+  # unreachable and the cache silently latches to passthrough. Bound to
+  # 127.0.0.1 only: redis:7-alpine has no auth, so it must never be exposed
+  # off-host.
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
     networks:
       - rfc-net
     healthcheck:

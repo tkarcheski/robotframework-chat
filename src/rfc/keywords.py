@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from robot.api import logger
 from robot.api.deco import keyword
@@ -93,6 +93,7 @@ class LLMKeywords:
         top_k: Optional[int] = None,
         num_ctx: Optional[int] = None,
         keep_alive: Optional[str] = None,
+        think: Union[bool, str, None] = None,
     ) -> None:
         self.client.temperature = float(temperature)
         self.client.max_tokens = int(max_tokens)
@@ -106,6 +107,16 @@ class LLMKeywords:
             self.client.num_ctx = int(num_ctx)
         if keep_alive is not None:
             self.client.keep_alive = str(keep_alive)
+        # `think` toggles reasoning-model output (issue #131). It is an
+        # Ollama-only control, so set it on the concrete Ollama client (through
+        # any cache wrapper); the property there normalizes/validates
+        # ("true"/"false"/"1"/"0" or low/medium/high). Other providers ignore it.
+        if think is not None:
+            ollama = as_ollama(self.client)
+            if ollama is not None:
+                ollama.think = think
+            else:
+                logger.info("Set LLM Parameters: 'think' is Ollama-only; ignoring")
 
     @keyword("Ask LLM")
     def ask_llm(self, prompt: str) -> str:

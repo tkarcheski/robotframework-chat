@@ -1,25 +1,9 @@
 """Tool/function-call schema accuracy keywords for Robot Framework.
 
-Tests whether an LLM emits a *correctly-typed* function call for a
-given task: right tool name, required fields present, no extra fields,
-type-correct values, and enum-constrained fields restricted to allowed
-options.
-
-The tool schema format mirrors the OpenAI / Anthropic function-calling
-convention so test cases stay portable::
-
-    {
-        "name": "create_user",
-        "description": "Create a new user account.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "username": {"type": "string"},
-                "role": {"type": "string", "enum": ["admin", "viewer"]},
-            },
-            "required": ["username", "role"],
-        },
-    }
+Tests whether an LLM emits a *correctly-typed* function call for a given task:
+right tool name, required fields present, no extra fields, type-correct values,
+and enum-constrained fields restricted to allowed options. Tool schemas use the
+OpenAI / Anthropic function-calling convention so test cases stay portable.
 """
 
 from __future__ import annotations
@@ -291,22 +275,7 @@ class ToolCallSchemaKeywords:
         expected_tool: str = "",
         expected_args: str = "",
     ) -> Dict[str, Any]:
-        """Ask the LLM to emit a tool call and grade it against the schemas.
-
-        Args:
-            prompt: The task description shown to the LLM.
-            tools: JSON list of tool schemas (OpenAI/Anthropic format).
-            expected_tool: Optional tool name we expect the model to pick.
-                Empty string means any tool from ``tools`` is acceptable.
-            expected_args: Optional JSON dict of argument values that the
-                model's call should match exactly. Useful for verifying
-                that the model extracted the right values from the prompt.
-
-        Returns:
-            Dict with keys: schema_valid, tool_correct, selected_tool,
-            unknown_tool, no_call_detected, missing_required, extra_fields,
-            type_errors, enum_violations, arg_value_errors, response.
-        """
+        """Ask the LLM to emit a tool call and grade it against the schemas."""
         tool_list: List[Dict[str, Any]] = json.loads(tools)
         if not isinstance(tool_list, list):
             result = _empty_validation_result()

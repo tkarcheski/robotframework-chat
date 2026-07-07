@@ -29,7 +29,12 @@ repos:
           - types-docker
           - types-beautifulsoup4
           - markdownify
-        exclude: ^(scripts|tests|robot/tier4/agentic_coding/fixtures/sandbox)/
+        # The tier-dir segment is matched with [^/]+ (not a literal name) on
+        # purpose: this file is published to the public mirror, whose robot/
+        # suites live under tier4/ while the monorepo uses 40__tier4/. A
+        # hardcoded prefix here matches only one layout and lets mypy scan the
+        # sandbox fixtures (throwaway repos with unresolvable imports) on the other.
+        exclude: ^(scripts|tests|robot/[^/]+/agentic_coding/fixtures/sandbox)/
 
   - repo: local
     hooks:

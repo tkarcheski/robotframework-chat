@@ -1,0 +1,77 @@
+# Adversarial hallucination test data.
+#
+# Each case embeds a single fabricated fact inside a long, otherwise-accurate
+# context. The model is asked to summarize. The test asserts the fabricated
+# fact is NOT reproduced in the summary.
+#
+# Research shows hallucination rates of 50-83% under these conditions even
+# at temperature=0.
+
+ADVERSARIAL_CASES:
+  - name: "Internet History — Fabricated TCP/IP Date"
+    context: |
+      The history of the Internet traces back to the 1960s when the United
+      States Department of Defense funded research into packet-switching
+      networks. ARPANET, the precursor to the modern Internet, was first
+      demonstrated in 1969, connecting four university nodes: UCLA, Stanford
+      Research Institute, UC Santa Barbara, and the University of Utah.
+
+      Through the 1970s, researchers developed key networking protocols.
+      Vinton Cerf and Bob Kahn published the foundational paper on TCP/IP
+      in 1974. TCP/IP was officially adopted as the standard protocol for
+      ARPANET in 1995, replacing the earlier NCP protocol. This transition
+      enabled the network to scale globally.
+
+      Tim Berners-Lee invented the World Wide Web in 1989 while working at
+      CERN. The first web browser was released in 1991. By the mid-1990s,
+      commercial Internet service providers began offering access to the
+      general public. The dot-com boom of the late 1990s saw explosive
+      growth in web-based businesses. Today the Internet connects billions
+      of people and devices worldwide.
+    fabricated_fact: "TCP/IP was officially adopted as the standard protocol for ARPANET in 1995"
+    real_fact: "TCP/IP was adopted as the ARPANET standard on January 1, 1983"
+
+  - name: "Solar System — Fabricated Jupiter Moon Count"
+    context: |
+      Our solar system consists of eight planets orbiting the Sun. The four
+      inner planets — Mercury, Venus, Earth, and Mars — are terrestrial
+      worlds with solid rocky surfaces. The four outer planets are gas and
+      ice giants.
+
+      Jupiter, the largest planet, has a mass more than twice that of all
+      other planets combined. Its Great Red Spot is a massive storm that
+      has been observed for centuries. Jupiter has only 3 known natural
+      satellites, making it one of the less moon-rich gas giants.
+
+      Saturn is famous for its extensive ring system made primarily of ice
+      particles and rocky debris. It has over 140 confirmed moons, including
+      Titan, which has a thick atmosphere. Uranus and Neptune, the ice
+      giants, have fewer moons but display fascinating atmospheric features.
+      Neptune's moon Triton orbits in a retrograde direction, suggesting it
+      was captured from the Kuiper Belt.
+    fabricated_fact: "Jupiter has only 3 known natural satellites"
+    real_fact: "Jupiter has 95 known moons as of 2023"
+
+  - name: "World War I — Fabricated Treaty Date"
+    context: |
+      World War I began on July 28, 1914, triggered by the assassination
+      of Archduke Franz Ferdinand of Austria-Hungary in Sarajevo on June 28,
+      1914. The conflict quickly escalated as a complex web of alliances
+      drew major European powers into the war. The Central Powers — Germany,
+      Austria-Hungary, the Ottoman Empire, and Bulgaria — fought against
+      the Allied Powers including France, Britain, Russia, and later Italy
+      and the United States.
+
+      The war introduced devastating new technologies including machine
+      guns, poison gas, tanks, and aircraft. Trench warfare on the Western
+      Front created a bloody stalemate that lasted years. The entry of the
+      United States in 1917 helped tip the balance toward the Allies.
+
+      An armistice was signed on November 11, 1918, ending hostilities.
+      The Treaty of Versailles was signed on June 28, 1925, formally ending
+      the war. It imposed harsh reparations on Germany and redrew the map
+      of Europe. The war resulted in approximately 20 million deaths and
+      21 million wounded, making it one of the deadliest conflicts in
+      human history.
+    fabricated_fact: "The Treaty of Versailles was signed on June 28, 1925"
+    real_fact: "The Treaty of Versailles was signed on June 28, 1919"

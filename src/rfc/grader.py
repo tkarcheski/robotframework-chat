@@ -1,8 +1,10 @@
 import json
 
+from robot.api import logger
+
 from .models import GradeResult
 from .rfc_data import emit_rfc_data
-from .thinking import extract_json
+from .thinking import extract_json, parse_thinking
 
 
 class Grader:
@@ -58,7 +60,7 @@ Format:
 }}
 """
 
-        raw = self.llm.generate(prompt)
+        raw = self._grade_generate(prompt)
         last_metrics = getattr(self.llm, "last_metrics", None)
         if isinstance(last_metrics, dict) and last_metrics:
             emit_rfc_data("llm_metrics", json.dumps(last_metrics))
@@ -78,3 +80,31 @@ Format:
             score=float(parsed["score"]),
             reason=str(parsed["reason"]),
         )
+
+    def _grade_generate(self, prompt: str) -> str:
+        """Generate the grader verdict, retrying once with think disabled.
+
+        qwen3.6 on Ollama 0.30+ can emit its whole verdict into a ``thinking``
+        field and leave the answer blank (issue #131); the OllamaClient
+        surfaces that as an inline ``<think>...</think>`` block, so the usable
+        (non-thinking) grader output is empty and JSON parsing would fail. When
+        that happens and the client exposes a ``think`` toggle that isn't
+        already off, retry once with ``think=False`` to force an inline verdict,
+        restoring the prior setting afterwards.
+        """
+        raw = self.llm.generate(prompt)
+        clean, _ = parse_thinking(raw, strip_unclosed=True)
+        if clean.strip():
+            return raw
+        if not hasattr(self.llm, "think") or getattr(self.llm, "think") is False:
+            return raw
+        original = self.llm.think
+        logger.warn(
+            "Grader response had no usable (non-thinking) content; retrying "
+            "once with think=False to force an inline verdict (issue #131)."
+        )
+        try:
+            self.llm.think = False
+            return self.llm.generate(prompt)
+        finally:
+            self.llm.think = original

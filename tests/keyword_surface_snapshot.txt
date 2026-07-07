@@ -1,0 +1,177 @@
+Agent Calls Tool
+Agent Message
+Agent Receives Tool Result
+Analyze IP Landscape
+Apply And Test Patch
+Ask And Check Citations
+Ask And Check Constraint
+Ask And Grade Joke With Retry
+Ask At Fill Level
+Ask For Joke
+Ask With Conversation
+Ask With Skill
+Assert Acceptable Degradation
+Assert All Identical
+Assert All Tool Calls Succeeded
+Assert Dialog Recording Persisted
+Assert IFEval Passed
+Assert Injection Resisted
+Assert Not Over Refused
+Assert Parity Score
+Assert Persona Maintained
+Assert Safety Boundary
+Assert Skill Grade Passed
+Assert Task Followed
+Assert Tool Calls In Order
+Assert Tool Was Called
+Assert Variance Within Threshold
+Brainstorm Ideas
+Build Base64 Injection Prompt
+Build Comment Injection Prompt
+Build Evaluation Prompt
+Build Filled Prompt
+Build Homoglyph Injection Prompt
+Build Tool Prompt
+Build Whitespace Injection Prompt
+Check Adversarial Summary
+Check Approval Status
+Check Docker Setup
+Check Earliest Event
+Check Fallacy Detection
+Check Forbidden Words
+Check IFEval Constraint
+Check IFEval Instruction
+Check Knowledge Boundary Acknowledged
+Check Needle Recalled
+Check No Fabricated Citations
+Check Response Safety
+Check Uncertainty Expressed
+Classify Defect In Code
+Cleanup All Containers
+Clear Web Cache
+Compare Response Pair
+Connect Hitl Database
+Connect To Database
+Convert HTML To Markdown
+Copy From Container
+Copy To Container
+Count Sentences
+Count Words
+Create Code Execution Container
+Create Configurable Container
+Delete Dialog Recording
+Detect System Leakage
+Develop Patent Strategy
+Dialog Database Reachable
+Discover Quantization Variants
+Docker Is Available
+Emit Dialog Turn
+End Agent Workflow
+End Interaction
+Ensure Action Approved
+Estimate Response Tokens
+Evaluate Causal Claim
+Evaluate Date Arithmetic
+Evaluate Duration Calculation
+Evaluate Tool Call
+Execute In Container
+Execute Python In Container
+Extract And Verify Entity
+Extract Key Value And Verify
+Extract Multiple Entities And Verify
+Find Available Port
+Get Agentic Injection Report
+Get Bias Report
+Get Calibration Report
+Get Container Metrics
+Get Current Goal
+Get Database URL
+Get Interaction
+Get Safety Report
+Get Table Row Counts
+Get Workflow Summary
+Grade Context Awareness
+Grade Counterfactual
+Grade Fact Consistency
+Grade Joke
+Grade Skill Response
+Grade Stage Output
+Grade Tool Arguments
+Grade Tool Refusal
+Grade Tool Selection
+Grade Topic Isolation
+Grade Topic Isolation Sliding Window
+Identify Bug In Code
+Identify Security Vulnerability
+Is Action Approved
+Load SWEBench Instances
+Load Skill
+Log Agentic Injection Report
+Log Bias Report
+Log Calibration Report
+Log Consistency Metrics
+Log Quantization Delta
+Log SWEBench Result
+Log Safety Report
+Measure Completion Ratio
+Measure Semantic Variance
+Parse Tool Calls
+Plan Licensing Strategy
+Record Defect Detection Accuracy
+Register Tool Schema
+Request Clarification
+Request Human Approval
+Request Human Input
+Research Market
+Research Models Metadata
+Reset Agentic Injection Results
+Reset Bias Results
+Reset Calibration Results
+Reset Safety Results
+Resolve Interaction
+Run Agentic Injection Test Case
+Run Calibration Test Case
+Run Demographic Parity Test
+Run Dialog Fixture Suite
+Run Factual Pressure Test
+Run GAIA Tool Use Test
+Run IFEval Dataset Item
+Run Multi Turn Conversation
+Run Persona Consistency Test
+Run Position Defense Test
+Run Prompt N Times
+Run Quantization Comparison
+Run ReAct Loop
+Run Skill Test Case
+Save Model Metadata Yaml
+Score Instruction Compliance Batch
+Set Goal
+Set Interaction State
+Set Over Refusal Threshold
+Set Parity Threshold
+Set Safety Threshold
+Skip Unless Skill Available
+Start Agent Workflow
+Start Interaction
+Stop Container
+Stop Container By Name
+Test Agentic Injection Resistance
+Test Covert Injection Resistance
+Test Prompt Injection Resistance
+Test Skill Retention
+Test System Extraction Resistance
+Test Tool Selection
+Test With Template
+Update Container Resources
+Validate CSV Response
+Validate JSON Response
+Validate JSON With Retries
+Validate JSON With Schema
+Validate Stage Structure
+Validate Tool Call Schema
+Validate YAML Response
+Verify Injection Resistance
+Verify Not Over Refused
+Wait For Container Port
+Wait For Human Input
+Warm Web Cache

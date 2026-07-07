@@ -47,12 +47,10 @@ _LETTER_RE = re.compile(r"^\s*([A-Da-d])\b")
 
 
 def _extract_first_integer(text: str) -> Optional[int]:
-    """Return the first standalone integer found on the first non-empty line, or None.
+    """Return the first standalone integer on the first non-empty line, or None.
 
-    Only the first non-empty line is inspected. If that line contains no integer
-    the function returns None — later lines are never searched. This enforces the
-    format contract (answer on line 1) and prevents coincidental numbers on prose
-    continuation lines from producing false passes.
+    First-line-only enforces the format contract (answer on line 1) and prevents
+    coincidental numbers on later prose lines from producing false passes.
     """
     if not text:
         return None
@@ -60,10 +58,8 @@ def _extract_first_integer(text: str) -> Optional[int]:
         stripped = line.strip()
         if not stripped:
             continue
-        # Inspect first non-empty line only — return immediately regardless of result.
-        # Try comma-grouped format (e.g. 1,440 / 3,600) before falling back to
-        # plain digits so four-digit answers written with thousands separators
-        # are not truncated to their leading digit group.
+        # Comma-grouped format (e.g. 1,440) is tried before plain digits so
+        # four-digit answers with thousands separators aren't truncated.
         m = re.search(r"(?<![.\d])(\d{1,3}(?:,\d{3})+|\d+)(?![.\d])", stripped)
         return int(m.group(1).replace(",", "")) if m else None
     return None
@@ -105,19 +101,7 @@ class TemporalReasoningKeywords:
         expected_answer: int,
         tolerance: int = 0,
     ) -> Dict[str, Any]:
-        """Ask the LLM a date arithmetic question and verify the numeric answer.
-
-        The LLM is instructed to write the integer answer on the first line.
-        The first integer on that line is compared to ``expected_answer``.
-
-        Args:
-            question: The date arithmetic question (e.g. days in February).
-            expected_answer: The correct integer answer.
-            tolerance: Allowed absolute deviation from expected (default 0).
-
-        Returns:
-            Dict with keys: response, extracted_answer, expected, correct.
-        """
+        """Ask the LLM a date arithmetic question and verify the numeric answer."""
         expected_answer = int(expected_answer)
         tolerance = int(tolerance)
 
@@ -150,18 +134,7 @@ class TemporalReasoningKeywords:
         expected_answer: int,
         tolerance: int = 0,
     ) -> Dict[str, Any]:
-        """Ask the LLM a duration conversion question and verify the answer.
-
-        The LLM is instructed to write the integer answer on the first line.
-
-        Args:
-            question: The duration question (e.g. minutes in 3 hours).
-            expected_answer: The correct integer answer.
-            tolerance: Allowed absolute deviation (default 0).
-
-        Returns:
-            Dict with keys: response, extracted_answer, expected, correct.
-        """
+        """Ask the LLM a duration conversion question and verify the answer."""
         expected_answer = int(expected_answer)
         tolerance = int(tolerance)
 
@@ -196,25 +169,7 @@ class TemporalReasoningKeywords:
         event_d: str,
         expected_letter: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to identify the earliest of four historical events.
-
-        The LLM is given four events labeled A–D and instructed to write
-        the letter of the earliest event on the first line.
-
-        Args:
-            event_a: Description of event A.
-            event_b: Description of event B.
-            event_c: Description of event C.
-            event_d: Description of event D.
-            expected_letter: The correct answer: ``"A"``, ``"B"``, ``"C"``,
-                or ``"D"`` (case-insensitive).
-
-        Returns:
-            Dict with keys: response, chosen_letter, expected, correct.
-
-        Raises:
-            ValueError: If expected_letter is not A, B, C, or D.
-        """
+        """Ask the LLM to identify the earliest of four historical events (A–D)."""
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
             raise ValueError(

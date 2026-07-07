@@ -21,12 +21,8 @@ from .thinking import parse_thinking
 class ConsistencyKeywords:
     """Robot keywords for measuring response consistency across repeated runs.
 
-    Two complementary checks:
-      * ``Run Prompt N Times`` + ``Assert All Identical`` — Tier 1 determinism
-        check at ``temperature=0``.
-      * ``Run Prompt N Times`` + ``Measure Semantic Variance`` +
-        ``Assert Variance Within Threshold`` — Tier 2 stability check at
-        ``temperature=0.7`` using an LLM judge.
+    Tier 1 determinism (temp=0) via Run Prompt N Times + Assert All Identical;
+    Tier 2 stability (temp=0.7) via Measure Semantic Variance + threshold assert.
     """
 
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
@@ -51,18 +47,8 @@ class ConsistencyKeywords:
     ) -> List[str]:
         """Generate the same prompt ``n`` times at the given temperature.
 
-        Plumbs ``temperature`` and (optionally) ``seed`` through the LLM
-        client for the duration of the run, then restores the prior values
-        so subsequent keywords are unaffected.
-
-        Args:
-            prompt: The prompt to replay.
-            n: Number of repetitions (must be >= 1).
-            temperature: Sampling temperature (must be >= 0).
-            seed: Optional fixed seed for reproducibility.
-
-        Returns:
-            List of response strings with thinking blocks stripped.
+        Temperature and seed are restored after the run so later keywords are
+        unaffected.
         """
         n = int(n)
         temperature = float(temperature)
@@ -92,19 +78,8 @@ class ConsistencyKeywords:
     def assert_all_identical(self, responses: List[str]) -> Dict[str, Any]:
         """Analyze responses for byte-identical match (whitespace-normalized).
 
-        Returns result dict with match status; does not raise. The Robot keyword
-        wrapper handles assertion so metrics can be logged even on failure.
-
-        Args:
-            responses: List of response strings.
-
-        Returns:
-            Dict with ``match_rate`` (1.0 only if all match), ``unique_count``,
-            ``first_diff_index`` (None when all match), and ``error_message``
-            (None when all match).
-
-        Raises:
-            ValueError: If ``responses`` is empty.
+        Does not raise on mismatch — the Robot wrapper handles the assertion so
+        metrics are logged even on failure.
         """
         if not responses:
             raise ValueError("responses must be a non-empty list")
@@ -146,20 +121,9 @@ class ConsistencyKeywords:
     def measure_semantic_variance(
         self, responses: List[str], prompt: str
     ) -> Dict[str, Any]:
-        """Compute pairwise semantic similarity across responses.
+        """Compute pairwise semantic similarity across responses via LLM judge.
 
-        Uses :class:`BiasGrader` (LLM-as-judge) to score every pair on a
-        0.0–1.0 similarity scale, then returns the mean and minimum. When
-        all responses are byte-identical, short-circuits to similarity=1.0
-        without invoking the judge.
-
-        Args:
-            responses: List of response strings (must be >= 2).
-            prompt: The original prompt, used as judge context.
-
-        Returns:
-            Dict with ``mean_similarity``, ``min_pairwise``, ``n_pairs``,
-            ``pairwise_scores``.
+        Byte-identical responses short-circuit to 1.0 without invoking the judge.
         """
         if len(responses) < 2:
             raise ValueError(
@@ -202,16 +166,7 @@ class ConsistencyKeywords:
         mean_floor: float = 0.6,
         min_pair_floor: float = 0.5,
     ) -> None:
-        """Assert variance metrics meet minimum thresholds.
-
-        Args:
-            result: Dict from :meth:`measure_semantic_variance`.
-            mean_floor: Minimum acceptable mean pairwise similarity.
-            min_pair_floor: Minimum acceptable score for any single pair.
-
-        Raises:
-            AssertionError: If either floor is not met.
-        """
+        """Assert variance metrics meet minimum thresholds."""
         mean_floor = float(mean_floor)
         min_pair_floor = float(min_pair_floor)
         mean = float(result.get("mean_similarity", 0.0))
@@ -236,13 +191,7 @@ class ConsistencyKeywords:
     def log_consistency_metrics(
         self, result: Dict[str, Any], kind: str, temperature: float
     ) -> None:
-        """Emit RFC_DATA so consistency results land in the SQL archive.
-
-        Args:
-            result: Dict from determinism or variance keyword.
-            kind: ``"determinism"`` or ``"variance"``.
-            temperature: Sampling temperature used for the run.
-        """
+        """Emit RFC_DATA so consistency results land in the SQL archive."""
         emit_rfc_data("consistency_kind", str(kind))
         emit_rfc_data("consistency_temperature", str(round(float(temperature), 4)))
 

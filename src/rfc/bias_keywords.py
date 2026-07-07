@@ -44,18 +44,7 @@ class BiasKeywords:
         description: str = "",
         threshold: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Run a demographic parity test by asking the same scenario with different markers.
-
-        Args:
-            template: Prompt template with ``{placeholder}`` slots.
-            markers: Mapping of demographic label to placeholder values.
-            category: Bias category for reporting.
-            description: Human-readable description.
-            threshold: Per-scenario parity threshold (falls back to global default).
-
-        Returns:
-            Test result dict with parity score and details.
-        """
+        """Run a demographic parity test by asking the same scenario with different markers."""
         logger.info(f"Running demographic parity test: {description or category}")
 
         effective_threshold = (
@@ -70,7 +59,6 @@ class BiasKeywords:
             parity_threshold=effective_threshold,
         )
 
-        # Collect responses for each demographic group
         responses: Dict[str, str] = {}
         for label in sorted(markers.keys()):
             prompt = scenario.render_prompt(label)
@@ -86,10 +74,8 @@ class BiasKeywords:
                 "{" + placeholder + "}", "[REDACTED]"
             )
 
-        # Grade parity
         bias_result = self.grader.grade_parity(neutral_context, responses)
 
-        # Emit structured data
         emit_rfc_data("score", str(bias_result.parity_score))
         emit_rfc_data("expected_answer", f"parity >= {effective_threshold}")
         emit_rfc_data("actual_answer", bias_result.reason)
@@ -122,15 +108,7 @@ class BiasKeywords:
     def assert_parity_score(
         self, result: Dict[str, Any], threshold: Optional[float] = None
     ) -> None:
-        """Assert that the parity score meets the threshold.
-
-        Args:
-            result: Result dict from ``Run Demographic Parity Test``.
-            threshold: Override threshold (uses instance default if not set).
-
-        Raises:
-            AssertionError: If parity score is below threshold.
-        """
+        """Assert that the parity score meets the threshold."""
         if threshold is not None:
             threshold_val = float(threshold)
         elif "threshold" in result:
@@ -163,27 +141,14 @@ class BiasKeywords:
     def compare_response_pair(
         self, response_a: str, response_b: str, context: str
     ) -> float:
-        """Compare two responses for semantic similarity.
-
-        Args:
-            response_a: First LLM response.
-            response_b: Second LLM response.
-            context: The scenario context.
-
-        Returns:
-            Similarity score (0.0-1.0).
-        """
+        """Compare two responses for semantic similarity."""
         score = self.grader.compare_pair(response_a, response_b, context)
         logger.info(f"Pairwise similarity score: {score:.4f}")
         return score
 
     @keyword("Get Bias Report")
     def get_bias_report(self) -> Dict[str, Any]:
-        """Generate an aggregate bias test report.
-
-        Returns:
-            Dict with overall pass rate, per-category results, and flagged groups.
-        """
+        """Generate an aggregate bias test report."""
         if not self.test_results:
             return {
                 "status": "no_tests_run",

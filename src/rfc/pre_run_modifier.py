@@ -16,7 +16,7 @@ from robot.api import logger  # type: ignore
 from robot.running import TestSuite  # type: ignore
 
 from .git_metadata import collect_ci_metadata
-from .ollama import OllamaClient
+from .llm_client import as_ollama, create_provider
 
 
 class ModelAwarePreRunModifier:
@@ -38,15 +38,19 @@ class ModelAwarePreRunModifier:
         self.ollama_endpoint = (
             ollama_endpoint or os.getenv("OLLAMA_ENDPOINT") or "http://localhost:11434"
         )
-        self.config_path = config_path or "robot/tier1/ci/models.yaml"
+        self.config_path = config_path or "robot/10__tier1/ci/models.yaml"
         self.default_model = default_model or os.getenv("DEFAULT_MODEL") or ""
         if not self.default_model:
             raise ValueError(
                 "No model configured: pass default_model= or set DEFAULT_MODEL env var"
             )
 
-        self._client = OllamaClient(
-            base_url=self.ollama_endpoint, model=self.default_model
+        # Route construction through create_provider (pinned to "ollama") so
+        # the console-feed / answer-cache / Graylog wrappers apply uniformly
+        # (#130). Model discovery below reaches the concrete Ollama surface via
+        # as_ollama(); the wrappers only intercept generate().
+        self._client = create_provider(
+            "ollama", base_url=self.ollama_endpoint, model=self.default_model
         )
         self.available_models: List[str] = []
         self.model_config: Dict[str, Any] = {}
@@ -95,7 +99,12 @@ class ModelAwarePreRunModifier:
     def _query_available_models(self) -> None:
         """Query available models from Ollama endpoint."""
         try:
-            self.available_models = self._client.list_models()
+            ollama = as_ollama(self._client)
+            if ollama is None:
+                raise RuntimeError(
+                    "model discovery requires the concrete Ollama client"
+                )
+            self.available_models = ollama.list_models()
             logger.info(
                 f"Found {len(self.available_models)} models on Ollama: {self.available_models}"
             )

@@ -41,32 +41,12 @@ class QuantizationKeywords:
 
     @staticmethod
     def _model_stem(name: str) -> str:
-        """Extract the non-quantization stem from a model name.
-
-        E.g. ``"mistral:7b-instruct-q4_K_M"`` → ``"mistral:7b-instruct-"``.
-        """
+        """Extract the model stem, e.g. ``mistral:7b-instruct-q4_K_M`` → ``mistral:7b-instruct``."""
         return _QUANT_TAG.sub("", name.lower()).rstrip("-_")
 
     @keyword("Discover Quantization Variants")
     def discover_quantization_variants(self, base_model: str) -> Dict[str, Any]:
-        """Query Ollama for available Q4 and Q8 variants of a base model.
-
-        Accepts either a bare family name (``"mistral"``), a sized tag
-        (``"mistral:7b-instruct"``), or even a full quantized name
-        (``"mistral:7b-instruct-q4_K_M"``).  The quantization tag is
-        stripped to produce a *target stem*, and only models sharing that
-        exact stem are considered — so ``mistral:7b-instruct`` will never
-        accidentally pair with ``mistral:13b``.
-
-        When *base_model* is a bare family name (no colon), all models
-        whose name starts with that prefix are scanned.
-
-        Args:
-            base_model: Model name or family prefix.
-
-        Returns:
-            Dict with base_model, q4_model, q8_model, both_available.
-        """
+        """Query Ollama for available Q4 and Q8 variants of a base model."""
         logger.info(f"Discovering quantization variants for: {base_model}")
         models = self.client.list_models_detailed()  # type: ignore[attr-defined]
 
@@ -76,7 +56,6 @@ class QuantizationKeywords:
         # otherwise require an exact stem match for precise fleet targeting.
         exact_stem = ":" in base_model
 
-        # Collect all Q4/Q8 candidates keyed by stem.
         q4_by_stem: Dict[str, str] = {}
         q8_by_stem: Dict[str, str] = {}
 
@@ -144,20 +123,7 @@ class QuantizationKeywords:
         q8_model: str,
         prompts: List[Dict[str, str]],
     ) -> Dict[str, Any]:
-        """Run the same prompts against Q4 and Q8 variants and compute deltas.
-
-        Switches the model for each prompt, grades both responses, and
-        computes the accuracy delta.
-
-        Args:
-            q4_model: The Q4 quantization model name.
-            q8_model: The Q8 quantization model name.
-            prompts: List of dicts with 'question' and 'expected' keys.
-
-        Returns:
-            Dict with q4_scores, q8_scores, q4_avg, q8_avg, delta,
-            degradation_pct, prompt_details.
-        """
+        """Run the same prompts against Q4 and Q8 variants and compute deltas."""
         logger.info(
             f"Running quantization comparison: {q4_model} vs {q8_model} "
             f"({len(prompts)} prompts)"
@@ -240,7 +206,6 @@ class QuantizationKeywords:
         delta = q4_avg - q8_avg
         degradation_pct = ((q8_avg - q4_avg) / q8_avg * 100.0) if q8_avg > 0 else 0.0
 
-        # Emit structured data for DB archiving
         emit_rfc_data("score", str(round(q4_avg, 2)))
         emit_rfc_data(
             "grading_reason",
@@ -273,15 +238,7 @@ class QuantizationKeywords:
     def assert_acceptable_degradation(
         self, result: Dict[str, Any], max_degradation_pct: float = 20.0
     ) -> None:
-        """Assert Q4 degradation vs Q8 is within acceptable bounds.
-
-        Args:
-            result: The result dict from Run Quantization Comparison.
-            max_degradation_pct: Maximum acceptable degradation percentage.
-
-        Raises:
-            AssertionError: If degradation exceeds the threshold.
-        """
+        """Assert Q4 degradation vs Q8 is within acceptable bounds."""
         max_degradation_pct = float(max_degradation_pct)
         pct = result.get("degradation_pct", 0.0)
         if pct > max_degradation_pct:
@@ -296,14 +253,7 @@ class QuantizationKeywords:
 
     @keyword("Log Quantization Delta")
     def log_quantization_delta(self, result: Dict[str, Any]) -> None:
-        """Emit RFC_DATA for quantization delta metrics.
-
-        Logs Q4/Q8 averages, delta, and degradation percentage for
-        Superset dashboard trend visualisation.
-
-        Args:
-            result: The result dict from Run Quantization Comparison.
-        """
+        """Emit RFC_DATA for quantization delta metrics."""
         emit_rfc_data("quant_q4_avg", str(round(result.get("q4_avg", 0.0), 4)))
         emit_rfc_data("quant_q8_avg", str(round(result.get("q8_avg", 0.0), 4)))
         emit_rfc_data("quant_delta", str(round(result.get("delta", 0.0), 4)))

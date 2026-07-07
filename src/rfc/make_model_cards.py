@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from rfc.llm_client import OllamaClient
+from rfc.llm_client import LLMProvider, as_ollama, create_provider
 from rfc.retry import retry_on_transient
 from rfc.test_database import TestDatabase
 
@@ -306,7 +306,7 @@ def compute_metrics(model_name: str, db: TestDatabase) -> ModelMetrics:
 
 
 def fetch_model_metadata(
-    model_name: str, db: TestDatabase, ollama_client: Optional[OllamaClient] = None
+    model_name: str, db: TestDatabase, ollama_client: Optional[LLMProvider] = None
 ) -> Dict[str, Any]:
     """Fetch model metadata: hybrid DB + Ollama fallback.
 
@@ -395,7 +395,7 @@ def render_benchmarks_table(metrics: ModelMetrics) -> str:
 
 
 def generate_swot(
-    metrics: ModelMetrics, metadata: Dict[str, Any], ollama_client: OllamaClient
+    metrics: ModelMetrics, metadata: Dict[str, Any], ollama_client: LLMProvider
 ) -> str:
     """Generate SWOT analysis via LLM with retry.
 
@@ -456,6 +456,24 @@ def generate_swot(
             "_SWOT analysis unavailable — LLM service temporarily unavailable. "
             "Rerun the command when Ollama is accessible._"
         )
+
+
+def _build_llm_provider(endpoint: str, model: str) -> LLMProvider:
+    """Construct the SWOT LLM provider through the ``create_provider`` seam.
+
+    Pinned to ``"ollama"`` — SWOT generation uses the Ollama-specific
+    ``is_available()`` probe — and routed through ``create_provider`` (rather
+    than a direct ``OllamaClient(...)``) so the console-feed / answer-cache /
+    Graylog wrappers apply and every ``generate()`` stays observable (#130).
+    """
+    return create_provider(
+        "ollama",
+        base_url=endpoint,
+        model=model,
+        temperature=0.2,
+        max_tokens=2048,
+        timeout=300,
+    )
 
 
 def render_card(
@@ -566,14 +584,9 @@ def main() -> None:
 
     db = TestDatabase(database_url=args.database_url)
 
+    ollama_client: Optional[LLMProvider]
     try:
-        ollama_client = OllamaClient(
-            base_url=args.ollama_endpoint,
-            model=args.llm_model,
-            temperature=0.2,
-            max_tokens=2048,
-            timeout=300,
-        )
+        ollama_client = _build_llm_provider(args.ollama_endpoint, args.llm_model)
     except Exception as e:
         logger.warning(f"Failed to initialize Ollama client: {e}")
         ollama_client = None
@@ -606,7 +619,16 @@ def main() -> None:
 
             metadata = fetch_model_metadata(model_name, db, ollama_client)
 
-            if ollama_client and ollama_client.is_available():
+            # is_available() is Ollama-specific (not on the LLMProvider
+            # protocol); reach the concrete client via as_ollama() while still
+            # passing the wrapped provider to generate_swot so its generate()
+            # stays instrumented (#130).
+            ollama = as_ollama(ollama_client) if ollama_client is not None else None
+            if (
+                ollama_client is not None
+                and ollama is not None
+                and ollama.is_available()
+            ):
                 swot_text = generate_swot(metrics, metadata, ollama_client)
             else:
                 logger.warning(

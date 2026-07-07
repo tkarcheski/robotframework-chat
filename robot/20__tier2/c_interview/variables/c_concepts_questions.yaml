@@ -1,0 +1,105 @@
+# C Interview Questions - Code and Concept Oriented
+#
+# 25 questions testing LLM knowledge of C memory management, strings,
+# type system, preprocessor, and common pitfalls.
+
+C_CONCEPTS_QUESTIONS:
+  - question: "What is the difference between malloc, calloc, and realloc in C?"
+    expected: "malloc allocates uninitialized memory, calloc allocates zero-initialized memory for an array, and realloc changes the size of an existing allocation (possibly moving it)."
+    iq: 110
+
+  - question: "What happens if you forget to free dynamically allocated memory in C?"
+    expected: "The program may leak memory; the OS typically reclaims it on process exit, but long-running processes can exhaust memory."
+    iq: 100
+
+  - question: "Why is the gets function dangerous in C and what should you use instead?"
+    expected: "gets doesn't check buffer bounds and can overflow; it is removed from the C standard. Use fgets with a size limit."
+    iq: 110
+
+  - question: "What is the difference between ++*p and (*p)++ in C?"
+    expected: "Both increment the value pointed to by p, but ++*p pre-increments and yields the incremented value, while (*p)++ yields the old value then increments."
+    iq: 120
+
+  - question: "What is the difference between 'char *s = \"hello\";' and 'char s[] = \"hello\";' in C?"
+    expected: "char *s points to a string literal (typically read-only), modifying it is undefined; char s[] is a modifiable array initialized with the literal's contents."
+    iq: 110
+
+  - question: "What is a memory leak in C? Give an example."
+    expected: "A memory leak occurs when allocated memory is no longer reachable but not freed, e.g. int *p = malloc(10*sizeof *p); p = NULL; without calling free first."
+    iq: 100
+
+  - question: "What is the result of sizeof(char), sizeof(int), and sizeof(void *) in C?"
+    expected: "sizeof(char) is always 1; sizeof(int) and sizeof(void *) are implementation-dependent (commonly 4 for int, 8 for pointers on 64-bit)."
+    iq: 110
+
+  - question: "Explain the C declaration 'int (*p)[10];'."
+    expected: "p is a pointer to an array of 10 ints, often used when working with 2D arrays."
+    iq: 120
+
+  - question: "In C, what does 'int a[5] = {1,2,3,4,5}; int *p = a; printf(\"%zu %zu\\n\", sizeof(a), sizeof(p));' print on a 64-bit system where int is 4 bytes?"
+    expected: "It prints 20 8: a is 5 ints (5*4=20 bytes), p is a pointer (8 bytes on 64-bit)."
+    iq: 120
+
+  - question: "Why is strcpy(dst, src) dangerous in C and what safer alternative exists?"
+    expected: "It performs no bounds checking and will overflow dst if src is longer; safer alternatives include snprintf(dst, size, \"%s\", src), strlcpy where available, or explicit length-checked copying with memcpy after validating the length."
+    iq: 110
+
+  - question: "What does the volatile keyword mean in C?"
+    expected: "volatile tells the compiler the variable can change unexpectedly (e.g. hardware register, signal handler), so it must not optimize away reads/writes."
+    iq: 120
+
+  - question: "What is a race condition in multithreaded C programs?"
+    expected: "A race condition arises when multiple threads access shared data concurrently and at least one modifies it without proper synchronization, causing unpredictable results."
+    iq: 110
+
+  - question: "What is the purpose of a mutex in C?"
+    expected: "A mutex provides mutual exclusion, allowing only one thread at a time to enter a critical section that accesses shared data, preventing races."
+    iq: 110
+
+  - question: "What is the difference between a process and a thread in C?"
+    expected: "A process has its own address space and resources, while threads share the same address space and many resources within a process."
+    iq: 100
+
+  - question: "What is memset used for in C?"
+    expected: "memset sets a block of memory to a byte value, commonly used to initialize buffers or structs to zero."
+    iq: 100
+
+  - question: "What is strict aliasing in C and why can it cause bugs?"
+    expected: "Strict aliasing rules let compilers assume pointers of different (incompatible) types do not point to the same memory; violating this by aliasing via different types can cause undefined behavior and mis-optimizations."
+    iq: 130
+
+  - question: "Why is casting the result of malloc in C often discouraged?"
+    expected: "In C, void * implicitly converts to other pointer types; explicit casts can hide missing #include <stdlib.h> and lead to compilation without a proper prototype."
+    iq: 120
+
+  - question: "What is wrong with a C function that declares a local char array, copies a string into it with strcpy, and returns a pointer to that local array?"
+    expected: "It returns a pointer to a local array that goes out of scope; using it is undefined behavior. The array should be static or dynamically allocated."
+    iq: 110
+
+  - question: "Explain typedef for function pointers in C with an example."
+    expected: "typedef int (*op_t)(int, int); defines op_t as a type alias for a pointer to a function taking two ints and returning int, making declarations clearer."
+    iq: 120
+
+  - question: "What is the difference between #include \"file.h\" and #include <file.h> in C?"
+    expected: "Quotes typically search the current directory first then system paths, while angle brackets search only system include paths; exact behavior is implementation-defined."
+    iq: 100
+
+  - question: "Why should you not modify string literals in C?"
+    expected: "String literals may be stored in read-only memory; modifying them is undefined behavior and can cause crashes."
+    iq: 110
+
+  - question: "What is #pragma once and how does it compare to include guards in C?"
+    expected: "#pragma once is a non-standard but widely supported way to ensure a header is included only once; include guards use #ifndef/#define/#endif and are fully portable."
+    iq: 110
+
+  - question: "What is the purpose of the offsetof macro from <stddef.h> in C?"
+    expected: "offsetof(type, member) gives the byte offset of a member within a struct, often used in low-level code and container-of patterns."
+    iq: 130
+
+  - question: "What does the C declaration 'int (*f(int))(double);' mean?"
+    expected: "It declares f as a function taking an int and returning a pointer to a function taking double and returning int."
+    iq: 140
+
+  - question: "What is reentrancy and why is strtok not reentrant in C?"
+    expected: "A reentrant function can be safely called simultaneously by multiple threads or recursively; strtok uses internal static state, so concurrent or nested calls interfere with each other."
+    iq: 120

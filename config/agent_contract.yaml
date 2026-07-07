@@ -5,7 +5,7 @@
 # tests do not need to hard-code values scraped from prose in CLAUDE.md.
 #
 # Loaded by src/rfc/agent_contract.py.
-# Consumed by src/rfc/agent_verifiers.py and robot/tier4/agentic_coding/ tests.
+# Consumed by src/rfc/agent_verifiers.py and robot/40__tier4/agentic_coding/ tests.
 
 claude-code:
   base_branch: "claude-code-staging"

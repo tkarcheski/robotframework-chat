@@ -62,20 +62,7 @@ class MultiTurnKeywords:
 
     @keyword("Run Multi Turn Conversation")
     def run_multi_turn_conversation(self, turns: List[Dict[str, str]]) -> List[str]:
-        """Run a multi-turn conversation, generating LLM responses incrementally.
-
-        Walks through the turn list. User turns are added to history as-is.
-        When a user turn is followed by another user turn (or is the last
-        turn), an LLM response is generated and inserted before proceeding.
-        Scripted assistant turns are added to history without calling the LLM.
-
-        Args:
-            turns: List of dicts with 'role' ('user', 'assistant', 'system')
-                   and 'content' keys.
-
-        Returns:
-            List of all LLM-generated responses (in order).
-        """
+        """Run a multi-turn conversation, generating LLM responses incrementally."""
         history: List[Dict[str, str]] = []
         generated_responses: List[str] = []
 

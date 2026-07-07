@@ -31,11 +31,11 @@ TIMEOUT_FLOOR_SECONDS = DEFAULT_TIMEOUT  # 5400s / 90 min
 
 # Suites whose Test Timeout bounds container execution, not LLM generation.
 EXCLUDED_SUITES = {
-    ROBOT_ROOT / "tier4" / "docker" / "python" / "__init__.robot",
-    ROBOT_ROOT / "tier4" / "docker" / "c" / "__init__.robot",
-    ROBOT_ROOT / "tier4" / "docker" / "bash" / "__init__.robot",
-    ROBOT_ROOT / "tier4" / "docker" / "rust" / "__init__.robot",
-    ROBOT_ROOT / "tier4" / "docker" / "shell" / "__init__.robot",
+    ROBOT_ROOT / "40__tier4" / "docker" / "python" / "__init__.robot",
+    ROBOT_ROOT / "40__tier4" / "docker" / "c" / "__init__.robot",
+    ROBOT_ROOT / "40__tier4" / "docker" / "bash" / "__init__.robot",
+    ROBOT_ROOT / "40__tier4" / "docker" / "rust" / "__init__.robot",
+    ROBOT_ROOT / "40__tier4" / "docker" / "shell" / "__init__.robot",
 }
 
 _UNIT_SECONDS = {
