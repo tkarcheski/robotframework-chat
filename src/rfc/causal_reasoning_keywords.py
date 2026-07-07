@@ -84,19 +84,7 @@ class CausalReasoningKeywords:
         claim: str,
         expected_verdict: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM whether a claim is CAUSAL or NOT_CAUSAL and verify.
-
-        Args:
-            scenario: Background context describing the observed relationship.
-            claim: The causal claim to evaluate.
-            expected_verdict: ``"CAUSAL"`` or ``"NOT_CAUSAL"``.
-
-        Returns:
-            Dict with keys: verdict, correct, response, expected.
-
-        Raises:
-            ValueError: If expected_verdict is not one of the allowed values.
-        """
+        """Ask the LLM whether a claim is CAUSAL or NOT_CAUSAL and verify."""
         expected_verdict = expected_verdict.strip().upper().replace(" ", "_")
         allowed = {"CAUSAL", "NOT_CAUSAL"}
         if expected_verdict not in allowed:
@@ -133,22 +121,7 @@ class CausalReasoningKeywords:
         argument: str,
         expected_letter: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to identify the fallacy in a causal argument.
-
-        Presents a multiple-choice question (A–D) and checks whether the LLM
-        selects the correct option.
-
-        Args:
-            argument: The causal argument containing a logical error.
-            expected_letter: Expected answer letter: ``"A"``, ``"B"``, ``"C"``,
-                or ``"D"``.
-
-        Returns:
-            Dict with keys: chosen_letter, correct, response, expected.
-
-        Raises:
-            ValueError: If expected_letter is not A–D.
-        """
+        """Ask the LLM to identify the fallacy (A–D) in a causal argument."""
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
             raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
@@ -185,16 +158,7 @@ class CausalReasoningKeywords:
         expected_elements: str,
         min_score: float = 0.5,
     ) -> Dict[str, Any]:
-        """Ask the LLM a counterfactual question and grade the response.
-
-        Args:
-            question: A counterfactual question ("If X had not happened…").
-            expected_elements: Key elements a correct answer should contain.
-            min_score: Minimum passing score (0.0–1.0).
-
-        Returns:
-            Dict with keys: score, reason, response, passed.
-        """
+        """Ask the LLM a counterfactual question and grade the response."""
         prompt = _COUNTERFACTUAL_PROMPT.format(question=question)
         logger.info(f"Counterfactual prompt:\n{prompt}")
 
@@ -226,11 +190,9 @@ class CausalReasoningKeywords:
 def _extract_verdict(response: str) -> Optional[str]:
     """Extract CAUSAL or NOT_CAUSAL from the first non-empty line only.
 
-    The prompt instructs the model to place the verdict on the first line.
-    Searching the full body risks matching the word "causal" in explanatory
-    prose (e.g. "there is no causal link"), which would silently convert a
-    non-compliant response into a false verdict.  Non-compliant responses
-    return ``None``; callers should treat that as a test failure.
+    First-line-only avoids matching "causal" in explanatory prose, which would
+    convert a non-compliant response into a false verdict. Returns None when the
+    first line has no verdict token; callers treat that as a failure.
     """
     first_line = response.strip().splitlines()[0] if response.strip() else ""
     m = _VERDICT_RE.search(first_line)

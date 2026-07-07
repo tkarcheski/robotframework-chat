@@ -6,7 +6,7 @@ sqlite database, so the suite verifies the real cross-process contract:
 the sidecar written by ``start`` must be readable by later ``status`` /
 ``end`` invocations and by ``makefile_session_id()`` (Issue #411).
 
-Used by ``robot/tier1/harness/test_harness_cli.robot`` (tier:1, verify:python).
+Used by ``robot/10__tier1/harness/test_harness_cli.robot`` (tier:1, verify:python).
 """
 
 from __future__ import annotations

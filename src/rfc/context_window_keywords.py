@@ -86,41 +86,21 @@ class ContextWindowKeywords:
         position: str = "end",
         max_tokens: int = 256,
     ) -> str:
-        """Build a prompt with filler content surrounding a needle fact.
-
-        Args:
-            needle_fact: The fact to embed (the "needle").
-            question: The retrieval question to ask.
-            fill_pct: Percentage of context window to fill (0-95).
-            context_window: The model's context window size (tokens).
-            position: Where to place the needle: 'start', 'middle', or 'end'.
-            max_tokens: Response tokens to reserve (prevents overfill).
-
-        Returns:
-            Assembled prompt string with filler and needle positioned strategically.
-        """
-        # Reserve headroom for response generation
+        """Build a prompt with filler content surrounding a needle fact."""
         safety_margin = 50
         usable_budget = context_window - max_tokens - safety_margin
-
-        # Calculate target fill size
         target_tokens = int(usable_budget * fill_pct / 100)
-
-        # Assemble filler by cycling through passages
         filler = self._assemble_filler(target_tokens)
 
-        # Position the needle
         if position == "start":
             content = f"{needle_fact}\n\n{filler}"
         elif position == "middle":
-            # Split filler in half
             filler_first = filler[: len(filler) // 2]
             filler_second = filler[len(filler) // 2 :]
             content = f"{filler_first}\n\n{needle_fact}\n\n{filler_second}"
         else:  # "end"
             content = f"{filler}\n\n{needle_fact}"
 
-        # Build final prompt with context and question
         prompt = (
             f"Below is some reference material:\n\n{content}\n\n"
             f"Question: {question}\n\n"
@@ -130,10 +110,9 @@ class ContextWindowKeywords:
         return prompt
 
     def _assemble_filler(self, target_tokens: int) -> str:
-        """Assemble filler content to approximately target size.
+        """Assemble filler to approximately target size by cycling passages.
 
-        Uses word-split token estimation (~4x rough vs BPE). Cycles through
-        passages to reach target budget with deterministic, repeatable content.
+        Token budget is estimated by word count — rough vs BPE but deterministic.
         """
         filler = ""
         passage_idx = 0
@@ -161,46 +140,23 @@ class ContextWindowKeywords:
         context_window: int,
         max_tokens: int = 256,
     ) -> Dict[str, Any]:
-        """Ask the LLM to retrieve the needle at a specific fill level.
-
-        Builds a filled prompt, sends it to the LLM, checks if the needle
-        was recalled, and emits metrics for analysis.
-
-        Args:
-            needle_fact: The fact embedded in context.
-            question: The retrieval question.
-            expected_answer: What the model should output.
-            fill_pct: Context fill percentage (25, 50, 75, 95).
-            position: Needle position ('start', 'middle', 'end').
-            context_window: Model's context window size.
-            max_tokens: Max response tokens.
-
-        Returns:
-            Dict with keys: 'response', 'recalled', 'latency_ms', 'prompt_tokens'.
-        """
-        # Build prompt
+        """Ask the LLM to retrieve the needle at a specific fill level."""
         prompt = self.build_filled_prompt(
             needle_fact, question, fill_pct, context_window, position, max_tokens
         )
 
-        # Configure client context window before generation
         if hasattr(self.client, "num_ctx"):
             self.client.num_ctx = context_window
         if hasattr(self.client, "max_tokens"):
             self.client.max_tokens = max_tokens
 
-        # Measure latency
         start_time = time.time()
         response = self.client.generate(prompt)
         latency_ms = (time.time() - start_time) * 1000
 
-        # Check if needle was recalled
         recalled = self.check_needle_recalled(response, expected_answer)
-
-        # Estimate tokens
         prompt_tokens = len(prompt.split())
 
-        # Emit metrics
         emit_rfc_data("fill_pct", str(fill_pct))
         emit_rfc_data("needle_position", position)
         emit_rfc_data("prompt_tokens_est", str(prompt_tokens))
@@ -224,21 +180,12 @@ class ContextWindowKeywords:
     def check_needle_recalled(self, response: str, expected_answer: str) -> bool:
         """Check if the expected answer appears in the response.
 
-        Uses word-boundary matching to avoid false positives (e.g., "90 days"
-        won't match "190 days"). Performs case-insensitive, whitespace-normalized
-        matching on individual tokens.
-
-        Args:
-            response: The model's response text.
-            expected_answer: The fact/snippet expected to be recalled.
-
-        Returns:
-            True if expected_answer tokens are found as a consecutive sequence.
+        Consecutive-token matching avoids false positives like "90 days"
+        matching inside "190 days".
         """
         if not response or not expected_answer:
             return False
 
-        # Normalize and split into words
         resp_normalized = self._normalize_text(response)
         expected_normalized = self._normalize_text(expected_answer)
 
@@ -248,7 +195,6 @@ class ContextWindowKeywords:
         if not expected_words or not resp_words:
             return False
 
-        # Check if expected words appear as a consecutive subsequence
         for i in range(len(resp_words) - len(expected_words) + 1):
             if resp_words[i : i + len(expected_words)] == expected_words:
                 return True
@@ -262,6 +208,5 @@ class ContextWindowKeywords:
         text = re.sub(r"[^\w\s\-]", "", text)
         # Normalize spaces around hyphens: " - " becomes "-"
         text = re.sub(r"\s*-\s*", "-", text)
-        # Collapse remaining whitespace
         text = self._WS_COLLAPSE.sub(" ", text).strip()
         return text

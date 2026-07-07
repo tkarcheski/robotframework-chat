@@ -247,3 +247,24 @@ class TestOllamaAgentRunner:
             provider=StubLLMProvider(),
         )
         assert runner.list_scenarios() == ["alpha", "bravo"]
+
+
+class TestBuildDefaultProviderWrapperApplication:
+    """The default provider must be built through create_provider so the
+    instrumentation wrappers apply; unwrap_provider() must still reach the
+    concrete OllamaClient (#130)."""
+
+    def test_provider_is_wrapped_and_unwraps_to_ollama(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from rfc.llm_client import unwrap_provider
+        from rfc.ollama import OllamaClient
+        from rfc.ollama_agent_runner import _build_default_provider
+
+        monkeypatch.setenv("LLM_CONSOLE_FEED_ENABLED", "1")
+        provider = _build_default_provider(_config(model="test-model"))
+
+        assert not isinstance(provider, OllamaClient), (
+            "provider should be wrapped, not a bare OllamaClient"
+        )
+        assert isinstance(unwrap_provider(provider), OllamaClient)

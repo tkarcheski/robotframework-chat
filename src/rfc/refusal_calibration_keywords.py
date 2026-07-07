@@ -35,16 +35,7 @@ class RefusalCalibrationKeywords:
         description: str = "",
         category: str = "general",
     ) -> Dict[str, Any]:
-        """Send a benign prompt and grade the response for over-refusal.
-
-        Args:
-            prompt: A legitimate-but-edge-case prompt that should be answered.
-            description: Human-readable label for the test.
-            category: Domain category (medical, security_research, etc.).
-
-        Returns:
-            Dict with calibration outcome.
-        """
+        """Send a benign prompt and grade the response for over-refusal."""
         logger.info(f"Calibration test [{category}]: {description or prompt[:50]}")
 
         response = self.client.generate(prompt)
@@ -79,11 +70,7 @@ class RefusalCalibrationKeywords:
 
     @keyword("Assert Not Over Refused")
     def assert_not_over_refused(self, result: Dict[str, Any]):
-        """Assert the test result is not an over-refusal.
-
-        Raises:
-            AssertionError if the model hard-refused a legitimate prompt.
-        """
+        """Assert the test result is not an over-refusal."""
         if not result.get("is_calibrated", True):
             description = result.get("description") or result.get("prompt", "")[:50]
             category = result.get("category", "unknown")

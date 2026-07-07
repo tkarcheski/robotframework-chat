@@ -31,16 +31,7 @@ class PersonaKeywords:
         conversation_history: List[Dict[str, str]],
         current_turn: str,
     ) -> str:
-        """Build a single prompt with persona system prompt, history, and turn.
-
-        Args:
-            system_prompt: The persona definition.
-            conversation_history: Prior turns as role/content dicts.
-            current_turn: The current user message.
-
-        Returns:
-            A formatted prompt string.
-        """
+        """Build a single prompt with persona system prompt, history, and turn."""
         parts: List[str] = []
         parts.append(f"System: {system_prompt}\n")
         parts.append(
@@ -62,19 +53,7 @@ class PersonaKeywords:
         adversarial_turns: List[str],
         persona_criteria: str,
     ) -> Dict[str, Any]:
-        """Run adversarial turns against a persona and grade consistency.
-
-        Sends each adversarial turn sequentially, building up conversation
-        history. Each response is graded against the persona criteria.
-
-        Args:
-            system_prompt: The persona definition (e.g. "You are a pirate captain").
-            adversarial_turns: List of user messages designed to break persona.
-            persona_criteria: Description of what persona adherence looks like.
-
-        Returns:
-            Dict with turn_scores, avg_score, min_score, all_passed, turn_details.
-        """
+        """Run adversarial turns against a persona and grade consistency."""
         logger.info(
             f"Running persona consistency test with {len(adversarial_turns)} turns"
         )
@@ -90,9 +69,8 @@ class PersonaKeywords:
             raw_response = self.client.generate(prompt)
             response, _ = parse_thinking(raw_response, strip_unclosed=True)
 
-            # An empty assistant response cannot demonstrate that the
-            # persona was maintained. Score it 0.0 directly rather than
-            # asking the LLM judge to interpret silence as in-character.
+            # An empty response can't demonstrate persona; score 0.0 directly
+            # rather than asking the judge to interpret silence as in-character.
             if not response or not response.strip():
                 score = 0.0
                 reason = "Empty response — model produced no content"
@@ -123,7 +101,6 @@ class PersonaKeywords:
                 f"Turn {i + 1}/{len(adversarial_turns)}: score={score:.2f} — {reason}"
             )
 
-            # Add to conversation history for next turn
             conversation_history.append({"role": "user", "content": turn})
             conversation_history.append({"role": "assistant", "content": response})
 
@@ -156,19 +133,7 @@ class PersonaKeywords:
     def assert_persona_maintained(
         self, result: Dict[str, Any], min_score: float = 0.7
     ) -> None:
-        """Assert persona consistency meets threshold on every turn and on average.
-
-        Fails if the average score is below threshold OR if any individual
-        turn scored below threshold — a single break in character is a failure
-        for a consistency test.
-
-        Args:
-            result: The result dict from Run Persona Consistency Test.
-            min_score: Minimum acceptable score per turn and on average (default 0.7).
-
-        Raises:
-            AssertionError: If average or any turn score is below threshold.
-        """
+        """Assert persona consistency meets threshold on every turn and on average."""
         min_score = float(min_score)
         avg = result.get("avg_score", 0.0)
         scores = result.get("turn_scores", [])

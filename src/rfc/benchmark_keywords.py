@@ -15,15 +15,7 @@ class BenchmarkKeywords:
 
     @keyword("Measure Completion Ratio")
     def measure_completion_ratio(self, requested_tokens: int, eval_count: int) -> float:
-        """Compare actual eval_count to requested max_tokens.
-
-        Args:
-            requested_tokens: Number of tokens requested via max_tokens.
-            eval_count: Actual tokens generated (from Ollama metrics).
-
-        Returns:
-            Ratio of eval_count / requested_tokens.
-        """
+        """Compare actual eval_count to requested max_tokens."""
         requested = int(requested_tokens)
         actual = int(eval_count)
         ratio = actual / requested if requested > 0 else 0.0
@@ -33,14 +25,7 @@ class BenchmarkKeywords:
 
     @keyword("Estimate Response Tokens")
     def estimate_response_tokens(self, response: str) -> int:
-        """Emit word-based token estimate for the response.
-
-        Args:
-            response: The LLM response text.
-
-        Returns:
-            Estimated token count based on whitespace splitting.
-        """
+        """Emit word-based token estimate for the response."""
         count = estimate_token_count(response)
         emit_rfc_data("estimated_response_tokens", str(count))
         return count

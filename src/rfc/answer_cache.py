@@ -23,6 +23,11 @@ The cache key is the SHA-256 of a canonical JSON document over every attribute
 that affects model output, plus a version namespace so the whole cache can be
 busted on a schema change. Omitting any output-affecting attribute would
 silently serve wrong answers, so the key builder enumerates them explicitly.
+When the client can resolve its model **digest** (Ollama, via ``/api/tags``),
+that digest is folded in too (#526): an Ollama tag can be repointed in place, so
+keying on the tag name alone would replay answers from the old weights under the
+new tag. Providers whose model id already pins the weights (OpenAI snapshot ids,
+vLLM per-process weights) lack the resolver and simply omit the digest field.
 """
 
 from __future__ import annotations
@@ -38,7 +43,12 @@ logger = logging.getLogger(__name__)
 # Defaults mirror the documented env vars (see .env.example).
 DEFAULT_REDIS_URL = "redis://localhost:6379/1"  # db 1, NOT Superset's db 0
 DEFAULT_TTL_SECONDS = 604800  # 7 days
-DEFAULT_VERSION = "v1"
+# v2 (issue #526): the key now includes the resolved model *digest*, not just
+# the tag name, so an Ollama tag repointed in place is a miss instead of a stale
+# hit. Bumping v1→v2 is a deliberate cache-wide invalidation — every entry
+# written under v1 (tag-only keys) is orphaned and re-generated once. BREAKING
+# for any persisted cache.
+DEFAULT_VERSION = "v2"
 # Finite Redis timeouts (seconds): a down cache must degrade fast, not hang.
 DEFAULT_CONNECT_TIMEOUT = 1.0
 DEFAULT_SOCKET_TIMEOUT = 1.0
@@ -56,6 +66,10 @@ _KEY_ATTRS = (
     "top_k",
     "num_ctx",
     "response_format",
+    # `think` changes what the model emits (reasoning on/off/level), so it must
+    # be part of the key (#131). Adding it self-busts pre-existing entries whose
+    # payload lacked the field — acceptable given the 7-day TTL.
+    "think",
 )
 
 
@@ -71,6 +85,10 @@ class _CacheableClient(Protocol):
     num_ctx: Optional[int]
     response_format: Optional[str]
     last_metrics: Optional[Dict[str, Any]]
+    # NB: ``think`` is intentionally NOT declared here even though it is in
+    # ``_KEY_ATTRS``. make_key reads it via ``getattr(client, attr, None)``, so
+    # no protocol member is needed, and requiring it would exclude providers
+    # (e.g. OpenAI) whose client legitimately has no ``think`` attribute (#131).
 
     def generate(self, prompt: str) -> str: ...
 
@@ -150,6 +168,18 @@ class AnswerCache:
         }
         for attr in _KEY_ATTRS:
             payload[attr] = getattr(client, attr, None)
+
+        # Model identity beyond the tag name (issue #526). An Ollama tag can be
+        # repointed in place, so a client that can resolve its content digest
+        # contributes it to the key. Three distinct namespaces result:
+        #   * no resolver          → "model_digest" absent   (non-Ollama providers)
+        #   * resolver → None      → "model_digest": null     (offline/unresolvable)
+        #   * resolver → digest    → "model_digest": "sha…"   (confirmed weights)
+        # A null digest never collides with a real one, so a digest-stamped
+        # entry is never served when the digest cannot be re-confirmed.
+        resolve_digest = getattr(client, "resolve_model_digest", None)
+        if callable(resolve_digest):
+            payload["model_digest"] = resolve_digest()
 
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -273,7 +303,13 @@ class CachingProvider:
             return cached
 
         answer = client.generate(prompt)
-        self._cache.set(key, answer)
+        # Never memoize an empty/whitespace answer: caching an error/blank
+        # response would replay the failure for the whole TTL and hide a
+        # transient outage or the qwen3.6 thinking-only bug (#131).
+        if answer.strip():
+            self._cache.set(key, answer)
+        else:
+            logger.debug("Skipping cache.set for empty answer (key=%s)", key)
         return answer
 
     def _record_hit(self, client: _CacheableClient) -> None:

@@ -1,0 +1,147 @@
+# C Interview Questions - Multithreading and Concurrency
+#
+# 35 questions testing LLM knowledge of POSIX threads, synchronization
+# primitives, and common concurrency pitfalls.
+
+C_THREADING_QUESTIONS:
+  # --- Batch 1: Core pthreads (15 questions) ---
+  - question: "What is a thread and how is it different from a process in C programs?"
+    expected: "A thread is a lightweight execution unit within a process that shares the process's address space and resources, while processes have separate address spaces and require heavier IPC mechanisms."
+    iq: 100
+
+  - question: "How do you create a thread using POSIX threads (pthreads) in C?"
+    expected: "Use pthread_create, passing a pthread_t *, attributes (or NULL), a start routine, and a void * argument; it returns 0 on success, non-zero on error."
+    iq: 110
+
+  - question: "How do you wait for a thread to finish in C with pthreads?"
+    expected: "Use pthread_join(thread, &retval) to block until the given thread terminates, optionally retrieving its return value."
+    iq: 110
+
+  - question: "What is a race condition in concurrent C programs?"
+    expected: "A race condition occurs when multiple threads access shared data concurrently and at least one writes, without proper synchronization, making the final result depend on timing and interleavings."
+    iq: 110
+
+  - question: "What is a mutex and how is it used with pthreads in C?"
+    expected: "A mutex (pthread_mutex_t) enforces mutual exclusion around critical sections: lock with pthread_mutex_lock, protect shared data, then unlock with pthread_mutex_unlock."
+    iq: 110
+
+  - question: "How do you protect a shared counter with a mutex in C pthreads?"
+    expected: "Declare a global counter and mutex, then in each worker thread lock the mutex before incrementing the counter and unlock after, preventing lost updates."
+    iq: 110
+
+  - question: "What is a deadlock in multithreaded C code?"
+    expected: "Deadlock occurs when threads hold locks and wait on each other in a cycle so that none can proceed, often from inconsistent lock acquisition order or forgetting to unlock."
+    iq: 120
+
+  - question: "How can you avoid deadlocks with multiple mutexes in C?"
+    expected: "Adopt a global lock acquisition order (always lock A then B, never B then A), minimize lock hold time, and avoid calling blocking operations while holding locks."
+    iq: 120
+
+  - question: "What is a condition variable in C pthreads and why is it used?"
+    expected: "A condition variable (pthread_cond_t) lets threads sleep until a condition on shared state becomes true, used with a mutex to implement wait/notify patterns (e.g., producer-consumer)."
+    iq: 120
+
+  - question: "What is the typical pattern for waiting on a condition variable in C pthreads?"
+    expected: "Lock the mutex, then in a while loop check the predicate and call pthread_cond_wait(&cv, &m) if false; pthread_cond_wait atomically releases the mutex and sleeps, then re-locks before returning."
+    iq: 120
+
+  - question: "What is the difference between pthread_cond_signal and pthread_cond_broadcast?"
+    expected: "pthread_cond_signal wakes one waiting thread, whereas pthread_cond_broadcast wakes all waiting threads so they can recheck the condition."
+    iq: 120
+
+  - question: "Why must you always check the predicate in a loop around pthread_cond_wait?"
+    expected: "Because wakeups can be spurious or conditions can change before a thread runs; the loop ensures the condition is still true after waking before proceeding."
+    iq: 120
+
+  - question: "What is a spinlock and when is it preferable to a mutex in C?"
+    expected: "A spinlock repeatedly checks a shared flag in a tight loop instead of sleeping; it's useful for very short critical sections where sleeping would cost more than spinning on multi-core systems."
+    iq: 120
+
+  - question: "What is a barrier in multithreaded C code?"
+    expected: "A barrier makes threads wait until all participating threads reach a point before any continue, ensuring phases of computation stay in sync; POSIX provides pthread_barrier_t on some platforms."
+    iq: 120
+
+  - question: "How would you implement a simple producer-consumer queue with mutex and condition variables in C?"
+    expected: "Use a shared buffer, one mutex to protect it, and two condition variables: one for not-empty (signal consumers when items are added) and one for not-full (signal producers when space is available), always modifying the queue while holding the mutex and using while loops around pthread_cond_wait."
+    iq: 130
+
+  # --- Batch 2: Advanced pthreads (20 questions) ---
+  - question: "What arguments does pthread_create take and what does it return?"
+    expected: "It takes pthread_t *thread, const pthread_attr_t *attr (or NULL), void *(*start_routine)(void *), and void *arg; it returns 0 on success, a non-zero error code on failure."
+    iq: 110
+
+  - question: "What is pthread_detach and when would you use it in C?"
+    expected: "pthread_detach(thread) marks a thread as unjoinable so its resources are released automatically when it exits; use it for fire-and-forget threads you will not join."
+    iq: 110
+
+  - question: "What happens if you never join or detach a thread in C?"
+    expected: "The thread becomes a zombie consuming resources until the process exits; this can leak OS thread handles and stack memory."
+    iq: 110
+
+  - question: "Why should functions passed to pthread_create return void * in C?"
+    expected: "POSIX defines the start routine as void *(*)(void *); returning void * allows passing back a result via pthread_join, or NULL if unused."
+    iq: 110
+
+  - question: "What is thread-safe code in C?"
+    expected: "Thread-safe code behaves correctly when called from multiple threads concurrently, usually by avoiding shared mutable state or protecting it with proper synchronization primitives."
+    iq: 110
+
+  - question: "What are the common synchronization primitives available in C with POSIX threads?"
+    expected: "Mutexes (pthread_mutex_t), condition variables (pthread_cond_t), read-write locks (pthread_rwlock_t), barriers (pthread_barrier_t), and semaphores (sem_t)."
+    iq: 110
+
+  - question: "What is a read-write lock and when would you use it in C?"
+    expected: "A read-write lock allows multiple concurrent readers or a single writer; it's useful when reads are frequent and writes are rare to increase parallelism over a simple mutex."
+    iq: 120
+
+  - question: "How do you initialize a pthread_mutex_t in C?"
+    expected: "Statically via pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER; or dynamically via pthread_mutex_init(&m, NULL); and destroyed with pthread_mutex_destroy."
+    iq: 110
+
+  - question: "Why should shared data be protected by the same mutex consistently in C?"
+    expected: "Using different locks for the same data breaks mutual exclusion and can reintroduce race conditions despite using mutexes."
+    iq: 120
+
+  - question: "What is false sharing in multithreaded C programs?"
+    expected: "False sharing happens when threads modify different variables that share a cache line, causing unnecessary cache coherency traffic and performance degradation, even without logical data sharing."
+    iq: 130
+
+  - question: "What is a memory fence (barrier) and why is it needed in multithreaded C?"
+    expected: "A memory fence prevents the compiler or CPU from reordering memory operations across the barrier, ensuring certain visibility ordering between threads without relying solely on locks."
+    iq: 130
+
+  - question: "Why is it dangerous to call non-async-signal-safe functions like printf from a signal handler in a multithreaded C program?"
+    expected: "They are not reentrant or safe when interrupted, can deadlock or corrupt internal state, especially with threads; only async-signal-safe functions are allowed in signal handlers."
+    iq: 130
+
+  - question: "How can you implement a simple spinlock in C conceptually?"
+    expected: "Use an atomic flag and busy-wait: while (__sync_lock_test_and_set(&lock, 1)) { spin } then do critical section, then __sync_lock_release(&lock); on modern C, use <stdatomic.h> for portable atomics."
+    iq: 130
+
+  - question: "What is priority inversion in multithreaded C programs?"
+    expected: "Priority inversion occurs when a low-priority thread holds a lock needed by a high-priority thread, but a medium-priority thread preempts the low one, delaying the high-priority thread indirectly."
+    iq: 130
+
+  - question: "How do condition variables help avoid busy waiting in C pthreads?"
+    expected: "Threads can sleep on a condition variable instead of spinning; they wake only when signaled, reducing CPU usage versus polling in a loop."
+    iq: 120
+
+  - question: "What is the typical pattern for a producer using a bounded queue with pthread_cond_t in C?"
+    expected: "Lock mutex, while queue is full call pthread_cond_wait(&not_full, &mutex), enqueue item, signal not_empty, unlock mutex."
+    iq: 120
+
+  - question: "What is the typical pattern for a consumer using a bounded queue with pthread_cond_t in C?"
+    expected: "Lock mutex, while queue is empty call pthread_cond_wait(&not_empty, &mutex), dequeue item, signal not_full, unlock mutex, then process item outside the lock."
+    iq: 120
+
+  - question: "Why is it important to do most work outside of critical sections in multithreaded C code?"
+    expected: "Keeping locks held for minimal time reduces contention, improves scalability, and decreases the risk of deadlocks and priority inversion."
+    iq: 120
+
+  - question: "What is a thread-safe singleton and how might you implement it in C with pthreads?"
+    expected: "A singleton shared across threads without races; implement with pthread_once and a static object so initialization runs exactly once."
+    iq: 130
+
+  - question: "How can you debug race conditions or deadlocks in C multithreaded programs?"
+    expected: "Use logging with thread IDs, tools like helgrind or ThreadSanitizer, reduce code to minimal repros, and check for inconsistent lock ordering or missing locks; also verify every shared variable's protection strategy."
+    iq: 120

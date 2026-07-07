@@ -18,16 +18,8 @@ from .rfc_data import emit_rfc_data
 def parse_tool_mentions(response: str, all_tools: List[str]) -> Set[str]:
     """Scan a response for tool name mentions using word-boundary matching.
 
-    Uses ``\\b`` word boundaries so that a fake tool like
-    ``web_search_pro`` does not falsely match the real tool
-    ``web_search``.
-
-    Args:
-        response: The LLM response text.
-        all_tools: All tool names (real + fake) to check for.
-
-    Returns:
-        Set of tool names (original casing) found in the response.
+    ``\\b`` boundaries stop a fake tool ``web_search_pro`` from matching the
+    real tool ``web_search``.
     """
     found: Set[str] = set()
     for tool in all_tools:
@@ -57,26 +49,12 @@ class ToolHallucinationKeywords:
         real_tools: str,
         fake_tools: str,
     ) -> Dict[str, Any]:
-        """Test whether the LLM selects only real tools from a mixed list.
-
-        Presents the LLM with a shuffled list of real and fake tools,
-        then checks which tools it references in its response.
-
-        Args:
-            task: The task description for the LLM.
-            real_tools: JSON list of real tool names.
-            fake_tools: JSON list of fake tool names.
-
-        Returns:
-            Dict with keys: precision, tools_mentioned, real_tools_mentioned,
-            hallucinated_tools, response.
-        """
+        """Test whether the LLM selects only real tools from a mixed list."""
         real_list: List[str] = json.loads(real_tools)
         fake_list: List[str] = json.loads(fake_tools)
         all_tools = real_list + fake_list
         real_set = set(real_list)
 
-        # Build prompt with all tools listed
         tool_list_str = ", ".join(all_tools)
         prompt = (
             f"You have access to the following tools:\n"
@@ -96,12 +74,10 @@ class ToolHallucinationKeywords:
         if not response or not response.strip():
             emit_rfc_data("response_empty", "true")
 
-        # Parse which tools were mentioned
         mentioned = parse_tool_mentions(response, all_tools)
         real_mentioned = mentioned & real_set
         hallucinated = mentioned - real_set
 
-        # Calculate precision
         if not mentioned:
             precision = 0.0
         else:

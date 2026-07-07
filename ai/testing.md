@@ -115,7 +115,7 @@ Simple Math Should Be Deterministic
 
 Agent workflow tests capture multi-turn agent execution as a structured
 `AgentWorkflow` and assert against it with Python-backed keywords. See
-`robot/tier3/agent_workflows/README.md` for the full guide.
+`robot/30__tier3/agent_workflows/README.md` for the full guide.
 
 - **Synthetic suites** (mock messages and tool results) are `tier:1
   verify:python` — fast, deterministic, run on every CI build.

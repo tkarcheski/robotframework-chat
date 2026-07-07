@@ -27,11 +27,7 @@ class ConfigurableDockerKeywords:
 
     @keyword("Docker Is Available")
     def docker_is_available(self) -> bool:
-        """Check if Docker daemon is available.
-
-        Returns:
-            True if Docker is available, False otherwise
-        """
+        """Check if Docker daemon is available."""
         try:
             _ = self.manager  # triggers lazy init, which pings Docker
             return True
@@ -40,20 +36,7 @@ class ConfigurableDockerKeywords:
 
     @keyword("Check Docker Setup")
     def check_docker_setup(self, raise_on_failure: bool = False) -> Dict[str, Any]:
-        """Check that Docker is installed and the daemon is running.
-
-        Performs three checks:
-        1. Docker CLI binary is on PATH
-        2. Docker Python SDK can connect to the daemon
-        3. Docker daemon responds to version query
-
-        Args:
-            raise_on_failure: If True, raise RuntimeError when any check fails.
-
-        Returns:
-            Dictionary with docker_cli, docker_cli_path, daemon_running,
-            docker_version, api_version, and errors list.
-        """
+        """Check that Docker is installed and the daemon is running."""
         errors: List[str] = []
         result: Dict[str, Any] = {
             "docker_cli": False,
@@ -105,21 +88,7 @@ class ConfigurableDockerKeywords:
     def find_available_port(
         self, start_port: int = 11434, end_port: int = 11500
     ) -> int:
-        """Find an available TCP port in the given range.
-
-        Iterates through ports from start_port to end_port (inclusive)
-        and returns the first one that is not in use.
-
-        Args:
-            start_port: Starting port number (default: 11434)
-            end_port: Ending port number (default: 11500)
-
-        Returns:
-            An available port number
-
-        Raises:
-            RuntimeError: If no available port is found in the range
-        """
+        """Find an available TCP port in the given range (raises PortAllocationError if none)."""
         for port in range(start_port, end_port + 1):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 try:
@@ -138,30 +107,8 @@ class ConfigurableDockerKeywords:
     ) -> str:
         """Create a Docker container with full resource configuration.
 
-        Config dictionary supports:
-        - image (required): Docker image name
-        - cpu_cores: Number of CPU cores (e.g., 0.5, 1.0, 2.0)
-        - memory_mb: RAM limit in MB
-        - memory_swap_mb: Swap limit in MB (-1 for unlimited)
-        - scratch_mb: Ephemeral disk limit
-        - network_mode: 'none', 'bridge', or 'host'
-        - ports: Dict mapping host port to container port (e.g., {'8080': '8080'})
-        - volumes: Dict of host paths to container mounts
-        - env: Dict of environment variables
-        - read_only: Boolean, default True
-        - user: User to run as, default 'nobody'
-
-        Args:
-            config: Configuration dictionary
-            name: Optional container name
-
-        Returns:
-            Container ID string
-
-        Example:
-            | ${config}= | Create Dictionary | image=python:3.11-slim |
-            | ... | cpu_cores=0.5 | memory_mb=512 | network_mode=none |
-            | ${container}= | Create Configurable Container | ${config} | my-container |
+        ``config`` is a dict whose recognized keys are enumerated by the
+        parsing below; ``image`` is required, the rest optional.
         """
         # Parse nested resource config
         resources = ContainerResources()
@@ -185,8 +132,6 @@ class ConfigurableDockerKeywords:
         if "dns" in config:
             network.dns = config["dns"]
 
-        # Build container config
-        # Helper to convert string booleans to actual booleans
         def to_bool(value, default=True):
             if isinstance(value, bool):
                 return value
@@ -217,25 +162,12 @@ class ConfigurableDockerKeywords:
 
     @keyword("Stop Container")
     def stop_container(self, container_id: str, timeout: int = 10) -> None:
-        """Stop and remove a container.
-
-        Args:
-            container_id: ID of container to stop
-            timeout: Seconds to wait for graceful shutdown
-        """
+        """Stop and remove a container."""
         self.manager.stop_container(container_id, timeout)
 
     @keyword("Stop Container By Name")
     def stop_container_by_name(self, name: str, timeout: int = 10) -> None:
-        """Stop and remove a container by its name.
-
-        Resolves the container name to an ID and delegates to the
-        ContainerManager, reusing its Docker client.
-
-        Args:
-            name: Name of container to stop
-            timeout: Seconds to wait for graceful shutdown
-        """
+        """Stop and remove a container by its name."""
         from docker.errors import NotFound
 
         try:
@@ -254,97 +186,40 @@ class ConfigurableDockerKeywords:
         timeout: int = 30,
         workdir: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Execute a command in a running container.
-
-        Args:
-            container_id: ID of container
-            command: Command to execute
-            timeout: Maximum execution time in seconds
-            workdir: Working directory in container
-
-        Returns:
-            Dictionary with keys: stdout, stderr, exit_code, duration_ms
-
-        Example:
-            | ${result}= | Execute In Container | ${container} | ls -la | timeout=10 |
-            | Should Be Equal As Integers | ${result}[exit_code] | 0 |
-            | Log | ${result}[stdout] |
-        """
+        """Execute a command in a running container."""
         return self.manager.execute_command(container_id, command, timeout, workdir)
 
     @keyword("Wait For Container Port")
     def wait_for_container_port(
         self, container_id: str, port: int, timeout: int = 30
     ) -> bool:
-        """Wait for a port to be ready in the container.
-
-        Args:
-            container_id: ID of container
-            port: Port number to check
-            timeout: Maximum wait time in seconds
-
-        Returns:
-            True if port is ready within timeout
-
-        Example:
-            | ${ready}= | Wait For Container Port | ${container} | 8080 | timeout=60 |
-            | Should Be True | ${ready} |
-        """
+        """Wait for a port to be ready in the container."""
         return self.manager.wait_for_port(container_id, port, timeout)
 
     @keyword("Copy To Container")
     def copy_to_container(
         self, container_id: str, host_path: str, container_path: str
     ) -> None:
-        """Copy files from host to container.
-
-        Args:
-            container_id: ID of container
-            host_path: Source path on host
-            container_path: Destination path in container
-        """
+        """Copy files from host to container."""
         self.manager.copy_to_container(container_id, host_path, container_path)
 
     @keyword("Copy From Container")
     def copy_from_container(
         self, container_id: str, container_path: str, host_path: str
     ) -> None:
-        """Copy files from container to host.
-
-        Args:
-            container_id: ID of container
-            container_path: Source path in container
-            host_path: Destination path on host
-        """
+        """Copy files from container to host."""
         self.manager.copy_from_container(container_id, container_path, host_path)
 
     @keyword("Get Container Metrics")
     def get_container_metrics(self, container_id: str) -> Dict[str, Any]:
-        """Get resource usage metrics for a container.
-
-        Args:
-            container_id: ID of container
-
-        Returns:
-            Dictionary with cpu_percent, memory_usage_mb, memory_limit_mb
-
-        Example:
-            | ${metrics}= | Get Container Metrics | ${container} |
-            | Log | CPU: ${metrics}[cpu_percent]% |
-            | Log | Memory: ${metrics}[memory_usage_mb] / ${metrics}[memory_limit_mb] MB |
-        """
+        """Get resource usage metrics for a container."""
         return self.manager.get_metrics(container_id)
 
     @keyword("Update Container Resources")
     def update_container_resources(
         self, container_id: str, resources: Dict[str, Any]
     ) -> None:
-        """Update resource limits for a running container.
-
-        Args:
-            container_id: ID of container
-            resources: Dictionary with cpu_cores, memory_mb, etc.
-        """
+        """Update resource limits for a running container."""
         res = ContainerResources()
         if "cpu_cores" in resources:
             res.cpu_quota = int(resources["cpu_cores"] * 100000)
@@ -371,24 +246,7 @@ class ConfigurableDockerKeywords:
         network_mode: str = "none",
         timeout: int = 30,
     ) -> str:
-        """Create a pre-configured container for code execution.
-
-        This is a convenience keyword that creates a container with
-        sensible defaults for executing untrusted code.
-
-        Args:
-            image: Docker image to use
-            cpu_cores: CPU cores to allocate
-            memory_mb: Memory limit in MB
-            network_mode: Network isolation level
-            timeout: Not used (for documentation only)
-
-        Returns:
-            Container ID
-
-        Example:
-            | ${container}= | Create Code Execution Container | python:3.11-slim | 0.5 | 512 |
-        """
+        """Create a pre-configured container with sensible defaults for untrusted code."""
         config = {
             "image": image,
             "command": "sleep infinity",
@@ -409,27 +267,9 @@ class ConfigurableDockerKeywords:
         image: str = "python:3.11-slim",
         timeout: int = 30,
     ) -> Dict[str, Any]:
-        """Execute Python code in a Docker container.
-
-        If container_id is not provided, a new temporary container will be created.
-
-        Args:
-            code: Python code to execute
-            container_id: Optional existing container ID
-            image: Docker image (if creating new container)
-            timeout: Execution timeout in seconds
-
-        Returns:
-            Dictionary with stdout, stderr, exit_code, duration_ms
-
-        Example:
-            | ${code}= | Set Variable | print('Hello, World!') |
-            | ${result}= | Execute Python In Container | ${code} | timeout=10 |
-            | Should Contain | ${result}[stdout] | Hello, World! |
-        """
+        """Execute Python code in a Docker container (creates a temporary one if none given)."""
         cleanup = False
         if container_id is None:
-            # Create temporary container
             config = {
                 "image": image,
                 "command": "sleep infinity",

@@ -84,18 +84,7 @@ class GaiaKeywords:
 
     @keyword("Build Tool Prompt")
     def build_tool_prompt(self, tools: List[Dict[str, Any]], question: str) -> str:
-        """Build a prompt presenting available tools and a task question.
-
-        Args:
-            tools: List of tool definition dicts (name, description, arguments).
-            question: The task the LLM must solve by selecting tools.
-
-        Returns:
-            A formatted prompt string.
-
-        Raises:
-            ValueError: If tools is empty or question is blank.
-        """
+        """Build a prompt presenting available tools and a task question."""
         if not tools:
             raise ValueError("tools must contain at least one tool definition")
         if not question or not question.strip():
@@ -154,16 +143,7 @@ class GaiaKeywords:
 
     @keyword("Parse Tool Calls")
     def parse_tool_calls(self, response: str) -> List[ToolCall]:
-        """Extract tool calls from an LLM response.
-
-        Handles JSON in plain text, markdown code blocks, and thinking tags.
-
-        Args:
-            response: Raw LLM response text.
-
-        Returns:
-            List of ToolCall objects (empty if parsing fails or no calls).
-        """
+        """Extract tool calls from an LLM response (tolerates prose, code fences, thinking tags)."""
         clean, _ = parse_thinking(response)
         text = clean if clean.strip() else response
 
@@ -213,20 +193,7 @@ class GaiaKeywords:
         expected_tools: List[str],
         actual_calls: List[ToolCall],
     ) -> Dict[str, Any]:
-        """Grade whether the LLM selected the correct tool(s) in order.
-
-        Uses multiset (Counter) comparison so that repeated tool calls are
-        preserved — tasks legitimately requiring the same tool multiple
-        times (e.g. two ``Ask LLM`` steps) are scored on occurrence count,
-        not mere presence.
-
-        Args:
-            expected_tools: Ordered list of expected tool names (duplicates allowed).
-            actual_calls: Parsed ToolCall list from the LLM response.
-
-        Returns:
-            Dict with score (0.0–1.0), reason, selected_tools, order_correct.
-        """
+        """Grade whether the LLM selected the correct tool(s) in order."""
         from collections import Counter
 
         actual_names = [c.tool for c in actual_calls]
@@ -290,15 +257,7 @@ class GaiaKeywords:
         expected_args: Dict[str, Any],
         actual_call: ToolCall,
     ) -> Dict[str, Any]:
-        """Grade whether the LLM provided correct arguments.
-
-        Args:
-            expected_args: Dict of expected argument key-value pairs.
-            actual_call: The ToolCall to evaluate.
-
-        Returns:
-            Dict with score (0.0–1.0), reason, matched_keys, missing_keys.
-        """
+        """Grade whether the LLM provided correct arguments."""
         if not expected_args:
             return {
                 "score": 1.0,
@@ -344,23 +303,10 @@ class GaiaKeywords:
     def grade_tool_refusal(self, response: str) -> Dict[str, Any]:
         """Grade whether the LLM *explicitly* refused to call a tool.
 
-        A correct refusal requires either:
-
-        1. A valid JSON response with an empty ``tool_calls`` list AND a
-           non-empty ``reasoning`` field explaining why no tool fits, OR
-        2. A free-text response containing an explicit refusal phrase
-           (e.g. "no tool", "cannot", "unable to", "none of") that names
-           the lack of a suitable tool.
-
-        Garbage / unparsable text and empty responses are NOT counted as
-        refusals — they're scored 0.0 because we can't distinguish a
-        deliberate refusal from a model crash or empty completion.
-
-        Args:
-            response: Raw LLM response text.
-
-        Returns:
-            Dict with score (0.0 or 1.0) and reason.
+        A correct refusal is either a valid JSON envelope with an empty
+        ``tool_calls`` list AND non-empty ``reasoning``, or a plain-text
+        explicit no-tool phrase. Garbage/unparsable and empty responses score
+        0.0 (indistinguishable from a crash), not a refusal.
         """
         if not response or not response.strip():
             return {
@@ -440,17 +386,9 @@ class GaiaKeywords:
         expected_calls: List[Dict[str, Any]],
         max_retries: int = 3,
     ) -> Tuple[float, str, str]:
-        """End-to-end GAIA tool-use test: prompt → ask → grade.
+        """End-to-end GAIA tool-use test: prompt, ask, grade with retries.
 
-        Args:
-            tools: Tool definitions to present.
-            question: Task question for the LLM.
-            expected_calls: Expected tool call dicts (tool + arguments).
-                Empty list means the LLM should refuse.
-            max_retries: Max retry attempts on failure.
-
-        Returns:
-            Tuple of (score, reason, raw_response).
+        An empty ``expected_calls`` means the LLM is expected to refuse.
         """
         max_retries = int(max_retries)
         prompt = self.build_tool_prompt(tools, question)
@@ -559,16 +497,9 @@ def _try_parse_json(text: str) -> Any:
 def _iter_balanced_json_objects(text: str) -> Iterator[str]:
     """Yield every balanced JSON object substring in *text*, in order.
 
-    Walks the string character by character, tracking string-literal state
-    (with backslash escapes) and brace depth, yielding each complete
-    top-level ``{...}`` block as a substring.
-
-    Handles common LLM response formats like:
-        "Sure, here is the JSON: {\"tool_calls\": [...]}"
-        "{\"note\":\"...\"} {\"tool_calls\": [...]}"
-        "{\"tool_calls\": [...]}\n\nLet me know if you need more!"
-    where ``json.loads`` on the whole string fails but one or more valid
-    objects are embedded inside it.
+    Tracks string-literal state (with backslash escapes) and brace depth so
+    embedded ``{...}`` blocks are recovered even when the whole string is not
+    valid JSON (prose around the object, or several objects in a row).
     """
     start = -1
     depth = 0

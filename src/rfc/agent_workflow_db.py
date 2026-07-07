@@ -1,17 +1,10 @@
 """Persistence for AgentWorkflow records.
 
-Sibling of :mod:`rfc.test_database` — same dual SQLite / PostgreSQL pattern
-but isolated to agent-workflow tables so the existing test-results schema
-stays untouched.
-
-Schema (4 tables):
-    - ``agent_workflows``    — one row per workflow session
-    - ``agent_interactions`` — one row per turn (messages + state stored as JSON)
-    - ``agent_tool_calls``   — one row per tool call
-    - ``agent_tool_results`` — one row per tool result
-
-SQLite:      sqlite:///data/agent_workflows.db   (default)
-PostgreSQL:  postgresql://user:pass@host:5433/dbname  (via DATABASE_URL)
+Sibling of :mod:`rfc.test_database` — same dual SQLite / PostgreSQL pattern,
+isolated to agent-workflow tables so the test-results schema stays untouched.
+Schema: ``agent_workflows`` (session), ``agent_interactions`` (turn, with
+JSON messages + state), ``agent_tool_calls``, ``agent_tool_results``. SQLite
+is the default path; DATABASE_URL selects PostgreSQL.
 """
 
 from __future__ import annotations

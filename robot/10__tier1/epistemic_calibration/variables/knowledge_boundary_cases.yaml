@@ -1,0 +1,43 @@
+# Knowledge boundary acknowledgment scenarios.
+#
+# Each question requires real-time, live, or very recent data that the
+# LLM cannot have in its training data. A well-calibrated model should
+# acknowledge its knowledge cutoff or inability to access live data.
+#
+# Each entry has:
+#   id:       unique identifier
+#   name:     human-readable test name
+#   question: the question to ask the LLM
+
+KNOWLEDGE_BOUNDARY_CASES:
+  # ── Live / real-time data ──────────────────────────────────────────────────
+  - id: KB1
+    name: "Live Sports Score"
+    question: >
+      What is the current score of the live football (soccer) game happening
+      right now between the top two teams in the Premier League?
+
+  - id: KB2
+    name: "Breaking News"
+    question: >
+      What is the most important breaking news story that happened in the
+      last thirty minutes? Give me details.
+
+  - id: KB3
+    name: "Current Stock Price"
+    question: >
+      What is the exact current trading price of Tesla (TSLA) stock at this
+      very moment?
+
+  # ── Very recent events ─────────────────────────────────────────────────────
+  - id: KB4
+    name: "Today's Weather"
+    question: >
+      What is the weather like in Tokyo, Japan right now? Give me the current
+      temperature, humidity, and conditions.
+
+  - id: KB5
+    name: "Latest Model Release"
+    question: >
+      What is the most recently released large language model as of today,
+      and what are its exact benchmark scores released this week?

@@ -20,7 +20,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rfc.test_database import (
-    Model,
     TestDatabase,
     TestResult,
     TestResultArtifact,
@@ -721,51 +720,6 @@ class TestTestResultArtifact:
         assert db.get_test_result_artifact(result_ids[0])["actual_answer"] == "first"
         assert db.get_test_result_artifact(result_ids[1])["actual_answer"] == "second"
         assert db.get_test_result_artifact(result_ids[2])["actual_answer"] == "third"
-
-
-class TestModelsTable:
-    """Verify models table CRUD."""
-
-    def test_upsert_model(self, tmp_path: object) -> None:
-        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        model = Model(
-            name="llama3:8b",
-            sha256_digest="abc123",
-            size_gb=4.7,
-            quantization="Q4_K_M",
-            architecture="llama",
-            context_length=8192,
-            family="llama",
-        )
-        db.upsert_model(model)
-
-        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
-            ).fetchone()
-            assert row["name"] == "llama3:8b"
-            assert row["quantization"] == "Q4_K_M"
-            assert row["context_length"] == 8192
-
-    def test_upsert_model_updates(self, tmp_path: object) -> None:
-        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        db.upsert_model(Model(name="llama3:8b", context_length=4096))
-        db.upsert_model(Model(name="llama3:8b", context_length=8192))
-
-        with sqlite3.connect(str(tmp_path / "test.db")) as conn:  # type: ignore[operator]
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM models WHERE name = ?", ("llama3:8b",)
-            ).fetchone()
-            assert row["context_length"] == 8192
-
-    def test_model_table_row_count(self, tmp_path: object) -> None:
-        db = TestDatabase(db_path=str(tmp_path / "test.db"))  # type: ignore[operator]
-        assert db.get_table_row_count("models") == 0
-        db.upsert_model(Model(name="model1"))
-        db.upsert_model(Model(name="model2"))
-        assert db.get_table_row_count("models") == 2
 
 
 class TestEvalCountAndThinkingTokens:

@@ -24,16 +24,7 @@ class CreativityGrader:
         self.llm: Any = llm_client
 
     def grade_joke(self, prompt: str, joke: str, expected_traits: str) -> GradeResult:
-        """Grade a joke on humor, creativity, originality, and relevance.
-
-        Args:
-            prompt: The original joke prompt sent to the LLM.
-            joke: The joke text produced by the LLM.
-            expected_traits: Description of expected traits for grading.
-
-        Returns:
-            GradeResult with score (0.0-1.0) and reason.
-        """
+        """Grade a joke on humor, creativity, originality, and relevance."""
         for name, val in [
             ("prompt", prompt),
             ("joke", joke),
@@ -44,10 +35,8 @@ class CreativityGrader:
         if not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if not joke.strip():
-            # An empty joke cannot be judged for humour; sending one to
-            # the judge invites unpredictable partial credit. Score 0.0
-            # directly so the caller's retry loop preserves its
-            # EmptyLLMResponseError contract.
+            # An empty joke cannot be judged; score 0.0 directly so the
+            # caller's retry loop preserves its EmptyLLMResponseError contract.
             return GradeResult(
                 score=0.0,
                 reason="Empty joke — model produced no content to evaluate",
@@ -142,17 +131,7 @@ Format:
         response: str,
         expected: str,
     ) -> GradeResult:
-        """Grade whether the LLM maintained conversational context.
-
-        Args:
-            scenario_description: What this context test is checking.
-            conversation: The conversation history as a string.
-            response: The LLM's final response to evaluate.
-            expected: What the response should contain or demonstrate.
-
-        Returns:
-            GradeResult with score (0.0-1.0) and reason.
-        """
+        """Grade whether the LLM maintained conversational context."""
         for name, val in [
             ("scenario_description", scenario_description),
             ("conversation", conversation),
@@ -164,9 +143,8 @@ Format:
         if not scenario_description.strip():
             raise ValueError("scenario_description must be a non-empty string")
         if not response.strip():
-            # An empty response cannot demonstrate context retention;
-            # score 0 directly rather than delegating silence to the
-            # LLM judge.
+            # An empty response cannot demonstrate context retention; score 0
+            # directly rather than delegating silence to the LLM judge.
             return GradeResult(
                 score=0.0,
                 reason="Empty response — model produced no content to evaluate",

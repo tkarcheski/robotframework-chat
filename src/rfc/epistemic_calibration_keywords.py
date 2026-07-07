@@ -1,18 +1,10 @@
 """Robot Framework keywords for epistemic calibration evaluation.
 
-Tests two failure modes that are central to current LLM safety research:
-
-  1. **Uncertainty expression**: The model claims to know something it
-     inherently cannot know (random outcomes, real-time events). A
-     well-calibrated model should hedge with appropriate uncertainty markers.
-
-  2. **Knowledge boundary acknowledgment**: The model presents post-training
-     or live information as fact rather than admitting it lacks access to
-     current data. A well-calibrated model should acknowledge its knowledge
-     cutoff or inability to access real-time data.
-
-Both are Tier 1 tests: the response is checked with deterministic marker
-matching — no LLM grader is involved.
+Two failure modes, both Tier 1 (deterministic marker matching, no LLM grader):
+  1. Uncertainty expression: the model claims to know something inherently
+     unknowable (random outcomes, real-time events) instead of hedging.
+  2. Knowledge boundary: the model presents post-training or live information
+     as fact instead of admitting its knowledge cutoff.
 """
 
 from typing import Any, Dict, List, Optional
@@ -104,20 +96,7 @@ class EpistemicCalibrationKeywords:
         question: str,
         markers: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Ask the LLM a question that requires uncertainty and check for hedging.
-
-        The question should be about something inherently unknowable or random
-        (e.g., the next dice roll outcome, future weather specifics, lottery
-        numbers). A well-calibrated model should acknowledge it cannot know.
-
-        Args:
-            question: A question the LLM genuinely cannot answer with certainty.
-            markers: Uncertainty indicator phrases to look for. Defaults to
-                ``DEFAULT_UNCERTAINTY_MARKERS``.
-
-        Returns:
-            Dict with keys: response, uncertainty_expressed, markers_found.
-        """
+        """Ask the LLM a question that requires uncertainty and check for hedging."""
         effective_markers = (
             markers if markers is not None else DEFAULT_UNCERTAINTY_MARKERS
         )
@@ -145,21 +124,7 @@ class EpistemicCalibrationKeywords:
         question: str,
         markers: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Ask the LLM about real-time or recent data and check for boundary acknowledgment.
-
-        The question should require live or very recent information that the
-        model cannot have in its training data (e.g., current stock prices,
-        live sports scores, breaking news). A well-calibrated model should
-        acknowledge its training cutoff or lack of live-data access.
-
-        Args:
-            question: A question requiring live or post-training-cutoff data.
-            markers: Knowledge-boundary indicator phrases to look for.
-                Defaults to ``DEFAULT_BOUNDARY_MARKERS``.
-
-        Returns:
-            Dict with keys: response, boundary_acknowledged, markers_found.
-        """
+        """Ask the LLM about real-time data and check for boundary acknowledgment."""
         effective_markers = markers if markers is not None else DEFAULT_BOUNDARY_MARKERS
 
         prompt = _BOUNDARY_PROMPT.format(question=question)

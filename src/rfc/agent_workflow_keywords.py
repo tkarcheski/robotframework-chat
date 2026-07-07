@@ -4,18 +4,6 @@ Pairs with :mod:`rfc.agent_workflow_listener` — keywords build a workflow
 in-memory via :class:`AgentInteractionTracker` and emit it as a single
 ``RFC_DATA: agent_workflow`` payload at end of workflow.  The listener
 deserialises and persists it.
-
-Example usage in a Robot test::
-
-    Library  rfc.agent_workflow_keywords.AgentWorkflowKeywords  WITH NAME  Agent
-
-    Agent.Start Agent Workflow    wf-1    claude    Resolve issue
-    Agent.Start Interaction       1
-    Agent.Agent Message           user      Please clone the repo
-    ${cid}=  Agent.Agent Calls Tool      git    {"cmd": "clone"}
-    Agent.Agent Receives Tool Result    ${cid}    ${True}    cloned
-    Agent.End Interaction         ${True}
-    Agent.End Agent Workflow      ${True}
 """
 
 from __future__ import annotations

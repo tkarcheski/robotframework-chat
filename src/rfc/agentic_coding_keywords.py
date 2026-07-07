@@ -71,14 +71,7 @@ class AgenticCodingKeywords:
         return self._config_cache[agent_id]
 
     def run_coding_agent_scenario(self, agent: str, scenario: str) -> AgentRun:
-        """Run ``scenario`` for ``agent`` and return the resulting AgentRun.
-
-        Dispatches to the runner type declared in ``config/local_agents.yaml``:
-
-          * ``runner: fake``  -> replay a prerecorded ``run.yaml`` fixture.
-          * ``runner: ollama`` -> call a local Ollama-served model with the
-            scenario's ``task.yaml`` and parse the response into an AgentRun.
-        """
+        """Run ``scenario`` for ``agent`` and return the resulting AgentRun."""
         config = self._agent_config(agent)
         runner = create_agent_runner(
             config,
@@ -139,11 +132,7 @@ class AgenticCodingKeywords:
     def rebase_should_be_resolved_without_dropping_changes(
         self, run: AgentRun, *conflict_paths: str
     ) -> None:
-        """Rebase conflict must be merged (both sides kept), then continued.
-
-        Conflicting files default to the ones the rebase output names
-        (``Merge conflict in <path>``); pass paths explicitly to override.
-        """
+        """Rebase conflict must be merged (both sides kept), then continued."""
         verifiers.assert_rebase_resolved_without_dropping_changes(
             run, conflict_paths=conflict_paths or None
         )
@@ -169,14 +158,8 @@ class AgenticCodingKeywords:
     def run_sandboxed_coding_scenario(
         self, agent: str, scenario: str, variant: str = "good"
     ) -> "SandboxResult":
-        """Run ``scenario`` for ``agent`` inside a Docker sandbox.
-
-        ``variant`` selects which scripted agent from the scenario's
-        ``agents:`` mapping drives the run (the live Claude Code adapter from
-        #288 plugs in here once it lands). Resource caps come from the
-        agent's ``sandbox:`` block in ``config/local_agents.yaml``. Skips
-        (not fails) when the Docker daemon is unavailable.
-        """
+        """Run ``scenario`` for ``agent`` in a Docker sandbox; skips when
+        the Docker daemon is unavailable."""
         from rfc.agent_sandbox import AgentSandbox
 
         config = self._agent_config(agent)
@@ -251,14 +234,9 @@ class AgenticCodingKeywords:
         return self._agent_config(run.agent_id).model
 
     def _prose_judge_panel(self, generation_model: str = "") -> MultiGrader:
-        """Build the judge panel from AGENT_PROSE_GRADER_MODELS.
-
-        Raises MissingEnvironmentError (ROBOT_SKIP_EXECUTION) when the env var is
-        unset, so tier:3 tests skip with a clear reason instead of
-        failing when no grading models are configured. Rejects a panel
-        containing ``generation_model`` — that judge would grade its own
-        output (ai/testing.md distinct-judges rule).
-        """
+        """Judge panel from AGENT_PROSE_GRADER_MODELS: unset -> tier:3 skip via
+        MissingEnvironmentError; rejects ``generation_model`` in the panel
+        (ai/testing.md distinct-judges rule)."""
         models_str = os.getenv("AGENT_PROSE_GRADER_MODELS", "").strip()
         if not models_str:
             raise MissingEnvironmentError("AGENT_PROSE_GRADER_MODELS")

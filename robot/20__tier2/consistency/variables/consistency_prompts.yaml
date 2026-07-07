@@ -1,0 +1,36 @@
+# Temperature & Sampling Consistency Test Data
+#
+# Prompts used to validate Ollama serving stability across repeated runs.
+# Determinism prompts must produce byte-identical output at temperature=0.
+# Variance prompts measure semantic stability at temperature=0.7.
+
+# Number of times to replay each prompt (5 minimum, 10 max).
+N_RUNS: 5
+
+# Temperature thresholds.
+DETERMINISM_TEMP: 0.0
+VARIANCE_TEMP: 0.7
+
+# Variance assertion floors. Tune based on observed model behaviour.
+VARIANCE_MEAN_FLOOR: 0.6
+VARIANCE_MIN_PAIR_FLOOR: 0.5
+
+# Optional fixed seed for reproducibility.
+DETERMINISM_SEED: 42
+
+# Determinism prompts: short, factual, single-token-ish answers.
+# At temperature=0 these MUST come back byte-identical every run.
+DETERMINISM_PROMPTS:
+  - "What is the capital of France? Reply with one word."
+  - "Compute 13 * 17. Reply with only the integer."
+  - "Reverse the word 'hello'. Reply with only the reversed word."
+  - "What is 2 to the power of 8? Reply with only the integer."
+  - "Spell the word 'banana' in uppercase. Reply with only the word."
+
+# Variance prompts: open-ended generation where some variation is expected
+# at temperature=0.7. Pairwise LLM-judge similarity should still stay above
+# the configured floors.
+VARIANCE_PROMPTS:
+  - "Write a one-sentence haiku about autumn leaves."
+  - "Describe the color blue in two short sentences."
+  - "Suggest a name for a friendly robot. Give one name and one sentence about it."

@@ -71,16 +71,7 @@ class ExtractionKeywords:
         question: str,
         expected_value: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to extract a specific entity from a text and verify it.
-
-        Args:
-            text: Source text to extract from.
-            question: Extraction question (e.g. "What is the name of the CEO?").
-            expected_value: The correct extracted value for verification.
-
-        Returns:
-            Dict with keys: extracted, correct, response, expected.
-        """
+        """Ask the LLM to extract a specific entity from a text and verify it."""
         prompt = _ENTITY_EXTRACTION_PROMPT.format(text=text, question=question)
         logger.info(f"Entity extraction prompt:\n{prompt}")
 
@@ -88,10 +79,9 @@ class ExtractionKeywords:
         logger.info(f"LLM response:\n{response}")
 
         extracted = _strip_label(response)
-        # Compare against the parsed extraction only, not the full response.
-        # Searching the full response body risks matching the expected token in
-        # explanatory prose (e.g. "The answer is Berlin — note that Paris is
-        # nearby") and inflating the pass rate.
+        # Match the parsed extraction, not the full response: searching the whole
+        # body would match the expected token in explanatory prose and inflate the
+        # pass rate.
         correct = _contains_value(extracted, expected_value)
 
         emit_rfc_data("question", question[:200])
@@ -113,16 +103,7 @@ class ExtractionKeywords:
         attribute: str,
         expected_value: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to extract a key-value attribute from a text.
-
-        Args:
-            text: Source text to extract from.
-            attribute: The attribute name to extract (e.g. "license type").
-            expected_value: The expected extracted value.
-
-        Returns:
-            Dict with keys: extracted, correct, response, expected.
-        """
+        """Ask the LLM to extract a key-value attribute from a text."""
         prompt = _KEY_VALUE_PROMPT.format(text=text, attribute=attribute)
         logger.info(f"Key-value extraction prompt:\n{prompt}")
 
@@ -151,25 +132,15 @@ class ExtractionKeywords:
         question: str,
         expected_values: List[str],
     ) -> Dict[str, Any]:
-        """Ask the LLM to extract multiple entities and check all are present.
-
-        Args:
-            text: Source text to extract from.
-            question: The extraction question.
-            expected_values: All values that must appear in the response.
-
-        Returns:
-            Dict with keys: found, missing, correct, response, expected.
-        """
+        """Ask the LLM to extract multiple entities and check all are present."""
         prompt = _MULTI_ENTITY_PROMPT.format(text=text, question=question)
         logger.info(f"Multi-entity extraction prompt:\n{prompt}")
 
         response = self.client.generate(prompt)
         logger.info(f"LLM response:\n{response}")
 
-        # Parse the response into individual list lines before checking membership.
-        # Full-text substring search would incorrectly match entities that appear
-        # only in negated or explanatory prose (e.g. "Rust is not used here").
+        # Check per-line, not whole-text: a substring search would match entities
+        # appearing only in negated or explanatory prose ("Rust is not used here").
         found = [v for v in expected_values if _entity_in_lines(response, v)]
         missing = [v for v in expected_values if v not in found]
         correct = len(missing) == 0
@@ -228,15 +199,9 @@ def _contains_value(text: str, expected: str) -> bool:
 def _entity_in_lines(response: str, entity: str) -> bool:
     """Check whether *entity* appears on any non-negated line of *response*.
 
-    The response is split into individual lines and each line is stripped of
-    common list markers (``1.``, ``-``, ``*``, ``•``).  A line is considered
-    a negation if it contains words like "not", "never", "absent", or "no"
-    immediately before the entity token; such lines are excluded to avoid
-    matching ``"Rust is not mentioned"`` as a positive hit for ``"Rust"``.
-
-    This is intentionally conservative — partial-sentence fragments or unusual
-    phrasing may still produce false positives, but the approach eliminates
-    the most common class of explanatory-prose false matches.
+    Each line is stripped of list markers, then lines carrying a negation word
+    ("not", "never", "absent", "no") are excluded so ``"Rust is not mentioned"``
+    is not a positive hit for ``"Rust"``.
     """
     if not response or not entity:
         return False
@@ -248,8 +213,6 @@ def _entity_in_lines(response: str, entity: str) -> bool:
         norm_line = _normalise_numbers(line).lower()
         if norm_entity not in norm_line:
             continue
-        # Exclude lines that contain a negation word anywhere alongside the entity.
-        # "Rust is not mentioned" and "Rust is absent" should not count as hits.
         if _NEGATION_RE.search(norm_line):
             continue
         return True

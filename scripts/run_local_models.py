@@ -446,6 +446,7 @@ def run_model_suites(
     *,
     dry_run: bool = False,
     global_max_parallel: int = 1,
+    verify: bool = False,
 ) -> list[RunResult]:
     """Run configured test suites against every discovered model.
 
@@ -459,6 +460,8 @@ def run_model_suites(
         nodes_with_models: Output of :func:`discover_local_models`.
         dry_run: If True, print commands without executing (sequential).
         global_max_parallel: Cap on concurrent runs across all hosts.
+        verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
+            the answer cache is enabled for re-run speedups (#522).
 
     Returns:
         List of :class:`RunResult` objects.
@@ -508,7 +511,8 @@ def run_model_suites(
 
         if dry_run:
             with print_lock:
-                print(f"[DRY-RUN] {' '.join(cmd)}")
+                env_prefix = "RFC_RUN_MODE=verify " if verify else ""
+                print(f"[DRY-RUN] {env_prefix}{' '.join(cmd)}")
             return RunResult(
                 node=node_name,
                 model=job.model,
@@ -536,6 +540,11 @@ def run_model_suites(
             # so without this every host panel collapses onto one machine.
             "RFC_HOSTNAME": node_name,
         }
+        if verify:
+            # verify runs enable the answer cache for re-run speedups (#522):
+            # RFC_RUN_MODE=verify forces it on in rfc.llm_client even if
+            # ANSWER_CACHE_ENABLED is unset in the child env.
+            env["RFC_RUN_MODE"] = "verify"
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
         return RunResult(
@@ -650,6 +659,7 @@ def run_provider_suites(
     dry_run: bool = False,
     sleep_fn: Any = time.sleep,
     jobs: "list[ProviderJob] | None" = None,
+    verify: bool = False,
 ) -> list[RunResult]:
     """Run every configured suite against each provider model, sequentially.
 
@@ -667,6 +677,8 @@ def run_provider_suites(
         models: Raw model ids to run (already budget-filtered).
         dry_run: Print commands without executing.
         sleep_fn: Injectable sleep for the RPM pacing (tests).
+        verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
+            the answer cache is enabled for re-run speedups (#522).
 
     Returns:
         List of :class:`RunResult`, with ``model`` recorded as
@@ -729,7 +741,8 @@ def run_provider_suites(
         )
 
         if dry_run:
-            print(f"[DRY-RUN] {' '.join(cmd)}")
+            env_prefix = "RFC_RUN_MODE=verify " if verify else ""
+            print(f"[DRY-RUN] {env_prefix}{' '.join(cmd)}")
             results.append(
                 RunResult(
                     node=provider.name,
@@ -775,6 +788,11 @@ def run_provider_suites(
             BUDGET_FILE_ENV: budget_file,
             PROVIDER_NAME_ENV: provider.name,
         }
+        if verify:
+            # verify runs enable the answer cache for re-run speedups (#522):
+            # RFC_RUN_MODE=verify forces it on in rfc.llm_client even if
+            # ANSWER_CACHE_ENABLED is unset in the child env.
+            env["RFC_RUN_MODE"] = "verify"
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
         results.append(
             RunResult(
@@ -793,12 +811,19 @@ def run_provider_runs(
     config: dict[str, Any],
     *,
     dry_run: bool = False,
+    verify: bool = False,
 ) -> list[RunResult]:
     """Run all configured external providers (issue #507).
 
     Per provider: resolve the API key (absent → skip-and-log, so the whole
     feature is inert without credentials), optionally discover the free-pool
     model list, apply the daily request budget, and run the suites.
+
+    Args:
+        config: Parsed local_models.yaml.
+        dry_run: Print commands without executing.
+        verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
+            the answer cache is enabled for re-run speedups (#522).
 
     Returns:
         Combined :class:`RunResult` list across providers (empty when no
@@ -904,7 +929,13 @@ def run_provider_runs(
         print(f"{tag} running {len(today_jobs)} planned job(s) via {provider.base_url}")
         results.extend(
             run_provider_suites(
-                config, provider, api_key, models, jobs=today_jobs, dry_run=dry_run
+                config,
+                provider,
+                api_key,
+                models,
+                jobs=today_jobs,
+                dry_run=dry_run,
+                verify=verify,
             )
         )
 
@@ -1169,6 +1200,7 @@ def run_iteration_loop(
     audit: bool = True,
     mode: str = "external",
     host_config: HostConfig | None = None,
+    verify: bool = False,
 ) -> bool:
     """Run the full discover → test → summary cycle, optionally repeating.
 
@@ -1185,6 +1217,8 @@ def run_iteration_loop(
         mode: ``"toml"`` (curated host-config.toml hosts) or ``"external"``
             (legacy env-var / subnet discovery).
         host_config: Parsed host-config.toml; required when ``mode="toml"``.
+        verify: If True, inject ``RFC_RUN_MODE=verify`` into every run's env so
+            the answer cache is enabled for re-run speedups (#522).
 
     Returns:
         True if any pass had a test failure, False otherwise.
@@ -1194,6 +1228,16 @@ def run_iteration_loop(
     had_failure = False
     iteration = 0
     audited = False
+
+    if verify:
+        # One-line banner so a verify run is unmistakable in the log — it
+        # replays stored answers instead of re-measuring (see
+        # core/docs/answer-cache.md). Printed for dry runs too so `--dry-run
+        # --verify` previews the mode without executing anything.
+        print(
+            "  [verify] RFC_RUN_MODE=verify — answer cache ENABLED for re-runs "
+            "(deterministic requests replay stored answers)."
+        )
 
     if mode == "toml":
         if host_config is None:
@@ -1263,11 +1307,14 @@ def run_iteration_loop(
                     nodes_with_models,
                     dry_run=dry_run,
                     global_max_parallel=global_max_parallel,
+                    verify=verify,
                 )
 
             # External providers run regardless of local discovery (#507):
             # a host with zero Ollama nodes can still sweep OpenRouter.
-            results = results + run_provider_runs(config, dry_run=dry_run)
+            results = results + run_provider_runs(
+                config, dry_run=dry_run, verify=verify
+            )
 
             if not results:
                 print("No models discovered — nothing to run.")
@@ -1368,6 +1415,15 @@ def main() -> None:
         help="Show what would be executed without running tests",
     )
     parser.add_argument(
+        "--verify",
+        action="store_true",
+        help=(
+            "Verification re-run: inject RFC_RUN_MODE=verify so the answer "
+            "cache is enabled and unchanged suites replay stored answers "
+            "(see core/docs/answer-cache.md)"
+        ),
+    )
+    parser.add_argument(
         "--iterations",
         type=int,
         default=1,
@@ -1453,6 +1509,7 @@ def main() -> None:
         audit=not args.no_audit,
         mode=args.mode,
         host_config=host_config,
+        verify=args.verify,
     )
 
     if had_failure:

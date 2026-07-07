@@ -115,14 +115,7 @@ class IFEvalKeywords:
         constraint: str,
         expected_value: str = "",
     ) -> Dict[str, Any]:
-        """Send *prompt* to the LLM, then verify *constraint* on the response.
-
-        Strips ``<think>`` tags before checking.  Emits RFC_DATA for the
-        database listener.
-
-        Returns a result dict with keys ``passed``, ``constraint``,
-        ``reason``, and ``response``.
-        """
+        """Send *prompt* to the LLM, then verify *constraint* on the response."""
         raw_response = self.client.generate(prompt)
         answer, _ = parse_thinking(raw_response, strip_unclosed=True)
         answer = answer.strip()
@@ -147,15 +140,9 @@ class IFEvalKeywords:
     ) -> Dict[str, Any]:
         """Check a single *constraint* against *response*.
 
-        The *expected_value* is interpreted per-constraint (e.g. an integer
-        for ``sentence_count``, a letter for ``forbidden_letter``).
-
-        Returns:
-            ``{"passed": bool, "constraint": str, "reason": str,
-              "response": str}``
-
-        Raises:
-            ValueError: If *constraint* is not recognised.
+        *expected_value* is interpreted per-constraint (e.g. an integer for
+        ``sentence_count``, a letter for ``forbidden_letter``); an unrecognised
+        constraint raises ``ValueError``.
         """
         dispatch: Dict[str, Any] = {
             "sentence_count": lambda: self.check_sentence_count(
@@ -250,12 +237,7 @@ class IFEvalKeywords:
 
     @staticmethod
     def check_all_caps(response: str) -> Tuple[bool, str]:
-        """Check that every alphabetic character is uppercase.
-
-        An empty/whitespace-only response or one with no alphabetic
-        characters at all (digits/punctuation only) cannot satisfy a
-        positive content constraint and is rejected.
-        """
+        """Check that every alphabetic character is uppercase."""
         if not response.strip():
             return False, "Empty response"
         alpha = [c for c in response if c.isalpha()]
@@ -359,10 +341,7 @@ class IFEvalKeywords:
 
     @staticmethod
     def check_all_lowercase(response: str) -> Tuple[bool, str]:
-        """Check that every alphabetic character is lowercase.
-
-        See :meth:`check_all_caps` — empty/non-alphabetic responses fail.
-        """
+        """Check that every alphabetic character is lowercase."""
         if not response.strip():
             return False, "Empty response"
         alpha = [c for c in response if c.isalpha()]
@@ -389,11 +368,7 @@ class IFEvalKeywords:
     def run_ifeval_dataset_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Run one imported google/IFEval dataset item end to end.
 
-        *item* is an entry from ``robot/tier1/ifeval/variables/ifeval_hf.yaml``:
-        ``{"key": int, "prompt": str, "instructions": [{"id": ..., "kwargs":
-        {...}}]}``.  Sends the prompt to the LLM, strips ``<think>`` tags,
-        then checks every instruction (strict prompt-level accuracy: all
-        instructions must pass).  Emits RFC_DATA for the database listener.
+        Strict prompt-level accuracy: every instruction in the item must pass.
         """
         prompt = item["prompt"]
         raw_response = self.client.generate(prompt)
@@ -432,13 +407,8 @@ class IFEvalKeywords:
     ) -> Tuple[bool, str]:
         """Check one official IFEval *instruction_id* against *response*.
 
-        *kwargs* is the (possibly ``None``-padded) kwargs dict from the HF
-        dataset; ``None`` values are ignored.  Semantics follow the official
-        ``instruction_following_eval`` checkers.
-
-        Raises:
-            ValueError: If *instruction_id* is not in
-                :data:`SUPPORTED_INSTRUCTIONS`.
+        ``None`` values in *kwargs* are ignored; an ``instruction_id`` not in
+        :data:`SUPPORTED_INSTRUCTIONS` raises ``ValueError``.
         """
         if instruction_id not in SUPPORTED_INSTRUCTIONS:
             raise ValueError(

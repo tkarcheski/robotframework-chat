@@ -1,0 +1,44 @@
+# Grading rubrics for CEO agent pipeline stages
+#
+# Each rubric is used by the multi-LLM grader to evaluate stage output quality.
+# Rubrics are injected into the grading prompt alongside the stage output.
+
+BRAINSTORM_RUBRIC: |
+  Evaluate the brainstormed product ideas for:
+  1. Novelty — Are the ideas genuinely novel, not just rehashes of existing products?
+  2. Specificity — Are descriptions concrete enough to build upon, not vague platitudes?
+  3. Category fit — Do the ideas fit within the specified domain?
+  4. Innovation notes — Do the novelty_notes identify real differentiators?
+  Score 1 if at least 2 of the ideas meet all 4 criteria. Score 0 otherwise.
+
+MARKET_RESEARCH_RUBRIC: |
+  Evaluate the market research analysis for:
+  1. Plausibility — Are demand scores and market sizes realistic, not fabricated?
+  2. Competitor awareness — Are named competitors real companies in the space?
+  3. Consistency — Does profitability assessment align with demand and market size?
+  4. Completeness — Is every idea from the input analyzed?
+  Score 1 if all analyses meet criteria 1-3 and criterion 4 is satisfied. Score 0 otherwise.
+
+IP_ANALYSIS_RUBRIC: |
+  Evaluate the IP landscape analysis for:
+  1. Prior art identification — Are identified gaps plausible and specific?
+  2. Claim angles — Are suggested patent claim angles legally meaningful?
+  3. Patentability scoring — Do scores reflect the strength of prior art gaps?
+  4. Actionability — Could a patent attorney act on these findings?
+  Score 1 if at least 2 findings meet all 4 criteria. Score 0 otherwise.
+
+PATENT_STRATEGY_RUBRIC: |
+  Evaluate the patent strategy for:
+  1. Claim quality — Are key claims written in proper patent claim language?
+  2. Abstract quality — Are abstracts concise and technically accurate?
+  3. Strategy coherence — Does claim_type match the nature of the innovation?
+  4. Priority justification — Does filing_priority reflect patentability and market value?
+  Score 1 if all strategies meet criteria 1-3. Score 0 otherwise.
+
+LICENSING_STRATEGY_RUBRIC: |
+  Evaluate the licensing strategy for:
+  1. Licensee identification — Are target licensees realistic companies/industries?
+  2. Pricing model fit — Does the pricing model match the patent type and market?
+  3. Revenue plausibility — Are projections in a reasonable range for the market?
+  4. Terms clarity — Are licensing terms specific and commercially viable?
+  Score 1 if all plans meet criteria 1-3. Score 0 otherwise.

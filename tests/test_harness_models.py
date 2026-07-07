@@ -60,16 +60,16 @@ class TestAgenticSkill:
     def test_required_fields(self) -> None:
         s = AgenticSkill(
             session_id="abc123",
-            skill_path="robot/tier2/safety/safety.resource",
+            skill_path="robot/20__tier2/safety/safety.resource",
             recorded_at="2026-05-09T00:00:00Z",
         )
         assert s.session_id == "abc123"
-        assert s.skill_path == "robot/tier2/safety/safety.resource"
+        assert s.skill_path == "robot/20__tier2/safety/safety.resource"
 
     def test_default_fields(self) -> None:
         s = AgenticSkill(
             session_id="abc123",
-            skill_path="robot/tier2/safety/safety.resource",
+            skill_path="robot/20__tier2/safety/safety.resource",
             recorded_at="2026-05-09T00:00:00Z",
         )
         assert s.git_sha == ""

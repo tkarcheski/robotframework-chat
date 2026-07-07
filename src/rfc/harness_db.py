@@ -38,10 +38,6 @@ try:
 except ImportError:
     HAS_SQLALCHEMY = False
 
-# SQLAlchemy types are imported inside _SQLAlchemyHarnessBackend in Task 3
-# so that an environment without the superset extra still imports this module
-# cleanly and ruff doesn't flag pre-emptive top-level imports as unused.
-
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -208,13 +204,61 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
          h.replay_of_recording_id"""
 
 
-def _decision_from_row(row: "Sequence[Any]") -> AgenticDecision:
-    """Map a positional (id, session_id, test_name, hook_event, prompt_model,
-    prompt_text, response_text, proposed_action, applied, tokens_used,
-    recorded_at) row to a dataclass.
+# Row marshallers: map a positional row to its dataclass. Positional indexing
+# works for both sqlite3 tuples and SQLAlchemy Row objects, so one helper serves
+# both backends; column order matches each backend's SELECT / Table definition.
 
-    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
-    """
+
+def _harness_from_row(row: Sequence[Any]) -> AgenticHarness:
+    return AgenticHarness(
+        session_id=row[0],
+        tool_name=row[1],
+        tool_version=row[2] or "",
+        model_id=row[3] or "",
+        rfc_version=row[4] or "",
+        branch=row[5] or "",
+        started_at=row[6],
+        ended_at=row[7] or "",
+        outcome=row[8] or "",
+        replay_of_recording_id=row[9] or "",
+    )
+
+
+def _plugin_from_row(row: Sequence[Any]) -> AgenticPlugin:
+    return AgenticPlugin(
+        session_id=row[1],
+        plugin_name=row[2],
+        recorded_at=row[5],
+        semver=row[3] or "",
+        source=row[4] or "",
+        id=row[0],
+    )
+
+
+def _skill_from_row(row: Sequence[Any]) -> AgenticSkill:
+    return AgenticSkill(
+        session_id=row[1],
+        skill_path=row[2],
+        recorded_at=row[5],
+        git_sha=row[3] or "",
+        skill_name=row[4] or "",
+        id=row[0],
+    )
+
+
+def _metric_from_row(row: Sequence[Any]) -> AgenticMetric:
+    return AgenticMetric(
+        session_id=row[1],
+        metric_key=row[4],
+        recorded_at=row[6],
+        metric_value=float(row[5]) if row[5] is not None else 0.0,
+        test_run_id=row[2] if row[2] is not None else -1,
+        test_result_id=row[3] if row[3] is not None else -1,
+        id=row[0],
+    )
+
+
+def _decision_from_row(row: Sequence[Any]) -> AgenticDecision:
     return AgenticDecision(
         session_id=row[1],
         hook_event=row[3],
@@ -230,12 +274,7 @@ def _decision_from_row(row: "Sequence[Any]") -> AgenticDecision:
     )
 
 
-def _recording_from_row(row: "Sequence[Any]") -> DialogRecording:
-    """Map a positional (id, session_id, source_type, tool_name, tool_version,
-    model_id, started_at, ended_at, metadata_json) row to a dataclass.
-
-    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
-    """
+def _recording_from_row(row: Sequence[Any]) -> DialogRecording:
     return DialogRecording(
         id=row[0],
         session_id=row[1] or "",
@@ -249,10 +288,7 @@ def _recording_from_row(row: "Sequence[Any]") -> DialogRecording:
     )
 
 
-def _turn_from_row(row: "Sequence[Any]") -> DialogTurn:
-    """Map a positional (id, recording_id, turn_number, role, content,
-    tool_calls_json, tool_results_json, timestamp, prompt_tokens,
-    completion_tokens, latency_ms) row to a dataclass."""
+def _turn_from_row(row: Sequence[Any]) -> DialogTurn:
     return DialogTurn(
         recording_id=row[1],
         turn_number=int(row[2]),
@@ -274,11 +310,7 @@ _HITL_COLUMNS = (
 )
 
 
-def _hitl_from_row(row: "Sequence[Any]") -> HitlInteraction:
-    """Map a positional row (ordered as ``_HITL_COLUMNS``) to a dataclass.
-
-    Works for both sqlite3 tuples and SQLAlchemy Row objects (index-able).
-    """
+def _hitl_from_row(row: Sequence[Any]) -> HitlInteraction:
     return HitlInteraction(
         id=row[0],
         session_id=row[1],
@@ -310,11 +342,6 @@ class _HarnessBackend(abc.ABC):
 
     @abc.abstractmethod
     def get_harness(self, session_id: str) -> Optional[AgenticHarness]: ...
-
-    @abc.abstractmethod
-    def list_harnesses(
-        self, *, tool_name: str = "", limit: int = 50
-    ) -> list[AgenticHarness]: ...
 
     @abc.abstractmethod
     def save_plugins(self, plugins: list[AgenticPlugin]) -> list[str]: ...
@@ -415,9 +442,6 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 except sqlite3.OperationalError:
                     pass  # idempotent: column already present, etc.
 
-    # CRUD methods are added incrementally below as TDD cycles complete.
-    # Placeholders raise NotImplementedError until each cycle wires them up.
-
     def save_harness(self, harness: AgenticHarness) -> str:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
@@ -464,50 +488,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             ).fetchone()
         if row is None:
             return None
-        return AgenticHarness(
-            session_id=row[0],
-            tool_name=row[1],
-            tool_version=row[2] or "",
-            model_id=row[3] or "",
-            rfc_version=row[4] or "",
-            branch=row[5] or "",
-            started_at=row[6],
-            ended_at=row[7] or "",
-            outcome=row[8] or "",
-            replay_of_recording_id=row[9] or "",
-        )
-
-    def list_harnesses(
-        self, *, tool_name: str = "", limit: int = 50
-    ) -> list[AgenticHarness]:
-        sql = (
-            "SELECT session_id, tool_name, tool_version, model_id, rfc_version, "
-            "branch, started_at, ended_at, outcome, replay_of_recording_id "
-            "FROM agentic_harnesses "
-        )
-        params: tuple = ()
-        if tool_name:
-            sql += "WHERE tool_name = ? "
-            params = (tool_name,)
-        sql += "ORDER BY started_at DESC LIMIT ?"
-        params = params + (limit,)
-        with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute(sql, params).fetchall()
-        return [
-            AgenticHarness(
-                session_id=r[0],
-                tool_name=r[1],
-                tool_version=r[2] or "",
-                model_id=r[3] or "",
-                rfc_version=r[4] or "",
-                branch=r[5] or "",
-                started_at=r[6],
-                ended_at=r[7] or "",
-                outcome=r[8] or "",
-                replay_of_recording_id=r[9] or "",
-            )
-            for r in rows
-        ]
+        return _harness_from_row(row)
 
     def save_plugins(self, plugins: list[AgenticPlugin]) -> list[str]:
         ids: list[str] = []
@@ -564,17 +545,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 "FROM agentic_plugins WHERE session_id = ? ORDER BY plugin_name",
                 (session_id,),
             ).fetchall()
-        return [
-            AgenticPlugin(
-                session_id=r[1],
-                plugin_name=r[2],
-                recorded_at=r[5],
-                semver=r[3] or "",
-                source=r[4] or "",
-                id=r[0],
-            )
-            for r in rows
-        ]
+        return [_plugin_from_row(r) for r in rows]
 
     def get_skills(self, session_id: str) -> list[AgenticSkill]:
         with sqlite3.connect(self.db_path) as conn:
@@ -583,17 +554,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 "FROM agentic_skills WHERE session_id = ? ORDER BY skill_path",
                 (session_id,),
             ).fetchall()
-        return [
-            AgenticSkill(
-                session_id=r[1],
-                skill_path=r[2],
-                recorded_at=r[5],
-                git_sha=r[3] or "",
-                skill_name=r[4] or "",
-                id=r[0],
-            )
-            for r in rows
-        ]
+        return [_skill_from_row(r) for r in rows]
 
     def save_metric(self, metric: AgenticMetric) -> str:
         return self.save_metrics([metric])[0]
@@ -639,18 +600,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
         sql += "ORDER BY recorded_at, id"
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(sql, params).fetchall()
-        return [
-            AgenticMetric(
-                session_id=r[1],
-                metric_key=r[4],
-                recorded_at=r[6],
-                metric_value=float(r[5]) if r[5] is not None else 0.0,
-                test_run_id=r[2] if r[2] is not None else -1,
-                test_result_id=r[3] if r[3] is not None else -1,
-                id=r[0],
-            )
-            for r in rows
-        ]
+        return [_metric_from_row(r) for r in rows]
 
     def save_decision(self, decision: AgenticDecision) -> str:
         return self.save_decisions([decision])[0]
@@ -1139,43 +1089,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             ).fetchone()
         if row is None:
             return None
-        return AgenticHarness(
-            session_id=row.session_id,
-            tool_name=row.tool_name,
-            tool_version=row.tool_version or "",
-            model_id=row.model_id or "",
-            rfc_version=row.rfc_version or "",
-            branch=row.branch or "",
-            started_at=row.started_at,
-            ended_at=row.ended_at or "",
-            outcome=row.outcome or "",
-            replay_of_recording_id=row.replay_of_recording_id or "",
-        )
-
-    def list_harnesses(
-        self, *, tool_name: str = "", limit: int = 50
-    ) -> list[AgenticHarness]:
-        stmt = self._harnesses.select()
-        if tool_name:
-            stmt = stmt.where(self._harnesses.c.tool_name == tool_name)
-        stmt = stmt.order_by(self._harnesses.c.started_at.desc()).limit(limit)
-        with self.engine.connect() as conn:
-            rows = conn.execute(stmt).fetchall()
-        return [
-            AgenticHarness(
-                session_id=r.session_id,
-                tool_name=r.tool_name,
-                tool_version=r.tool_version or "",
-                model_id=r.model_id or "",
-                rfc_version=r.rfc_version or "",
-                branch=r.branch or "",
-                started_at=r.started_at,
-                ended_at=r.ended_at or "",
-                outcome=r.outcome or "",
-                replay_of_recording_id=r.replay_of_recording_id or "",
-            )
-            for r in rows
-        ]
+        return _harness_from_row(row)
 
     def save_plugins(self, plugins: list[AgenticPlugin]) -> list[str]:
         ids: list[str] = []
@@ -1236,17 +1150,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                 .where(self._plugins.c.session_id == session_id)
                 .order_by(self._plugins.c.plugin_name)
             ).fetchall()
-        return [
-            AgenticPlugin(
-                session_id=r.session_id,
-                plugin_name=r.plugin_name,
-                recorded_at=r.recorded_at,
-                semver=r.semver or "",
-                source=r.source or "",
-                id=r.id,
-            )
-            for r in rows
-        ]
+        return [_plugin_from_row(r) for r in rows]
 
     def get_skills(self, session_id: str) -> list[AgenticSkill]:
         with self.engine.connect() as conn:
@@ -1255,17 +1159,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                 .where(self._skills.c.session_id == session_id)
                 .order_by(self._skills.c.skill_path)
             ).fetchall()
-        return [
-            AgenticSkill(
-                session_id=r.session_id,
-                skill_path=r.skill_path,
-                recorded_at=r.recorded_at,
-                git_sha=r.git_sha or "",
-                skill_name=r.skill_name or "",
-                id=r.id,
-            )
-            for r in rows
-        ]
+        return [_skill_from_row(r) for r in rows]
 
     def save_metric(self, metric: AgenticMetric) -> str:
         return self.save_metrics([metric])[0]
@@ -1301,20 +1195,7 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         stmt = stmt.order_by(self._metrics.c.recorded_at, self._metrics.c.id)
         with self.engine.connect() as conn:
             rows = conn.execute(stmt).fetchall()
-        return [
-            AgenticMetric(
-                session_id=r.session_id,
-                metric_key=r.metric_key,
-                recorded_at=r.recorded_at,
-                metric_value=float(r.metric_value)
-                if r.metric_value is not None
-                else 0.0,
-                test_run_id=r.test_run_id if r.test_run_id is not None else -1,
-                test_result_id=r.test_result_id if r.test_result_id is not None else -1,
-                id=r.id,
-            )
-            for r in rows
-        ]
+        return [_metric_from_row(r) for r in rows]
 
     def save_decision(self, decision: AgenticDecision) -> str:
         return self.save_decisions([decision])[0]
@@ -1644,11 +1525,6 @@ class HarnessDatabase:
 
     def get_harness(self, session_id: str) -> Optional[AgenticHarness]:
         return self._backend.get_harness(session_id)
-
-    def list_harnesses(
-        self, *, tool_name: str = "", limit: int = 50
-    ) -> list[AgenticHarness]:
-        return self._backend.list_harnesses(tool_name=tool_name, limit=limit)
 
     def save_plugins(self, plugins: list[AgenticPlugin]) -> list[str]:
         return self._backend.save_plugins(plugins)

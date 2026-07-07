@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SUITE_ROOT = REPO_ROOT / "robot" / "tier4" / "agentic_coding"
+SUITE_ROOT = REPO_ROOT / "robot" / "40__tier4" / "agentic_coding"
 SUITE_TESTS = SUITE_ROOT
 
 TIER_PATTERN = re.compile(r"\btier:\d\b")
@@ -114,7 +114,7 @@ class TestAgenticCodingConfigRegistration:
             "agentic-coding suite must be registered in config/test_suites.yaml"
         )
         entry = config["test_suites"]["agentic-coding"]
-        assert entry["path"] == "robot/tier4/agentic_coding"
+        assert entry["path"] == "robot/40__tier4/agentic_coding"
 
     def test_registered_in_local_agents_yaml(self) -> None:
         config = yaml.safe_load(

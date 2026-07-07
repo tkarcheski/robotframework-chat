@@ -279,6 +279,125 @@ class TestListModelsDetailed:
         assert len(models[0]["digest"]) == 12  # Truncated to 12 chars
 
 
+def _tags_response(models):
+    """Build a mock /api/tags response carrying the given (name, digest) pairs."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {"models": [{"name": n, "digest": d} for n, d in models]}
+    return resp
+
+
+class TestResolveModelDigest:
+    """resolve_model_digest() keys the answer cache on real weights (#526)."""
+
+    @patch("rfc.ollama.requests.get")
+    def test_parses_api_tags_digest(self, mock_get):
+        mock_get.return_value = _tags_response(
+            [("llama3:latest", "a1b2c3d4e5f6"), ("mistral:7b", "999888777666")]
+        )
+        client = OllamaClient(model="llama3:latest", base_url="http://h:11434")
+        assert client.resolve_model_digest() == "a1b2c3d4e5f6"
+        # Hits /api/tags on the client's base_url.
+        assert mock_get.call_args.args[0] == "http://h:11434/api/tags"
+
+    @patch("rfc.ollama.requests.get")
+    def test_latest_alias_is_normalized(self, mock_get):
+        """model='llama3' (no tag) resolves against 'llama3:latest' in /api/tags."""
+        mock_get.return_value = _tags_response([("llama3:latest", "deadbeef0000")])
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client.resolve_model_digest() == "deadbeef0000"
+
+    @patch("rfc.ollama.requests.get")
+    def test_unknown_tag_returns_none(self, mock_get):
+        mock_get.return_value = _tags_response([("other:latest", "aaaa")])
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client.resolve_model_digest() is None
+
+    @patch("rfc.ollama.time.monotonic")
+    @patch("rfc.ollama.requests.get")
+    def test_map_is_cached_within_ttl(self, mock_get, mock_monotonic):
+        mock_get.return_value = _tags_response([("llama3:latest", "digest-A")])
+        mock_monotonic.return_value = 1000.0
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        client._digest_ttl = 300.0
+
+        assert client.resolve_model_digest() == "digest-A"  # fetch #1
+        mock_monotonic.return_value = 1200.0  # +200s, still inside TTL
+        assert client.resolve_model_digest() == "digest-A"  # served from cache
+        assert mock_get.call_count == 1  # NOT re-fetched
+
+    @patch("rfc.ollama.time.monotonic")
+    @patch("rfc.ollama.requests.get")
+    def test_ttl_expiry_refetches(self, mock_get, mock_monotonic):
+        mock_get.side_effect = [
+            _tags_response([("llama3:latest", "digest-A")]),
+            _tags_response([("llama3:latest", "digest-B")]),  # tag repointed
+        ]
+        mock_monotonic.return_value = 1000.0
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        client._digest_ttl = 300.0
+
+        assert client.resolve_model_digest() == "digest-A"  # fetch #1
+        mock_monotonic.return_value = 1400.0  # +400s, past TTL
+        assert client.resolve_model_digest() == "digest-B"  # re-fetched new weights
+        assert mock_get.call_count == 2
+
+    @patch("rfc.ollama.requests.get")
+    def test_timeout_returns_none_never_raises(self, mock_get):
+        mock_get.side_effect = req_lib.exceptions.ReadTimeout("timed out")
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client.resolve_model_digest() is None  # no exception escapes
+
+    @patch("rfc.ollama.requests.get")
+    def test_connection_error_returns_none(self, mock_get):
+        mock_get.side_effect = req_lib.exceptions.ConnectionError("refused")
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client.resolve_model_digest() is None
+
+    @patch("rfc.ollama.requests.get")
+    def test_malformed_response_returns_none(self, mock_get):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json.side_effect = ValueError("no json")
+        mock_get.return_value = resp
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client.resolve_model_digest() is None
+
+    @patch("rfc.ollama.time.monotonic")
+    @patch("rfc.ollama.requests.get")
+    def test_negative_cache_backs_off_then_recovers(self, mock_get, mock_monotonic):
+        """A failed fetch is negatively cached (~30s) so an offline host is not
+        hammered on every key build, then a later fetch recovers."""
+        mock_get.side_effect = req_lib.exceptions.ConnectionError("refused")
+        mock_monotonic.return_value = 500.0
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+
+        assert client.resolve_model_digest() is None  # fetch attempted, fails
+        assert mock_get.call_count == 1
+
+        mock_monotonic.return_value = 520.0  # +20s, inside the 30s back-off
+        assert client.resolve_model_digest() is None
+        assert mock_get.call_count == 1  # short-circuited, host NOT re-probed
+
+        mock_monotonic.return_value = 540.0  # +40s, back-off expired
+        mock_get.side_effect = None
+        mock_get.return_value = _tags_response([("llama3:latest", "recovered")])
+        assert client.resolve_model_digest() == "recovered"
+        assert mock_get.call_count == 2  # re-probed once the window passed
+
+    @patch.dict(os.environ, {"OLLAMA_DIGEST_TTL_SECONDS": "42"})
+    def test_ttl_read_from_env(self):
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client._digest_ttl == 42.0
+
+    @patch.dict(os.environ, {"OLLAMA_DIGEST_TTL_SECONDS": "not-a-number"})
+    def test_malformed_ttl_env_falls_back_to_default(self):
+        client = OllamaClient(model="llama3", base_url="http://h:11434")
+        assert client._digest_ttl == 300.0
+
+
 class TestRunningModels:
     @patch("rfc.ollama.requests.get")
     def test_success(self, mock_get):
@@ -943,3 +1062,232 @@ class TestWaitUntilReadyUnavailable:
         client = OllamaClient(model="test-model")
         with pytest.raises(OllamaTimeoutError, match="still busy"):
             client.wait_until_ready(timeout=5, poll_interval=1)
+
+
+class TestThinkParameter:
+    """`think` request field for reasoning models (issue #131)."""
+
+    def test_default_think_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OLLAMA_THINK", raising=False)
+        client = OllamaClient(model="test-model")
+        assert client.think is None
+
+    @patch.dict(os.environ, {"OLLAMA_THINK": "false"})
+    def test_think_default_from_env(self):
+        client = OllamaClient(model="test-model")
+        assert client.think is False
+
+    @patch.dict(os.environ, {"OLLAMA_THINK": "true"})
+    def test_explicit_think_overrides_env(self):
+        client = OllamaClient(model="test-model", think=False)
+        assert client.think is False
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (True, True),
+            (False, False),
+            ("true", True),
+            ("false", False),
+            ("1", True),
+            ("0", False),
+            ("YES", True),
+            ("no", False),
+            ("low", "low"),
+            ("medium", "medium"),
+            ("high", "high"),
+            ("", None),
+        ],
+    )
+    def test_think_normalization(self, value, expected):
+        client = OllamaClient(model="test-model", think=value)
+        assert client.think == expected
+
+    def test_invalid_think_rejected(self):
+        with pytest.raises(ValueError, match="think must be"):
+            OllamaClient(model="test-model", think="maybe")
+
+    def test_think_setter_normalizes(self):
+        client = OllamaClient(model="test-model")
+        client.think = "HIGH"
+        assert client.think == "high"
+        client.think = "0"
+        assert client.think is False
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_think_in_payload_when_set(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model", think=False)
+        client.generate("test")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["think"] is False
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_think_level_in_payload(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model", think="high")
+        client.generate("test")
+
+        assert mock_post.call_args[1]["json"]["think"] == "high"
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_think_omitted_when_unset(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"response": "ok"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model")
+        client.generate("test")
+
+        assert "think" not in mock_post.call_args[1]["json"]
+
+
+class TestThinkingFallback:
+    """Empty `response` + non-empty `thinking` → surfaced as inline <think>."""
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_thinking_fallback_wraps_as_think_block(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "response": "   ",
+            "thinking": "the model reasoned but never answered",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model")
+        result = client.generate("grade this")
+
+        assert result == "<think>the model reasoned but never answered</think>"
+        assert client.last_metrics is not None
+        assert client.last_metrics["thinking_only"] is True
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_nonempty_response_ignores_thinking(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "response": "42",
+            "thinking": "some reasoning",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model")
+        result = client.generate("q")
+
+        assert result == "42"
+        assert client.last_metrics["thinking_only"] is False
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_empty_response_no_thinking_stays_empty(self, mock_post, mock_logger):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"response": ""}
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        client = OllamaClient(model="test-model")
+        result = client.generate("q")
+
+        assert result == ""
+        assert client.last_metrics["thinking_only"] is False
+
+
+class TestThinkUnsupportedRetry:
+    """A 400 mentioning think → retry once without it, then latch (issue #131)."""
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_400_retries_without_think_and_latches(self, mock_post, mock_logger):
+        import copy
+
+        rejected = MagicMock()
+        rejected.status_code = 400
+        rejected.text = '{"error":"\\"think\\" is not supported by this model"}'
+
+        ok = MagicMock()
+        ok.status_code = 200
+        ok.json.return_value = {"response": "hi"}
+        ok.raise_for_status = MagicMock()
+
+        # The payload dict is mutated in place (think popped) between the two
+        # POSTs, so snapshot each call's json to observe the before/after.
+        responses = [rejected, ok]
+        seen = []
+
+        def capture(*_a, **kwargs):
+            seen.append(copy.deepcopy(kwargs["json"]))
+            return responses.pop(0)
+
+        mock_post.side_effect = capture
+
+        client = OllamaClient(model="test-model", think=True)
+        result = client.generate("first")
+
+        assert result == "hi"
+        assert client._think_unsupported is True
+        assert len(seen) == 2
+        # First POST carried think, second (retry) dropped it.
+        assert seen[0]["think"] is True
+        assert "think" not in seen[1]
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_latch_omits_think_on_subsequent_calls(self, mock_post, mock_logger):
+        rejected = MagicMock()
+        rejected.status_code = 400
+        rejected.text = "thinking not supported"
+
+        ok = MagicMock()
+        ok.status_code = 200
+        ok.json.return_value = {"response": "hi"}
+        ok.raise_for_status = MagicMock()
+
+        # call 1: [400, 200]; call 2: [200] (think already latched off)
+        mock_post.side_effect = [rejected, ok, ok]
+
+        client = OllamaClient(model="test-model", think=True)
+        client.generate("first")
+        mock_post.reset_mock()
+        mock_post.side_effect = [ok]
+        client.generate("second")
+
+        assert "think" not in mock_post.call_args[1]["json"]
+
+    @patch("rfc.ollama.logger")
+    @patch("rfc.ollama.requests.post")
+    def test_400_without_think_field_not_swallowed(self, mock_post, mock_logger):
+        """A 400 unrelated to think must surface (via raise_for_status)."""
+        rejected = MagicMock()
+        rejected.status_code = 400
+        rejected.text = "some other bad request"
+        rejected.raise_for_status.side_effect = req_lib.HTTPError("400")
+
+        mock_post.return_value = rejected
+
+        client = OllamaClient(model="test-model")  # think unset → no think field
+        with pytest.raises(req_lib.HTTPError):
+            client.generate("q")
+        # No retry: only one POST issued.
+        assert mock_post.call_count == 1

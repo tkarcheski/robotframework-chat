@@ -148,16 +148,7 @@ class CEOKeywords:
         count: int = 3,
         constraints: str = "",
     ) -> Dict[str, Any]:
-        """Generate product/service ideas in a domain.
-
-        Args:
-            domain: The market domain to brainstorm in.
-            count: Number of ideas to generate.
-            constraints: Optional focus areas or constraints.
-
-        Returns:
-            Dict representation of BrainstormOutput.
-        """
+        """Generate product/service ideas in a domain."""
         logger.info(f"Brainstorming {count} ideas in domain: {domain}")
         prompt = build_brainstorm_prompt(
             domain=domain,
@@ -183,15 +174,7 @@ class CEOKeywords:
         ideas: Any,
         web_queries: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Evaluate market viability of product ideas.
-
-        Args:
-            ideas: List of idea dicts or BrainstormOutput dict.
-            web_queries: Optional queries to search for market context.
-
-        Returns:
-            Dict representation of MarketResearchOutput.
-        """
+        """Evaluate market viability of product ideas."""
         if isinstance(ideas, dict) and "ideas" in ideas:
             idea_list = ideas["ideas"]
         elif isinstance(ideas, list):
@@ -229,15 +212,7 @@ class CEOKeywords:
         market_analyses: Any,
         web_queries: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Analyze IP landscape for market-validated ideas.
-
-        Args:
-            market_analyses: List of analysis dicts or MarketResearchOutput dict.
-            web_queries: Optional queries to search for patent/IP context.
-
-        Returns:
-            Dict representation of IPAnalysisOutput.
-        """
+        """Analyze IP landscape for market-validated ideas."""
         if isinstance(market_analyses, dict) and "analyses" in market_analyses:
             analyses_list = market_analyses["analyses"]
         elif isinstance(market_analyses, list):
@@ -276,14 +251,7 @@ class CEOKeywords:
         self,
         ip_findings: Any,
     ) -> Dict[str, Any]:
-        """Develop patent filing strategies for IP findings.
-
-        Args:
-            ip_findings: List of IP finding dicts or IPAnalysisOutput dict.
-
-        Returns:
-            Dict representation of PatentStrategyOutput.
-        """
+        """Develop patent filing strategies for IP findings."""
         if isinstance(ip_findings, dict) and "findings" in ip_findings:
             findings_list = ip_findings["findings"]
         elif isinstance(ip_findings, list):
@@ -312,14 +280,7 @@ class CEOKeywords:
         self,
         patent_strategies: Any,
     ) -> Dict[str, Any]:
-        """Develop licensing strategies for patented IP.
-
-        Args:
-            patent_strategies: List of strategy dicts or PatentStrategyOutput dict.
-
-        Returns:
-            Dict representation of LicensingStrategyOutput.
-        """
+        """Develop licensing strategies for patented IP."""
         if isinstance(patent_strategies, dict) and "strategies" in patent_strategies:
             strategies_list = patent_strategies["strategies"]
         elif isinstance(patent_strategies, list):
@@ -349,19 +310,7 @@ class CEOKeywords:
         stage_name: str,
         output: Dict[str, Any],
     ) -> bool:
-        """Validate that stage output has the required structure.
-
-        Args:
-            stage_name: One of brainstorm, market_research, ip_analysis,
-                       patent_strategy, licensing_strategy.
-            output: The stage output dict to validate.
-
-        Returns:
-            True if valid.
-
-        Raises:
-            ValueError: If the output structure is invalid.
-        """
+        """Validate that stage output has the required structure (raises ValueError if not)."""
         logger.info(f"Validating structure for stage: {stage_name}")
 
         parsers = {
@@ -389,16 +338,7 @@ class CEOKeywords:
         output: Dict[str, Any],
         rubric: str = "",
     ) -> Dict[str, Any]:
-        """Grade stage output using multi-LLM majority vote.
-
-        Args:
-            stage_name: The pipeline stage name.
-            output: The stage output dict to grade.
-            rubric: Grading rubric text.
-
-        Returns:
-            Dict with scores, majority_score, agreement_ratio, reasons.
-        """
+        """Grade stage output using multi-LLM majority vote."""
         logger.info(f"Grading {stage_name} output with multi-LLM vote")
 
         grader = self._get_multi_grader()
@@ -435,11 +375,7 @@ class CEOKeywords:
 
     @keyword("Warm Web Cache")
     def warm_web_cache(self, entries: Dict[str, Any]) -> None:
-        """Pre-populate the web search cache.
-
-        Args:
-            entries: Dict mapping query strings to lists of result dicts.
-        """
+        """Pre-populate the web search cache."""
         parsed: Dict[str, List[SearchResult]] = {}
         for query, results in entries.items():
             parsed[query] = [SearchResult.from_dict(r) for r in results]

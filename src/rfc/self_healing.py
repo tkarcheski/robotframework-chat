@@ -1,42 +1,19 @@
-"""Self-healing decorator and strategy engine for Robot Framework keywords.
+"""Self-healing decorator for graded Robot Framework keywords.
 
-Provides an opt-in ``@self_healing`` decorator that wraps keyword methods
-with automatic retry using escalating strategies:
-
-1. **Prompt modification** — LLM rewrites the prompt with clarifications.
-2. **Parameter adjustment** — Vary temperature, seed, max_tokens.
-3. **Model fallback** — Try alternative models from a configured list.
-4. **Escalation** — Create a GitHub issue with full failure context.
-
-Each attempt is recorded as a :class:`HealingAttempt` and emitted via
-RFC_DATA for capture by :class:`~rfc.self_healing_listener.SelfHealingListener`.
-
-Two equivalent invocation styles are supported:
-
-* **Structured config** — pass a :class:`SelfHealingConfig`::
+An opt-in ``@self_healing`` decorator that retries a low-scoring keyword with
+three escalating strategies — LLM prompt rewrite, parameter variation, then
+model fallback — and emits ``self_healing_*`` RFC_DATA for the
+:class:`~rfc.self_healing_listener.SelfHealingListener`. Configure via
+:class:`SelfHealingConfig`::
 
     @self_healing(config=SelfHealingConfig(fallback_models=["qwen2.5:32b"]))
     @keyword("My Graded Keyword")
-    def my_keyword(self, prompt, expected):
-        ...
-
-* **Prose prompt** — pass a natural-language string that may reference
-  one or more registered skills via ``@skill-name`` tokens. The remaining
-  prose becomes guidance handed to the LLM during prompt rewriting::
-
-    @self_healing("@timeout-skill retry with a longer timeout, "
-                  "adjust other variables as recommended")
-    @self_healing("@modify-skill retry with agent-x's suggestions")
-
-  Both styles can be combined: skill tokens override matching fields of a
-  user-supplied ``config``, and the prose guidance is passed through.
+    def my_keyword(self, prompt, expected): ...
 """
 
 import json
-import re
-import subprocess
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -51,7 +28,7 @@ class HealingAttempt:
     """Record of a single self-healing attempt."""
 
     attempt_number: int
-    strategy: str  # "original", "prompt", "params", "model", "escalate"
+    strategy: str  # "original", "prompt", "params", "model"
     prompt_used: str
     parameters: Dict[str, Any] = field(default_factory=dict)
     model_used: str = ""
@@ -67,8 +44,6 @@ class SelfHealingConfig:
     max_prompt_retries: int = 2
     max_param_retries: int = 3
     fallback_models: List[str] = field(default_factory=list)
-    escalate_to_github: bool = True
-    github_repo: str = "tkarcheski/robotframework-chat"
     score_threshold: float = 1.0
     param_temperatures: List[float] = field(default_factory=lambda: [0.0, 0.3, 0.7])
     param_seeds: List[int] = field(default_factory=lambda: [42, 123, 7])
@@ -131,23 +106,16 @@ def _rewrite_prompt(
     expected: str,
     actual: str,
     failure_reason: str,
-    guidance: str = "",
 ) -> str:
     """Ask the LLM to rewrite a prompt that failed grading.
 
     Uses the same client but asks for a clarified version of the prompt.
     Falls back to the original prompt if rewriting fails.
-
-    ``guidance`` is optional natural-language instruction from the decorator
-    invocation (the prose left over after skill tokens are stripped). When
-    provided it's injected into the rewrite request so the LLM follows the
-    caller's intent.
     """
     client = getattr(instance, "client", None)
     if client is None:
         return original_prompt
 
-    guidance_block = f"\nCaller guidance:\n{guidance}\n\n" if guidance else ""
     rewrite_request = (
         "You are a prompt engineer. A test prompt failed to get the correct "
         "answer from an LLM. Rewrite the prompt to be clearer and more "
@@ -156,7 +124,6 @@ def _rewrite_prompt(
         f"Expected answer:\n{expected}\n\n"
         f"Actual (wrong) answer:\n{actual}\n\n"
         f"Failure reason:\n{failure_reason}\n"
-        f"{guidance_block}"
         "Return ONLY the rewritten prompt, nothing else."
     )
     try:
@@ -206,66 +173,6 @@ def _param_variations(
             if len(variations) >= config.max_param_retries:
                 return variations
     return variations[: config.max_param_retries]
-
-
-def _create_github_issue(
-    config: SelfHealingConfig, attempts: List[HealingAttempt]
-) -> bool:
-    """Create a GitHub issue for unresolved test failures.
-
-    Returns True if issue was created successfully.
-    """
-    title = f"Self-healing exhausted: {len(attempts)} attempts failed"
-    body_lines = [
-        "## Self-Healing Exhausted",
-        "",
-        f"The self-healing system tried {len(attempts)} strategies but "
-        "could not resolve this test failure.",
-        "",
-        "### Attempts",
-        "",
-    ]
-    for attempt in attempts:
-        body_lines.append(
-            f"**Attempt {attempt.attempt_number}** "
-            f"(strategy: `{attempt.strategy}`, model: `{attempt.model_used}`)"
-        )
-        if attempt.result:
-            body_lines.append(
-                f"- Score: {attempt.result.score}, Reason: {attempt.result.reason}"
-            )
-        if attempt.error:
-            body_lines.append(f"- Error: {attempt.error}")
-        body_lines.append("")
-
-    body = "\n".join(body_lines)
-
-    try:
-        result = subprocess.run(
-            [
-                "gh",
-                "issue",
-                "create",
-                "--repo",
-                config.github_repo,
-                "--title",
-                title,
-                "--body",
-                body,
-                "--label",
-                "self-healing",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            logger.info(f"Created GitHub issue: {result.stdout.strip()}")
-            return True
-        logger.warn(f"Failed to create GitHub issue: {result.stderr}")
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        logger.warn(f"GitHub issue creation failed: {exc}")
-    return False
 
 
 def _emit_healing_data(
@@ -341,89 +248,31 @@ def _extract_expected_arg(args: tuple, kwargs: dict) -> str:
     return ""
 
 
-_SKILL_TOKEN_RE = re.compile(r"@([a-zA-Z][a-zA-Z0-9_-]*)")
-
-
-@dataclass
-class ParsedDirective:
-    """Result of parsing a prose ``@self_healing`` directive."""
-
-    skills: List[str] = field(default_factory=list)
-    guidance: str = ""
-
-
-def _parse_directive(prompt: str) -> ParsedDirective:
-    """Parse a prose directive into skill tokens and remaining guidance."""
-    skills = _SKILL_TOKEN_RE.findall(prompt)
-    guidance = _SKILL_TOKEN_RE.sub("", prompt).strip()
-    guidance = re.sub(r"\s+", " ", guidance)
-    return ParsedDirective(skills=skills, guidance=guidance)
-
-
-SKILL_CONFIG_OVERRIDES: Dict[str, Dict[str, Any]] = {
-    # Bias retries toward parameter changes (timeouts, token budgets, seeds).
-    "timeout-skill": {"max_prompt_retries": 0, "max_param_retries": 5},
-    # Bias retries toward LLM-driven prompt rewriting.
-    "modify-skill": {"max_prompt_retries": 4, "max_param_retries": 0},
-}
-
-
-def _apply_skills(cfg: SelfHealingConfig, skills: List[str]) -> SelfHealingConfig:
-    """Layer skill-based overrides on top of a base config.
-
-    Unknown skills are ignored (logged as a warning) so prose directives stay
-    forward-compatible — adding a new skill name doesn't break existing tests.
-    """
-    overrides: Dict[str, Any] = {}
-    for skill in skills:
-        if skill not in SKILL_CONFIG_OVERRIDES:
-            logger.warn(f"Self-healing: unknown skill '@{skill}', ignoring")
-            continue
-        overrides.update(SKILL_CONFIG_OVERRIDES[skill])
-    return replace(cfg, **overrides) if overrides else cfg
-
-
 def self_healing(
-    prompt: Optional[str] = None,
     *,
     config: Optional[SelfHealingConfig] = None,
 ) -> Callable:
     """Decorator that adds self-healing retry to a grading keyword.
 
     Composes with ``@keyword()`` — apply ``@self_healing()`` ABOVE
-    ``@keyword()``. Two equivalent forms::
+    ``@keyword()``::
 
-        # Structured config form
         @self_healing(config=SelfHealingConfig(fallback_models=["qwen2.5:32b"]))
         @keyword("My Graded Keyword")
         def my_keyword(self, prompt, expected):
             ...
 
-        # Prose form with skill references
-        @self_healing("@timeout-skill retry with longer timeouts")
-        @keyword("Slow Graded Keyword")
-        def slow_keyword(self, prompt, expected):
-            ...
-
-    The decorator intercepts low-scoring results and applies escalating
-    strategies: prompt rewriting, parameter variation, model fallback,
-    and finally GitHub issue escalation.
+    Intercepts low-scoring results and applies escalating strategies in
+    order: prompt rewriting, parameter variation, then model fallback.
 
     Args:
-        prompt: Optional prose directive. ``@skill-name`` tokens select
-            preset config overrides from :data:`SKILL_CONFIG_OVERRIDES`;
-            the remaining prose is passed to the LLM as guidance during
-            prompt rewriting.
-        config: Optional explicit healing configuration. When both are
-            given, skill overrides are layered on top of ``config``.
+        config: Optional healing configuration; defaults to
+            :class:`SelfHealingConfig`.
 
     Returns:
         A decorator function.
     """
     cfg = config or SelfHealingConfig()
-    parsed = _parse_directive(prompt) if prompt else ParsedDirective()
-    cfg = _apply_skills(cfg, parsed.skills)
-    guidance = parsed.guidance
 
     def decorator(fn: Callable) -> Callable:
         @wraps(fn)
@@ -482,7 +331,6 @@ def self_healing(
                     expected,
                     actual,
                     last_error,
-                    guidance=guidance,
                 )
                 new_args, new_kwargs = _replace_prompt_arg(
                     args, kwargs, modified_prompt, prompt_idx
@@ -577,10 +425,7 @@ def self_healing(
             if client is not None:
                 client.model = original_model
 
-            # --- Strategy 4: Escalate ---
-            if cfg.escalate_to_github:
-                _create_github_issue(cfg, attempts)
-
+            # All strategies exhausted — record and return the last result.
             _emit_healing_data(attempts, False, time.monotonic() - start_time)
             return result
 
@@ -591,8 +436,6 @@ def self_healing(
 
 __all__ = [
     "HealingAttempt",
-    "ParsedDirective",
-    "SKILL_CONFIG_OVERRIDES",
     "SelfHealingConfig",
     "self_healing",
 ]

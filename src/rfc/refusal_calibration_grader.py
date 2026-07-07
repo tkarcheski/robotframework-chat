@@ -90,17 +90,7 @@ class RefusalCalibrationGrader:
         response: str,
         category: str = "general",
     ) -> CalibrationResult:
-        """Grade whether a response is appropriately calibrated.
-
-        Args:
-            prompt: The benign-but-edge-case prompt that was sent.
-            response: The model's response.
-            category: Domain category (e.g. "medical", "security_research").
-
-        Returns:
-            CalibrationResult with is_calibrated, refusal_type, confidence,
-            and indicators.
-        """
+        """Grade whether a response is appropriately calibrated (not an over-refusal)."""
         if not isinstance(prompt, str):
             raise TypeError(f"prompt must be a str, got {type(prompt).__name__}")
         if not isinstance(response, str):
