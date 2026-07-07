@@ -1,5 +1,6 @@
 """Tests for rfc.llm_client — LLMProvider protocol and create_provider factory."""
 
+import logging
 import os
 import sys
 import types
@@ -7,9 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import rfc.llm_client
+from rfc.answer_cache import CachingProvider
 from rfc.llm_client import (
     LLMClient,
     LLMProvider,
+    _maybe_wrap_with_cache,
     _maybe_wrap_with_graylog,
     as_ollama,
     create_provider,
@@ -151,6 +155,119 @@ class TestCreateProviderWithCache:
         mock_from_env.return_value = MagicMock()
         client = create_provider(provider="openai")
         assert isinstance(client, OpenAIClient)
+
+
+class TestRunModeCacheGate:
+    """RFC_RUN_MODE gates the answer cache above ANSWER_CACHE_ENABLED (#522).
+
+    ``_maybe_wrap_with_cache`` returns the client untouched when the cache is
+    off and a ``CachingProvider`` when it is on, so ``type(result)`` is the
+    honest signal (``CachingProvider.__class__`` deliberately masquerades as
+    the inner type for isinstance, so we assert on ``type()`` not isinstance).
+    """
+
+    @staticmethod
+    def _env(**overrides: str) -> dict[str, str]:
+        """A clean env with RFC_RUN_MODE / ANSWER_CACHE_ENABLED removed, then
+        the given overrides applied (so leaked shell exports can't skew a test).
+        """
+        env = os.environ.copy()
+        env.pop("RFC_RUN_MODE", None)
+        env.pop("ANSWER_CACHE_ENABLED", None)
+        env.update(overrides)
+        return env
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_measure_forces_cache_off_even_when_enabled(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """measure wins over ANSWER_CACHE_ENABLED=1 — no wrapper, no Redis."""
+        with patch.dict(
+            os.environ,
+            self._env(ANSWER_CACHE_ENABLED="1", RFC_RUN_MODE="measure"),
+            clear=True,
+        ):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is OllamaClient
+        mock_from_env.assert_not_called()
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_verify_enables_cache_even_when_switch_unset(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """verify turns the cache on without ANSWER_CACHE_ENABLED being set."""
+        mock_from_env.return_value = MagicMock()
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="verify"), clear=True):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is CachingProvider
+        mock_from_env.assert_called_once()
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_unset_run_mode_honors_enabled(self, mock_from_env: MagicMock) -> None:
+        """Unset mode → ANSWER_CACHE_ENABLED=1 still enables the cache."""
+        mock_from_env.return_value = MagicMock()
+        with patch.dict(os.environ, self._env(ANSWER_CACHE_ENABLED="1"), clear=True):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is CachingProvider
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_unset_run_mode_honors_disabled(self, mock_from_env: MagicMock) -> None:
+        """Unset mode + switch off → passthrough (historical default)."""
+        with patch.dict(os.environ, self._env(), clear=True):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is OllamaClient
+        mock_from_env.assert_not_called()
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_unknown_run_mode_warns_and_falls_back_to_switch(
+        self, mock_from_env: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Unknown mode → warn and honor ANSWER_CACHE_ENABLED (unset behavior)."""
+        mock_from_env.return_value = MagicMock()
+        rfc.llm_client._warned_unknown_run_mode = False
+        with patch.dict(
+            os.environ,
+            self._env(RFC_RUN_MODE="bogus", ANSWER_CACHE_ENABLED="1"),
+            clear=True,
+        ):
+            with caplog.at_level(logging.WARNING, logger="rfc.llm_client"):
+                client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is CachingProvider
+        assert any("RFC_RUN_MODE" in r.message for r in caplog.records)
+
+    def test_unknown_run_mode_with_switch_off_stays_passthrough(self) -> None:
+        """Unknown mode + switch off → passthrough (unset behavior)."""
+        rfc.llm_client._warned_unknown_run_mode = False
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="bogus"), clear=True):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is OllamaClient
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_unknown_run_mode_warns_only_once(
+        self, mock_from_env: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unknown-mode warning latches — one line per process, not per call."""
+        rfc.llm_client._warned_unknown_run_mode = False
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="bogus"), clear=True):
+            with caplog.at_level(logging.WARNING, logger="rfc.llm_client"):
+                _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+                _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        warnings = [r for r in caplog.records if "RFC_RUN_MODE" in r.message]
+        assert len(warnings) == 1
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_measure_is_case_and_whitespace_insensitive(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """RFC_RUN_MODE is normalized (strip + lower) before matching."""
+        with patch.dict(
+            os.environ,
+            self._env(ANSWER_CACHE_ENABLED="1", RFC_RUN_MODE="  MEASURE  "),
+            clear=True,
+        ):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is OllamaClient
+        mock_from_env.assert_not_called()
 
 
 def _fake_graylog_module() -> types.ModuleType:

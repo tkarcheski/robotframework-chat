@@ -1,0 +1,57 @@
+---
+# Basic profile schema with required fields
+basic_profile:
+  name: "Basic Profile"
+  prompt: |
+    Generate a JSON object representing a user profile with the following fields:
+    - name (string): Full name of the person
+    - age (number): Age in years
+    - email (string): Email address
+    Make sure the JSON is valid and complete.
+  schema: |
+    {
+      "required": ["name", "age", "email"],
+      "types": {
+        "name": "string",
+        "age": "number",
+        "email": "string"
+      }
+    }
+  min_score: 0.5
+
+# Product listing with items array
+product_list:
+  name: "Product List"
+  prompt: |
+    Generate a JSON object containing a list of products. The response should have:
+    - status (string): "success" or "error"
+    - items (array): list of product objects
+    Each product should have id, name, and price fields.
+    Make sure the JSON is valid.
+  schema: |
+    {
+      "required": ["status", "items"],
+      "types": {
+        "status": "string",
+        "items": "array"
+      }
+    }
+  min_score: 0.5
+
+# Complex nested structure
+config_object:
+  name: "Configuration"
+  prompt: |
+    Generate a JSON object representing a system configuration with:
+    - database (object): containing host, port, name
+    - server (object): containing host, port, debug
+    Make sure all required fields are present and properly typed.
+  schema: |
+    {
+      "required": ["database", "server"],
+      "types": {
+        "database": "object",
+        "server": "object"
+      }
+    }
+  min_score: 0.5

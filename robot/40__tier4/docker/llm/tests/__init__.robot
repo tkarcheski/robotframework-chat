@@ -1,0 +1,2 @@
+*** Settings ***
+Name              Docker LLM

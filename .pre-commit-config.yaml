@@ -29,7 +29,7 @@ repos:
           - types-docker
           - types-beautifulsoup4
           - markdownify
-        exclude: ^(scripts|tests|robot/tier4/agentic_coding/fixtures/sandbox)/
+        exclude: ^(scripts|tests|robot/40__tier4/agentic_coding/fixtures/sandbox)/
 
   - repo: local
     hooks:

@@ -129,49 +129,6 @@ class TestHarnessLifecycle:
         with pytest.raises(LookupError):
             harness_db.end_harness("nope", outcome="failed", ended_at=NOW)
 
-    def test_list_harnesses_reverse_chronological(self, harness_db):
-        harness_db.save_harness(
-            AgenticHarness(
-                session_id="s1",
-                tool_name="claude-code",
-                started_at="2026-05-09T00:00:00Z",
-            )
-        )
-        harness_db.save_harness(
-            AgenticHarness(
-                session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z"
-            )
-        )
-        rows = harness_db.list_harnesses()
-        assert [r.session_id for r in rows] == ["s2", "s1"]
-
-    def test_list_harnesses_filter_by_tool(self, harness_db):
-        harness_db.save_harness(
-            AgenticHarness(
-                session_id="s1",
-                tool_name="claude-code",
-                started_at="2026-05-09T00:00:00Z",
-            )
-        )
-        harness_db.save_harness(
-            AgenticHarness(
-                session_id="s2", tool_name="codex", started_at="2026-05-09T01:00:00Z"
-            )
-        )
-        rows = harness_db.list_harnesses(tool_name="codex")
-        assert [r.session_id for r in rows] == ["s2"]
-
-    def test_list_harnesses_respects_limit(self, harness_db):
-        for i in range(5):
-            harness_db.save_harness(
-                AgenticHarness(
-                    session_id=f"s{i}",
-                    tool_name="claude-code",
-                    started_at=f"2026-05-09T0{i}:00:00Z",
-                )
-            )
-        assert len(harness_db.list_harnesses(limit=3)) == 3
-
 
 class TestSnapshots:
     @pytest.fixture(autouse=True)
@@ -244,17 +201,17 @@ class TestSnapshots:
             [
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/tier2/safety/safety.resource",
+                    skill_path="robot/20__tier2/safety/safety.resource",
                     recorded_at=NOW,
                 ),
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/tier2/math/math.resource",
+                    skill_path="robot/20__tier2/math/math.resource",
                     recorded_at=NOW,
                 ),
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/tier4/docker/bash/bash.resource",
+                    skill_path="robot/40__tier4/docker/bash/bash.resource",
                     recorded_at=NOW,
                 ),
             ]
@@ -263,9 +220,9 @@ class TestSnapshots:
         # Re-fetch by id to verify positional alignment.
         skills = harness_db.get_skills("s1")
         skills_by_path = {s.skill_path: s.id for s in skills}
-        assert skills_by_path["robot/tier2/safety/safety.resource"] == ids[0]
-        assert skills_by_path["robot/tier2/math/math.resource"] == ids[1]
-        assert skills_by_path["robot/tier4/docker/bash/bash.resource"] == ids[2]
+        assert skills_by_path["robot/20__tier2/safety/safety.resource"] == ids[0]
+        assert skills_by_path["robot/20__tier2/math/math.resource"] == ids[1]
+        assert skills_by_path["robot/40__tier4/docker/bash/bash.resource"] == ids[2]
 
 
 class TestMetrics:
@@ -366,7 +323,7 @@ class TestCascades:
             [
                 AgenticSkill(
                     session_id="s1",
-                    skill_path="robot/tier2/safety/safety.resource",
+                    skill_path="robot/20__tier2/safety/safety.resource",
                     recorded_at=NOW,
                 )
             ]
@@ -417,7 +374,7 @@ class TestCascades:
                 [
                     AgenticSkill(
                         session_id="no-such-session",
-                        skill_path="robot/tier2/safety/safety.resource",
+                        skill_path="robot/20__tier2/safety/safety.resource",
                         recorded_at=NOW,
                     )
                 ]

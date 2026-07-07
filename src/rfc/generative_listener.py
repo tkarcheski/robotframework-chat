@@ -1,123 +1,13 @@
-"""Robot Framework listener: generative observation and flow control.
-
-Phase 3 of the Agentic Stack Tracker.
-
-**Observe mode (#358, read-only).** When a suite is tagged
-``generative:observe``, this listener prompts a configured LLM at hook
-events (``start_suite``, and ``end_test`` when the test failed) and
-records every exchange in the ``agentic_decisions`` table with full
-provenance and ``applied=0`` — suggestions only, the execution
-behaviour of the suite is never changed.
-
-**Flow mode (#359, active, explicit opt-in).** When a suite is tagged
-``generative:flow``, the listener prompts the LLM on each test failure
-and may *apply* ``proposed_action in {skip, retry, fork}``:
-
-- ``skip``  — the next test is marked SKIPPED (its body is replaced
-  with a single ``Skip`` keyword naming the decision id).
-- ``retry`` — the failed test is re-run once (a tagged copy is
-  inserted right after it; copies are never retried again).
-- ``fork``  — the failed test is re-run once per model in
-  ``RFC_GENERATIVE_FORK_MODELS`` (comma-separated). Each fork copy is
-  tagged ``generative_fork:true`` (so its ``test_runs`` row is
-  identifiable) plus ``generative_fork:model:<model>``, and gets a
-  ``Set LLM Model`` keyword prepended.
-
-**Mutate mode (#360, active, explicit opt-in).** When a suite is tagged
-``generative:mutate``, the listener prompts the LLM after each opted-in
-test PASSES (mutating passing tests is the point: it probes over-lenient
-assertions; failed tests are not mutated because Robot stops at the
-first failing keyword, so an appended assertion would never execute)
-for ONE new assertion. The assertion is appended to a deep copy of the
-test which is inserted right after the original, so it executes inline
-and gets its own sibling ``test_runs`` row from the regular results
-listener. Synthetic test name: ``<original>::mutated::<short_hash>``;
-tagged ``mutated:true`` (copies never re-mutate). Safety rails:
-
-- the assertion keyword must come from a small allow-list of
-  deterministic BuiltIn assertions (``ALLOWED_MUTATION_KEYWORDS``);
-  anything else is recorded with ``applied=0`` and never executed.
-- arguments may contain only plain values and simple scalar variables
-  (``${name}``): inline Python evaluation ``${{...}}``, extended
-  variable syntax, and environment/list/dict variables are rejected,
-  because the keyword allow-list alone would not stop code execution
-  smuggled through an argument.
-- mutation prompts are externalized to
-  ``src/rfc/resources/generative_mutate_prompts.resource`` so reviewers
-  can read and edit them (built-in fallback if unreadable).
-- a parallel grader (the ``Grade Answer`` core, same prompting model)
-  scores each applied mutation's quality and writes it to
-  ``agentic_metrics`` as ``metric_key='mutation_quality'`` with the
-  metric id equal to the decision id (the join key). Grading is
-  advisory: a grader failure never blocks the recorded mutation.
-  Caveat: the mutation model grades its own output — treat the score
-  as a noise filter (e.g. Superset alert on ``mutation_quality < 0.5``),
-  never as a pass/fail verdict.
-
-**Heal mode (#361, suggestion-only, explicit opt-in).** When a suite is
-tagged ``heal:suggest``, the listener prompts the LLM after each
-opted-in test FAILS with the numbered test body and the failure
-message, and asks for a proposed fix: the 1-based body line to replace
-plus ONE replacement assertion (same allow-list and argument safety
-rails as mutate). The fix runs as a *side experiment* — a sibling copy
-named ``<original>::healed::<short_hash>`` tagged ``healed:true`` with
-exactly that line replaced — and:
-
-- **the original failure remains the official test outcome**; the
-  decision row (``proposed_action='heal'``) is recorded with
-  ``applied=0`` ALWAYS — CI never silently passes due to LLM
-  intervention, and automatic write-back of healed values to
-  ``.robot`` files is explicitly out of scope (#361).
-- the experiment's outcome is written to ``agentic_metrics`` as
-  ``metric_key='heal_passed'`` (1.0/0.0) with metric id
-  ``<decision_id>-heal``.
-- a parallel grader scores the proposed fix as ``mutation_quality``
-  with metric id equal to the decision id (same join key as mutate),
-  so the Superset "Healing Candidates This Week" chart can surface
-  passing experiments with quality >= 0.7 for human triage.
-
-This is distinct from :mod:`rfc.self_healing_listener`, which passively
-records RFC_DATA emitted by the :func:`rfc.self_healing.self_healing`
-keyword-retry decorator; heal mode generates *new* fix candidates via
-LLM and records them in ``agentic_decisions``.
-
-Every applied action persists a decision row with ``applied=1``;
-suggestions that cannot be applied (no next test to skip, no fork
-models configured, unparseable LLM output, disallowed mutation
-keyword) persist with ``applied=0``. ``generative:observe`` semantics
-are unchanged — observe-tagged suites never have their execution
-modified, whatever the LLM says. One mode per suite; when a suite
-carries several tags the precedence is flow > mutate > heal > observe.
-Execution of ``generative:flow``, ``generative:mutate``, and
-``heal:suggest`` suites diverges from the static ``.robot`` file; CI
-consumers should treat them as exploratory, not gating (for heal the
-*official* outcomes are unchanged — the experiment merely appears as an
-extra sibling test).
-
-A hard per-suite token budget prevents recursion / runaway cost: once
-``RFC_GENERATIVE_BUDGET_TOKENS`` (default 10_000) is consumed, the
-listener writes ONE ``budget_exhausted`` decision and goes silent for
-the rest of the suite (in flow mode this also stops all flow actions).
-
-All failures are skip-and-log per CLAUDE.md — the test outcome is
-never affected by listener errors.
-
-Usage::
-
-    robot --listener rfc.generative_listener.GenerativeListener tests/
-
-Environment:
-    RFC_GENERATIVE_MODEL          Prompting model (default: a fast cheap
-                                  local model, ``llama3.2:1b``).
-    RFC_GENERATIVE_BUDGET_TOKENS  Per-suite token budget (default 10_000).
-    RFC_GENERATIVE_FORK_MODELS    Comma-separated model pool for ``fork``
-                                  (flow mode; unset = fork never applied).
-    RFC_GENERATIVE_MUTATE_PROMPTS Path override for the mutate prompts
-                                  resource file.
-    GENERATIVE_DATABASE_URL       Preferred DB for decision rows.
-    HARNESS_DATABASE_URL          Fallback (shared with the harness tables).
-    DATABASE_URL                  Final fallback.
-    SESSION_ID                    Session fallback when no sidecar is present.
+"""Robot Framework listener: prompt an LLM at hook events and record every
+exchange in ``agentic_decisions`` (skip-and-log — listener errors never change a
+test outcome). Four opt-in modes, one per suite, precedence
+flow > mutate > heal > observe — observe (#358, read-only), flow (#359,
+skip/retry/fork), mutate (#360, append one allow-listed assertion to a passing
+test), heal (#361, run an LLM fix as a side experiment; original failure stays
+official, ``applied=0`` always). ``RFC_GENERATIVE_BUDGET_TOKENS`` (default
+10_000) caps per-suite spend, then writes one ``budget_exhausted`` row and goes
+silent. Helpers live in :mod:`rfc.generative_listener_parsing`. Usage:
+``robot --listener rfc.generative_listener.GenerativeListener tests/``
 """
 
 from __future__ import annotations
@@ -125,13 +15,28 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import re
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
 from .base_listener import BaseListener
+from .generative_listener_parsing import (
+    ALLOWED_MUTATION_KEYWORDS,
+    MUTATE_PROMPTS_RESOURCE as MUTATE_PROMPTS_RESOURCE,
+    _add_tag,
+    _assertion_like,
+    _copy_test,
+    _fill_template,
+    _load_mutate_prompts,
+    _parse_action,
+    _parse_heal,
+    _parse_mutation,
+    _render_body,
+    _suite_has_tag,
+    _suite_shadows_keyword,
+    _test_failed,
+    _test_has_tag,
+    _utc_now,
+)
 from .grader import Grader
 from .harness_cli import active_session_id
 from .harness_db import HarnessDatabase
@@ -151,38 +56,13 @@ MUTATED_MARKER_TAG = "mutated:true"
 HEALED_MARKER_TAG = "healed:true"
 MUTATION_QUALITY_METRIC = "mutation_quality"
 HEAL_PASSED_METRIC = "heal_passed"
-# agentic_metrics.id is a PRIMARY KEY and mutation_quality already uses the
-# bare decision id, so the heal-outcome metric derives its id from the
-# decision id with this suffix (chart join: hp.id = d.id || '-heal').
-# Hyphen, not colon: SQLAlchemy ``text()`` would read ``:heal`` inside the
-# dataset SQL as a bind parameter.
+# agentic_metrics.id is a PRIMARY KEY and mutation_quality already uses the bare
+# decision id, so the heal-outcome metric derives its id with this suffix (chart
+# join: hp.id = d.id || '-heal'). Hyphen, not colon: SQLAlchemy ``text()`` would
+# read ``:heal`` in the dataset SQL as a bind parameter.
 HEAL_METRIC_ID_SUFFIX = "-heal"
 DEFAULT_GENERATIVE_MODEL = "llama3.2:1b"
 DEFAULT_BUDGET_TOKENS = 10_000
-
-# Deterministic BuiltIn assertions a mutation may use — anything else is
-# recorded (applied=0) but never executed. Deliberately excludes anything
-# that runs code, touches the OS, or sets state — and `Should Match Regexp`,
-# whose model-controlled pattern is a ReDoS vector (#516).
-ALLOWED_MUTATION_KEYWORDS = (
-    "Length Should Be",
-    "Should Be Equal",
-    "Should Be Equal As Numbers",
-    "Should Be Equal As Strings",
-    "Should Contain",
-    "Should Not Be Empty",
-    "Should Not Contain",
-)
-_ALLOWED_MUTATION_LOOKUP = {k.lower(): k for k in ALLOWED_MUTATION_KEYWORDS}
-
-# Ships as package data so installed (wheel) deployments resolve it too,
-# not just repo checkouts (#516).
-MUTATE_PROMPTS_RESOURCE = (
-    Path(__file__).resolve().parent / "resources" / "generative_mutate_prompts.resource"
-)
-
-_FLOW_ACTIONS = ("skip", "retry", "fork", "none")
-_ACTION_RE = re.compile(r"\b(skip|retry|fork|none)\b", re.IGNORECASE)
 
 _SUITE_PROMPT_TEMPLATE = (
     "You are observing a Robot Framework test run (read-only; your "
@@ -213,388 +93,10 @@ _FLOW_PROMPT_TEMPLATE = (
 )
 
 
-# Built-in fallbacks, kept in sync with
-# src/rfc/resources/generative_mutate_prompts.resource (the reviewable copy).
-_DEFAULT_MUTATE_PROMPTS = {
-    "MUTATION_PROMPT_TEMPLATE": (
-        "You are mutating a Robot Framework test (suite opted in via the "
-        "generative:mutate tag).\n"
-        "Test '{test}' in suite '{suite}' just finished with status {status}.\n"
-        "Failure message (if any): {message}\n"
-        "Captured run data: {rfc_data}\n"
-        "The test body (keywords and arguments, four-space separated) is:\n"
-        "{body}\n"
-        "Propose ONE new assertion that would make this test stricter or "
-        "probe a nearby behavior. It will be appended to a copy of the test "
-        "and executed.\n"
-        "Reply with EXACTLY one line and nothing else, in Robot Framework "
-        "syntax: the keyword, then each argument, separated by four spaces.\n"
-        "You may only use one of these keywords: {allowed_keywords}.\n"
-        "Arguments may contain only plain values and simple scalar "
-        "variables created by the test body, referenced exactly as they "
-        "appear there; inline expressions, environment variables, and "
-        "list/dict variables are rejected."
-    ),
-    "MUTATION_GRADER_QUESTION": (
-        "A test-mutation agent was asked to strengthen the Robot Framework "
-        "test '{test}' (suite '{suite}', finished with status {status}) by "
-        "proposing one new assertion. Judge the quality of the proposed "
-        "assertion below: is it strict, meaningful, and likely to catch a "
-        "real regression — or is it trivial, tautological, or too lenient?\n"
-        "Proposed assertion: {assertion}"
-    ),
-    "MUTATION_GRADER_EXPECTED": (
-        "A strict, meaningful assertion that checks real test output and "
-        "would fail on a genuine regression; not a tautology, not vacuously "
-        "true, not so loose that any output passes."
-    ),
-    "HEAL_PROMPT_TEMPLATE": (
-        "You are proposing a fix for a failed Robot Framework test (suite "
-        "opted in via the heal:suggest tag). Your fix runs as a SIDE "
-        "EXPERIMENT only; the original failure remains the official "
-        "outcome.\n"
-        "Test '{test}' in suite '{suite}' FAILED with message:\n{message}\n"
-        "Captured run data: {rfc_data}\n"
-        "The test body, one numbered line per keyword (number, then the "
-        "keyword and its arguments, four-space separated):\n"
-        "{body}\n"
-        "Propose a fix by replacing ONE body line with ONE corrected "
-        "assertion (e.g. an updated expected value).\n"
-        "You may only target a line that is itself an assertion (its "
-        "keyword name contains 'Should'); never replace the action that "
-        "produced the output.\n"
-        "Reply with EXACTLY two lines and nothing else:\n"
-        "line 1: the number of the body line to replace\n"
-        "line 2: the replacement in Robot Framework syntax — the keyword, "
-        "then each argument, separated by four spaces.\n"
-        "You may only use one of these keywords: {allowed_keywords}.\n"
-        "Arguments may contain only plain values and simple scalar "
-        "variables created by the test body, referenced exactly as they "
-        "appear there; inline expressions, environment variables, and "
-        "list/dict variables are rejected."
-    ),
-    "HEAL_GRADER_QUESTION": (
-        "A self-healing agent was asked to fix the failed Robot Framework "
-        "test '{test}' (suite '{suite}', failure message: {message}) by "
-        "replacing one body line with a corrected assertion. Judge the "
-        "quality of the proposed fix below: does it plausibly address the "
-        "failure while still checking real behavior — or does it merely "
-        "weaken the test until anything passes?\n"
-        "Proposed fix: {assertion}"
-    ),
-    "HEAL_GRADER_EXPECTED": (
-        "A plausible, targeted fix that addresses the observed failure and "
-        "still asserts something meaningful about real test output; not a "
-        "tautology, not an assertion loosened until any output passes."
-    ),
-}
-
-_mutate_prompts_cache: dict[str, dict[str, str]] = {}  # keyed by resource path
-
-
-def _load_mutate_prompts() -> dict[str, str]:
-    """Parse the externalized prompts resource; fall back to built-ins.
-
-    Reads the ``*** Variables ***`` section of the resource file via the
-    Robot parsing API (the file is never *executed*). Multi-line scalars
-    honour a leading ``SEPARATOR=`` value; ``\\${`` unescapes to ``${``.
-    """
-    path = os.getenv("RFC_GENERATIVE_MUTATE_PROMPTS", "") or str(
-        MUTATE_PROMPTS_RESOURCE
-    )
-    cached = _mutate_prompts_cache.get(path)
-    if cached is not None:
-        return cached
-    prompts = dict(_DEFAULT_MUTATE_PROMPTS)
-    try:
-        from robot.api import get_resource_model
-
-        model = get_resource_model(path)
-        for section in model.sections:
-            for stmt in getattr(section, "body", None) or []:
-                name = (getattr(stmt, "name", "") or "").strip("${}")
-                if name not in prompts:
-                    continue
-                values = list(getattr(stmt, "value", None) or [])
-                separator = " "
-                if values and values[0].startswith("SEPARATOR="):
-                    separator = values[0][len("SEPARATOR=") :].replace("\\n", "\n")
-                    values = values[1:]
-                if values:
-                    prompts[name] = separator.join(values).replace("\\${", "${")
-    except Exception as exc:  # skip-and-log: built-in fallbacks remain
-        logger.warning(
-            "GenerativeListener: could not load mutate prompts from %s "
-            "(using built-in defaults): %s",
-            path,
-            exc,
-        )
-    _mutate_prompts_cache[path] = prompts
-    return prompts
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
-
-
-def _suite_has_tag(node: Any, tag: str) -> bool:
-    """Recursively check a running suite tree for a test carrying ``tag``."""
-    for test in getattr(node, "tests", None) or []:
-        if any(str(t).lower() == tag for t in (getattr(test, "tags", None) or [])):
-            return True
-    return any(
-        _suite_has_tag(child, tag) for child in (getattr(node, "suites", None) or [])
-    )
-
-
-def _test_has_tag(test: Any, tag: str) -> bool:
-    return any(str(t).lower() == tag for t in (getattr(test, "tags", None) or []))
-
-
-def _parse_action(response: str) -> str:
-    """Parse the declared action from the FIRST non-empty response line.
-
-    The prompt demands exactly one action word on the first line; only
-    that line is honoured so rationale text ('Do not retry; choose
-    none') can never steer the run. The word may carry markdown/
-    punctuation decoration. Anything else maps to ``none`` (recorded,
-    never applied).
-    """
-    for line in response.splitlines():
-        word = line.strip().strip("*_`'\".,!?:;()[]{}").strip()
-        if not word:
-            continue
-        return word.lower() if word.lower() in _FLOW_ACTIONS else "none"
-    return "none"
-
-
-# A "simple" scalar variable: ${plain name} — identifier-ish, no nesting,
-# no item access, no attribute access, no inline expressions.
-_SIMPLE_VARIABLE_RE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_ ]*\}")
-
-
-def _safe_mutation_arg(arg: str) -> bool:
-    """True when ``arg`` is plain text plus simple scalar variables only.
-
-    Robot evaluates ``${{...}}`` as inline Python (full builtins access),
-    extended syntax (``${obj.attr}``, ``${list[0]}``) calls into objects,
-    and ``%{ENV}`` / ``@{list}`` / ``&{dict}`` reach beyond plain values —
-    so an allow-listed keyword with a hostile argument could still execute
-    arbitrary code (Codex P1, PR #501). After removing simple scalar
-    variables, any surviving variable opener rejects the argument.
-    Literal braces that are not Robot variable syntax (e.g. the regex
-    ``\\d{3}``) stay legal.
-    """
-    stripped = _SIMPLE_VARIABLE_RE.sub("", arg)
-    return not any(tok in stripped for tok in ("${", "%{", "@{", "&{"))
-
-
-def _parse_mutation(response: str) -> Optional[tuple[str, list[str]]]:
-    """Parse ``(keyword, args)`` from the FIRST non-empty response line.
-
-    The prompt demands exactly one assertion line; only that line is
-    honoured (same rationale as :func:`_parse_action`). The keyword must
-    match ``ALLOWED_MUTATION_KEYWORDS`` case-insensitively and carry at
-    least one argument, and every argument must pass
-    :func:`_safe_mutation_arg`; cells are separated by two-plus spaces or
-    tabs, Robot style. Anything else returns ``None`` (recorded, never
-    run).
-    """
-    for line in response.splitlines():
-        line = line.strip().strip("`").strip()
-        if not line:
-            continue
-        return _parse_assertion_line(line)
-    return None
-
-
-def _parse_assertion_line(line: str) -> Optional[tuple[str, list[str]]]:
-    """Parse one ``keyword    arg    arg`` cell line; None when unsafe."""
-    cells = [c.strip() for c in re.split(r"\t+| {2,}", line) if c.strip()]
-    if len(cells) < 2:
-        return None
-    keyword = _ALLOWED_MUTATION_LOOKUP.get(cells[0].lower())
-    if keyword is None:
-        return None
-    args = cells[1:]
-    if not all(_safe_mutation_arg(a) for a in args):
-        return None
-    return keyword, args
-
-
-def _parse_heal(response: str) -> Optional[tuple[int, str, list[str]]]:
-    """Parse ``(line_number, keyword, args)`` from a heal response.
-
-    The prompt demands exactly two lines: a 1-based body line number,
-    then one replacement assertion. Only the first two non-empty lines
-    are honoured (same trailing-prose defence as :func:`_parse_action`
-    / :func:`_parse_mutation`); the assertion obeys the mutate safety
-    rails (allow-listed keyword, safe arguments). Anything else returns
-    ``None`` (recorded, never run). Range-checking the line number
-    against the actual body happens at build time.
-    """
-    lines = [ln for ln in (raw.strip() for raw in response.splitlines()) if ln]
-    if len(lines) < 2:
-        return None
-    number_word = lines[0].strip("*_`'\".,!?:;()[]{}").strip()
-    try:
-        line_number = int(number_word)
-    except ValueError:
-        return None
-    if line_number < 1:
-        return None
-    assertion = _parse_assertion_line(lines[1].strip("`").strip())
-    if assertion is None:
-        return None
-    keyword, args = assertion
-    return line_number, keyword, args
-
-
-def _normalize_keyword_name(name: str) -> str:
-    """Normalize a keyword name exactly as Robot resolves it.
-
-    Delegates to ``robot.utils.normalize`` (casefold + all-whitespace removal)
-    with underscores ignored, so the collision guard matches Robot's own
-    resolution — including Unicode case-folding like ``ſ`` → ``s`` that ASCII
-    ``lower()`` would miss (#516).
-    """
-    from robot.utils import normalize
-
-    return normalize(name, ignore=["_"])
-
-
-def _suite_shadows_keyword(data: Any, keyword: str) -> bool:
-    """True when a user keyword in the suite hierarchy would hijack the
-    inserted assertion.
-
-    The assertion is inserted as the explicit ``BuiltIn.<keyword>`` call, and
-    Robot resolves a *qualified* call against suite keywords by their full
-    name before the library lookup. So only a suite keyword that resolves to
-    ``BuiltIn.<keyword>`` can hijack it (#516) — a bare ``Should Contain``
-    user keyword shadows the *unqualified* call, not our qualified one, and
-    must not block the mutation. Two ways to shadow the qualified call:
-
-    * a literal name that normalizes equal to ``BuiltIn.<keyword>``
-      (case/space/underscore-insensitive via Robot's own normalization); or
-    * an embedded-argument name like ``BuiltIn.${x}`` whose Robot-generated
-      pattern matches ``BuiltIn.Should Contain``.
-
-    Walks the suite parent chain, inspecting both the suite's own keyword
-    tables and its imported-resource owners. An imported resource file whose
-    owner name is literally ``BuiltIn`` (#528) makes Robot resolve the
-    qualified ``BuiltIn.<keyword>`` against both the real library and the
-    resource ("Multiple keywords ... found"), so it is treated as a shadow and
-    blocked conservatively.
-    """
-    from robot.running.arguments.embedded import EmbeddedArguments
-
-    qualified = f"BuiltIn.{keyword}"
-    wanted_literal = {_normalize_keyword_name(qualified)}
-    builtin_owner = _normalize_keyword_name("BuiltIn")
-    # Raw name (not normalized) for Robot's embedded-arg regex matching.
-    embedded_targets = (qualified,)
-    node = getattr(data, "parent", None)
-    while node is not None:
-        resource = getattr(node, "resource", None)
-        for kw in getattr(resource, "keywords", None) or []:
-            name = getattr(kw, "name", "") or ""
-            if _normalize_keyword_name(name) in wanted_literal:
-                return True
-            embedded = EmbeddedArguments.from_name(name)
-            if embedded is not None and any(
-                embedded.name.fullmatch(target) for target in embedded_targets
-            ):
-                return True
-        # #528: an imported resource whose owner name is literally ``BuiltIn``
-        # collides with the qualified ``BuiltIn.<keyword>`` call ("Multiple
-        # keywords ... found"). The suite-own walk above never sees imported
-        # owners, so inspect the import table and block conservatively — a
-        # legitimate suite never names a resource ``BuiltIn``. Only RESOURCE
-        # imports collide; the real BuiltIn *library* is a LIBRARY import.
-        for imp in getattr(resource, "imports", None) or []:
-            if (getattr(imp, "type", "") or "").upper() != "RESOURCE":
-                continue
-            owner = Path(str(getattr(imp, "name", "") or "")).stem
-            if _normalize_keyword_name(owner) == builtin_owner:
-                return True
-        node = getattr(node, "parent", None)
-    return False
-
-
-def _fill_template(template: str, **values: Any) -> str:
-    """Substitute ``{placeholder}`` tokens without ``str.format``.
-
-    Prompt templates are reviewer-editable and may legitimately contain
-    literal Robot variables like ``${answer}``; ``str.format`` would read
-    that as a ``{answer}`` placeholder and raise ``KeyError`` (Codex P2,
-    PR #501). Plain replacement only touches the known placeholders.
-    """
-    for key, value in values.items():
-        template = template.replace("{" + key + "}", str(value))
-    return template
-
-
-def _assertion_like(item: Any) -> bool:
-    """True when a body item looks like an assertion (its keyword name
-    contains 'should', covering the BuiltIn assertion family and most
-    custom verification keywords). Heal experiments may only replace
-    assertion lines: swapping out the *action* that caused the failure
-    (``Ask LLM``, ``Fail``, a setup step) for an assertion would make the
-    experiment trivially green and surface a false healing candidate
-    (Codex P2, PR #518)."""
-    return "should" in (getattr(item, "name", "") or "").lower()
-
-
-def _render_body(test: Any, numbered: bool = False) -> str:
-    """Render a test body as Robot-style lines for the mutation/heal
-    prompts, so the LLM can see the keywords, arguments, and assigned
-    variables. ``numbered`` prefixes each line with its 1-based number
-    (heal mode asks the LLM to name the line it wants to replace)."""
-    lines = []
-    for index, kw in enumerate(getattr(test, "body", None) or [], start=1):
-        assign = [str(a) for a in (getattr(kw, "assign", None) or [])]
-        name = getattr(kw, "name", "") or ""
-        args = [str(a) for a in (getattr(kw, "args", None) or [])]
-        cells = (["    ".join(assign) + " ="] if assign else []) + [name] + args
-        if numbered:
-            cells.insert(0, str(index))
-        lines.append("    ".join(c for c in cells if c))
-    return "\n".join(lines) or "(empty)"
-
-
-def _add_tag(test: Any, tag: str) -> None:
-    """Add a tag on either a robot.running ``Tags`` or a plain list."""
-    tags = getattr(test, "tags", None)
-    if tags is None:
-        return
-    if hasattr(tags, "add"):
-        tags.add(tag)
-    else:
-        tags.append(tag)
-
-
-def _copy_test(test: Any) -> Any:
-    """Deep-copy a running-model test (robot objects expose ``deepcopy``)."""
-    if hasattr(test, "deepcopy"):
-        return test.deepcopy()
-    import copy as _copy
-
-    return _copy.deepcopy(test)
-
-
-def _test_failed(result: Any) -> bool:
-    """True only for a genuine FAIL — SKIP must not look like a failure."""
-    status = getattr(result, "status", None)
-    if status is not None:
-        return str(status).upper() == "FAIL"
-    return not getattr(result, "passed", True)
-
-
 class GenerativeListener(BaseListener):
-    """Record LLM observations into ``agentic_decisions``; in flow mode
-    (``generative:flow``) additionally apply skip / retry / fork; in
-    mutate mode (``generative:mutate``) generate, run, and grade
-    LLM-suggested test mutations."""
+    """Record LLM observations into ``agentic_decisions``; flow mode applies
+    skip / retry / fork, mutate / heal generate, run, and grade LLM-suggested
+    test changes."""
 
     def __init__(
         self,
@@ -612,7 +114,7 @@ class GenerativeListener(BaseListener):
         self._db: Optional[HarnessDatabase] = None
         self._session_id = ""
         self._suite_name = ""
-        self._mode = ""  # "" | "observe" | "flow" | "mutate"
+        self._mode = ""  # "" | observe | flow | mutate | heal
         self._budget_tokens = DEFAULT_BUDGET_TOKENS
         self._tokens_used = 0
         self._budget_exhausted = False
@@ -634,9 +136,7 @@ class GenerativeListener(BaseListener):
     def _observing(self) -> bool:
         return self._mode != ""
 
-    # ------------------------------------------------------------------
-    # Hooks
-    # ------------------------------------------------------------------
+    # --- Hooks ---
 
     def on_suite_start(self, data: Any, result: Any) -> None:
         self._suite_name = getattr(data, "name", "") or ""
@@ -736,9 +236,7 @@ class GenerativeListener(BaseListener):
             return  # flow is per-test opt-in: untagged siblings stay static
         self._handle_flow_failure(data, result)
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
+    # --- Internals ---
 
     def _read_budget(self) -> int:
         raw = os.getenv("RFC_GENERATIVE_BUDGET_TOKENS", "")
@@ -773,8 +271,8 @@ class GenerativeListener(BaseListener):
         return self._db
 
     def _session_has_harness_row(self) -> bool:
-        """The FK requires an ``agentic_harnesses`` row; warn and disable
-        when the session was never started with ``rfc harness start`` (#419)."""
+        """The FK requires an ``agentic_harnesses`` row; warn and disable when
+        the session was never started with ``rfc harness start`` (#419)."""
         db = self._get_db()
         if db is None:
             return False
@@ -804,8 +302,8 @@ class GenerativeListener(BaseListener):
         return self._provider
 
     def _prompt_llm(self, hook_event: str, test_name: str, prompt: str) -> str:
-        """Prompt the LLM honouring the budget; '' means no response
-        (budget exhausted, provider missing, or call failed)."""
+        """Prompt the LLM honouring the budget; '' means no response (budget
+        exhausted, provider missing, or call failed)."""
         if self._budget_exhausted:
             return ""
         if self._tokens_used >= self._budget_tokens:
@@ -842,9 +340,7 @@ class GenerativeListener(BaseListener):
             )
         )
 
-    # ------------------------------------------------------------------
-    # Flow mode (#359)
-    # ------------------------------------------------------------------
+    # --- Flow mode (#359): skip / retry / fork ---
 
     def _handle_flow_failure(self, data: Any, result: Any) -> None:
         """Ask the LLM for a flow action on a failed test and apply it."""
@@ -862,8 +358,8 @@ class GenerativeListener(BaseListener):
         decision_id = uuid4().hex  # pre-generated so skip can stamp it
         # Audit guarantee: the decision row is persisted BEFORE the run is
         # mutated. Applicability is pre-checked so `applied` is recorded
-        # truthfully; if persistence fails the mutation is withheld —
-        # active flow control must never be unauditable.
+        # truthfully; if persistence fails the mutation is withheld — active
+        # flow control must never be unauditable.
         applied = 1 if self._action_applicable(action, data) else 0
         persisted = self._persist(
             AgenticDecision(
@@ -913,8 +409,8 @@ class GenerativeListener(BaseListener):
             tests, index = self._suite_position(data)
             if tests is None or index + 1 >= len(tests):
                 return False
-            # Flow is per-test opt-in: never rewrite a next test that does
-            # not itself carry the flow tag (tags are per test in RF).
+            # Flow is per-test opt-in: never rewrite a next test that does not
+            # itself carry the flow tag (tags are per test in RF).
             if not _test_has_tag(tests[index + 1], GENERATIVE_FLOW_TAG):
                 logger.warning(
                     "GenerativeListener: skip proposed after test %r but the "
@@ -999,8 +495,8 @@ class GenerativeListener(BaseListener):
 
     def _apply_fork(self, data: Any, test_name: str) -> int:
         """Insert one tagged copy per configured fork model, bracketed by
-        ``Save LLM Model`` / ``Restore LLM Model`` so later original tests
-        keep running against the suite's pre-fork model."""
+        ``Save LLM Model`` / ``Restore LLM Model`` so later original tests keep
+        running against the suite's pre-fork model."""
         models = self._fork_models()
         if not models:
             logger.warning(
@@ -1042,10 +538,10 @@ class GenerativeListener(BaseListener):
                 _add_tag(restore, FORK_MARKER_TAG)
                 restore.body.clear()
                 restore.body.create_keyword(name="Restore LLM Model", args=[])
-                # The restore must be unconditional: a copied setup that
-                # fails would prevent Restore LLM Model from running (model
-                # leak into later tests) and a copied teardown would run an
-                # extra time with an empty body.
+                # The restore must be unconditional: a copied setup that fails
+                # would prevent Restore LLM Model from running (model leak into
+                # later tests) and a copied teardown would run an extra time
+                # with an empty body.
                 restore.setup = None
                 restore.teardown = None
                 tests.insert(index + inserted + 1, restore)
@@ -1058,19 +554,17 @@ class GenerativeListener(BaseListener):
                 )
         return 1 if inserted else 0
 
-    # ------------------------------------------------------------------
-    # Mutate mode (#360)
-    # ------------------------------------------------------------------
+    # --- Mutate mode (#360): append one allow-listed assertion ---
 
     def _handle_mutation(self, data: Any, result: Any) -> None:
-        """Ask the LLM for one new assertion, run it as a sibling test,
-        and grade the mutation's quality in parallel."""
+        """Ask the LLM for one new assertion, run it as a sibling test, and
+        grade the mutation's quality in parallel."""
         status = str(getattr(result, "status", "") or "").upper()
         if status != "PASS":
             # Failed tests are not mutated: Robot stops at the first failing
-            # keyword, so an assertion appended after the failing body would
-            # never execute — recording it as applied would be untrue.
-            # Skipped / not-run tests have no output to mutate against.
+            # keyword, so an assertion appended after it would never execute —
+            # recording it as applied would be untrue. Skipped / not-run tests
+            # have no output to mutate against.
             return
         if (
             _test_has_tag(data, MUTATED_MARKER_TAG)
@@ -1097,12 +591,10 @@ class GenerativeListener(BaseListener):
             return
         mutation = _parse_mutation(response)
         decision_id = uuid4().hex
-        # Audit guarantee (same as flow mode): the decision row is
-        # persisted BEFORE the run is mutated; if persistence fails the
-        # mutation is withheld — generated tests must never be unauditable.
+        # Persist before inserting (audit guarantee, see _handle_flow_failure).
         # The failable construction (deepcopy/create_keyword) happens here,
-        # pre-persist, so `applied` is truthful (#501): only the plain
-        # list insert remains after the row is written.
+        # pre-persist, so `applied` is truthful (#501); only the plain list
+        # insert remains after the row is written.
         staged = None
         if mutation is not None and self._suite_position(data)[0] is not None:
             keyword, args = mutation
@@ -1154,11 +646,9 @@ class GenerativeListener(BaseListener):
     def _build_mutation_copy(
         self, data: Any, test_name: str, keyword: str, args: list[str]
     ) -> Any | None:
-        """Construct the ``<original>::mutated::<short_hash>`` sibling copy.
-
-        All failable work (deepcopy, tagging, keyword creation) happens
-        here so callers can persist a truthful ``applied`` before the
-        trivial list insert (#501)."""
+        """Construct the ``<original>::mutated::<short_hash>`` sibling copy. All
+        failable work happens here so callers can persist a truthful ``applied``
+        before the trivial list insert (#501)."""
         if _suite_shadows_keyword(data, keyword):
             logger.warning(
                 "GenerativeListener: not mutating %r — suite defines a user "
@@ -1174,10 +664,9 @@ class GenerativeListener(BaseListener):
             copy = _copy_test(data)
             copy.name = f"{test_name}::mutated::{short_hash}"
             _add_tag(copy, MUTATED_MARKER_TAG)
-            # Explicit BuiltIn. qualification: a user keyword named e.g.
-            # "Should Be Equal" would shadow the BuiltIn at resolution
-            # time, so the allow-listed name alone cannot guarantee which
-            # code runs (#516).
+            # Explicit BuiltIn. qualification: a user keyword of the same name
+            # would shadow the BuiltIn at resolution time, so the allow-listed
+            # name alone cannot guarantee which code runs (#516).
             copy.body.create_keyword(name=f"BuiltIn.{keyword}", args=list(args))
         except Exception as exc:  # skip-and-log: never fail the run
             logger.warning(
@@ -1189,8 +678,8 @@ class GenerativeListener(BaseListener):
         return copy
 
     def _insert_mutation_copy(self, data: Any, copy: Any) -> int:
-        """Insert a pre-built mutated copy right after its original; it runs
-        inline and gets its own ``test_runs`` row from the results listener."""
+        """Insert a pre-built copy right after its original; it runs inline and
+        gets its own ``test_runs`` row from the results listener."""
         tests, index = self._suite_position(data)
         if tests is None:
             return 0
@@ -1213,10 +702,8 @@ class GenerativeListener(BaseListener):
         keyword: str,
         args: list[str],
     ) -> None:
-        """Score the mutation's quality with the ``Grade Answer`` core and
-        write ``metric_key='mutation_quality'`` to ``agentic_metrics``,
-        reusing the decision id as the metric id (the join key). Advisory
-        only: failures are logged and never block the recorded mutation."""
+        """Score the mutation quality and write ``mutation_quality`` keyed by
+        the decision id. Advisory: failures never block the recorded mutation."""
         prompts = _load_mutate_prompts()
         assertion_line = "    ".join([keyword, *args])
         question = _fill_template(
@@ -1242,8 +729,8 @@ class GenerativeListener(BaseListener):
         expected: str,
         assertion_line: str,
     ) -> None:
-        """Shared grading core for mutate and heal: score one proposed
-        assertion and write ``mutation_quality`` keyed by the decision id."""
+        """Shared grading core for mutate and heal: score one proposed assertion
+        and write ``mutation_quality`` keyed by the decision id."""
         if self._budget_exhausted:
             return
         if self._tokens_used >= self._budget_tokens:
@@ -1290,14 +777,12 @@ class GenerativeListener(BaseListener):
                 exc,
             )
 
-    # ------------------------------------------------------------------
-    # Heal mode (#361)
-    # ------------------------------------------------------------------
+    # --- Heal mode (#361): side-experiment fix, applied=0 always ---
 
     def _handle_heal(self, data: Any, result: Any) -> None:
-        """On an opted-in failure, record an LLM-proposed fix (applied=0
-        ALWAYS — the original failure stays the official outcome) and run
-        it as a side-experiment sibling test."""
+        """On an opted-in failure, record an LLM-proposed fix (``applied=0``
+        ALWAYS — the original failure stays the official outcome) and run it as
+        a side-experiment sibling test."""
         experiment_decision_id = self._heal_experiment_ids.pop(id(data), "")
         if experiment_decision_id:
             self._record_heal_outcome(experiment_decision_id, data, result)
@@ -1329,13 +814,10 @@ class GenerativeListener(BaseListener):
             return
         heal = _parse_heal(response)
         decision_id = uuid4().hex
-        # Audit guarantee (same as flow/mutate): the decision row is
-        # persisted BEFORE the experiment is inserted; if persistence
-        # fails the experiment is withheld. The failable construction
-        # happens pre-persist; only the plain list insert remains after
-        # the row is written. `applied` stays 0 either way: a heal never
-        # changes the official outcome — heal_passed (written when the
-        # experiment finishes) is the signal that the experiment ran.
+        # Persist before inserting (audit guarantee, see _handle_flow_failure);
+        # failable construction happens pre-persist. `applied` stays 0 either
+        # way: a heal never changes the official outcome — heal_passed (written
+        # when the experiment finishes) is the signal that the experiment ran.
         staged = None
         body = list(getattr(data, "body", None) or [])
         body_len = len(body)
@@ -1350,11 +832,9 @@ class GenerativeListener(BaseListener):
                     body_len,
                 )
             elif not _assertion_like(body[line_number - 1]):
-                # Replacing the ACTION that caused the failure (Ask LLM,
-                # Fail, a setup step) with an assertion would make the
-                # experiment trivially green and surface a false healing
-                # candidate (Codex P2, PR #518). Only assertion lines are
-                # eligible targets.
+                # Replacing the ACTION that caused the failure with an assertion
+                # would make the experiment trivially green and surface a false
+                # healing candidate (#518). Only assertion lines are eligible.
                 logger.warning(
                     "GenerativeListener: heal for %r targeted body line %d "
                     "(%r), which is not an assertion; recorded, not run.",
@@ -1425,9 +905,9 @@ class GenerativeListener(BaseListener):
         keyword: str,
         args: list[str],
     ) -> Any | None:
-        """Construct the ``<original>::healed::<short_hash>`` side
-        experiment: a deep copy with body line ``line_number`` (1-based)
-        replaced by the proposed assertion."""
+        """Construct the ``<original>::healed::<short_hash>`` side experiment: a
+        deep copy with 1-based body line ``line_number`` replaced by the
+        proposed assertion."""
         assertion_line = "    ".join([keyword, *args])
         short_hash = hashlib.sha1(
             f"{line_number}:{assertion_line}".encode()
@@ -1450,8 +930,8 @@ class GenerativeListener(BaseListener):
 
     def _record_heal_outcome(self, decision_id: str, data: Any, result: Any) -> None:
         """Write the side experiment's outcome to ``agentic_metrics`` as
-        ``heal_passed`` (1.0/0.0) with id ``<decision_id>-heal`` — the
-        Superset healing-candidates chart joins it back to the decision."""
+        ``heal_passed`` (1.0/0.0) with id ``<decision_id>-heal`` — the Superset
+        healing-candidates chart joins it back to the decision."""
         status = str(getattr(result, "status", "") or "").upper()
         passed = status == "PASS" if status else bool(getattr(result, "passed", False))
         db = self._get_db()
@@ -1473,6 +953,8 @@ class GenerativeListener(BaseListener):
                 decision_id,
                 exc,
             )
+
+    # --- Persist / budget ---
 
     def _write_budget_exhausted(self, hook_event: str, test_name: str) -> None:
         """Record ONE budget_exhausted marker, then go silent for the suite."""

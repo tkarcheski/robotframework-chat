@@ -1,15 +1,9 @@
 """Pluggable grader dispatcher for OpenAI-Evals suites (#621).
 
 Three graders behind one :func:`get_grader` factory, all satisfying the
-:class:`rfc.graders.base.Grader` Protocol:
-
-- ``exact``     — deterministic string equality (:class:`ExactGrader`).
-- ``regex``     — deterministic pattern search (:class:`RegexGrader`).
-- ``llm_judge`` — LLM-as-judge, wrapping the existing ``rfc.grader.Grader``
-  (:class:`LLMJudgeGrader`); requires an ``llm_client``.
-
-Suites name their grader in config and resolve it here, so adding a benchmark
-never means reaching into grader internals.
+:class:`rfc.graders.base.Grader` Protocol: ``exact`` and ``regex`` are
+deterministic and offline; ``llm_judge`` wraps ``rfc.grader.Grader`` and needs
+an ``llm_client``. Suites name their grader in config and resolve it here.
 """
 
 from __future__ import annotations
@@ -30,21 +24,15 @@ __all__ = [
     "GRADERS",
 ]
 
-# Names of the graders that need no LLM client (constructed directly).
+# Valid grader names accepted by get_grader.
 GRADERS = ("exact", "regex", "llm_judge")
 
 
 def get_grader(name: str, llm_client: Optional[Any] = None) -> Grader:
-    """Return a grader instance by name.
+    """Return a grader instance by name (``exact``/``regex``/``llm_judge``).
 
-    Args:
-        name: One of ``exact``, ``regex``, ``llm_judge``.
-        llm_client: Required for ``llm_judge`` (the model used as judge);
-            ignored by the pure graders.
-
-    Raises:
-        ValueError: for an unknown grader name, or when ``llm_judge`` is
-            requested without an ``llm_client``.
+    ``llm_judge`` requires an ``llm_client``; raises ``ValueError`` for an
+    unknown name or a missing client.
     """
     key = name.strip().lower()
     if key == "exact":

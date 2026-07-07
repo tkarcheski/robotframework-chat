@@ -1,10 +1,21 @@
 # Self-Healing LLM Test Framework: Design Document
 
-> **Status:** Design (not yet implemented)
-> **Branch:** `feat-self-healing-deco`
 > **Author:** tkarcheski
-> **Date:** 2026-04-25
-> **Patent:** Provisional filing planned. Core IP in private submodule.
+> **Date:** 2026-04-25 (v2 reality-sync 2026-07-06)
+
+> **Implementation status (2026-07-06):**
+> - **Part I — decorator:** implemented in `src/rfc/self_healing.py`, but
+>   **not applied to any keyword** and not exported from `rfc.__init__`. Its
+>   only callers are its unit tests. Three strategies remain: prompt rewrite,
+>   parameter variation, model fallback.
+> - **Part I — listener:** `src/rfc/self_healing_listener.py` exists and reads
+>   `self_healing_*` RFC_DATA by key. It does **not** import the decorator.
+> - **Removed in v2 (see [§3.7](#37-removed-in-v2)):** the prose/`@skill-name`
+>   directive invocation style and the "Strategy 4 — escalate via GitHub issue"
+>   path (`_create_github_issue`) — both had zero first-party callers.
+> - **Part II — LoRA fine-tuning pipeline (§4) and everything downstream of it
+>   (§7–§8, most of §5/§6/§9) are NOT implemented.** They remain a roadmap
+>   sketch, not a description of existing code.
 
 ---
 
@@ -62,7 +73,6 @@ Robot Test Execution
   |     |     1. Prompt modification (LLM rewrites prompt)
   |     |     2. Parameter adjustment (temperature, top_p, seed, max_tokens)
   |     |     3. Model fallback (try different model/endpoint)
-  |     |     4. Escalate (create GitHub issue)
   |     +-- Emits RFC_DATA for every attempt
   |
   +-- SelfHealingListener (standalone, opt-in)
@@ -100,34 +110,18 @@ The decorator handles **active healing** (modify and retry). The listener
 handles **passive observation** (record what happened for the nightly batch).
 Both are required when the LLM is "listening" (learning from failures).
 
-#### Decorator invocation styles
+#### Decorator invocation
 
-The decorator supports two equivalent forms:
+The decorator takes a single keyword-only `config`:
 
 ```python
-# Structured config — explicit knobs.
 @self_healing(config=SelfHealingConfig(fallback_models=["qwen2.5:32b"]))
-
-# Prose form — natural language with @skill-name tokens.
-@self_healing("@timeout-skill retry with longer timeout, adjust other variables")
-@self_healing("@modify-skill retry with agent-x's suggestions")
+@keyword("My Graded Keyword")
+def my_keyword(self, prompt, expected): ...
 ```
 
-Prose directives are parsed into two parts: ``@skill-name`` tokens that select
-preset config overrides (see ``SKILL_CONFIG_OVERRIDES`` in
-``src/rfc/self_healing.py``), and the remaining prose, which becomes
-**guidance** handed to the LLM during prompt rewriting. The two forms can be
-combined — skill overrides layer on top of an explicit ``config``.
-
-Initial registered skills:
-
-| Skill | Effect on `SelfHealingConfig` |
-|-------|-------------------------------|
-| `@timeout-skill` | `max_prompt_retries=0`, `max_param_retries=5` — bias toward parameter/timeout retries. |
-| `@modify-skill`  | `max_prompt_retries=4`, `max_param_retries=0` — bias toward LLM-driven prompt rewrites. |
-
-Unknown skill tokens are ignored with a warning so adding new skills is
-backwards-compatible.
+> The v1 prose/`@skill-name` directive form (`@self_healing("@timeout-skill …")`)
+> was removed in v2 — see [§3.7](#37-removed-in-v2).
 
 ### 3.2 Strategy Chain
 
@@ -154,13 +148,10 @@ Strategy 3: MODEL FALLBACK
   - E.g., if phi4:14b fails, try qwen2.5:32b.
   - Fallback models are configured per test suite in test_suites.yaml.
 
-Strategy 4: ESCALATE
-  - Create a GitHub issue with:
-    - Test name, suite, tier
-    - All attempted strategies and their results
-    - Full prompt history (original + all modifications)
-    - Model, parameters, and failure context
-  - Uses `gh issue create` via subprocess.
+(v1 had a Strategy 4 "ESCALATE — create a GitHub issue via `gh issue create`".
+ It was removed in v2; when all strategies are exhausted the decorator now
+ simply emits `self_healing_strategy="exhausted"` and returns the last result.
+ See §3.7.)
 ```
 
 ### 3.3 Decorator Design
@@ -183,7 +174,7 @@ from .models import GradeResult
 class HealingAttempt:
     """Record of a single self-healing attempt."""
     attempt_number: int
-    strategy: str           # "prompt", "params", "model", "escalate"
+    strategy: str           # "original", "prompt", "params", "model"
     prompt_used: str
     parameters: dict        # temperature, max_tokens, seed, etc.
     model_used: str
@@ -196,8 +187,6 @@ class SelfHealingConfig:
     max_prompt_retries: int = 2
     max_param_retries: int = 3
     fallback_models: List[str] = []
-    escalate_to_github: bool = True
-    github_repo: str = "tkarcheski/robotframework-chat"
     score_threshold: float = 1.0   # minimum passing score
 
 
@@ -254,10 +243,7 @@ def self_healing(
                     return result
             self.client.model = original_model
 
-            # --- Strategy 4: Escalate ---
-            if cfg.escalate_to_github:
-                _create_github_issue(cfg, attempts)
-
+            # --- All strategies exhausted ---
             _emit_healing_data(attempts, success=False)
             return result  # return last failed result
 
@@ -384,9 +370,30 @@ class AnalyzerAgent:
         ...
 ```
 
+### 3.7 Removed in v2
+
+Two capabilities described by v1 of this document were removed in the v2
+cleanup because they had **zero first-party call sites** — nothing in
+`src/rfc`, `robot/`, `scripts/`, or `modules/` invoked them; only the module's
+own docstrings and unit tests referenced them.
+
+| Removed | What it was | Public symbols deleted |
+|---------|-------------|------------------------|
+| **Prose / `@skill-name` directive form** | `@self_healing("@timeout-skill retry with…")` — a runtime NL parser that turned a prose string into config overrides + LLM "guidance". | `ParsedDirective`, `_parse_directive`, `_apply_skills`, `SKILL_CONFIG_OVERRIDES`, `_SKILL_TOKEN_RE`, and the decorator's positional `prompt` parameter. |
+| **Strategy 4 — GitHub-issue escalation** | On exhaustion, shelled out to `gh issue create` via `subprocess`. | `_create_github_issue`, and the `escalate_to_github` / `github_repo` fields of `SelfHealingConfig`. |
+
+The decorator is now **config-only** (`self_healing(*, config=None)`), the
+strategy chain ends at model fallback, and `_rewrite_prompt` no longer takes a
+`guidance` argument. RFC_DATA keys (§3.5) are unchanged.
+
 ---
 
 ## 4. Part II: LoRA Fine-Tuning Pipeline
+
+> **NOT IMPLEMENTED.** Everything below in Part II (and the hardware, DB-schema,
+> and fine-tuning config that support it) is an unbuilt roadmap sketch. No
+> `src/rfc/fine_tuning/` package, `scripts/nightly_finetune.py`, or associated
+> tables exist. Retained here as design intent only.
 
 ### 4.1 Architecture
 
@@ -584,7 +591,13 @@ naive implementations.
 
 ### 6.1 Files Modified
 
-| Existing File | Changes |
+> **Status:** the table below is the v1 integration *plan*. As of 2026-07-06
+> **none of these modifications have been made.** In particular
+> `src/rfc/keywords.py`'s `Ask And Grade With Retry` still uses its own
+> independent 8x-token retry and does **not** apply `@self_healing`, and
+> `src/rfc/__init__.py` does not export the module.
+
+| Existing File | Planned change (not yet done) |
 |---------------|---------|
 | `src/rfc/test_database.py` | Add self-healing columns to `test_result_artifacts` |
 | `config/test_suites.yaml` | Add `self_healing:` and `fine_tuning:` sections |
@@ -610,7 +623,7 @@ naive implementations.
 | `config/fine_tuning.yaml` | Training hyperparameters |
 | `tests/test_self_healing.py` | Unit tests for decorator + listener |
 | `tests/test_fine_tuning.py` | Unit tests for pipeline |
-| `robot/tier1/ci/self_healing_smoke.robot` | Integration smoke test |
+| `robot/10__tier1/ci/self_healing_smoke.robot` | Integration smoke test |
 
 ### 6.3 Existing Patterns Reused
 
@@ -735,8 +748,6 @@ self_healing:
   score_threshold: 1.0            # minimum passing score
   max_prompt_retries: 2           # prompt modification attempts
   max_param_retries: 3            # parameter variation attempts
-  escalate_to_github: true
-  github_repo: "tkarcheski/robotframework-chat"
   fallback_models:                # ordered fallback list
     - "qwen2.5:32b"
     - "qwen3.5:27b"
@@ -818,7 +829,7 @@ uv run pytest tests/test_fine_tuning.py     # pipeline, dataset builder, registr
 
 ```bash
 # Robot suite that intentionally triggers failures and verifies healing
-make robot -s robot/tier1/ci/self_healing_smoke.robot
+make robot -s robot/10__tier1/ci/self_healing_smoke.robot
 
 # Dry run to verify listener registration
 make robot-dryrun
@@ -844,7 +855,7 @@ python scripts/nightly_finetune.py --full
 
 # Verify deployment
 ollama list | grep ft
-make robot -s robot/tier2/math  # run against fine-tuned model
+make robot -s robot/20__tier2/math  # run against fine-tuned model
 ```
 
 ### 10.5 Pre-Commit

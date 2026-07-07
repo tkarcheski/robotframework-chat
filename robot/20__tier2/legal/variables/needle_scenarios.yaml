@@ -1,0 +1,57 @@
+# Needle-in-a-Haystack Test Scenarios
+# Each scenario tests the LLM's ability to locate a specific clause
+# buried within the larger software agreement.
+
+NEEDLE_SCENARIOS:
+  - name: "Auto-Renewal Clause"
+    question: >
+      Does this agreement contain an auto-renewal clause? If so, quote the
+      relevant text and state what section it is in.
+    expected: >
+      Yes. Section 3.3 states the agreement automatically renews for successive
+      one (1) year periods at the then-current list price unless Licensee
+      provides written notice of non-renewal at least ninety (90) days prior
+      to expiration.
+    difficulty: medium
+
+  - name: "Data Retention After Termination"
+    question: >
+      What happens to the Licensee's usage data after this agreement terminates?
+      Quote the relevant provision.
+    expected: >
+      Section 6.3 states that notwithstanding termination, Licensor retains
+      the right to maintain anonymized and aggregated usage data, telemetry,
+      and performance metrics in perpetuity for product development, industry
+      benchmarking, and service optimization.
+    difficulty: hard
+
+  - name: "Non-Compete Duration"
+    question: >
+      Is there a non-compete or non-solicitation obligation in this agreement?
+      If so, what is its duration and scope?
+    expected: >
+      Yes. Section 12.1 contains a 24-month post-termination non-compete
+      preventing Licensee from developing, licensing, marketing, or using
+      competing software. Section 12.2 adds a 12-month non-solicitation of
+      Licensor employees.
+    difficulty: hard
+
+  - name: "Liability Cap Amount"
+    question: >
+      What is the maximum aggregate liability cap for the Licensor under
+      this agreement?
+    expected: >
+      Section 9.2 caps Licensor's total aggregate liability at the total Fees
+      paid by Licensee in the twelve (12) months immediately preceding the
+      event giving rise to the claim.
+    difficulty: medium
+
+  - name: "Governing Law Jurisdiction"
+    question: >
+      Which jurisdiction's laws govern this agreement and where must disputes
+      be resolved?
+    expected: >
+      Section 13.1 specifies Delaware law governs. Section 11.1 requires
+      binding arbitration in Wilmington, Delaware, administered by the
+      American Arbitration Association.
+    difficulty: easy

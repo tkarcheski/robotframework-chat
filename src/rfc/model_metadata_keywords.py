@@ -6,7 +6,7 @@ when the optional ``playwright`` extra is not installed.  When the Browser
 library is missing, the research keyword raises :class:`SkipExecution` so
 the surrounding test is skipped rather than failed.
 
-Pairs with ``robot/tier1/ci/fetch_model_metadata.robot``.
+Pairs with ``robot/10__tier1/ci/fetch_model_metadata.robot``.
 """
 
 from __future__ import annotations
@@ -52,16 +52,7 @@ class ModelMetadataKeywords:
         output_file: str,
         generated_at: str | None = None,
     ) -> str:
-        """Serialise ``models`` to a YAML file and return the file path.
-
-        Args:
-            models: Mapping of model name to metadata dict.
-            output_file: Destination path for the YAML file.
-            generated_at: ISO date string; defaults to today if omitted.
-
-        Returns:
-            Absolute path to the written file.
-        """
+        """Serialise ``models`` to a YAML file and return the file path."""
         when = generated_at or date.today().isoformat()
         payload = _build_metadata_payload(models, when)
         path = Path(output_file)

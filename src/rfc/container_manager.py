@@ -378,14 +378,11 @@ class ContainerManager:
             logger.warn(f"Failed to list orphaned containers: {e}")
         return removed
 
-    def create_temp_volume(
-        self, container_id: str, size_mb: Optional[int] = None
-    ) -> Path:
+    def create_temp_volume(self, container_id: str) -> Path:
         """Create a temporary directory for container use.
 
         Args:
             container_id: Container ID this volume is for
-            size_mb: Optional size limit (not enforced, just tracked)
 
         Returns:
             Path to temp directory

@@ -1,19 +1,10 @@
 """LLM-as-judge grader for AgentSkill behavioral test cases.
 
-A skill test case asserts that the agent (with a SKILL.md context loaded)
-exhibits one or more expected behaviors in its response, and does NOT
-exhibit any prohibited behaviors. Each behavior is graded by an LLM judge
-that returns a normalized score in [0.0, 1.0].
-
-The grader is two-phase:
-
-  1. ``_check_must_not``: one LLM call per prohibited behavior. A single
-     violation is enough to fail the test, so each call is independent.
-  2. ``_grade_behaviors_batch``: one LLM call covering all expected
-     behaviors so the judge can amortize context costs across assertions.
-
-A test passes when (a) no must_not behaviors are violated and
-(b) ``behavior_pass_rate >= pass_threshold``.
+A skill test case asserts the agent (with a SKILL.md context loaded) exhibits
+expected behaviors and avoids prohibited ones, each scored by an LLM judge in
+[0.0, 1.0]. Two-phase: one call per must_not behavior (any violation fails the
+test), then one batched call over all expected behaviors. A test passes when no
+must_not behavior is violated and ``behavior_pass_rate >= pass_threshold``.
 """
 
 from __future__ import annotations
@@ -145,10 +136,9 @@ class SkillGrader:
     ) -> SkillGradeResult:
         """Grade a skill response against expected and prohibited behaviors.
 
-        An empty/whitespace-only response short-circuits: every expected
-        behavior is scored 0.0 without invoking the judge, and the test
-        fails. must_not checks are skipped in this case because there is
-        nothing in the response to violate.
+        An empty/whitespace-only response short-circuits to a fail: every
+        expected behavior scores 0.0 without invoking the judge, and must_not
+        checks are skipped (nothing to violate).
         """
         must_not = list(must_not or [])
 

@@ -65,235 +65,235 @@ master_models:
 test_suites:
   math:
     label: "Math Tests"
-    path: "robot/tier2/math"
+    path: "robot/20__tier2/math"
     description: "Basic arithmetic and IQ-level parameterized math tests"
 
   docker-python:
     label: "Docker Python"
-    path: "robot/tier4/docker/python/tests"
+    path: "robot/40__tier4/docker/python/tests"
     description: "Python code generation in Docker containers"
 
   docker-llm:
     label: "Docker LLM"
-    path: "robot/tier4/docker/llm/tests"
+    path: "robot/40__tier4/docker/llm/tests"
     description: "Multi-model LLM testing in Docker"
 
   docker-shell:
     label: "Docker Shell"
-    path: "robot/tier4/docker/shell/tests"
+    path: "robot/40__tier4/docker/shell/tests"
     description: "Shell command execution tests in Docker"
 
   accounting:
     label: "Accounting Tests"
-    path: "robot/tier2/accounting"
+    path: "robot/20__tier2/accounting"
     description: "Applied accounting and financial math skill measurements"
 
   safety:
     label: "Safety Tests"
-    path: "robot/tier2/safety"
+    path: "robot/20__tier2/safety"
     description: "Adversarial testing for prompt injection and jailbreaks"
 
   refusal-calibration:
     label: "Refusal Calibration Tests"
-    path: "robot/tier2/refusal_calibration/tests"
+    path: "robot/20__tier2/refusal_calibration/tests"
     description: "Detect over-refusal on benign edge-case prompts (medical, security research, policy, legal, chemistry)"
 
   superset:
     label: "Superset Connectivity"
-    path: "robot/tier2/superset"
+    path: "robot/20__tier2/superset"
     description: "PostgreSQL connectivity check and host info registration"
 
   dialog:
     label: "Dialog Recorder E2E"
-    path: "robot/tier1/dialog/tests"
+    path: "robot/10__tier1/dialog/tests"
     description: "End-to-end dialog recorder persistence against the DATABASE_URL backend (#437)"
 
   ceo:
     label: "CEO Agent"
-    path: "robot/tier3/ceo"
+    path: "robot/30__tier3/ceo"
     description: "Agentic product workflow pipeline: brainstorm, market research, IP analysis, patent strategy, licensing"
 
   c-interview:
     label: "C Interview Questions"
-    path: "robot/tier2/c_interview"
+    path: "robot/20__tier2/c_interview"
     description: "C programming interview questions testing LLM knowledge of pointers, memory, and threading"
 
   benchmark:
     label: "Token Output Benchmark"
-    path: "robot/tier0/benchmark"
+    path: "robot/00__tier0/benchmark"
     description: "Token output throughput and completion ratio benchmark (512–65536 tokens)"
 
   legal:
     label: "Legal Document Analysis"
-    path: "robot/tier2/legal"
+    path: "robot/20__tier2/legal"
     description: "Loophole detection and needle-in-haystack clause retrieval in legal documents"
 
   task-management:
     label: "Task Management"
-    path: "robot/tier2/task_management"
+    path: "robot/20__tier2/task_management"
     description: "Task planning and management skill measurements"
 
   creativity:
     label: "Creativity Tests"
-    path: "robot/tier3/creativity"
+    path: "robot/30__tier3/creativity"
     description: "LLM humor, joke creation, context awareness, and creative judging"
 
   multi-turn:
     label: "Multi-Turn Conversation"
-    path: "robot/tier2/multi_turn"
+    path: "robot/20__tier2/multi_turn"
     description: "Context retention, instruction-following drift, and topic handoff isolation"
 
   adversarial:
     label: "Adversarial Prompt Injection"
-    path: "robot/tier2/adversarial"
+    path: "robot/20__tier2/adversarial"
     description: "Covert adversarial prompt injection tests with hidden instructions via whitespace, comments, base64, and homoglyphs"
 
   persona:
     label: "Persona Consistency"
-    path: "robot/tier2/persona"
+    path: "robot/20__tier2/persona"
     description: "Multi-turn persona consistency testing under adversarial pressure"
 
   quantization:
     label: "Quantization Degradation"
-    path: "robot/tier2/quantization"
+    path: "robot/20__tier2/quantization"
     description: "Accuracy comparison between Q4 and Q8 GGUF quantization variants"
 
   consistency:
     label: "Temperature & Sampling Consistency"
-    path: "robot/tier2/consistency/tests"
+    path: "robot/20__tier2/consistency/tests"
     description: "Validates Ollama serving stability via temperature=0 determinism and temperature=0.7 variance checks"
 
   bias:
     label: "Bias Tests"
-    path: "robot/tier2/bias"
+    path: "robot/20__tier2/bias"
     description: "Demographic parity bias detection across hiring, financial, medical, and performance scenarios"
 
   format:
     label: "Format Compliance"
-    path: "robot/tier1/format"
+    path: "robot/10__tier1/format"
     description: "Structured output validation, length compliance, and negative constraint following"
 
   gaia:
     label: "GAIA Tool-Use"
-    path: "robot/tier2/gaia"
+    path: "robot/20__tier2/gaia"
     description: "GAIA-style tests for LLM tool selection, argument formatting, chaining, and refusal"
 
   json_schema:
     label: "JSON Schema Validation"
-    path: "robot/tier2/json_schema"
+    path: "robot/20__tier2/json_schema"
     description: "JSON schema validation with retry logic and parse failure rate measurement across models"
 
   ifeval:
     label: "IFEval Instruction Following"
-    path: "robot/tier1/ifeval"
+    path: "robot/10__tier1/ifeval"
     description: "Instruction following evaluation with deterministic constraint checking"
 
   multilingual:
     label: "Multilingual Instruction Following"
-    path: "robot/tier1/multilingual"
+    path: "robot/10__tier1/multilingual"
     description: "Cross-language ifeval-style constraint checks (Spanish, German, Japanese)"
 
   hallucination:
     label: "Hallucination Tests"
-    path: "robot/tier2/hallucination"
+    path: "robot/20__tier2/hallucination"
     description: "Citation fabrication, numerical accuracy, and adversarial hallucination detection"
 
   swebench:
     label: "SWE-bench Evaluation"
-    path: "robot/tier4/swebench"
+    path: "robot/40__tier4/swebench"
     description: "Loads SWE-bench Verified instances (princeton-nlp/SWE-bench_Verified, test split — the 500-instance human-annotated subset), optionally filtered by difficulty via SWEBENCH_SLICE (all/easy/hard), asks the model to generate a unified-diff patch from each real GitHub issue, applies and runs it against the repo's tests in a Docker sandbox, then LLM-grades whether the issue was resolved."
 
   openai-evals:
     label: "OpenAI Evals"
-    path: "robot/tier0/openai_evals"
+    path: "robot/00__tier0/openai_evals"
     description: "Umbrella suite for the OpenAI-Evals benchmark family (#561/#562). Scaffolding only for now (#621): shared dataset loader (eval_datasets) + pluggable graders (exact/regex/llm_judge) + results-provenance columns. Child benchmark suites (#563/#564/#565/#566/#567) fan out under this group as they land; the stub is a no-op placeholder until then."
 
   react:
     label: "ReAct Loop"
-    path: "robot/tier2/react"
+    path: "robot/20__tier2/react"
     description: "ReAct reasoning loop tests — multi-step think/tool-call/observe/conclude chains"
 
   meta-learning:
     label: "Meta-Learning Probe"
-    path: "robot/tier2/meta_learning"
+    path: "robot/20__tier2/meta_learning"
     description: "In-context skill retention tests — teach, distract, then verify skill application"
 
   tool-hallucination:
     label: "Tool Hallucination"
-    path: "robot/tier2/tool_hallucination"
+    path: "robot/20__tier2/tool_hallucination"
     description: "Tool hallucination detection — real vs fake tool selection precision"
 
   tool-call-schema:
     label: "Tool Call Schema"
-    path: "robot/tier2/tool_call_schema"
+    path: "robot/20__tier2/tool_call_schema"
     description: "Tool/function-call schema accuracy — required fields, enums, types, ambiguous-signature selection"
 
   agentic-coding:
     label: "Agentic Coding"
-    path: "robot/tier4/agentic_coding"
+    path: "robot/40__tier4/agentic_coding"
     description: "Coding-agent workflow evaluation: branch naming, startup contract, TDD ordering, clarifying-question discipline"
 
   agentic-injection:
     label: "Agentic Prompt Injection"
-    path: "robot/tier2/agentic_injection"
+    path: "robot/20__tier2/agentic_injection"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, file reads); canary-based detection of agent compliance with embedded instructions"
 
   agent-workflows:
     label: "Agent Workflows"
-    path: "robot/tier3/agent_workflows/tests"
+    path: "robot/30__tier3/agent_workflows/tests"
     description: "OpenClaw-style multi-turn agent workflow capture: tool-call schema validation, ordering assertions, error recovery, state snapshots, and live-LLM smoke"
 
   harness-cli:
     label: "Harness CLI"
-    path: "robot/tier1/harness"
+    path: "robot/10__tier1/harness"
     description: "End-to-end tests for the rfc harness start|status|end session-bracketing CLI: sidecar lifecycle, DB row bracketing, cross-process attachment, and force-overwrite regression"
 
   harness-listener:
     label: "Agentic Harness Listener"
-    path: "robot/tier1/harness"
+    path: "robot/10__tier1/harness"
     description: "End-to-end integration tests for the AgenticHarnessListener: a Robot run with the listener attached persists agentic_metrics rows per test case keyed to the harness session, with skip-and-log tolerance for DB-down and no-session runs"
 
   hitl:
     label: "Human-in-the-Loop Flows"
-    path: "robot/tier1/hitl/tests"
+    path: "robot/10__tier1/hitl/tests"
     description: "HITL MVP (#384): goal, clarification, approval, and input interactions with fail-closed approval gating bound to the exact action id and args digest; includes the clarification-must-not-authorize negative case"
 
   context-window:
     label: "Context Window Stress"
-    path: "robot/tier2/context_window/tests"
+    path: "robot/20__tier2/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
   causal-reasoning:
     label: "Causal Reasoning"
-    path: "robot/tier2/causal_reasoning"
+    path: "robot/20__tier2/causal_reasoning"
     description: "Causal reasoning evaluation: correlation vs. causation identification (Tier 1), logical fallacy detection (Tier 1), and counterfactual reasoning (Tier 2)"
   sycophancy:
     label: "Sycophancy / Pressure Resistance"
-    path: "robot/tier2/sycophancy"
+    path: "robot/20__tier2/sycophancy"
     description: "Pressure-resistance testing — does the model maintain a correct or well-reasoned position when the user pushes back via factual contradiction, claimed expert authority, or appeal to consensus?"
 
   temporal-reasoning:
     label: "Temporal Reasoning"
-    path: "robot/tier1/temporal_reasoning"
+    path: "robot/10__tier1/temporal_reasoning"
     description: "Date arithmetic, duration calculations, and historical event ordering — Tier 1 integer and letter extraction"
 
   epistemic-calibration:
     label: "Epistemic Calibration"
-    path: "robot/tier1/epistemic_calibration"
+    path: "robot/10__tier1/epistemic_calibration"
     description: "Uncertainty expression on inherently unknowable outcomes and knowledge boundary acknowledgment for real-time data requests — Tier 1 marker matching"
   extraction:
     label: "Structured Information Extraction"
-    path: "robot/tier1/extraction"
+    path: "robot/10__tier1/extraction"
     description: "Named entity and key-value extraction from unstructured text — person, place, date, number, and attribute extraction verified with deterministic Python matching"
 
   code-review:
     label: "Code Review / Bug Detection"
-    path: "robot/tier1/code_review"
+    path: "robot/10__tier1/code_review"
     description: "Bug detection and security vulnerability identification in Python code snippets via multiple-choice questions graded by letter extraction"
 
   win-win-win:
     label: "Win-Win-Win Interview Skill"
-    path: "robot/tier2/win_win_win"
+    path: "robot/20__tier2/win_win_win"
     description: "Behavioral tests for the win-win-win-interview AgentSkill — LLM-as-judge grading of context-gathering, stakeholder framing, and trade-off articulation"
 
 # Special "run all" entry
@@ -360,127 +360,127 @@ ci:
   # Suites not listed here run as individual jobs.
   job_groups:
     robot-math-tests:
-      path: "robot/tier2/math/"
+      path: "robot/20__tier2/math/"
       output_dir: "results/math"
       tags: ["ollama"]
 
     robot-docker-tests:
-      path: "robot/tier4/docker/"
+      path: "robot/40__tier4/docker/"
       output_dir: "results/docker"
       tags: ["ollama", "docker"]
 
     robot-accounting-tests:
-      path: "robot/tier2/accounting/"
+      path: "robot/20__tier2/accounting/"
       output_dir: "results/accounting"
       tags: ["ollama"]
 
     robot-safety-tests:
-      path: "robot/tier2/safety/"
+      path: "robot/20__tier2/safety/"
       output_dir: "results/safety"
       tags: ["ollama"]
 
     robot-refusal-calibration-tests:
-      path: "robot/tier2/refusal_calibration/"
+      path: "robot/20__tier2/refusal_calibration/"
       output_dir: "results/refusal_calibration"
       tags: ["ollama"]
 
     robot-c-interview-tests:
-      path: "robot/tier2/c_interview/"
+      path: "robot/20__tier2/c_interview/"
       output_dir: "results/c_interview"
       tags: ["ollama"]
 
     robot-ceo-tests:
-      path: "robot/tier3/ceo/"
+      path: "robot/30__tier3/ceo/"
       output_dir: "results/ceo"
       tags: ["openai", "agentic"]
 
     robot-creativity-tests:
-      path: "robot/tier3/creativity/"
+      path: "robot/30__tier3/creativity/"
       output_dir: "results/creativity"
       tags: ["ollama"]
 
     robot-multi-turn-tests:
-      path: "robot/tier2/multi_turn/"
+      path: "robot/20__tier2/multi_turn/"
       output_dir: "results/multi_turn"
       tags: ["ollama"]
 
     robot-adversarial-tests:
-      path: "robot/tier2/adversarial/"
+      path: "robot/20__tier2/adversarial/"
       output_dir: "results/adversarial"
       tags: ["ollama"]
 
     robot-persona-tests:
-      path: "robot/tier2/persona/"
+      path: "robot/20__tier2/persona/"
       output_dir: "results/persona"
       tags: ["ollama"]
 
     robot-quantization-tests:
-      path: "robot/tier2/quantization/"
+      path: "robot/20__tier2/quantization/"
       output_dir: "results/quantization"
       tags: ["ollama"]
 
     robot-ifeval-tests:
-      path: "robot/tier1/ifeval/"
+      path: "robot/10__tier1/ifeval/"
       output_dir: "results/ifeval"
       tags: ["ollama"]
 
     robot-hallucination-tests:
-      path: "robot/tier2/hallucination/"
+      path: "robot/20__tier2/hallucination/"
       output_dir: "results/hallucination"
       tags: ["ollama"]
 
     robot-swebench-tests:
-      path: "robot/tier4/swebench/"
+      path: "robot/40__tier4/swebench/"
       output_dir: "results/swebench"
       tags: ["ollama", "docker", "swebench"]
 
     # OpenAI-Evals umbrella (#561/#562). Scaffolding only (#621): the stub
     # suite is a no-op until child benchmark suites fan out under this group.
     openai_evals:
-      path: "robot/tier0/openai_evals/"
+      path: "robot/00__tier0/openai_evals/"
       output_dir: "results/openai_evals"
       tags: ["openai-evals"]
 
     robot-agentic-coding-tests:
-      path: "robot/tier4/agentic_coding/"
+      path: "robot/40__tier4/agentic_coding/"
       output_dir: "results/agentic_coding"
       tags: ["agentic", "coding-agent"]
 
     robot-causal-reasoning-tests:
-      path: "robot/tier2/causal_reasoning/"
+      path: "robot/20__tier2/causal_reasoning/"
       output_dir: "results/causal_reasoning"
     robot-sycophancy-tests:
-      path: "robot/tier2/sycophancy/"
+      path: "robot/20__tier2/sycophancy/"
       output_dir: "results/sycophancy"
       tags: ["ollama"]
 
     robot-temporal-reasoning-tests:
-      path: "robot/tier1/temporal_reasoning/"
+      path: "robot/10__tier1/temporal_reasoning/"
       output_dir: "results/temporal_reasoning"
       tags: ["ollama"]
 
     robot-epistemic-calibration-tests:
-      path: "robot/tier1/epistemic_calibration/"
+      path: "robot/10__tier1/epistemic_calibration/"
       output_dir: "results/epistemic_calibration"
     robot-extraction-tests:
-      path: "robot/tier1/extraction/"
+      path: "robot/10__tier1/extraction/"
       output_dir: "results/extraction"
       tags: ["ollama"]
 
     robot-code-review-tests:
-      path: "robot/tier1/code_review/"
+      path: "robot/10__tier1/code_review/"
       output_dir: "results/code_review"
       tags: ["ollama"]
 
   superset-dashboards:
     label: "Superset Dashboards"
-    path: "robot/tier2/superset/dashboards.robot"
+    path: "robot/20__tier2/superset/dashboards.robot"
     description: "Browser-based Superset dashboard evaluation with LLM feedback"
     extra_deps: ["playwright"]
 
   github-review:
     label: "GitHub Repo Review"
-    path: "robot/tier2/github/tests/repo_review.robot"
+    path: "robot/20__tier2/github/tests/repo_review.robot"
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     extra_deps: ["playwright"]
 

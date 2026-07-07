@@ -4,7 +4,7 @@
 # Used by scripts/run_swebench.py and the make robot-swebench target.
 
 swebench:
-  suite: robot/tier4/swebench/swebench.robot
+  suite: robot/40__tier4/swebench/swebench.robot
   dataset: princeton-nlp/SWE-bench_Verified
   split: test
   slices: [all, easy, hard]

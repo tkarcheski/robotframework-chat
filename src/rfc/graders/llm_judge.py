@@ -1,13 +1,9 @@
-"""LLM-judge grader — a Protocol adapter over the existing Grader (#621).
+"""LLM-judge grader — a Protocol adapter over :class:`rfc.grader.Grader` (#621).
 
-This does NOT reimplement grading. It wraps :class:`rfc.grader.Grader`
-(the LLM-as-judge already used by the math/swebench suites) to the
-:class:`rfc.graders.base.Grader` Protocol: it pulls the question and expected
-answer out of the dataset ``instance``, delegates to ``Grader.grade(...)``,
-and adapts the returned :class:`rfc.models.GradeResult` to ``(score, reason)``.
-
-The LLM client is injected (mockable exactly as ``rfc.grader.Grader`` is in
-``tests/test_grader.py``), so unit tests never call a real model.
+Does NOT reimplement grading: it pulls the question and expected answer from the
+dataset ``instance``, delegates to the existing LLM-as-judge ``Grader.grade``,
+and adapts the returned ``GradeResult`` to ``(score, reason)``. The LLM client
+is injected, so unit tests never call a real model.
 """
 
 from __future__ import annotations
@@ -34,8 +30,7 @@ class LLMJudgeGrader:
     """Adapt :class:`rfc.grader.Grader` to the eval Grader Protocol."""
 
     def __init__(self, llm_client: Any) -> None:
-        # Reuse the existing judge wholesale (validation, prompt, empty-answer
-        # handling all live there); never duplicate grading logic here.
+        # Reuse the existing judge wholesale; never duplicate grading logic here.
         self._judge = _LLMGrader(llm_client)
 
     def grade(self, instance: Dict[str, Any], response: str) -> Tuple[float, str]:

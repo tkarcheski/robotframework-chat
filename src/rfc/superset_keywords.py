@@ -1,12 +1,4 @@
-"""Robot Framework keywords for Superset/PostgreSQL connectivity checks.
-
-Provides keywords to verify database connectivity and validate the
-data pipeline from test execution through to Superset.
-
-Usage in Robot Framework::
-
-    Library    rfc.superset_keywords.SupersetKeywords    WITH NAME    Superset
-"""
+"""Robot Framework keywords for Superset/PostgreSQL connectivity checks."""
 
 from __future__ import annotations
 
@@ -40,14 +32,7 @@ class SupersetKeywords:
 
     @keyword("Connect To Database")
     def connect_to_database(self) -> str:
-        """Verify that the database is reachable and return the PostgreSQL version.
-
-        Raises:
-            RuntimeError: If DATABASE_URL is not set or connection fails.
-
-        Returns:
-            PostgreSQL version string.
-        """
+        """Verify that the database is reachable and return the PostgreSQL version."""
         db = self._get_db()
         version = db.get_version()
         logger.info(f"Connected to database: {version}")
@@ -56,11 +41,7 @@ class SupersetKeywords:
 
     @keyword("Get Table Row Counts")
     def get_table_row_counts(self) -> Dict[str, int]:
-        """Return row counts for all RFC tables.
-
-        Returns:
-            Dictionary mapping table name to row count.
-        """
+        """Return row counts for all RFC tables."""
         db = self._get_db()
         tables = [
             "test_runs",
@@ -79,11 +60,7 @@ class SupersetKeywords:
 
     @keyword("Get Database URL")
     def get_database_url(self) -> str:
-        """Return the masked DATABASE_URL for logging.
-
-        Returns:
-            Masked connection string (password replaced with ``****``).
-        """
+        """Return the masked DATABASE_URL for logging (password replaced with ****)."""
         url = os.environ.get("DATABASE_URL", "")
         if not url:
             return "NOT SET"

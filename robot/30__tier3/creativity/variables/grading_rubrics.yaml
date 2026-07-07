@@ -1,0 +1,11 @@
+JOKE_RUBRIC:
+  criteria: "Is this joke humorous, creative, and original? Does it match the requested format and theme?"
+  passing_score: 0.5
+
+CONTEXT_RUBRIC:
+  criteria: "Did the LLM maintain context from the conversation history? Did it correctly reference earlier information?"
+  passing_score: 0.7
+
+JUDGING_RUBRIC:
+  criteria: "Evaluate this joke on humor (is it funny?), creativity (is it unique and not a stock joke?), originality (would this surprise someone?), and relevance (does it match the prompt?). Be strict about originality."
+  passing_score: 0.5

@@ -87,19 +87,7 @@ class CodeReviewKeywords:
         question: str,
         expected_letter: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to identify the bug in a code snippet.
-
-        Args:
-            code: The code snippet containing a bug.
-            question: Multiple-choice question with options A–D.
-            expected_letter: Correct answer letter (A, B, C, or D).
-
-        Returns:
-            Dict with keys: chosen_letter, correct, response, expected.
-
-        Raises:
-            ValueError: If expected_letter is not A–D.
-        """
+        """Ask the LLM to identify the bug in a code snippet."""
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
             raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
@@ -132,19 +120,7 @@ class CodeReviewKeywords:
         question: str,
         expected_letter: str,
     ) -> Dict[str, Any]:
-        """Ask the LLM to identify the security vulnerability in a code snippet.
-
-        Args:
-            code: The code snippet containing a security issue.
-            question: Multiple-choice question with options A–D.
-            expected_letter: Correct answer letter (A, B, C, or D).
-
-        Returns:
-            Dict with keys: chosen_letter, correct, response, expected.
-
-        Raises:
-            ValueError: If expected_letter is not A–D.
-        """
+        """Ask the LLM to identify the security vulnerability in a code snippet."""
         expected_letter = expected_letter.strip().upper()
         if expected_letter not in {"A", "B", "C", "D"}:
             raise ValueError(f"expected_letter must be A–D, got {expected_letter!r}")
@@ -176,24 +152,7 @@ class CodeReviewKeywords:
         func: str,
         vulnerable: Any,
     ) -> Dict[str, Any]:
-        """Ask the LLM whether a function contains a defect (binary YES/NO).
-
-        Used by the google/code_x_glue_cc_defect_detection (Devign) benchmark
-        subset.  The verdict is extracted deterministically from the first
-        line of the response; a non-compliant response counts as incorrect.
-
-        Args:
-            func: The C function source code.
-            vulnerable: Ground-truth label (bool, or "True"/"False" string
-                as Robot variables sometimes arrive).
-
-        Returns:
-            Dict with keys: verdict (bool | None), correct, response,
-            expected.
-
-        Raises:
-            ValueError: If *vulnerable* cannot be coerced to a boolean.
-        """
+        """Ask the LLM whether a function contains a defect — YES/NO (Devign subset)."""
         expected = _coerce_bool(vulnerable)
 
         prompt = _DEFECT_CLASSIFICATION_PROMPT.format(func=func)
@@ -218,22 +177,8 @@ class CodeReviewKeywords:
 
     @keyword("Record Defect Detection Accuracy")
     def record_defect_detection_accuracy(self, results: List[Any]) -> float:
-        """Compute benchmark accuracy and persist it as the grader score.
-
-        Emits the aggregate accuracy as ``RFC_DATA:score`` so ``DbListener``
-        and ``AgenticHarnessListener`` archive a real score for the run
-        (per-item ``correct`` emissions are not treated as scores).
-
-        Args:
-            results: Per-item correctness flags (bools, or "True"/"False"
-                strings as Robot list items sometimes arrive).
-
-        Returns:
-            Accuracy in [0.0, 1.0].
-
-        Raises:
-            ValueError: If *results* is empty or contains a non-boolean.
-        """
+        """Emit aggregate accuracy as ``RFC_DATA:score`` — per-item ``correct``
+        emissions are not treated as scores by the listeners."""
         if not results:
             raise ValueError("results must contain at least one result")
         flags = [_coerce_bool(r) for r in results]
@@ -263,12 +208,8 @@ def _coerce_bool(value: Any) -> bool:
 
 
 def _extract_verdict(response: str) -> Optional[bool]:
-    """Extract a YES/NO verdict from the first line of the response only.
-
-    Mirrors :func:`_extract_letter`: the prompt instructs the model to put
-    the verdict on the first line, and searching further risks matching the
-    explanation.  Non-compliant responses return ``None``.
-    """
+    """First line only — searching further risks matching the explanation.
+    Non-compliant responses return ``None``."""
     first_line = response.strip().splitlines()[0] if response.strip() else ""
     m = _VERDICT_RE.search(first_line)
     if m:
@@ -277,13 +218,8 @@ def _extract_verdict(response: str) -> Optional[bool]:
 
 
 def _extract_letter(response: str) -> Optional[str]:
-    """Extract the answer letter A–D from the first line of the response only.
-
-    The prompt instructs the model to put the letter on the first line.
-    Searching beyond the first line risks matching option labels in the
-    explanatory text (e.g. "option A states …"), producing false results.
-    Non-compliant responses return ``None``; callers treat that as a failure.
-    """
+    """First line only — beyond it risks matching option labels in the
+    explanation ("option A states …"). Non-compliant responses return ``None``."""
     first_line = response.strip().splitlines()[0] if response.strip() else ""
     m = _LETTER_RE.search(first_line)
     if m:

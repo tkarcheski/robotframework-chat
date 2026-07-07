@@ -1,0 +1,5 @@
+# Live-runner input for the regression_detection scenario.
+# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
+scenario_id: regression_detection
+task: "Refactor parse_duration in src/rfc/timeutils.py to return seconds as a float."
+base_branch: claude-code-staging

@@ -32,7 +32,7 @@ from .agent_run import (
     _build_pr,
     _build_question,
 )
-from .llm_client import LLMProvider
+from .llm_client import LLMProvider, create_provider
 
 _FENCE_RE = re.compile(r"```(?:yaml|yml)?\s*\n(.*?)\n?```", re.DOTALL | re.IGNORECASE)
 
@@ -144,9 +144,14 @@ def _parse_agent_run(
 
 
 def _build_default_provider(config: AgentConfig) -> LLMProvider:
-    """Construct an OllamaClient from the agent config."""
-    from .ollama import OllamaClient
+    """Construct an Ollama provider from the agent config.
 
+    Routes through ``create_provider("ollama", ...)`` — not a direct
+    ``OllamaClient(...)`` — so the console-feed, answer-cache, and Graylog
+    wrappers are applied uniformly and every ``generate()`` stays observable
+    and cacheable (#130). The provider is pinned to ``"ollama"`` (rather than
+    the env-driven default) because this path is Ollama-specific.
+    """
     kwargs: dict[str, Any] = {
         "model": config.model,
         "temperature": config.temperature,
@@ -154,7 +159,7 @@ def _build_default_provider(config: AgentConfig) -> LLMProvider:
     }
     if config.endpoint:
         kwargs["base_url"] = config.endpoint
-    return OllamaClient(**kwargs)
+    return create_provider("ollama", **kwargs)
 
 
 class OllamaAgentRunner:

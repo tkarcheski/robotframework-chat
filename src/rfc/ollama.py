@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from robot.api import logger
 import requests
@@ -31,6 +31,61 @@ def _check_model_not_found(
     response.raise_for_status()
 
 
+# gpt-oss-style graduated reasoning levels accepted by newer Ollama's `think`.
+_THINK_LEVELS = frozenset({"low", "medium", "high"})
+
+# Truthy / falsy string spellings accepted for the boolean form of `think`.
+_THINK_TRUE = frozenset({"true", "1", "yes", "on"})
+_THINK_FALSE = frozenset({"false", "0", "no", "off"})
+
+
+def _normalize_think(value: Any) -> Union[bool, str, None]:
+    """Coerce a ``think`` setting to ``bool``, a level string, or ``None``.
+
+    ``None`` means "omit the field entirely" (unset ``OLLAMA_THINK`` /
+    unset ctor arg). Accepts real booleans, the string spellings
+    ``true/false/1/0/yes/no/on/off`` (case-insensitive), and the gpt-oss
+    graduated levels ``low/medium/high``. An empty string is treated as unset.
+
+    Raises:
+        ValueError: for any other string or unsupported type.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):  # bool before int — bool is an int subclass
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v == "":
+            return None
+        if v in _THINK_TRUE:
+            return True
+        if v in _THINK_FALSE:
+            return False
+        if v in _THINK_LEVELS:
+            return v
+        raise ValueError(
+            "think must be a boolean, 'true'/'false'/'1'/'0', or a level "
+            f"'low'/'medium'/'high'; got {value!r}"
+        )
+    if isinstance(value, int):
+        return bool(value)
+    raise ValueError(f"think must be bool, str, or None; got {type(value).__name__}")
+
+
+def _error_mentions_think(response: requests.Response) -> bool:
+    """True when *response*'s body text references think/thinking.
+
+    Used to recognize a model that rejected the ``think`` field (older Ollama
+    or a non-reasoning model) so we can retry once without it.
+    """
+    try:
+        body = response.text or ""
+    except Exception:
+        body = ""
+    return "think" in body.lower()
+
+
 def _canonical_model_name(name: str) -> str:
     """Normalize a model name so tag aliases compare equal ('m' == 'm:latest')."""
     canon = name.strip().lower()
@@ -44,6 +99,13 @@ def _compute_rate(count: Optional[int], duration_ns: Optional[int]) -> Optional[
     if count is None or duration_ns is None or duration_ns <= 0:
         return None
     return round(count / (duration_ns / 1e9), 2)
+
+
+# Tag→digest resolution cache tuning (issue #526). The tag→digest map is
+# refreshed from /api/tags at most once per TTL window; a failed fetch is
+# negatively cached so an offline host is not hammered on every key build.
+_DIGEST_TTL_DEFAULT = 300  # seconds; env OLLAMA_DIGEST_TTL_SECONDS overrides
+_DIGEST_NEGATIVE_TTL = 30.0  # seconds to back off after a failed /api/tags fetch
 
 
 def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
@@ -87,6 +149,7 @@ class OllamaClient:
         num_ctx: Optional[int] = None,
         keep_alive: Optional[str] = None,
         response_format: Optional[str] = None,
+        think: Union[bool, str, None] = None,
     ):
         if not base_url:
             base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
@@ -124,7 +187,27 @@ class OllamaClient:
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
         self.response_format = response_format
+        # `think` (issue #131): unset ctor arg falls back to OLLAMA_THINK; both
+        # unset leaves it None so the field is omitted from the request payload.
+        # The property setter normalizes booleans / levels and validates.
+        if think is None:
+            think = os.getenv("OLLAMA_THINK")
+        self.think = think
+        # Latch: once a model rejects the `think` field with a 400, never send
+        # it again for this instance (set inside generate's request closure).
+        self._think_unsupported = False
         self.last_metrics: Optional[Dict[str, Any]] = None
+        # Tag→digest map cache (issue #526): resolved lazily from /api/tags and
+        # memoized per instance with a TTL so answer-cache key builds are cheap.
+        self._digest_map: Optional[Dict[str, str]] = None
+        self._digest_map_fetched_at = 0.0
+        self._digest_negative_until = 0.0
+        try:
+            self._digest_ttl = float(
+                os.getenv("OLLAMA_DIGEST_TTL_SECONDS", str(_DIGEST_TTL_DEFAULT))
+            )
+        except (TypeError, ValueError):
+            self._digest_ttl = float(_DIGEST_TTL_DEFAULT)
 
     @property
     def endpoint(self) -> str:
@@ -139,6 +222,18 @@ class OllamaClient:
             self.base_url = value[: -len("/api/generate")]
         else:
             self.base_url = value.rstrip("/")
+
+    @property
+    def think(self) -> Union[bool, str, None]:
+        """Normalized ``think`` setting (bool, level string, or None=omit)."""
+        return self._think
+
+    @think.setter
+    def think(self, value: Any) -> None:
+        # Normalize on assignment so every entry point (ctor, `Set LLM
+        # Parameters`, the grader's think=False retry) stores a consistent
+        # value — and the answer cache keys on the normalized form.
+        self._think = _normalize_think(value)
 
     def generate(self, prompt: str) -> str:
         """Send a prompt to the LLM and return the response text.
@@ -179,6 +274,9 @@ class OllamaClient:
             payload["keep_alive"] = self.keep_alive
         if self.response_format is not None:
             payload["format"] = self.response_format
+        # Only send `think` when set AND the model hasn't already rejected it.
+        if self.think is not None and not self._think_unsupported:
+            payload["think"] = self.think
 
         self.last_metrics = None
 
@@ -188,10 +286,41 @@ class OllamaClient:
                 json=payload,
                 timeout=self.timeout,
             )
+            # A model that doesn't understand `think` answers 400 with an error
+            # mentioning think/thinking. Retry once without the field and latch
+            # so we stop sending it for the rest of this instance's life (#131).
+            if (
+                response.status_code == 400
+                and "think" in payload
+                and _error_mentions_think(response)
+            ):
+                logger.warn(
+                    f"{self.model} rejected the 'think' field (HTTP 400); "
+                    f"retrying once without it (think disabled for this client)."
+                )
+                payload.pop("think", None)
+                self._think_unsupported = True
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=self.timeout,
+                )
             _check_model_not_found(response, self.model, self.base_url)
             data = response.json()
-            text = data["response"].strip()
+            text = (data.get("response") or "").strip()
+            # Reasoning-model fallback (#131): newer Ollama can put all output
+            # in `thinking` and leave `response` blank. Surface it as an inline
+            # <think> block so the parse_thinking pipeline handles it exactly
+            # like inline reasoning — the clean answer stays empty and graders
+            # score 0 honestly instead of the parser silently swallowing tokens.
+            thinking_only = False
+            if not text:
+                thinking = (data.get("thinking") or "").strip()
+                if thinking:
+                    text = f"<think>{thinking}</think>"
+                    thinking_only = True
             self.last_metrics = _extract_metrics(data, self.model)
+            self.last_metrics["thinking_only"] = thinking_only
             logger.info(f"{self.model} >> {text}")
             return text
 
@@ -267,6 +396,71 @@ class OllamaClient:
                     }
                 )
         return result
+
+    def resolve_model_digest(self) -> Optional[str]:
+        """Return the resolved content digest for ``self.model``, or ``None``.
+
+        Answers the question the answer cache (#526) needs: *what weights does
+        this tag point at right now?* An Ollama tag such as ``llama3.2:latest``
+        can be repointed in place (re-pulled to new weights); keying a cache on
+        the tag name alone would then serve answers from the *old* weights under
+        the *new* tag. Folding this digest into the key makes a repoint a miss.
+
+        The tag→digest map comes from ``/api/tags`` (the same endpoint
+        :meth:`list_models_detailed` reads) and is memoized per instance for
+        ``OLLAMA_DIGEST_TTL_SECONDS`` (default 300s). A failed fetch is
+        negatively cached for ~30s so an offline host is not hammered on every
+        key build.
+
+        Never raises: any error, timeout, or unknown tag yields ``None`` so the
+        cache falls back to a digest-less key namespace rather than failing the
+        request.
+        """
+        try:
+            mapping = self._digest_map_cached()
+            if not mapping:
+                return None
+            return mapping.get(_canonical_model_name(self.model))
+        except Exception:  # pragma: no cover - defensive: must never raise
+            return None
+
+    def _digest_map_cached(self) -> Optional[Dict[str, str]]:
+        """Return the tag→digest map, refreshing it from /api/tags on TTL expiry.
+
+        Ordering matters: a still-fresh positive cache is returned before the
+        negative-cache window is consulted, and a *stale* map is never returned
+        when a refresh fails — the digest cannot be re-confirmed, so the caller
+        gets ``None`` (a distinct, safe key namespace) rather than a possibly
+        outdated digest.
+        """
+        now = time.monotonic()
+        if (
+            self._digest_map is not None
+            and now - self._digest_map_fetched_at < self._digest_ttl
+        ):
+            return self._digest_map
+        if now < self._digest_negative_until:
+            return None
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            mapping: Dict[str, str] = {}
+            for model in data.get("models", []):
+                name = model.get("name", "")
+                digest = model.get("digest", "")
+                if name and digest:
+                    mapping[_canonical_model_name(name)] = digest
+        except Exception:
+            # Offline / timeout / malformed: back off so we do not re-probe an
+            # unreachable host on every key build, and return None (never a
+            # stale map) so the digest stays unconfirmed.
+            self._digest_negative_until = now + _DIGEST_NEGATIVE_TTL
+            return None
+        self._digest_map = mapping
+        self._digest_map_fetched_at = now
+        self._digest_negative_until = 0.0
+        return mapping
 
     def running_models(self) -> List[Dict[str, Any]]:
         """Query currently running models from the Ollama endpoint.

@@ -35,16 +35,7 @@ class BrowserKeywords:
         strip: str = "img,script,style,svg,noscript,iframe",
         max_length: int = 8000,
     ) -> str:
-        """Convert HTML content to clean markdown for LLM consumption.
-
-        Args:
-            html: Raw HTML string from a browser page.
-            strip: Comma-separated HTML tags to strip before conversion.
-            max_length: Truncate output to this many characters.
-
-        Returns:
-            Cleaned markdown string.
-        """
+        """Convert HTML content to clean markdown for LLM consumption."""
         if md is None:
             raise RuntimeError(
                 "markdownify is not installed. Run: uv sync --extra playwright"
@@ -52,7 +43,7 @@ class BrowserKeywords:
 
         strip_tags = [t.strip() for t in strip.split(",") if t.strip()]
 
-        # Pre-process: remove unwanted tags entirely (including content)
+        # decompose() drops the tags and their content, not just the markup
         if BeautifulSoup is not None and strip_tags:
             soup = BeautifulSoup(html, "html.parser")
             for tag_name in strip_tags:
@@ -94,16 +85,7 @@ class BrowserKeywords:
         page_type: str = "dashboard",
         context: str = "",
     ) -> str:
-        """Build an LLM evaluation prompt for a page converted to markdown.
-
-        Args:
-            markdown: The markdown content to evaluate.
-            page_type: Type of page (dashboard, repository, issues).
-            context: Additional context for the evaluation.
-
-        Returns:
-            A structured prompt for the LLM.
-        """
+        """Build an LLM evaluation prompt for a page converted to markdown."""
         prompts = {
             "dashboard": (
                 "You are reviewing an Apache Superset dashboard. "

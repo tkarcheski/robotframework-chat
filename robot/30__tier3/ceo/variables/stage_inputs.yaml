@@ -1,0 +1,114 @@
+# Seeded inputs for CEO agent pipeline stage tests
+#
+# Each stage receives realistic mock data so tests are deterministic
+# in their setup and can run independently.
+
+# Stage 1: Brainstorming - seeded domain & constraints
+BRAINSTORM_SEED:
+  domain: "smart home IoT devices"
+  count: 3
+  constraints: "Focus on energy efficiency and sustainability"
+
+# Stage 2: Market Research - seeded idea list (output of brainstorm)
+MARKET_RESEARCH_SEED:
+  ideas:
+    - name: "EcoTherm Smart Radiator Valve"
+      description: "IoT-connected radiator valve that learns occupancy patterns and optimizes heating schedules using ML, reducing energy consumption by up to 30%."
+      category: "smart_home"
+      novelty_notes: "Combines per-room occupancy detection with predictive heating algorithms, unlike existing thermostats that control whole-house temperature."
+    - name: "GridSync Home Battery Controller"
+      description: "Smart controller that coordinates home battery storage with real-time grid pricing and renewable energy forecasts to maximize savings and grid stability."
+      category: "energy_management"
+      novelty_notes: "Novel approach to peer-to-peer energy trading between neighbors using blockchain-verified microtransactions."
+    - name: "AquaSense Leak Prevention System"
+      description: "Distributed water leak detection system using ultrasonic sensors on pipes, with automatic shutoff and insurance integration."
+      category: "home_safety"
+      novelty_notes: "First system to combine pipe-mounted ultrasonic sensing with insurance API integration for automatic claim filing."
+
+# Pre-populated web cache entries for market research
+MARKET_RESEARCH_WEB_CACHE:
+  "smart radiator valve market size 2025":
+    - title: "Smart Radiator Valve Market Report"
+      url: "https://example.com/market-report-1"
+      snippet: "The global smart radiator valve market was valued at $1.2B in 2024 and is projected to reach $3.8B by 2030, growing at a CAGR of 21.3%."
+  "home battery storage market competitors":
+    - title: "Home Energy Storage Competitive Landscape"
+      url: "https://example.com/market-report-2"
+      snippet: "Key players include Tesla Powerwall, Enphase IQ Battery, and Sonnen. Market size estimated at $15.2B by 2028."
+
+# Stage 3: IP Analysis - seeded market analysis (output of market research)
+IP_ANALYSIS_SEED:
+  analyses:
+    - idea_name: "EcoTherm Smart Radiator Valve"
+      demand_score: 0.85
+      market_size: "$3.8B by 2030"
+      competitors:
+        - "Tado"
+        - "Netatmo"
+        - "Honeywell Evohome"
+      profitability: "high"
+    - idea_name: "GridSync Home Battery Controller"
+      demand_score: 0.78
+      market_size: "$15.2B by 2028"
+      competitors:
+        - "Tesla Powerwall"
+        - "Enphase"
+        - "Sonnen"
+      profitability: "medium"
+    - idea_name: "AquaSense Leak Prevention System"
+      demand_score: 0.72
+      market_size: "$2.1B by 2027"
+      competitors:
+        - "Flo by Moen"
+        - "Phyn Plus"
+        - "LeakSmart"
+      profitability: "high"
+
+# Pre-populated web cache entries for IP analysis
+IP_ANALYSIS_WEB_CACHE:
+  "smart radiator valve patent prior art":
+    - title: "US Patent 10,234,567 - Smart Radiator Control"
+      url: "https://patents.google.com/patent/US10234567"
+      snippet: "System for controlling radiator valves based on room temperature readings. Does not include occupancy-based ML prediction."
+  "water leak detection ultrasonic patent":
+    - title: "US Patent 9,876,543 - Ultrasonic Pipe Monitoring"
+      url: "https://patents.google.com/patent/US9876543"
+      snippet: "Ultrasonic sensor for pipe monitoring. Does not include automatic shutoff or insurance integration features."
+
+# Stage 4: Patent Strategy - seeded IP findings (output of IP analysis)
+PATENT_STRATEGY_SEED:
+  findings:
+    - idea_name: "EcoTherm Smart Radiator Valve"
+      patentability_score: 0.82
+      prior_art_gaps:
+        - "Per-room ML-based occupancy prediction for heating optimization"
+        - "Federated learning across valve network for collective heating patterns"
+      claim_angles:
+        - "Method for per-room adaptive heating using occupancy prediction"
+        - "System combining distributed sensors with centralized ML model"
+    - idea_name: "AquaSense Leak Prevention System"
+      patentability_score: 0.91
+      prior_art_gaps:
+        - "Combined ultrasonic leak detection with automatic insurance claim filing"
+        - "Distributed pipe-mounted sensor mesh with automatic valve shutoff"
+      claim_angles:
+        - "Method for automated insurance claim initiation upon leak detection"
+        - "System for distributed ultrasonic monitoring with coordinated shutoff"
+
+# Stage 5: Licensing Strategy - seeded patent strategies (output of patent strategy)
+LICENSING_STRATEGY_SEED:
+  strategies:
+    - idea_name: "EcoTherm Smart Radiator Valve"
+      claim_type: "utility"
+      abstract: "A system and method for optimizing residential heating through per-room occupancy prediction using machine learning, implemented via IoT-connected radiator valves that collectively learn and adapt to occupant behavior patterns."
+      key_claims:
+        - "A method for adaptive heating control comprising per-room occupancy sensors, an ML prediction model, and automated valve adjustment"
+        - "A networked system of smart radiator valves using federated learning to optimize heating schedules across multiple rooms"
+      filing_priority: "high"
+    - idea_name: "AquaSense Leak Prevention System"
+      claim_type: "utility"
+      abstract: "A distributed water leak prevention system comprising ultrasonic pipe-mounted sensors, coordinated automatic shutoff valves, and integrated insurance claim automation via API connectivity."
+      key_claims:
+        - "A method for automated insurance claim initiation comprising leak detection, damage assessment, and API-based claim submission"
+        - "A distributed sensor mesh for water infrastructure monitoring with coordinated emergency shutoff"
+      filing_priority: "critical"

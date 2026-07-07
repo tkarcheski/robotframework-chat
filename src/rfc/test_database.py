@@ -1,23 +1,11 @@
 """Test results database manager for robotframework-chat.
 
-Manages test result storage with support for SQLite (default)
-and PostgreSQL (for Superset integration). Backend is selected
-via DATABASE_URL environment variable or constructor parameter.
-
-Schema (4 tables):
-    - ``test_runs``            — lean per-suite metrics
-    - ``test_results``         — lean per-test metrics
-    - ``test_run_artifacts``   — per-run heavy archive
-      (gzip-compressed ``output.xml`` + source path)
-    - ``test_result_artifacts`` — per-result heavy archive
-      (question / expected_answer / actual_answer / grading_reason /
-      thinking_text)
-
-Dashboards query the lean tables directly. Superset drill-down joins
-the archive tables via the ``test_results_full`` view (LEFT JOIN).
-
-SQLite:      sqlite:///data/test_history.db  (default)
-PostgreSQL:  postgresql://user:pass@host:5433/dbname
+Dual backend (SQLite default, PostgreSQL for Superset), selected via
+DATABASE_URL or constructor parameter. Lean tables (``test_runs``,
+``test_results``) hold per-suite/per-test metrics; heavy archive tables
+(``test_run_artifacts``, ``test_result_artifacts``) hold output.xml blobs
+and question/answer text. Dashboards query the lean tables; Superset
+drill-down joins the archives via the ``test_results_full`` view.
 """
 
 import abc
@@ -134,19 +122,6 @@ class TestResultArtifact:
     thinking_text: str = ""
 
 
-@dataclass
-class Model:
-    """Represents an LLM model's metadata."""
-
-    name: str
-    sha256_digest: str = ""
-    size_gb: float = 0.0
-    quantization: str = ""
-    architecture: str = ""
-    context_length: int = 0
-    family: str = ""
-
-
 # Fields the archive row borrows from a test-case dict.  Shared between the
 # Robot listener and the XML importer so both write the same columns and
 # apply the same "all-empty → skip" policy.
@@ -163,19 +138,12 @@ def build_result_artifacts(
     test_cases: List[Dict[str, Any]],
     result_ids: List[int],
 ) -> List[TestResultArtifact]:
-    """Build per-result archive rows from test-case dicts.
+    """Build per-result archive rows, positionally aligned with ``result_ids``.
 
-    ``result_ids`` must be positionally aligned with ``test_cases`` —
-    i.e. ``result_ids[i]`` is the primary key for ``test_cases[i]``.
-
-    A row is produced for every test case, including ones whose archive
-    fields are all empty. A "PASS with no captured data" is itself a
-    finding (it usually means the keyword vacuously passed without
-    invoking the LLM, or the response capture path has a bug); silently
-    dropping the row would hide that signal from Superset.
-
-    Positional matching is mandatory: name-based matching would silently
-    collapse duplicate test names (templated tests) onto a single id.
+    A row is produced for every test case, including all-empty ones: a
+    "PASS with no captured data" is itself a finding, not noise to drop.
+    Positional matching is mandatory — name-based matching would collapse
+    duplicate (templated) test names onto a single id.
     """
     if len(test_cases) != len(result_ids):
         raise ValueError(
@@ -292,9 +260,6 @@ class _Backend(abc.ABC):
 
     @abc.abstractmethod
     def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None: ...
-
-    @abc.abstractmethod
-    def upsert_model(self, model: "Model") -> None: ...
 
 
 class _SQLiteBackend(_Backend):
@@ -674,26 +639,6 @@ class _SQLiteBackend(_Backend):
                 f"SELECT COUNT(*) FROM {table_name}"  # noqa: S608
             ).fetchone()
             return int(row[0]) if row else 0
-
-    def upsert_model(self, model: Model) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO models
-                (name, sha256_digest, size_gb, quantization, architecture,
-                 context_length, family)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    model.name,
-                    model.sha256_digest,
-                    model.size_gb,
-                    model.quantization,
-                    model.architecture,
-                    model.context_length,
-                    model.family,
-                ),
-            )
 
 
 class _SQLAlchemyBackend(_Backend):
@@ -1134,34 +1079,6 @@ class _SQLAlchemyBackend(_Backend):
             result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))  # noqa: S608
             return int(result.scalar() or 0)
 
-    def upsert_model(self, model: Model) -> None:
-        with self.engine.begin() as conn:
-            # Try update first, then insert
-            result = conn.execute(
-                self._models.update()
-                .where(self._models.c.name == model.name)
-                .values(
-                    sha256_digest=model.sha256_digest,
-                    size_gb=model.size_gb,
-                    quantization=model.quantization,
-                    architecture=model.architecture,
-                    context_length=model.context_length,
-                    family=model.family,
-                )
-            )
-            if result.rowcount == 0:
-                conn.execute(
-                    self._models.insert().values(
-                        name=model.name,
-                        sha256_digest=model.sha256_digest,
-                        size_gb=model.size_gb,
-                        quantization=model.quantization,
-                        architecture=model.architecture,
-                        context_length=model.context_length,
-                        family=model.family,
-                    )
-                )
-
 
 class TestDatabase:
     """Facade that selects the correct backend at construction time.
@@ -1245,6 +1162,3 @@ class TestDatabase:
 
     def get_table_row_count(self, table_name: str) -> int:
         return self._backend.get_table_row_count(table_name)
-
-    def upsert_model(self, model: Model) -> None:
-        return self._backend.upsert_model(model)

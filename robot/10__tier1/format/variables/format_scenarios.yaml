@@ -1,0 +1,125 @@
+# Format Compliance Test Scenarios
+#
+# Test data for structured output, length compliance, and negative
+# constraint following tests.
+
+# ---------------------------------------------------------------------------
+# Structured Output Scenarios
+# ---------------------------------------------------------------------------
+
+JSON_SCENARIOS:
+  - name: "person_object"
+    prompt: >-
+      Return ONLY a JSON object (no explanation) with these exact keys:
+      name (string), age (integer), email (string).
+      Use realistic values. Output raw JSON only.
+    expected_keys: "name,age,email"
+
+  - name: "product_array"
+    prompt: >-
+      Return ONLY a JSON array of 3 products. Each product must have
+      these exact keys: id (integer), name (string), price (number).
+      Output raw JSON only, no explanation.
+    expected_keys: "id,name,price"
+
+  - name: "address_object"
+    prompt: >-
+      Return ONLY a JSON object representing a US mailing address with
+      these exact keys: street, city, state, zip.
+      Output raw JSON only, no explanation.
+    expected_keys: "street,city,state,zip"
+
+YAML_SCENARIOS:
+  - name: "server_config"
+    prompt: >-
+      Return ONLY a YAML configuration for a web server. Include these
+      exact top-level keys: host, port, debug, workers.
+      Output raw YAML only, no explanation.
+    expected_keys: "host,port,debug,workers"
+
+  - name: "database_config"
+    prompt: >-
+      Return ONLY a YAML configuration for a database connection. Include
+      these exact top-level keys: engine, host, port, name, user.
+      Output raw YAML only, no explanation.
+    expected_keys: "engine,host,port,name,user"
+
+CSV_SCENARIOS:
+  - name: "employee_table"
+    prompt: >-
+      Return ONLY a CSV table with columns: name, department, salary.
+      Include a header row and exactly 3 data rows.
+      Output raw CSV only, no explanation.
+    expected_columns: 3
+    min_rows: 3
+
+  - name: "inventory_table"
+    prompt: >-
+      Return ONLY a CSV table with columns: item, quantity, unit_price, category.
+      Include a header row and exactly 4 data rows.
+      Output raw CSV only, no explanation.
+    expected_columns: 4
+    min_rows: 4
+
+# ---------------------------------------------------------------------------
+# Length Compliance Scenarios
+# ---------------------------------------------------------------------------
+
+SENTENCE_COUNT_SCENARIOS:
+  - name: "exactly_3_sentences"
+    prompt: "Explain what Python is in exactly 3 sentences. No more, no less."
+    expected_sentences: 3
+
+  - name: "exactly_5_sentences"
+    prompt: "Describe the solar system in exactly 5 sentences. No more, no less."
+    expected_sentences: 5
+
+  - name: "exactly_1_sentence"
+    prompt: "Define recursion in exactly 1 sentence."
+    expected_sentences: 1
+
+WORD_LIMIT_SCENARIOS:
+  - name: "under_50_words"
+    prompt: "Explain gravity in under 50 words. Be concise."
+    max_words: 50
+
+  - name: "under_20_words"
+    prompt: "Define recursion in under 20 words."
+    max_words: 20
+
+  - name: "under_100_words"
+    prompt: "Describe the water cycle in under 100 words."
+    max_words: 100
+
+# ---------------------------------------------------------------------------
+# Negative Constraint (Forbidden Word) Scenarios
+# ---------------------------------------------------------------------------
+
+FORBIDDEN_WORD_SCENARIOS:
+  - name: "no_however"
+    prompt: >-
+      Explain the difference between Python and Java.
+      Do not use the word 'however' anywhere in your response.
+    forbidden_words: "however"
+    topic: "Python vs Java comparison"
+
+  - name: "no_therefore_furthermore"
+    prompt: >-
+      Describe the benefits of cloud computing.
+      Do not use the words 'therefore' or 'furthermore' in your response.
+    forbidden_words: "therefore,furthermore"
+    topic: "cloud computing benefits"
+
+  - name: "no_filler_words"
+    prompt: >-
+      Explain what machine learning is.
+      Do not use the words 'basically', 'actually', or 'literally'.
+    forbidden_words: "basically,actually,literally"
+    topic: "machine learning explanation"
+
+  - name: "no_very_really"
+    prompt: >-
+      Describe the importance of exercise for health.
+      Do not use the words 'very' or 'really' in your response.
+    forbidden_words: "very,really"
+    topic: "exercise and health"

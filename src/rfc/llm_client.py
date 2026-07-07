@@ -223,15 +223,61 @@ def _maybe_wrap_with_graylog(client: LLMProvider) -> LLMProvider:
     return wrap_provider(client)
 
 
+# RFC_RUN_MODE values that override the bare ANSWER_CACHE_ENABLED switch.
+_RUN_MODE_VERIFY = "verify"
+_RUN_MODE_MEASURE = "measure"
+# Latch so an unrecognized RFC_RUN_MODE warns once per process, not per provider.
+_warned_unknown_run_mode = False
+
+
+def _cache_enabled_for_run_mode() -> bool:
+    """Decide whether the answer cache should wrap the provider (#522).
+
+    ``RFC_RUN_MODE`` gates the answer cache *above* the ``ANSWER_CACHE_ENABLED``
+    switch so a run's intent — not just a leftover shell export — decides
+    whether stored answers are replayed:
+
+    * unset   → honor ``ANSWER_CACHE_ENABLED`` (historical behavior).
+    * verify  → force the cache ON. The deterministic-only gate inside
+      :mod:`rfc.answer_cache` still applies, so only reproducible requests are
+      memoized; re-running an unchanged suite serves stored answers.
+    * measure → force the cache OFF even if ``ANSWER_CACHE_ENABLED=1``, so a
+      grading/measurement run can never replay a stale answer just because the
+      switch was left on in the shell.
+    * unknown → warn once and fall back to the unset behavior.
+    """
+    mode = os.getenv("RFC_RUN_MODE", "").strip().lower()
+    enabled = os.getenv("ANSWER_CACHE_ENABLED", "") == "1"
+
+    if mode == _RUN_MODE_MEASURE:
+        return False
+    if mode == _RUN_MODE_VERIFY:
+        return True
+    if mode:  # non-empty but not a recognized mode
+        global _warned_unknown_run_mode
+        if not _warned_unknown_run_mode:
+            logger.warning(
+                "RFC_RUN_MODE=%r is not recognized (expected 'verify' or "
+                "'measure'); ignoring it and honoring ANSWER_CACHE_ENABLED.",
+                mode,
+            )
+            _warned_unknown_run_mode = True
+    return enabled
+
+
 def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
-    """Wrap *client* in a caching layer when ``ANSWER_CACHE_ENABLED=1`` (#522).
+    """Wrap *client* in a caching layer for cache-enabled runs (#522).
 
     Opt-in by design: measurement runs leave the cache off so every answer is
     a fresh measurement. When enabled, the wrapper memoizes deterministic
     ``generate()`` calls in Redis and degrades to a passthrough if Redis is
     unreachable — a down cache must never fail a test.
+
+    Whether the cache is enabled is decided by
+    :func:`_cache_enabled_for_run_mode`, which lets ``RFC_RUN_MODE``
+    (verify/measure) override the bare ``ANSWER_CACHE_ENABLED`` switch.
     """
-    if os.getenv("ANSWER_CACHE_ENABLED", "") != "1":
+    if not _cache_enabled_for_run_mode():
         return client
 
     from .answer_cache import AnswerCache, CachingProvider

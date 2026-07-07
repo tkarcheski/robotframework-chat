@@ -57,7 +57,6 @@ class HallucinationKeywords:
     def _extract_references(self, text: str) -> Dict[str, List[str]]:
         """Extract URLs, ISBNs, DOIs, arXiv IDs, legal citations, and UN resolutions."""
         urls = self._URL_PATTERN.findall(text)
-        # Clean trailing punctuation from URLs
         urls = [url.rstrip(".,;:") for url in urls]
 
         isbns = self._ISBN13_PATTERN.findall(text) + self._ISBN10_PATTERN.findall(text)
@@ -76,12 +75,7 @@ class HallucinationKeywords:
         }
 
     def _normalize_citation(self, s: str) -> str:
-        """Normalize a citation string for matching.
-
-        Lowercases, strips ``.,;:`` punctuation, and collapses whitespace.
-        This lets ``347 U.S. 483`` match ``347 US 483`` and other
-        punctuation/spacing variants without treating them as distinct.
-        """
+        """Lowercase, strip ``.,;:``, collapse spaces: ``347 U.S. 483`` == ``347 US 483``."""
         s = self._PUNCT_STRIP_PATTERN.sub("", s.lower())
         return self._WS_COLLAPSE_PATTERN.sub(" ", s).strip()
 
@@ -91,30 +85,10 @@ class HallucinationKeywords:
     _REVERSE_MATCH_MIN_LEN = 8
 
     def _is_known_ref(self, ref: str, known_real_refs: List[str]) -> bool:
-        """Check if a reference matches any known real reference.
+        """Three-pass match against known refs: direct, punctuation-normalized, reverse.
 
-        Uses a three-pass strategy:
-
-        1. **Direct match** — case-insensitive word-boundary regex on the
-           raw strings (known inside ref). This preserves dots in URLs and
-           DOIs so that ``un.org`` correctly matches
-           ``https://www.un.org/...``.
-        2. **Normalized match** — if the direct match fails, both strings
-           are normalized (lowercase, strip ``.,;:`` punctuation, collapse
-           whitespace) and retried. This lets ``347 U.S. 483`` match
-           ``347 US 483`` without breaking URL matching.
-        3. **Reverse match** — if both fail, check whether the extracted
-           ref appears inside any known ref at word boundaries. This
-           reconciles cases where the response contains a DOI URL like
-           ``https://doi.org/10.1038/nature12373`` AND the same DOI is
-           extracted separately as ``10.1038/nature12373``: if the known
-           list contains the URL form, the bare DOI is also matched.
-           Restricted to refs of length >= ``_REVERSE_MATCH_MIN_LEN`` so
-           short numeric tokens cannot whitelist fabricated references.
-
-        Word boundaries prevent short numeric tokens (e.g. ``217``) from
-        whitelisting fabricated references that contain those digits as
-        internal substrings.
+        Word boundaries throughout prevent short numeric tokens (e.g. ``217``)
+        from whitelisting fabricated references that contain those digits.
         """
         ref_lower = ref.lower()
         ref_norm = self._normalize_citation(ref)
@@ -142,18 +116,7 @@ class HallucinationKeywords:
     def check_no_fabricated_citations(
         self, response: str, known_real_refs: List[str]
     ) -> Dict[str, Any]:
-        """Check that a response contains no fabricated citations.
-
-        Extracts URLs, ISBNs, DOIs, and arXiv IDs from the response and
-        cross-checks each against the known-real references list.
-
-        Args:
-            response: The LLM response text to check.
-            known_real_refs: List of known-real reference strings.
-
-        Returns:
-            Dict with is_clean, fabricated_refs, real_refs_found.
-        """
+        """Extract references from a response and cross-check against known-real refs."""
         logger.info(
             f"Checking response for fabricated citations ({len(response)} chars)"
         )
@@ -220,15 +183,7 @@ class HallucinationKeywords:
     def ask_and_check_citations(
         self, prompt: str, known_real_refs: List[str]
     ) -> Dict[str, Any]:
-        """Send a citation prompt to the LLM and check for fabrications.
-
-        Args:
-            prompt: The prompt asking the LLM to cite references.
-            known_real_refs: List of known-real reference strings.
-
-        Returns:
-            Dict with is_clean, fabricated_refs, real_refs_found.
-        """
+        """Send a citation prompt to the LLM and check for fabrications."""
         logger.info(f"Asking LLM for citations: {prompt[:80]}...")
         raw_response = self.client.generate(prompt)
         # Strip <think>/<thinking> blocks so hidden reasoning text is not
@@ -242,18 +197,7 @@ class HallucinationKeywords:
     def check_adversarial_summary(
         self, summary: str, fabricated_fact: str
     ) -> Dict[str, Any]:
-        """Check if an LLM summary reproduces a fabricated fact.
-
-        Uses the LLM grader to detect whether the fabricated fact
-        (or a paraphrase of it) appears in the summary.
-
-        Args:
-            summary: The LLM-generated summary to check.
-            fabricated_fact: The specific fabricated claim to look for.
-
-        Returns:
-            Dict with fact_reproduced, score, reason.
-        """
+        """Grade whether a summary reproduces (or paraphrases) a fabricated fact."""
         logger.info(f"Checking summary for fabricated fact: {fabricated_fact[:80]}")
 
         question = (

@@ -111,15 +111,15 @@ jobs:
         run: uv sync --extra dev --extra superset --extra swebench
 
       - name: Run math tests
-        run: uv run robot -d results/math $LISTENERS robot/tier2/math/
+        run: uv run robot -d results/math $LISTENERS robot/20__tier2/math/
 
       - name: Run safety tests
         if: always()
-        run: uv run robot -d results/safety $LISTENERS robot/tier2/safety/
+        run: uv run robot -d results/safety $LISTENERS robot/20__tier2/safety/
 
       - name: Run Docker tests
         if: always()
-        run: uv run robot -d results/docker $LISTENERS robot/tier4/docker/
+        run: uv run robot -d results/docker $LISTENERS robot/40__tier4/docker/
 
       - name: Upload test results
         if: always()

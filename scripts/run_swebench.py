@@ -81,7 +81,7 @@ def run_swebench(
         "rfc.git_metadata_listener.GitMetaData",
         "--listener",
         "rfc.ollama_timestamp_listener.OllamaTimestampListener",
-        "robot/tier4/swebench/swebench.robot",
+        "robot/40__tier4/swebench/swebench.robot",
     ]
     print(
         f"Running SWE-bench: model={model}, max_instances={max_instances}, "
