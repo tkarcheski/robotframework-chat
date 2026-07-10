@@ -221,6 +221,11 @@ test_suites:
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     timeout_seconds: 600
 
+  - name: "computer-use"
+    path: "robot/20__tier2/computer_use/computer_use.robot"
+    description: "Computer-use substrate v0 (#175): browser actions via ToolSchema dispatch + MCP; hermetic file:// fixture"
+    timeout_seconds: 600
+
   - name: "agentic-injection"
     path: "robot/20__tier2/agentic_injection/"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, files)"
