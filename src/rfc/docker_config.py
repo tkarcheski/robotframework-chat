@@ -1,7 +1,48 @@
 """Docker container configuration models."""
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Union
+
+
+def normalize_volumes(
+    volumes: Optional[Union[Dict[str, Any], List[str]]],
+) -> Union[Dict[str, Dict[str, str]], List[str]]:
+    """Normalize a ``volumes`` spec into a shape docker-py accepts.
+
+    docker-py's ``containers.run(volumes=...)`` accepts either:
+
+    * the **dict** form ``{host: {"bind": "/container", "mode": "rw"}}`` — every
+      value MUST be a dict, because docker-py calls ``value.get("bind")`` on it
+      (``docker/models/containers.py``), or
+    * the **list** form ``["host:/container:rw"]``.
+
+    Robot Framework's ``Create Dictionary`` can only build *str* values inline,
+    so suites historically produced ``{host: "/container:rw"}`` (a str value).
+    That makes docker-py call ``str.get("bind")`` -> ``AttributeError: 'str'
+    object has no attribute 'get'`` and no container is ever created (issue
+    #189, which zeroed all execution-suite signal). Accept that str shape here
+    and convert each ``"/container:mode"`` value into
+    ``{"bind": "/container", "mode": ...}``; pass dict values and the list form
+    through unchanged so already-valid specs are never altered.
+    """
+    if not volumes:
+        return {}
+    if isinstance(volumes, list):
+        return volumes
+    normalized: Dict[str, Dict[str, str]] = {}
+    for host_path, spec in volumes.items():
+        if isinstance(spec, dict):
+            normalized[host_path] = spec
+        elif isinstance(spec, str):
+            bind, _, mode = spec.partition(":")
+            normalized[host_path] = {"bind": bind, "mode": mode or "rw"}
+        else:
+            raise TypeError(
+                f"Unsupported volume spec for host path {host_path!r}: "
+                f"{spec!r} (expected a str '/container:mode' or a dict "
+                "{'bind': '/container', 'mode': 'rw'})"
+            )
+    return normalized
 
 
 @dataclass
@@ -74,7 +115,7 @@ class ContainerConfig:
     command: Optional[str] = None
     resources: ContainerResources = field(default_factory=ContainerResources)
     network: ContainerNetwork = field(default_factory=ContainerNetwork)
-    volumes: Optional[Dict[str, Dict]] = None
+    volumes: Optional[Union[Dict[str, Any], List[str]]] = None
     env: Optional[Dict[str, str]] = None
     labels: Optional[Dict[str, str]] = None
     read_only: bool = True
@@ -113,7 +154,7 @@ class ContainerConfig:
             "detach": self.detach,
             "environment": self.env or {},
             "labels": self.labels or {},
-            "volumes": self.volumes or {},
+            "volumes": normalize_volumes(self.volumes),
         }
 
         # Add resource limits

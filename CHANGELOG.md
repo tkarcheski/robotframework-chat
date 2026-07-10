@@ -17,6 +17,25 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.20.1] — Unreleased
+
+### Fixed
+
+- **Docker execution suites: str-valued `volumes` dict zeroed all container
+  setup** (#189): `robot/resources/environments.resource` built its `volumes`
+  as `{host: "/workspace:rw"}` (a *str* value). docker-py's `containers.run`
+  calls `value.get("bind")` on each value, so the str raised
+  `AttributeError: 'str' object has no attribute 'get'`, no container was
+  created, and **every** test in every execution suite (`docker/python`, `c`,
+  `rust`, `bash`) failed deterministically at Suite Setup — silently zeroing
+  execution-eval signal for #176/#167/#162. The resource now builds the
+  docker-py dict form `{host: {"bind": "/workspace", "mode": "rw"}}`, and a new
+  `rfc.docker_config.normalize_volumes` seam defensively normalizes the str
+  shape (and passes valid dict/list forms through) so any suite still emitting
+  the old shape is repaired before it reaches docker-py. `Setup Container
+  Environment` also asserts a non-empty container id so a zero-container start
+  fails loudly. Regression tests pin the accepted shapes.
+
 ## [1.20.0] — Unreleased
 
 ### Added
