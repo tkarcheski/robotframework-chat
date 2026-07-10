@@ -1,6 +1,7 @@
 Agent Calls Tool
 Agent Message
 Agent Receives Tool Result
+All Commits Should Match Convention
 Analyze IP Landscape
 Apply And Test Patch
 Ask And Check Citations
@@ -27,6 +28,7 @@ Assert Tool Calls In Order
 Assert Tool Was Called
 Assert Variance Within Threshold
 Brainstorm Ideas
+Branch Should Match Agent Contract
 Build Base64 Injection Prompt
 Build Comment Injection Prompt
 Build Evaluation Prompt
@@ -35,21 +37,35 @@ Build Homoglyph Injection Prompt
 Build Tool Prompt
 Build Whitespace Injection Prompt
 Check Adversarial Summary
+Check All Caps
+Check All Lowercase
 Check Approval Status
+Check Bullet Points
 Check Docker Setup
 Check Earliest Event
+Check Ends With Word
 Check Fallacy Detection
+Check Forbidden Letter
 Check Forbidden Words
 Check IFEval Constraint
 Check IFEval Instruction
 Check Knowledge Boundary Acknowledged
 Check Needle Recalled
+Check No Digits
 Check No Fabricated Citations
+Check Numbered List
+Check Paragraph Count
 Check Response Safety
+Check Sentence Count
+Check Sentence Start
 Check Uncertainty Expressed
+Check Word Count
+Clarifying Questions Should Be Grounded
 Classify Defect In Code
 Cleanup All Containers
 Clear Web Cache
+Commands Should Appear In Order
+Commits Should Match Their Changes
 Compare Response Pair
 Connect Hitl Database
 Connect To Database
@@ -76,12 +92,14 @@ Evaluate Causal Claim
 Evaluate Date Arithmetic
 Evaluate Duration Calculation
 Evaluate Tool Call
+Every Commit Should Be Green
 Execute In Container
 Execute Python In Container
 Extract And Verify Entity
 Extract Key Value And Verify
 Extract Multiple Entities And Verify
 Find Available Port
+First Changed Path Should Be Under
 Get Agentic Injection Report
 Get Bias Report
 Get Calibration Report
@@ -120,8 +138,14 @@ Log SWEBench Result
 Log Safety Report
 Measure Completion Ratio
 Measure Semantic Variance
+No Commit Should Occur While Tests Red
+No Source Changes Should Exist Before
 Parse Tool Calls
 Plan Licensing Strategy
+Pr Body Should Explain How To Review
+Pr Body Should Include Contract Sections
+Questions Should Be Multiple Choice
+Rebase Should Be Resolved Without Dropping Changes
 Record Defect Detection Accuracy
 Register Tool Schema
 Request Clarification
@@ -136,6 +160,7 @@ Reset Safety Results
 Resolve Interaction
 Run Agentic Injection Test Case
 Run Calibration Test Case
+Run Coding Agent Scenario
 Run Demographic Parity Test
 Run Dialog Fixture Suite
 Run Factual Pressure Test
@@ -147,7 +172,14 @@ Run Position Defense Test
 Run Prompt N Times
 Run Quantization Comparison
 Run ReAct Loop
+Run Sandboxed Coding Scenario
+Run Should Not Contain Forbidden Commands
 Run Skill Test Case
+Sandbox Agent Command Should Succeed
+Sandbox Should Have No Unexpected File Churn
+Sandbox Should Report Unexpected File Churn
+Sandbox Should Surface Test Failure
+Sandbox Tests Should Pass
 Save Model Metadata Yaml
 Score Instruction Compliance Batch
 Set Goal
@@ -155,6 +187,8 @@ Set Interaction State
 Set Over Refusal Threshold
 Set Parity Threshold
 Set Safety Threshold
+Should Ask Between N And M Questions
+Should Ask Zero Clarifying Questions
 Skip Unless Skill Available
 Start Agent Workflow
 Start Interaction
