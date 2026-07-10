@@ -1,13 +1,21 @@
-"""Live Claude Code CLI runner for the agentic-coding suite.
+"""Live coding-agent runner for the agentic-coding suite.
 
-Drives ``claude -p`` against a scenario in an isolated git worktree, parses
-the stream-json transcript into an :class:`~rfc.agent_run.AgentRun`, and
-surfaces the same fields the fake and ollama runners produce so every
-existing tier:1 verifier re-applies unchanged.
+Drives a coding-agent CLI against a scenario in an isolated git worktree,
+normalizes its transcript into an :class:`~rfc.agent_run.AgentRun`, and surfaces
+the same fields the fake and ollama runners produce so every existing tier:1
+verifier re-applies unchanged.
 
-MVP scope, per the design decisions captured on Issue #288:
-  * Bash tool_use entries become :class:`AgentCommand` rows, paired with
-    their tool_result by ``tool_use_id``.
+The CLI-specific bits — the argv, the transcript parser, and the "is this CLI
+installed?" probe — live behind a :class:`~rfc.harness_adapters.HarnessAdapter`
+(Issue #172). ``LiveClaudeCodeRunner`` is now a thin driver parameterized by an
+adapter: it owns only the harness-agnostic work (git worktree create/cleanup,
+commit collection, changed-path tracking, redaction, ``AgentRun`` assembly) and
+routes CLI I/O through the adapter. It defaults to :class:`ClaudeCodeAdapter`,
+so the Claude Code path (and its tests) is unchanged; pass ``adapter=`` to drive
+opencode or codex instead.
+
+MVP scope, per the design decisions captured on Issue #288 (still in force):
+  * Bash tool calls become :class:`AgentCommand` rows.
   * Clarifying questions are pulled from assistant text blocks (paragraphs
     ending in ``?`` with optional bullet/number/letter options under them).
   * End-of-run ``git status --porcelain`` populates ``changed_paths_after``
@@ -26,104 +34,45 @@ so tests never spawn a real subprocess.
 
 from __future__ import annotations
 
-import json
-import os
-import re
 import shutil
-import subprocess
 import tempfile
-import uuid
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 from .agent_config import AgentConfig
-from .agent_run import AgentCommand, AgentCommit, AgentQuestion, AgentRun
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
-_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}"),
-    re.compile(r"AKIA[0-9A-Z]{16}"),
-    re.compile(r"ghp_[A-Za-z0-9]{36}"),
-    re.compile(r"github_pat_[A-Za-z0-9_]{82}"),
-    re.compile(r"xoxb-[A-Za-z0-9-]+"),
+from .agent_run import AgentCommand, AgentCommit, AgentRun
+from .harness_adapters import (
+    ClaudeCodeAdapter,
+    ClaudeProcessResult,
+    CodexAdapter,
+    HarnessAdapter,
+    OpenCodeAdapter,
+    ProcessInvoker,
+    _default_invoker,
+    make_branch_name,
+    parse_transcript,
+    redact,
 )
 
-_REDACTED = "[REDACTED]"
-_TAIL_LIMIT = 4000
-_BRANCH_SLUG_RE = re.compile(r"[^a-z0-9]+")
-_OPTION_RE = re.compile(r"^\s*(?:[-*]|\d+\.|\(?[a-d]\))\s*(.+)$")
-
-
-@dataclass(frozen=True)
-class ClaudeProcessResult:
-    """Result of running a single subprocess."""
-
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-ProcessInvoker = Callable[
-    [tuple[str, ...], Path, dict[str, str], int], ClaudeProcessResult
+# Re-exported for backward compatibility: the primitives and helpers below moved
+# to rfc.harness_adapters when the harness seam was extracted (Issue #172), but
+# existing importers (and tests) still reach for them here.
+__all__ = [
+    "ClaudeCodeAdapter",
+    "ClaudeProcessResult",
+    "CodexAdapter",
+    "HarnessAdapter",
+    "LiveClaudeCodeRunner",
+    "OpenCodeAdapter",
+    "ProcessInvoker",
+    "make_branch_name",
+    "parse_transcript",
+    "redact",
 ]
 
-
-def _default_invoker(
-    argv: tuple[str, ...],
-    cwd: Path,
-    env_overrides: dict[str, str],
-    timeout: int,
-) -> ClaudeProcessResult:
-    env = os.environ.copy()
-    env.update(env_overrides)
-    proc = subprocess.run(
-        list(argv),
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    return ClaudeProcessResult(
-        returncode=proc.returncode,
-        stdout=proc.stdout or "",
-        stderr=proc.stderr or "",
-    )
-
-
-def redact(text: str, *, extra_secrets: tuple[str, ...] = ()) -> str:
-    """Strip known secrets and any explicit ``extra_secrets`` from ``text``."""
-    if not text:
-        return text
-    out = text
-    for secret in extra_secrets:
-        if secret:
-            out = out.replace(secret, _REDACTED)
-    for pattern in _SECRET_PATTERNS:
-        out = pattern.sub(_REDACTED, out)
-    return out
-
-
-def _tail(text: str, limit: int = _TAIL_LIMIT) -> str:
-    if len(text) <= limit:
-        return text
-    return text[-limit:]
-
-
-def _slugify(text: str) -> str:
-    cleaned = _BRANCH_SLUG_RE.sub("-", text.lower()).strip("-")
-    return cleaned[:40] or "task"
-
-
-def make_branch_name(task: str) -> str:
-    """Return a contract-compliant branch name (``claude/<slug>-<5chars>``)."""
-    return f"claude/{_slugify(task)}-{uuid.uuid4().hex[:5]}"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _read_env_values(env_file: Path) -> tuple[str, ...]:
@@ -163,117 +112,12 @@ def _load_scenario_task(scenario_dir: Path) -> _ScenarioTask:
     )
 
 
-def _extract_tool_result_text(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict):
-                text = block.get("text")
-                if text is not None:
-                    parts.append(str(text))
-            elif isinstance(block, str):
-                parts.append(block)
-        return "\n".join(parts)
-    return str(content)
-
-
-def _extract_questions(text: str) -> list[AgentQuestion]:
-    """Pull clarifying questions from one assistant text block.
-
-    Heuristic: split on blank lines, treat any paragraph whose first
-    sentence ends with ``?`` as a question; subsequent bullet/numbered/
-    letter-prefixed lines become its options.
-    """
-    questions: list[AgentQuestion] = []
-    for paragraph in re.split(r"\n\s*\n", text):
-        lines = paragraph.splitlines()
-        q_text: str | None = None
-        option_lines: list[str] = []
-        for line in lines:
-            stripped = line.strip()
-            if q_text is None:
-                if stripped.endswith("?") and len(stripped) > 1:
-                    q_text = stripped
-                continue
-            match = _OPTION_RE.match(line)
-            if match:
-                option_lines.append(match.group(1).strip())
-        if q_text:
-            questions.append(AgentQuestion(text=q_text, options=tuple(option_lines)))
-    return questions
-
-
-def parse_transcript(
-    stdout: str,
-    *,
-    extra_secrets: tuple[str, ...] = (),
-) -> tuple[tuple[AgentCommand, ...], tuple[AgentQuestion, ...]]:
-    """Parse a Claude Code stream-json transcript.
-
-    Returns ``(commands, questions)``. Every Bash ``tool_use`` block paired
-    with its ``tool_result`` becomes one :class:`AgentCommand`. Each
-    assistant text block is scanned for clarifying questions.
-
-    All stdout text captured into ``stdout_tail`` is passed through
-    :func:`redact` with ``extra_secrets`` so .env values can't leak.
-    """
-    commands: list[AgentCommand] = []
-    questions: list[AgentQuestion] = []
-    pending: dict[str, str] = {}
-
-    for raw_line in stdout.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-
-        etype = event.get("type")
-        if etype == "assistant":
-            for block in (event.get("message") or {}).get("content", []) or []:
-                if not isinstance(block, dict):
-                    continue
-                btype = block.get("type")
-                if btype == "tool_use" and block.get("name") == "Bash":
-                    cmd = (block.get("input") or {}).get("command")
-                    if isinstance(cmd, str) and cmd:
-                        pending[str(block.get("id", ""))] = cmd
-                elif btype == "text":
-                    questions.extend(_extract_questions(str(block.get("text") or "")))
-        elif etype == "user":
-            for block in (event.get("message") or {}).get("content", []) or []:
-                if not isinstance(block, dict) or block.get("type") != "tool_result":
-                    continue
-                tool_id = str(block.get("tool_use_id", ""))
-                cmd = pending.pop(tool_id, None)
-                if cmd is None:
-                    continue
-                result_text = _extract_tool_result_text(block.get("content"))
-                is_error = bool(block.get("is_error", False))
-                commands.append(
-                    AgentCommand(
-                        argv=("bash", "-lc", cmd),
-                        returncode=1 if is_error else 0,
-                        stdout_tail=redact(
-                            _tail(result_text), extra_secrets=extra_secrets
-                        ),
-                        stderr_tail="",
-                    )
-                )
-
-    return tuple(commands), tuple(questions)
-
-
 class LiveClaudeCodeRunner:
-    """Run the live Claude Code CLI against a scenario.
+    """Run a live coding-agent CLI against a scenario.
+
+    Despite the historical name, the runner is harness-agnostic: it drives
+    whatever :class:`~rfc.harness_adapters.HarnessAdapter` it is given and
+    defaults to :class:`ClaudeCodeAdapter`.
 
     Constructor wiring:
 
@@ -284,9 +128,13 @@ class LiveClaudeCodeRunner:
         If unset, a fresh tempdir is used and removed on cleanup.
       * ``repo_root`` -- repo to ``git worktree add`` from; defaults to
         the rfc checkout this module lives in.
-      * ``claude_bin`` -- path to the ``claude`` CLI binary.
+      * ``claude_bin`` -- path to the ``claude`` CLI binary; used only to build
+        the default :class:`ClaudeCodeAdapter` (ignored when ``adapter`` is
+        passed).
       * ``env_file`` -- ``.env`` to read for redaction-only secret values;
         defaults to ``<repo_root>/.env``.
+      * ``adapter`` -- the :class:`~rfc.harness_adapters.HarnessAdapter` to
+        drive; defaults to :class:`ClaudeCodeAdapter`.
     """
 
     def __init__(
@@ -299,6 +147,7 @@ class LiveClaudeCodeRunner:
         repo_root: Path | None = None,
         claude_bin: str = "claude",
         env_file: Path | None = None,
+        adapter: HarnessAdapter | None = None,
     ) -> None:
         if config.runner != "live":
             raise ValueError(
@@ -310,6 +159,7 @@ class LiveClaudeCodeRunner:
         self._workspace_root = workspace_root
         self.repo_root = repo_root or REPO_ROOT
         self.claude_bin = claude_bin
+        self._adapter = adapter or ClaudeCodeAdapter(claude_bin=claude_bin)
         self._env_file = env_file if env_file is not None else (self.repo_root / ".env")
 
     def list_scenarios(self) -> list[str]:
@@ -325,13 +175,13 @@ class LiveClaudeCodeRunner:
         scenario_dir = self.scenarios_root / scenario_id
         task = _load_scenario_task(scenario_dir)
         secrets = _read_env_values(self._env_file)
-        branch_name = make_branch_name(task.task)
+        branch_name = make_branch_name(task.task, prefix=self._adapter.branch_prefix)
         workspace, owns_workspace = self._allocate_workspace(scenario_id)
         try:
             self._create_worktree(workspace, task.base_branch, branch_name)
-            claude_result = self._invoke_claude(workspace, task.task)
-            commands, questions = parse_transcript(
-                claude_result.stdout, extra_secrets=secrets
+            result = self._invoke_agent(workspace, task.task)
+            commands, questions = self._adapter.parse_output(
+                result.stdout, extra_secrets=secrets
             )
             commits = self._collect_commits(workspace, task.base_branch, secrets)
             changed = self._final_changed_paths(workspace)
@@ -380,16 +230,14 @@ class LiveClaudeCodeRunner:
         )
         workspace.mkdir(parents=True, exist_ok=True)
 
-    def _invoke_claude(self, workspace: Path, task: str) -> ClaudeProcessResult:
-        argv = (
-            self.claude_bin,
-            "-p",
-            task,
-            "--output-format",
-            "stream-json",
-            "--verbose",
+    def _invoke_agent(self, workspace: Path, task: str) -> ClaudeProcessResult:
+        argv = tuple(self._adapter.build_argv(task, workspace))
+        return self._invoker(
+            argv,
+            workspace,
+            self._adapter.env_overrides(),
+            self.config.timeout_seconds,
         )
-        return self._invoker(argv, workspace, {}, self.config.timeout_seconds)
 
     def _final_changed_paths(self, workspace: Path) -> tuple[str, ...]:
         result = self._invoker(

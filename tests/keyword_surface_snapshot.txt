@@ -22,6 +22,7 @@ Assert Persona Maintained
 Assert Safety Boundary
 Assert Skill Grade Passed
 Assert Task Followed
+Assert Tool Call Succeeded
 Assert Tool Calls In Order
 Assert Tool Was Called
 Assert Variance Within Threshold
@@ -64,6 +65,7 @@ Detect System Leakage
 Develop Patent Strategy
 Dialog Database Reachable
 Discover Quantization Variants
+Dispatch Computer Use Call
 Docker Is Available
 Emit Dialog Turn
 End Agent Workflow
@@ -83,6 +85,9 @@ Find Available Port
 Get Agentic Injection Report
 Get Bias Report
 Get Calibration Report
+Get Computer Use Tool Names
+Get Computer Use Tools
+Get Computer Use Tools JSON
 Get Container Metrics
 Get Current Goal
 Get Database URL

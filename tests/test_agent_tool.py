@@ -141,3 +141,46 @@ class TestToolResult:
         result = ToolResult("c1", True, "output")
         with pytest.raises(Exception):  # FrozenInstanceError
             result.output = "changed"
+
+
+class TestNewToolCall:
+    """new_tool_call: additive factory that fills id/timestamp boilerplate."""
+
+    def test_generates_id_and_timestamp(self):
+        from rfc.agent_tool import new_tool_call
+
+        call = new_tool_call("browser_click", {"selector": "#go"})
+        assert call.tool_name == "browser_click"
+        assert call.arguments == {"selector": "#go"}
+        assert call.id.startswith("call-")
+        assert call.timestamp > 0
+        assert call.call_number == 0
+
+    def test_ids_are_unique(self):
+        from rfc.agent_tool import new_tool_call
+
+        a = new_tool_call("t", {})
+        b = new_tool_call("t", {})
+        assert a.id != b.id
+
+    def test_none_arguments_becomes_empty_dict(self):
+        from rfc.agent_tool import new_tool_call
+
+        call = new_tool_call("t")
+        assert call.arguments == {}
+
+    def test_arguments_are_copied_not_aliased(self):
+        from rfc.agent_tool import new_tool_call
+
+        src = {"a": 1}
+        call = new_tool_call("t", src)
+        src["a"] = 2
+        assert call.arguments == {"a": 1}
+
+    def test_explicit_id_timestamp_and_call_number(self):
+        from rfc.agent_tool import new_tool_call
+
+        call = new_tool_call("t", {}, call_number=3, call_id="fixed", timestamp=42.0)
+        assert call.id == "fixed"
+        assert call.timestamp == 42.0
+        assert call.call_number == 3
