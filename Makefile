@@ -301,6 +301,12 @@ sync-metrics: ## Trigger immediate RF Metrics dashboard regeneration from output
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py
 
+# backup_push.sh sits at ci/ on the flat mirror/deploy layout and at
+# ../modules/ops/ci/ when this Makefile is invoked from the monorepo core/.
+# Resolve whichever exists so superset-export runs from both layouts; the
+# trailing default keeps the error legible (bash: No such file) if neither is.
+BACKUP_PUSH_SH := $(firstword $(wildcard ci/backup_push.sh ../modules/ops/ci/backup_push.sh) ci/backup_push.sh)
+
 superset-export: ## Export Superset dashboards + DB dump to backups/, then commit + push to the backups repo (main)
 	@mkdir -p backups
 	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
@@ -318,7 +324,7 @@ superset-export: ## Export Superset dashboards + DB dump to backups/, then commi
 		echo "WARNING: pg_dump failed — skipping DB dump"; \
 		rm -f "backups/db_$${TIMESTAMP}.sql" "backups/db_$${TIMESTAMP}.sql.gz"; \
 	fi; \
-	bash ci/backup_push.sh "chore: backup $${TIMESTAMP}"
+	bash "$(BACKUP_PUSH_SH)" "chore: backup $${TIMESTAMP}"
 
 superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py

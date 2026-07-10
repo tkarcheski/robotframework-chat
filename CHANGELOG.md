@@ -17,6 +17,24 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.20.0] — Unreleased
+
+### Added
+
+- **Computer-use substrate v0** (#175): browser actions exposed as
+  dispatchable agent tools. New `rfc.computer_use_keywords` wraps New Page /
+  Click / Type Text / page-to-markdown / screenshot as `ToolSchema` entries
+  with a Robot-independent `ComputerUseDispatcher`; new Robot keywords
+  `Get Computer Use Tools`, `Get Computer Use Tools JSON`,
+  `Get Computer Use Tool Names`, `Dispatch Computer Use Call`, and
+  `Assert Tool Call Succeeded`. New `rfc.computer_use_mcp` exposes the same
+  tools over an MCP (JSON-RPC 2.0) stdio server with zero extra
+  dependencies. New hermetic `robot/20__tier2/computer_use` suite drives an
+  open-page -> read-markdown -> click -> assert sequence entirely through
+  `ToolSchema` dispatch against a local `file://` fixture, archiving a
+  screenshot per step. `rfc.agent_tool` gains an additive `new_tool_call`
+  factory (no signature changes to `ToolSchema`/`ToolCall`/`ToolResult`).
+
 ## [1.19.0] — Unreleased
 
 ### Added
