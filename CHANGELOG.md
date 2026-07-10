@@ -17,6 +17,46 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.21.0] — Unreleased
+
+### Added
+
+- **HarnessKeywords RF library + cross-harness conformance matrix** (#173):
+  `rfc.harness_keywords.HarnessKeywords` is the public keyword surface that runs
+  one coding-agent task inside an `rfc harness` session bracket and normalizes
+  the CLI transcript into an `AgentRun`, so every run lands in the
+  `agentic_harnesses` DB spine and every `rfc.agent_verifiers` assertion applies
+  to it identically. New keywords: `Create Harness Workspace`,
+  `Harness Is Available`, `Start Harness Session`, `Run Agent Task`,
+  `Get Agent Transcript`, `End Harness Session`. Built on the #172 / #186
+  `HarnessAdapter` seam (claude-code / opencode / codex), with only the agent
+  invocation injectable so it is unit-testable without spending tokens. New
+  `robot/40__tier4/harness_matrix/harness_matrix.robot` runs the same fixture
+  task under each *available* harness and asserts identical contract outcomes;
+  it is LIVE and probe-gated (`HARNESS_MATRIX_LIVE=1`; the claude-code leg
+  additionally needs `HARNESS_MATRIX_CLAUDE=1`; codex skips cleanly until
+  installed). The deterministic twin (all three harnesses, no models, no tokens)
+  is `tests/test_harness_keywords.py`. Feeds public-repo issue rfc#596.
+
+## [1.20.1] — Unreleased
+
+### Fixed
+
+- **Docker execution suites: str-valued `volumes` dict zeroed all container
+  setup** (#189): `robot/resources/environments.resource` built its `volumes`
+  as `{host: "/workspace:rw"}` (a *str* value). docker-py's `containers.run`
+  calls `value.get("bind")` on each value, so the str raised
+  `AttributeError: 'str' object has no attribute 'get'`, no container was
+  created, and **every** test in every execution suite (`docker/python`, `c`,
+  `rust`, `bash`) failed deterministically at Suite Setup — silently zeroing
+  execution-eval signal for #176/#167/#162. The resource now builds the
+  docker-py dict form `{host: {"bind": "/workspace", "mode": "rw"}}`, and a new
+  `rfc.docker_config.normalize_volumes` seam defensively normalizes the str
+  shape (and passes valid dict/list forms through) so any suite still emitting
+  the old shape is repaired before it reaches docker-py. `Setup Container
+  Environment` also asserts a non-empty container id so a zero-container start
+  fails loudly. Regression tests pin the accepted shapes.
+
 ## [1.20.0] — Unreleased
 
 ### Added

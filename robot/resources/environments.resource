@@ -23,10 +23,16 @@ Setup Container Environment
     ${volume_path}=    Set Variable    ${SHARED_VOLUME_BASE}/${unique_name}
     Create Directory    ${volume_path}
 
-    ${volumes}=    Create Dictionary    ${volume_path}=/workspace:rw
+    # docker-py needs each volume value to be a {"bind": ..., "mode": ...} dict;
+    # a bare "/workspace:rw" str makes containers.run call str.get('bind') and no
+    # container is ever created (#189).
+    ${volume_spec}=    Create Dictionary    bind=/workspace    mode=rw
+    ${volumes}=    Create Dictionary    ${volume_path}=${volume_spec}
     ${profile_dict}=    Set Variable    ${${profile}}
     ${full_config}=    Create Dictionary    &{profile_dict}    command=sleep infinity    volumes=${volumes}
     ${container_id}=    Docker.Create Configurable Container    ${full_config}    rfc-${unique_name}
+    Should Not Be Empty    ${container_id}
+    ...    ${language_prefix} Suite Setup created no container (rfc-${unique_name}); the execution suite would emit only setup noise (#189)
 
     Set Global Variable    ${${language_prefix}_CONTAINER}    ${container_id}
     Set Global Variable    ${${language_prefix}_WORKSPACE}    ${volume_path}

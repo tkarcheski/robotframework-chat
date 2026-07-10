@@ -253,6 +253,11 @@ test_suites:
     path: "robot/10__tier1/harness"
     description: "End-to-end integration tests for the AgenticHarnessListener: a Robot run with the listener attached persists agentic_metrics rows per test case keyed to the harness session, with skip-and-log tolerance for DB-down and no-session runs"
 
+  harness-matrix:
+    label: "Harness Conformance Matrix"
+    path: "robot/40__tier4/harness_matrix"
+    description: "Cross-harness conformance (#173): the same fixture task run under each available coding-agent harness (claude-code/opencode/codex) through the public HarnessKeywords, asserting identical agent_verifiers outcomes; every run brackets an agentic_harnesses session. LIVE + probe-gated (HARNESS_MATRIX_LIVE=1; the claude-code leg additionally needs HARNESS_MATRIX_CLAUDE=1; codex skips until installed). Deterministic twin: tests/test_harness_keywords.py."
+
   hitl:
     label: "Human-in-the-Loop Flows"
     path: "robot/10__tier1/hitl/tests"
@@ -444,6 +449,11 @@ ci:
     robot-agentic-coding-tests:
       path: "robot/40__tier4/agentic_coding/"
       output_dir: "results/agentic_coding"
+      tags: ["agentic", "coding-agent"]
+
+    robot-harness-matrix-tests:
+      path: "robot/40__tier4/harness_matrix/"
+      output_dir: "results/harness_matrix"
       tags: ["agentic", "coding-agent"]
 
     robot-causal-reasoning-tests:
