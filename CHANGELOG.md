@@ -17,6 +17,27 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.22.0] — Unreleased
+
+### Added
+
+- **Harness spine grouping columns + reserved metric keys** (#217, RFC-007
+  S1): `agentic_harnesses` gains two nullable columns — `scenario_id` (the
+  battery task a run solved) and `battery_run_id` (groups the legs of one
+  battery invocation) — so the comparison scoreboard can
+  `GROUP BY (tool_name, model_id, scenario_id)` and pair repeats by a shared
+  battery run. Added to the SQLite schema and the SQLAlchemy `Table` for
+  fresh DBs, and as idempotent `ADD COLUMN` backfills in `_SQLITE_MIGRATIONS`
+  / `_PG_MIGRATIONS` for pre-existing DBs; old rows keep `NULL` and existing
+  writers are unchanged. `AgenticHarness` gains matching `scenario_id` /
+  `battery_run_id` fields (concrete `""` defaults, not `Optional`). New
+  `RESERVED_METRIC_KEYS` tuple + `METRIC_*` constants name the scoreboard's
+  reserved `agentic_metrics.metric_key` vocabulary (`task_success`,
+  `churn_ratio`, `process_violations`, plus the pre-existing `tokens_in` /
+  `tokens_out` / `latency_ms` / `grader_score`). No new table (RFC-007
+  section 6.2 rejects a `harness_benchmark` table). Write path deferred to
+  #218.
+
 ## [1.21.0] — Unreleased
 
 ### Added
