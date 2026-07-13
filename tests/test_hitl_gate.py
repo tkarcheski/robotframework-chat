@@ -271,3 +271,34 @@ class TestSandboxEnforcement:
         assert result.scenario_id == "hello"
         assert "create_container" in manager.calls
         assert "stop_container" in manager.calls
+
+    def test_unapproved_live_harness_is_blocked_before_any_execution(
+        self, db, gate, scenario_dir
+    ):
+        """The gate fires per run for the live-harness path too (#174): an
+        unapproved run must fail closed before the host agent OR the container
+        is touched."""
+        manager = FakeManager()
+        agent_calls: list[tuple] = []
+
+        def invoker(argv, cwd, env, timeout):
+            agent_calls.append(tuple(argv))
+            from rfc.harness_adapters import ClaudeProcessResult
+
+            return ClaudeProcessResult(returncode=0, stdout="", stderr="")
+
+        sandbox = AgentSandbox(
+            limits=SandboxLimits(),
+            manager=manager,
+            approval_gate=gate,
+            invoker=invoker,
+        )
+        with pytest.raises(HitlApprovalError):
+            sandbox.run_scenario(
+                scenario_dir,
+                variant="opencode",
+                agent_id="opencode",
+                harness="opencode",
+            )
+        assert manager.calls == []  # container untouched
+        assert agent_calls == []  # host-side agent never launched

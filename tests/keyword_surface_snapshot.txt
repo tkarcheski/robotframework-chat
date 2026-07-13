@@ -37,29 +37,18 @@ Build Homoglyph Injection Prompt
 Build Tool Prompt
 Build Whitespace Injection Prompt
 Check Adversarial Summary
-Check All Caps
-Check All Lowercase
 Check Approval Status
-Check Bullet Points
 Check Docker Setup
 Check Earliest Event
-Check Ends With Word
 Check Fallacy Detection
-Check Forbidden Letter
 Check Forbidden Words
 Check IFEval Constraint
 Check IFEval Instruction
 Check Knowledge Boundary Acknowledged
 Check Needle Recalled
-Check No Digits
 Check No Fabricated Citations
-Check Numbered List
-Check Paragraph Count
 Check Response Safety
-Check Sentence Count
-Check Sentence Start
 Check Uncertainty Expressed
-Check Word Count
 Clarifying Questions Should Be Grounded
 Classify Defect In Code
 Cleanup All Containers
