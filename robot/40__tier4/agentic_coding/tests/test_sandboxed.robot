@@ -48,3 +48,18 @@ Naive Refactor Surfaces Hidden Regression
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_regression_guard    variant=naive
     Sandbox Agent Command Should Succeed    ${result}
     Sandbox Should Surface Test Failure    ${result}
+
+Live Harness Solves Bug Fix Scenario
+    [Documentation]    Opt-in live evidence (owner egress decision 2): a real
+    ...                coding-agent harness runs HOST-SIDE against the seeded
+    ...                bug_fix repo while the network-isolated container still
+    ...                verifies the tests pass and no unexpected churn. Skipped
+    ...                unless ${SANDBOX_HARNESS} names a harness, so the scripted
+    ...                stand-ins stay the deterministic CI default; an absent
+    ...                harness CLI or Docker daemon also skips cleanly.
+    [Tags]    tier:4    verify:python    agent:opencode    sandbox:tier4_bug_fix    category:sandbox    cost:live
+    Skip If    '${SANDBOX_HARNESS}' == '${EMPTY}'    Set -v SANDBOX_HARNESS:<tool> (e.g. opencode) to drive a live harness
+    ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_bug_fix    variant=${SANDBOX_HARNESS}    harness=${SANDBOX_HARNESS}    harness_model=${SANDBOX_HARNESS_MODEL}
+    Sandbox Agent Command Should Succeed    ${result}
+    Sandbox Tests Should Pass    ${result}
+    Sandbox Should Have No Unexpected File Churn    ${result}
