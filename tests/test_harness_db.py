@@ -9,11 +9,29 @@ import pytest
 
 from rfc.harness_db import HAS_SQLALCHEMY, HarnessDatabase, _SQLiteHarnessBackend
 from rfc.harness_models import (
+    RESERVED_METRIC_KEYS,
     AgenticHarness,
     AgenticMetric,
     AgenticPlugin,
     AgenticSkill,
 )
+
+# Pre-#217 agentic_harnesses DDL: models a DB created before scenario_id /
+# battery_run_id existed, to exercise the backfill migration path.
+_OLD_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT
+);
+"""
 
 NOW = "2026-05-09T00:00:00Z"
 
@@ -128,6 +146,31 @@ class TestHarnessLifecycle:
     def test_end_harness_raises_if_missing(self, harness_db):
         with pytest.raises(LookupError):
             harness_db.end_harness("nope", outcome="failed", ended_at=NOW)
+
+    def test_save_and_get_with_spine_columns(self, harness_db):
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-spine",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-7",
+            )
+        )
+        fetched = harness_db.get_harness("s-spine")
+        assert fetched is not None
+        assert fetched.scenario_id == "tier4_bug_fix"
+        assert fetched.battery_run_id == "battery-7"
+
+    def test_spine_columns_default_to_empty_string(self, harness_db):
+        # Old-style writer that never sets the new fields: NULL -> "" sentinel.
+        harness_db.save_harness(
+            AgenticHarness(session_id="s-null", tool_name="claude-code", started_at=NOW)
+        )
+        fetched = harness_db.get_harness("s-null")
+        assert fetched is not None
+        assert fetched.scenario_id == ""
+        assert fetched.battery_run_id == ""
 
 
 class TestSnapshots:
@@ -310,6 +353,19 @@ class TestMetrics:
         assert len(in_only) == 2
         assert {m.metric_value for m in in_only} == {100.0, 200.0}
 
+    def test_reserved_metric_keys_round_trip(self, harness_db):
+        # Every reserved key is a valid agentic_metrics.metric_key and reads back.
+        harness_db.save_metrics(
+            [
+                AgenticMetric(
+                    session_id="s1", metric_key=key, recorded_at=NOW, metric_value=1.0
+                )
+                for key in RESERVED_METRIC_KEYS
+            ]
+        )
+        stored = {m.metric_key for m in harness_db.get_metrics("s1")}
+        assert stored == set(RESERVED_METRIC_KEYS)
+
 
 class TestCascades:
     def test_delete_harness_cascades_to_children(self, harness_db, tmp_path):
@@ -408,3 +464,97 @@ class TestIntrospection:
     def test_get_table_row_count_rejects_unknown_table(self, harness_db):
         with pytest.raises(ValueError):
             harness_db.get_table_row_count("test_runs")  # not a harness table
+
+
+class TestSpineColumnMigration:
+    """#217: scenario_id/battery_run_id backfilled onto a pre-#217 DB."""
+
+    def _seed_old_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_OLD_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at) VALUES (?, ?, ?)",
+                ("old-row", "claude-code", NOW),
+            )
+
+    def test_columns_absent_before_migration(self, tmp_path):
+        # Guard: the fixture really models a pre-#217 schema.
+        db_file = tmp_path / "old.db"
+        self._seed_old_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "scenario_id" not in cols
+        assert "battery_run_id" not in cols
+
+    def test_sqlite_native_migration_adds_columns(self, tmp_path):
+        db_file = tmp_path / "old.db"
+        self._seed_old_db(db_file)
+        db = HarnessDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert {"scenario_id", "battery_run_id"}.issubset(cols)
+        # Pre-existing row is intact and reads the new fields as "" (NULL).
+        old = db.get_harness("old-row")
+        assert old is not None
+        assert old.tool_name == "claude-code"
+        assert old.scenario_id == ""
+        assert old.battery_run_id == ""
+        # A new row round-trips the new fields on the upgraded DB.
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-row",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_regression_guard",
+                battery_run_id="battery-9",
+            )
+        )
+        new = db.get_harness("new-row")
+        assert new is not None
+        assert new.scenario_id == "tier4_regression_guard"
+        assert new.battery_run_id == "battery-9"
+
+    def test_sqlite_native_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "old.db"
+        self._seed_old_db(db_file)
+        HarnessDatabase(db_path=str(db_file))
+        HarnessDatabase(db_path=str(db_file))  # second open must not raise
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_adds_columns(self, tmp_path):
+        db_file = tmp_path / "old.db"
+        self._seed_old_db(db_file)
+        # SQLAlchemy backend over an existing pre-#217 sqlite file: create_all
+        # leaves the existing table alone, so _run_migrations must ALTER-add.
+        db = HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        old = db.get_harness("old-row")
+        assert old is not None
+        assert old.scenario_id == ""
+        assert old.battery_run_id == ""
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-row",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-1",
+            )
+        )
+        new = db.get_harness("new-row")
+        assert new is not None
+        assert new.scenario_id == "tier4_bug_fix"
+        assert new.battery_run_id == "battery-1"
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "old.db"
+        self._seed_old_db(db_file)
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise

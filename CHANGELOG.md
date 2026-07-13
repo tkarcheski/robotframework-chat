@@ -17,6 +17,47 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.23.0] — Unreleased
+
+### Added
+
+- **Live harness adapters wired into `agent_sandbox` scenarios** (#174): a
+  tier:4 sandbox scenario can now be solved by a *live* coding-agent CLI instead
+  of only the scripted `agents/*.sh` stand-ins. `AgentSandbox.run_scenario` and
+  the `Run Sandboxed Coding Scenario` keyword take `harness=<name>` (a
+  `rfc.harness_cli.TOOLS` taxonomy name, e.g. `opencode`) plus an optional
+  `harness_model=` override; the named `rfc.harness_adapters.HarnessAdapter`
+  builds the agent command. Per the owner's ratified egress model (decision 2)
+  the harness runs ON THE HOST against the seeded scenario repo, while the
+  network-isolated container still verifies the churn diff (`allowed_paths`) and
+  the scenario `test_command` exactly as before. An absent harness CLI skips the
+  run cleanly (new `rfc.exceptions.HarnessNotAvailableError`); a live agent that
+  overruns the wall-clock cap degrades to exit 124 with a still-verified result.
+  The scripted stand-ins remain the deterministic CI default. The `agent_sandbox`
+  and HITL approval gate contracts are unchanged and fire identically for both
+  paths.
+
+## [1.22.0] — Unreleased
+
+### Added
+
+- **Harness spine grouping columns + reserved metric keys** (#217, RFC-007
+  S1): `agentic_harnesses` gains two nullable columns — `scenario_id` (the
+  battery task a run solved) and `battery_run_id` (groups the legs of one
+  battery invocation) — so the comparison scoreboard can
+  `GROUP BY (tool_name, model_id, scenario_id)` and pair repeats by a shared
+  battery run. Added to the SQLite schema and the SQLAlchemy `Table` for
+  fresh DBs, and as idempotent `ADD COLUMN` backfills in `_SQLITE_MIGRATIONS`
+  / `_PG_MIGRATIONS` for pre-existing DBs; old rows keep `NULL` and existing
+  writers are unchanged. `AgenticHarness` gains matching `scenario_id` /
+  `battery_run_id` fields (concrete `""` defaults, not `Optional`). New
+  `RESERVED_METRIC_KEYS` tuple + `METRIC_*` constants name the scoreboard's
+  reserved `agentic_metrics.metric_key` vocabulary (`task_success`,
+  `churn_ratio`, `process_violations`, plus the pre-existing `tokens_in` /
+  `tokens_out` / `latency_ms` / `grader_score`). No new table (RFC-007
+  section 6.2 rejects a `harness_benchmark` table). Write path deferred to
+  #218.
+
 ## [1.21.0] — Unreleased
 
 ### Added
