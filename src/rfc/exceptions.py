@@ -119,6 +119,23 @@ class PortAllocationError(RFCSkipError):
         super().__init__(f"No available port found in range {start_port}-{end_port}")
 
 
+class HarnessNotAvailableError(RFCSkipError):
+    """Raised when a live coding-agent harness CLI is not installed/runnable.
+
+    A sandbox scenario driven by a live harness (Issue #174) probes the harness
+    adapter before touching Docker; an absent CLI (e.g. ``codex`` on a box where
+    it was never installed) skips the run rather than failing it, so the scripted
+    stand-ins stay the deterministic default.
+    """
+
+    def __init__(self, harness: str) -> None:
+        self.harness = harness
+        super().__init__(
+            f"Harness {harness!r} is not available (CLI not installed or not "
+            f"runnable on this host). Skipping the live sandbox run."
+        )
+
+
 # ── Environment / configuration ──────────────────────────────────────
 
 

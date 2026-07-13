@@ -20,6 +20,7 @@ Documentation     Cross-harness conformance matrix (#173): the SAME fixture task
 Library           rfc.harness_keywords.HarnessKeywords
 Library           rfc.agentic_coding_keywords.AgenticCodingKeywords
 Library           OperatingSystem
+Resource          harness_matrix.resource
 
 Suite Setup       Require Live Matrix
 
@@ -102,9 +103,3 @@ Harness Run Should Conform
     ${transcript}=    Get Agent Transcript
     Should Be Equal    ${transcript}    ${run}
     No Commit Should Occur While Tests Red    ${run}
-
-End Session And Cleanup
-    [Documentation]    Close the session row and remove the throwaway workspace.
-    [Arguments]    ${ws}
-    Run Keyword And Ignore Error    End Harness Session    outcome=success
-    Remove Directory    ${ws}[path]    recursive=True
