@@ -17,6 +17,116 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.23.1] — Unreleased
+
+### Fixed
+
+- **One owned churn-manifest policy** (#248, #231, #274, #280): the tier:4
+  sandbox grader (`rfc.agent_sandbox`) and the host-side battery-scenario guard
+  (`check_battery_scenarios.py`) each carried their own churn-manifest
+  implementation, and the two disagreed — so the guard could bless a solution the
+  grader would reject (#231) and the grader was blind to an out-of-allowlist
+  symlink the guard would have seen (`find -type f` omits symlinks, #248). Both
+  now consume a single owned policy in the new stdlib-only `rfc.churn_manifest`
+  module. Symlinks are **included**, keyed by `symlink:<sha256 of the link
+  target>` — the target is hashed, never embedded raw, so an attacker-chosen
+  target (newline, double-space) cannot inject a manifest delimiter (#274); the
+  records are NUL-delimited with raw paths for the same reason. Exclusion keys on
+  an **ancestor directory**, not a name-anywhere: the *contents* of a `.git` /
+  `__pycache__` directory are pruned on both sides (VCS metadata / byproduct
+  bytecode, not agent artifacts), but a *leaf* (file or symlink) named `.git` /
+  `__pycache__`, and any `.pyc` **outside** a `__pycache__/` directory, is
+  authored content and **counts** as churn (#280). A shell-vs-walk parity test
+  pins the two renderings byte-identical — including on the excluded-name-leaf and
+  hostile-name trees (#231, #274, #280) that previously drifted silently.
+
+## [1.23.0] — Unreleased
+
+### Added
+
+- **Live harness adapters wired into `agent_sandbox` scenarios** (#174): a
+  tier:4 sandbox scenario can now be solved by a *live* coding-agent CLI instead
+  of only the scripted `agents/*.sh` stand-ins. `AgentSandbox.run_scenario` and
+  the `Run Sandboxed Coding Scenario` keyword take `harness=<name>` (a
+  `rfc.harness_cli.TOOLS` taxonomy name, e.g. `opencode`) plus an optional
+  `harness_model=` override; the named `rfc.harness_adapters.HarnessAdapter`
+  builds the agent command. Per the owner's ratified egress model (decision 2)
+  the harness runs ON THE HOST against the seeded scenario repo, while the
+  network-isolated container still verifies the churn diff (`allowed_paths`) and
+  the scenario `test_command` exactly as before. An absent harness CLI skips the
+  run cleanly (new `rfc.exceptions.HarnessNotAvailableError`); a live agent that
+  overruns the wall-clock cap degrades to exit 124 with a still-verified result.
+  The scripted stand-ins remain the deterministic CI default. The `agent_sandbox`
+  and HITL approval gate contracts are unchanged and fire identically for both
+  paths.
+
+- **Explicit `timed_out` flag on `SandboxResult`** (#251): the sandbox no
+  longer forces consumers to infer a wall-clock kill from `agent_exit_code
+  == 124`. `SandboxResult` gains `timed_out` and `tests_timed_out` bools, set
+  at the single point of truth in `agent_sandbox` — the live path's
+  `except TimeoutExpired` branch (a happy-path CLI 124 is deliberately NOT
+  flagged, resolving the conflation) and the scripted path's container
+  `timeout -k` 124 detection, with the verification command's 124 reported
+  separately as `tests_timed_out`. Additive and backward compatible (both
+  default `False`; existing `== 124` readers keep working). Precursor to #218
+  per design's PR #230 sign-off ruling.
+
+- **Harness comparison mode over the tier:4 sandbox battery** (#218, RFC-007
+  S2): new `rfc.harness_comparison` runs the discriminating sandbox battery
+  under each *available* harness, N paired repeats each (default N=5), and
+  RECORDS per-run reserved metrics to the spine — one `agentic_harnesses` row
+  per (scenario × harness × repeat) carrying `scenario_id` + a shared
+  `battery_run_id`, plus `agentic_metrics` rows for `task_success`,
+  `churn_ratio`, `process_violations`, and `latency_ms` — instead of asserting
+  cross-harness equality. The Tier-A comparability contract (RFC-007 §5) is
+  hard-blocked on #191: `opencode` is pinned to the repo `opencode.json` local
+  Ollama model (self-contained, no egress — a `ComparabilityError` fails
+  loudly otherwise). `claude-code` cannot pin a local model, so it is recorded
+  as its own Tier-B cost tier (native model, never cross-compared); `codex`
+  skips when absent. The runner is shaped for N harnesses (a second
+  fixed-local leg pairs automatically by `(scenario_id, repeat_idx)`); the
+  McNemar significance gate is S4/#220. Exposed as a
+  `python -m rfc.harness_comparison` entry point and a gated live-smoke case
+  in `harness_matrix.robot` (`HarnessComparisonKeywords`); the conformance
+  suite is unchanged. Honest-comparison note: with only `opencode` able to pin
+  a fixed local model today, the sanctioned cross-harness head-to-head is not
+  available yet — it unlocks when a second Tier-A harness arrives.
+
+## [1.22.0] — Unreleased
+
+### Added
+
+- **Harness spine grouping columns + reserved metric keys** (#217, RFC-007
+  S1): `agentic_harnesses` gains two nullable columns — `scenario_id` (the
+  battery task a run solved) and `battery_run_id` (groups the legs of one
+  battery invocation) — so the comparison scoreboard can
+  `GROUP BY (tool_name, model_id, scenario_id)` and pair repeats by a shared
+  battery run. Added to the SQLite schema and the SQLAlchemy `Table` for
+  fresh DBs, and as idempotent `ADD COLUMN` backfills in `_SQLITE_MIGRATIONS`
+  / `_PG_MIGRATIONS` for pre-existing DBs; old rows keep `NULL` and existing
+  writers are unchanged. `AgenticHarness` gains matching `scenario_id` /
+  `battery_run_id` fields (concrete `""` defaults, not `Optional`). New
+  `RESERVED_METRIC_KEYS` tuple + `METRIC_*` constants name the scoreboard's
+  reserved `agentic_metrics.metric_key` vocabulary (`task_success`,
+  `churn_ratio`, `process_violations`, plus the pre-existing `tokens_in` /
+  `tokens_out` / `latency_ms` / `grader_score`). No new table (RFC-007
+  section 6.2 rejects a `harness_benchmark` table). Write path deferred to
+  #218.
+
+### Changed
+
+- **IFEval constraint checkers hidden from the Robot keyword surface**
+  (#205): the 11 pure-function `check_*` helpers in `IFEvalKeywords`
+  (`Check Sentence Count`, `Check All Caps`, `Check Bullet Points`,
+  `Check Word Count`, `Check Numbered List`, `Check Paragraph Count`,
+  `Check Forbidden Letter`, `Check Sentence Start`, `Check Ends With Word`,
+  `Check All Lowercase`, `Check No Digits`) were auto-exposed as Robot
+  keywords by omission. They are internal building blocks dispatched only by
+  `Check IFEval Constraint`, so each is now marked `@not_keyword` and no
+  longer surfaces. No suite invoked them directly, so this is a
+  surface-hygiene trim, not a breaking change; the public entry points
+  `Check IFEval Constraint` and `Check IFEval Instruction` are unchanged.
+
 ## [1.21.0] — Unreleased
 
 ### Added

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Optional, Tuple
 
-from robot.api.deco import keyword  # type: ignore[import-untyped]
+from robot.api.deco import keyword, not_keyword  # type: ignore[import-untyped]
 
 from .llm_client import LLMProvider, create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
@@ -224,6 +224,7 @@ class IFEvalKeywords:
     # ------------------------------------------------------------------
 
     @staticmethod
+    @not_keyword
     def check_sentence_count(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* contains exactly *expected* sentences."""
         text = response.strip()
@@ -236,6 +237,7 @@ class IFEvalKeywords:
         return False, f"Expected {expected} sentences, found {actual}"
 
     @staticmethod
+    @not_keyword
     def check_all_caps(response: str) -> Tuple[bool, str]:
         """Check that every alphabetic character is uppercase."""
         if not response.strip():
@@ -248,6 +250,7 @@ class IFEvalKeywords:
         return False, "Response contains lowercase alphabetic characters"
 
     @staticmethod
+    @not_keyword
     def check_bullet_points(response: str, expected: int) -> Tuple[bool, str]:
         """Check that all non-empty lines are bullet points and count matches."""
         if not response.strip():
@@ -262,6 +265,7 @@ class IFEvalKeywords:
         return False, f"Expected {expected} bullet points, found {actual}"
 
     @staticmethod
+    @not_keyword
     def check_word_count(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* contains exactly *expected* words."""
         if not response.strip():
@@ -273,6 +277,7 @@ class IFEvalKeywords:
         return False, f"Expected {expected} words, found {actual}"
 
     @staticmethod
+    @not_keyword
     def check_numbered_list(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* is a numbered list 1..*expected*."""
         if not response.strip():
@@ -292,6 +297,7 @@ class IFEvalKeywords:
         return True, f"Found numbered list 1..{expected} as expected"
 
     @staticmethod
+    @not_keyword
     def check_paragraph_count(response: str, expected: int) -> Tuple[bool, str]:
         """Check that *response* contains exactly *expected* paragraphs."""
         if not response.strip():
@@ -303,6 +309,7 @@ class IFEvalKeywords:
         return False, f"Expected {expected} paragraphs, found {actual}"
 
     @staticmethod
+    @not_keyword
     def check_forbidden_letter(response: str, letter: str) -> Tuple[bool, str]:
         """Check that *letter* does not appear in *response* (case-insensitive)."""
         if not response.strip():
@@ -312,6 +319,7 @@ class IFEvalKeywords:
         return True, f"Letter {letter!r} not found in response"
 
     @staticmethod
+    @not_keyword
     def check_sentence_start(response: str, word: str) -> Tuple[bool, str]:
         """Check that every sentence starts with *word* (case-sensitive)."""
         text = response.strip()
@@ -328,6 +336,7 @@ class IFEvalKeywords:
         return True, f"All {len(sentences)} sentences start with {word!r}"
 
     @staticmethod
+    @not_keyword
     def check_ends_with_word(response: str, word: str) -> Tuple[bool, str]:
         """Check that the last word of *response* is *word*."""
         text = response.strip().rstrip(".,;:!?")
@@ -340,6 +349,7 @@ class IFEvalKeywords:
         return False, f"Response ends with {last_token!r}, expected {word!r}"
 
     @staticmethod
+    @not_keyword
     def check_all_lowercase(response: str) -> Tuple[bool, str]:
         """Check that every alphabetic character is lowercase."""
         if not response.strip():
@@ -352,6 +362,7 @@ class IFEvalKeywords:
         return False, "Response contains uppercase alphabetic characters"
 
     @staticmethod
+    @not_keyword
     def check_no_digits(response: str) -> Tuple[bool, str]:
         """Check that *response* contains no digit characters."""
         if not response.strip():

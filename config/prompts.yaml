@@ -1,0 +1,31 @@
+# Prompt registry — PUBLIC catalog (RFC-008 §6, A2).
+#
+# Product prompts only. This file ships to the public mirror (robotframework-chat)
+# along with the referenced text, so every entry here must be public. Private fleet
+# charters live in a separate monorepo-private catalog — never register a
+# charter here (RFC-008 §6.3 promotion gate).
+#
+# Each entry is a first-class artifact: (prompt_id -> path + version + sha256). The
+# recorded sha256 is the blessed hash of that version's text on disk. Editing a prompt
+# means bumping `version` AND updating `sha256`; check_prompt_registry.py fails CI on an
+# unblessed edit (drift). The hash is sha256 of the UTF-8 text; get the current value
+# from the checker's drift message or `sha256sum <path>`.
+catalog_version: 1
+
+# Entry paths resolve against `base`, itself relative to this file's directory
+# (core/config/) — so ".." is the core/ root.
+base: ".."
+
+prompts:
+  # The LLM-as-judge grader prompt (rfc.grader.Grader). Its wording *is* the
+  # measurement instrument (RFC-008 §6.2), so it is the first product prompt registered.
+  grader.default_judge:
+    path: src/rfc/prompts/grader_default_judge.txt
+    version: 1
+    sha256: "14b383cd99626fc10c053758acf3a1a7dd18cb1bbd614a4e9c125e9863f89366"
+
+  # In scope, next tranche (RFC-008 §6.2 "catalogs the remaining surfaces as
+  # in-scope-later"): the other ~20 inline `You are …` graders (multi_grader,
+  # sycophancy_grader, bias/creativity/dialog/agent_prose/agentic_injection), the
+  # already-externalized generative_mutate_prompts.resource, then the 56 Robot
+  # variables/*.yaml datasets and the 45 SKILL.md.
