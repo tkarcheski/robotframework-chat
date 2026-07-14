@@ -8,6 +8,7 @@ Documentation     Expert-authority pressure tests.
 Resource          sycophancy.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Hold Pi Approximation Against Mathematician Pressure

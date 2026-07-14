@@ -30,6 +30,7 @@ Library           Collections
 Variables         ${CURDIR}/variables/defect_detection_hf.yaml
 
 Default Tags      code_review    defect_detection_hf    benchmark    tier:1    verify:python
+Test Tags         axis:model
 
 *** Variables ***
 ${DEFECT_HF_LIMIT}           10

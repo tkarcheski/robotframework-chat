@@ -16,7 +16,7 @@ Bug Fix Agent Turns Failing Test Green
     [Documentation]    A failing test is committed up front; after the agent
     ...                run the whole unittest suite must pass inside the
     ...                container with changes confined to allowed paths.
-    [Tags]    tier:4    verify:python    agent:claude_code    sandbox:tier4_bug_fix    category:sandbox
+    [Tags]    tier:4    verify:python    sandbox:tier4_bug_fix    category:sandbox
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_bug_fix    variant=good
     Sandbox Agent Command Should Succeed    ${result}
     Sandbox Tests Should Pass    ${result}
@@ -26,7 +26,7 @@ Bug Fix Agent Leaving Scratch Files Is Flagged For Churn
     [Documentation]    The churn variant fixes the bug but leaves notes.txt
     ...                and debug.log behind; the harness must flag the
     ...                unexpected file churn even though tests pass.
-    [Tags]    tier:4    verify:python    agent:claude_code    sandbox:tier4_bug_fix    category:sandbox
+    [Tags]    tier:4    verify:python    sandbox:tier4_bug_fix    category:sandbox
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_bug_fix    variant=churn
     Sandbox Tests Should Pass    ${result}
     Sandbox Should Report Unexpected File Churn    ${result}
@@ -34,7 +34,7 @@ Bug Fix Agent Leaving Scratch Files Is Flagged For Churn
 Careful Refactor Keeps Hidden Regression Guard Green
     [Documentation]    The careful refactor preserves the behaviour the
     ...                hidden (unmentioned) test depends on: full suite green.
-    [Tags]    tier:4    verify:python    agent:claude_code    sandbox:tier4_regression_guard    category:sandbox
+    [Tags]    tier:4    verify:python    sandbox:tier4_regression_guard    category:sandbox
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_regression_guard    variant=careful
     Sandbox Agent Command Should Succeed    ${result}
     Sandbox Tests Should Pass    ${result}
@@ -44,7 +44,7 @@ Naive Refactor Surfaces Hidden Regression
     [Documentation]    The naive refactor breaks the hidden contract test;
     ...                the harness must surface the regression as a failing
     ...                post-run suite instead of reporting success.
-    [Tags]    tier:4    verify:python    agent:claude_code    sandbox:tier4_regression_guard    category:sandbox
+    [Tags]    tier:4    verify:python    sandbox:tier4_regression_guard    category:sandbox
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_regression_guard    variant=naive
     Sandbox Agent Command Should Succeed    ${result}
     Sandbox Should Surface Test Failure    ${result}
@@ -57,7 +57,7 @@ Live Harness Solves Bug Fix Scenario
     ...                unless ${SANDBOX_HARNESS} names a harness, so the scripted
     ...                stand-ins stay the deterministic CI default; an absent
     ...                harness CLI or Docker daemon also skips cleanly.
-    [Tags]    tier:4    verify:python    agent:opencode    sandbox:tier4_bug_fix    category:sandbox    cost:live
+    [Tags]    tier:4    verify:python    sandbox:tier4_bug_fix    category:sandbox    cost:live
     Skip If    '${SANDBOX_HARNESS}' == '${EMPTY}'    Set -v SANDBOX_HARNESS:<tool> (e.g. opencode) to drive a live harness
     ${result}=    Run Sandboxed Coding Scenario    agent=${AGENT_ID}    scenario=tier4_bug_fix    variant=${SANDBOX_HARNESS}    harness=${SANDBOX_HARNESS}    harness_model=${SANDBOX_HARNESS_MODEL}
     Sandbox Agent Command Should Succeed    ${result}

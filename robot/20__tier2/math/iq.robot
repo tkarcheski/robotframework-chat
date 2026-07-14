@@ -4,6 +4,7 @@ Resource          math.resource
 Library           Collections
 Library           OperatingSystem
 Library           String
+Test Tags         axis:model
 
 *** Test Cases ***
 IQ 70 Basic Addition

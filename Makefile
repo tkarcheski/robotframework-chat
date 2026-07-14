@@ -94,7 +94,7 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 
 # ── Foundation: Robot Framework Tests ────────────────────────────────
 # Pass extra `robot` CLI args via ARGS, e.g.:
-#   make robot ARGS="--include agent:claude_code"
+#   make robot ARGS="--include axis:harness"
 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 

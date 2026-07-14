@@ -10,6 +10,7 @@ Resource          ../multilingual.resource
 Default Tags      multilingual    spanish    regression    tier:1    verify:python
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Spanish Prompt Spanish Response Word Count

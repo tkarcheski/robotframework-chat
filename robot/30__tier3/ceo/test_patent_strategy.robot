@@ -7,6 +7,7 @@ Documentation     CEO Agent — Stage 4: Patent Strategy Tests
 Resource          ceo.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Patent Strategy Produces Structured Output

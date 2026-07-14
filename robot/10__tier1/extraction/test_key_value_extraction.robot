@@ -12,6 +12,7 @@ Resource          extraction.resource
 
 Default Tags      extraction    key_value    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

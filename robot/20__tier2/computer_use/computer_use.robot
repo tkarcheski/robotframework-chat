@@ -17,7 +17,7 @@ Documentation     Computer-use substrate v0: browser actions as dispatchable too
 Library           rfc.computer_use_keywords.ComputerUseKeywords
 Library           Collections
 
-Test Tags         computer_use
+Test Tags         computer_use    axis:none
 
 Suite Setup       Import Browser Or Flag Unavailable
 Suite Teardown    Close Browser If Available

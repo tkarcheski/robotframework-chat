@@ -6,6 +6,7 @@ Documentation     C interview questions - code and concept oriented
 
 Resource          c_interview.resource
 Variables         ${CURDIR}/variables/c_concepts_questions.yaml
+Test Tags         axis:model
 
 *** Test Cases ***
 C Interview - Malloc Vs Calloc Vs Realloc (IQ:110)
