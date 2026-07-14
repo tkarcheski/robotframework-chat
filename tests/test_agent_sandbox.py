@@ -9,11 +9,15 @@ robot/40__tier4/agentic_coding/tests/test_sandboxed.robot.
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from rfc.agent_config import SandboxLimits
+from rfc.exceptions import HarnessNotAvailableError
+from rfc.harness_adapters import ClaudeProcessResult
 from rfc.agent_sandbox import (
     DEFAULT_SANDBOX_SCENARIOS_ROOT,
     AgentSandbox,
@@ -246,6 +250,53 @@ class TestAgentSandboxRun:
         assert result.tests_exit_code == 1
         assert not result.tests_passed
 
+    def test_default_result_has_no_timeout_flags(self) -> None:
+        # #251: a clean scripted run flags neither timeout.
+        fake = FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old"}),
+                {"stdout": "", "stderr": "", "exit_code": 0, "duration_ms": 5},
+                _manifest({"calculator.py": "new"}),
+                {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
+            ]
+        )
+        result = self._run(fake)
+        assert result.timed_out is False
+        assert result.tests_timed_out is False
+
+    def test_scripted_agent_timeout_sets_timed_out(self) -> None:
+        # #251: the container `timeout` wrapper emits 124 when the agent
+        # overruns; the sandbox is the single point of truth that turns that
+        # into timed_out=True. tests still complete, so tests_timed_out=False.
+        fake = FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old"}),
+                {"stdout": "", "stderr": "", "exit_code": 124, "duration_ms": 5},
+                _manifest({"calculator.py": "old"}),
+                {"stdout": "FAILED", "stderr": "", "exit_code": 1, "duration_ms": 9},
+            ]
+        )
+        result = self._run(fake)
+        assert result.agent_exit_code == 124
+        assert result.timed_out is True
+        assert result.tests_timed_out is False
+
+    def test_scripted_tests_timeout_sets_tests_timed_out(self) -> None:
+        # #251: a 124 from the verification command is a distinct outcome
+        # (tests_timed_out) from an agent timeout -- both were previously 124.
+        fake = FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old"}),
+                {"stdout": "", "stderr": "", "exit_code": 0, "duration_ms": 5},
+                _manifest({"calculator.py": "new"}),
+                {"stdout": "", "stderr": "", "exit_code": 124, "duration_ms": 9},
+            ]
+        )
+        result = self._run(fake)
+        assert result.tests_exit_code == 124
+        assert result.tests_timed_out is True
+        assert result.timed_out is False
+
     def test_agent_command_is_wall_clock_capped_with_kill_escalation(self) -> None:
         """PR #490 review (P1): plain `timeout` only sends SIGTERM; an agent
         (or child) that ignores it survives the advertised wall-clock cap.
@@ -324,3 +375,213 @@ class TestAgentSandboxRun:
             "tier4_bug_fix", variant="good", agent_id="claude-code"
         )
         assert result.scenario_id == "tier4_bug_fix"
+
+
+# ---------------------------------------------------------------------------
+# Live harness path (#174): the agent runs on the HOST, the container verifies.
+# Deterministic — an injected invoker replays a recorded transcript (no CLI)
+# and a fake container manager stands in for Docker.
+# ---------------------------------------------------------------------------
+
+# opencode ``run --format json`` event: one completed bash tool call fixing the
+# subtract bug. parse_opencode_events turns it into a single AgentCommand.
+OPENCODE_FIX_TRANSCRIPT = (
+    json.dumps(
+        {
+            "part": {
+                "type": "tool",
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "sed -i 's/a + b/a - b/' calculator.py"},
+                    "output": "",
+                },
+            }
+        }
+    )
+    + "\n"
+)
+
+
+def _recording_invoker(stdout: str = "", returncode: int = 0, calls=None):
+    """A ProcessInvoker double that records its calls and replays ``stdout``."""
+
+    def invoker(argv, cwd, env, timeout):
+        if calls is not None:
+            calls.append(
+                {
+                    "argv": tuple(argv),
+                    "cwd": Path(cwd),
+                    "env": dict(env),
+                    "timeout": timeout,
+                }
+            )
+        return ClaudeProcessResult(returncode=returncode, stdout=stdout, stderr="")
+
+    return invoker
+
+
+class TestAgentSandboxLiveHarness:
+    def _verify_manager(self, after_entries: dict[str, str]) -> FakeContainerManager:
+        # exec order: baseline manifest, workspace clear, after manifest, tests.
+        return FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
+                {"stdout": "", "stderr": "", "exit_code": 0, "duration_ms": 1},
+                _manifest(after_entries),
+                {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
+            ]
+        )
+
+    def test_live_harness_happy_path(self) -> None:
+        calls: list[dict] = []
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, calls=calls),
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR,
+            variant="opencode",
+            agent_id="opencode",
+            harness="opencode",
+        )
+        assert result.agent_exit_code == 0
+        assert result.tests_passed
+        assert result.changed_paths == ("calculator.py",)
+        assert result.unexpected_paths == ()
+        assert not result.has_unexpected_churn
+
+    def test_live_harness_runs_agent_on_host_not_in_container(self) -> None:
+        calls: list[dict] = []
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, calls=calls),
+        )
+        sandbox.run_scenario(
+            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+        )
+        # The agent CLI ran exactly once, host-side, via the injected invoker,
+        # in a throwaway host workspace (not inside the container).
+        assert len(calls) == 1
+        assert calls[0]["argv"][0] == "opencode"
+        assert calls[0]["cwd"].name == "workspace"
+        assert calls[0]["timeout"] == _limits().wall_clock_seconds
+        # The container only ever received copies to /workspace (repo + the
+        # agent's output) — never an agent script into /tmp, and the four exec
+        # calls are verification only (baseline, clear, after, tests).
+        assert {c[2] for c in fake.copy_calls} == {"/workspace"}
+        assert len(fake.copy_calls) == 2
+        assert len(fake.exec_calls) == 4
+
+    def test_live_harness_captures_trajectory_and_test_row(self) -> None:
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT),
+        )
+        run = sandbox.run_scenario(
+            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+        ).run
+        assert run.agent_id == "opencode"
+        assert run.scenario_id == "tier4_bug_fix"
+        # parsed agent trajectory + the verification test row.
+        assert len(run.commands) == 2
+        assert run.commands[0].argv == (
+            "bash",
+            "-lc",
+            "sed -i 's/a + b/a - b/' calculator.py",
+        )
+        assert run.commands[-1].argv[:2] == ("sh", "-c")
+        assert run.commands[-1].changed_paths_after == ("calculator.py",)
+
+    def test_live_harness_unexpected_churn_is_flagged(self) -> None:
+        fake = self._verify_manager(
+            {"calculator.py": "new", "test_calculator.py": "t", "debug.log": "junk"}
+        )
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT),
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+        )
+        assert result.unexpected_paths == ("debug.log",)
+        assert result.has_unexpected_churn
+
+    def test_absent_harness_cli_skips_cleanly(self) -> None:
+        # No invoker injected -> probe gate is armed. codex is never installed
+        # in this repo's environments (CodexAdapter, owner decision 3), so the
+        # probe fails and the run skips fail-closed before any container work.
+        fake = FakeContainerManager()
+        sandbox = AgentSandbox(limits=_limits(), manager=fake)
+        with pytest.raises(HarnessNotAvailableError):
+            sandbox.run_scenario(
+                BUG_FIX_DIR, variant="codex", agent_id="codex", harness="codex"
+            )
+        assert fake.created == []
+        assert fake.exec_calls == []
+
+    def test_live_harness_wall_clock_timeout_yields_bounded_result(self) -> None:
+        # A live agent that overruns the cap must degrade to exit 124 + a
+        # verified (red) result, not crash the harness. The container still
+        # verifies whatever partial state the agent left behind.
+        fake = self._verify_manager({"calculator.py": "old", "test_calculator.py": "t"})
+        fake.exec_results[-1] = {
+            "stdout": "FAILED",
+            "stderr": "",
+            "exit_code": 1,
+            "duration_ms": 9,
+        }
+
+        def timing_out_invoker(argv, cwd, env, timeout):
+            raise subprocess.TimeoutExpired(cmd=list(argv), timeout=timeout, output="")
+
+        sandbox = AgentSandbox(
+            limits=_limits(), manager=fake, invoker=timing_out_invoker
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+        )
+        assert result.agent_exit_code == 124
+        assert result.timed_out is True
+        # #251: the tests still ran to completion (red), so tests_timed_out
+        # stays False -- an agent timeout and a test timeout are distinct.
+        assert result.tests_timed_out is False
+        assert not result.tests_passed
+        # verification still ran against the partial workspace.
+        assert len(fake.exec_calls) == 4
+
+    def test_live_cli_exit_124_is_not_flagged_as_timeout(self) -> None:
+        # #251 conflation fix: a live CLI that itself exits 124 on the happy
+        # path (no TimeoutExpired) is NOT a harness kill. agent_exit_code is
+        # preserved as 124, but timed_out is False -- the flag is set only
+        # where the timeout actually fires, so a scoreboard never inflates
+        # the timeout rate with an agent-chosen 124.
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, returncode=124),
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+        )
+        assert result.agent_exit_code == 124
+        assert result.timed_out is False
+
+    def test_unknown_harness_name_raises_keyerror(self) -> None:
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=FakeContainerManager(),
+            invoker=_recording_invoker(),
+        )
+        with pytest.raises(KeyError, match="nope"):
+            sandbox.run_scenario(
+                BUG_FIX_DIR, variant="nope", agent_id="nope", harness="nope"
+            )

@@ -21,7 +21,7 @@ Library           rfc.hitl_keywords.HitlKeywords    AS    Hitl
 Suite Setup       Create Hitl Suite Database
 Suite Teardown    Remove Hitl Suite Database
 
-Test Tags         hitl    tier:1    verify:python
+Test Tags         hitl    tier:1    verify:python    axis:none
 
 *** Variables ***
 ${ACTION_ID}          deploy:production:rollout

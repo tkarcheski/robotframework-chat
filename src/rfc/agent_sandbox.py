@@ -4,12 +4,18 @@ Spins up a disposable container, seeds it with a scenario repo, runs an agent
 command inside it under resource caps, then verifies the resulting worktree
 state: the scenario's tests still pass and no unexpected file churn occurred.
 
-The agent side is deliberately pluggable. Today each scenario ships scripted
-agent variants (``agents/*.sh``) that stand in for a live coding agent; when
-the live Claude Code adapter lands (#288, ``LiveClaudeCodeRunner``), it plugs
-into the same entry point by producing the command executed inside the
-container. Every run is normalized into the same :class:`~rfc.agent_run.AgentRun`
-the rest of the suite's verifiers consume.
+The agent side is deliberately pluggable. Each scenario ships scripted agent
+variants (``agents/*.sh``) that run inside the container and stay the default
+for deterministic CI. Passing ``harness=<name>`` (a :data:`rfc.harness_cli.TOOLS`
+taxonomy name) instead drives a *live* coding-agent CLI through its
+:class:`~rfc.harness_adapters.HarnessAdapter` (Issue #174). Per the owner's
+ratified egress model (decision 2), the live harness runs ON THE HOST against
+the seeded scenario repo; only the scenario's verification (churn diff +
+``test_command``) runs inside the network-isolated container, exactly as the
+scripted path does. An absent harness CLI skips the run cleanly
+(:class:`~rfc.exceptions.HarnessNotAvailableError`). Every run is normalized
+into the same :class:`~rfc.agent_run.AgentRun` the rest of the suite's verifiers
+consume.
 
 Scenario fixture layout::
 
@@ -25,6 +31,9 @@ Docker unavailability raises :class:`~rfc.exceptions.DockerNotAvailableError`
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +44,16 @@ from robot.api import logger
 
 from rfc.agent_config import SandboxLimits
 from rfc.agent_run import AgentCommand, AgentRun
+from rfc.exceptions import HarnessNotAvailableError
+from rfc.harness_adapters import (
+    HarnessAdapter,
+    OpenCodeAdapter,
+    ProcessInvoker,
+    _default_invoker,
+    get_adapter,
+    make_branch_name,
+    redact,
+)
 
 DEFAULT_SANDBOX_SCENARIOS_ROOT = (
     Path(__file__).resolve().parent.parent.parent
@@ -43,6 +62,13 @@ DEFAULT_SANDBOX_SCENARIOS_ROOT = (
     / "agentic_coding"
     / "fixtures"
     / "sandbox"
+)
+
+# Repo ``opencode.json`` (local Ollama, no external egress) exported as
+# OPENCODE_CONFIG when a live opencode harness drives a scenario (#174). Lives
+# at the core/ root, two parents up from this package (src/rfc/ -> src/ -> core/).
+_DEFAULT_OPENCODE_CONFIG = (
+    Path(__file__).resolve().parent.parent.parent / "opencode.json"
 )
 
 _WORKSPACE = "/workspace"
@@ -55,6 +81,13 @@ _OUTPUT_TAIL_CHARS = 4000
 # escalation, an agent (or child) that ignores SIGTERM outlives the
 # advertised wall-clock cap and can hang the suite (PR #490 review, P1).
 _KILL_AFTER_SECONDS = 10
+# Exit code GNU ``timeout(1)`` emits when it kills a command that overran its
+# wall-clock cap (also what the live path stamps on ``TimeoutExpired``). #251:
+# this module is the single point of truth that turns 124 into the explicit
+# ``timed_out`` flag on :class:`SandboxResult`, so no consumer re-derives a
+# harness kill from a magic number -- a live CLI can itself exit 124 for
+# reasons unrelated to a timeout.
+TIMEOUT_EXIT_CODE = 124
 _SANDBOX_BASE_BRANCH = "claude-code-staging"
 
 _REQUIRED_SCENARIO_KEYS = ("scenario_id", "task", "test_command")
@@ -184,6 +217,14 @@ class SandboxResult:
     unexpected_paths: tuple[str, ...]
     duration_seconds: float
     run: AgentRun
+    # #251: explicit timeout flags, set at the single point of truth (this
+    # module) so a scoreboard reads a flag rather than inferring a harness
+    # kill from ``agent_exit_code == 124``. ``timed_out`` == the agent/harness
+    # overran its wall-clock cap; ``tests_timed_out`` == the verification
+    # ``test_command`` overran its cap. Additive + backward compatible: both
+    # default False and existing 124 readers keep working.
+    timed_out: bool = False
+    tests_timed_out: bool = False
 
     @property
     def tests_passed(self) -> bool:
@@ -235,6 +276,15 @@ def _tail(text: str) -> str:
     return text[-_OUTPUT_TAIL_CHARS:]
 
 
+def _coerce_text(value: Any) -> str:
+    """Normalize subprocess output (bytes / str / None) to str."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 class AgentSandbox:
     """Run agent commands against disposable scenario repos inside Docker."""
 
@@ -244,6 +294,8 @@ class AgentSandbox:
         manager: ContainerBackend | None = None,
         scenarios_root: Path | None = None,
         approval_gate: ApprovalGate | None = None,
+        invoker: ProcessInvoker | None = None,
+        opencode_config: Path | None = None,
     ) -> None:
         self.limits = limits
         self._manager = manager
@@ -252,6 +304,13 @@ class AgentSandbox:
         # refuses to touch Docker unless the exact action is approved.
         # None keeps the historical ungated behaviour (opt-in per harness).
         self._approval_gate = approval_gate
+        # Host-side agent invocation seam for the live-harness path (#174).
+        # None -> the real subprocess invoker (production). An injected invoker
+        # replays a recorded transcript AND disables the probe gate, so unit
+        # tests never need the real CLI installed (mirrors LiveClaudeCodeRunner).
+        self._agent_invoker = invoker or _default_invoker
+        self._probe_live = invoker is None
+        self._opencode_config = opencode_config or _DEFAULT_OPENCODE_CONFIG
 
     @property
     def manager(self) -> ContainerBackend:
@@ -311,12 +370,25 @@ class AgentSandbox:
         scenario: SandboxScenario | Path | str,
         variant: str = "good",
         agent_id: str = "claude-code",
+        harness: str | None = None,
+        harness_model: str = "",
     ) -> SandboxResult:
-        """Seed, run the agent variant, and verify the resulting worktree.
+        """Seed, run the agent, and verify the resulting worktree.
+
+        ``harness=None`` (the default) runs the scenario's scripted
+        ``agents/<variant>.sh`` stand-in inside the container -- the
+        deterministic CI path. ``harness=<name>`` (a :data:`rfc.harness_cli.TOOLS`
+        taxonomy name) instead drives that live coding-agent CLI host-side
+        against the seeded repo (owner egress decision 2), with the container
+        still verifying churn + tests; an absent harness CLI raises
+        :class:`~rfc.exceptions.HarnessNotAvailableError` (a clean skip).
+        ``harness_model`` overrides the model for adapters that take one
+        (opencode).
 
         With an ``approval_gate`` configured, execution is blocked fail-closed
-        (before any container exists) unless an approved ``hitl_interactions``
-        row matches this exact action id + args digest (#384).
+        (before any container OR host agent is launched) unless an approved
+        ``hitl_interactions`` row matches this exact action id + args digest
+        (#384) -- the gate fires identically for both paths.
         """
         resolved = self._resolve_scenario(scenario)
         if self._approval_gate is not None:
@@ -324,6 +396,16 @@ class AgentSandbox:
                 sandbox_action_id(resolved.scenario_id, variant),
                 sandbox_action_args(resolved.scenario_id, variant, agent_id),
             )
+        if harness is not None:
+            return self._run_live_scenario(
+                resolved, variant, agent_id, harness, harness_model
+            )
+        return self._run_scripted_scenario(resolved, variant, agent_id)
+
+    def _run_scripted_scenario(
+        self, resolved: SandboxScenario, variant: str, agent_id: str
+    ) -> SandboxResult:
+        """Scripted stand-in path: the agent variant runs inside the container."""
         script = resolved.agent_script(variant)
         config = self._container_config(resolved.scenario_id, variant)
         wall_clock = self.limits.wall_clock_seconds
@@ -395,6 +477,9 @@ class AgentSandbox:
                 ),
             ),
         )
+        # Scripted path single point of truth: the agent + test commands are
+        # each wrapped in ``timeout -k``, so an exit of TIMEOUT_EXIT_CODE is
+        # unambiguously our wrapper killing an overrun (not a consumer's guess).
         result = SandboxResult(
             scenario_id=resolved.scenario_id,
             agent_id=agent_id,
@@ -407,10 +492,196 @@ class AgentSandbox:
             unexpected_paths=unexpected,
             duration_seconds=round(duration, 3),
             run=run,
+            timed_out=int(agent_result["exit_code"]) == TIMEOUT_EXIT_CODE,
+            tests_timed_out=int(tests_result["exit_code"]) == TIMEOUT_EXIT_CODE,
         )
         logger.info(
             f"Sandbox run {resolved.scenario_id}/{variant}: "
             f"agent_exit={result.agent_exit_code} "
+            f"tests_exit={result.tests_exit_code} "
+            f"changed={list(changed)} unexpected={list(unexpected)} "
+            f"({result.duration_seconds}s)"
+        )
+        return result
+
+    def _build_harness_adapter(
+        self, harness: str, harness_model: str
+    ) -> HarnessAdapter:
+        """Construct the adapter for ``harness``, wiring opencode's local config.
+
+        opencode reuses the repo ``opencode.json`` (local Ollama, no external
+        egress) via ``OPENCODE_CONFIG`` and accepts a ``--model`` override;
+        claude-code and codex take no model override here. Unknown names raise
+        ``KeyError`` (a typo, not a skip).
+        """
+        if harness == "opencode":
+            config_path = (
+                self._opencode_config if self._opencode_config.exists() else None
+            )
+            return OpenCodeAdapter(model=harness_model or None, config_path=config_path)
+        return get_adapter(harness)
+
+    def _sync_workspace(self, container_id: str, host_workspace: Path) -> None:
+        """Replace the container's ``/workspace`` with the host workspace tree.
+
+        Empties ``/workspace`` first (so files the live agent *deleted* on the
+        host are reflected in the churn diff) then copies the post-agent tree
+        back in, leaving the churn manifest + test run to observe exactly what
+        the agent produced.
+        """
+        cleared = self.manager.execute_command(
+            container_id,
+            "find /workspace -mindepth 1 -delete",
+            timeout=60,
+            workdir=_WORKSPACE,
+        )
+        if cleared["exit_code"] != 0:
+            raise RuntimeError(
+                f"Failed to reset workspace before sync (exit "
+                f"{cleared['exit_code']}): {_tail(cleared['stdout'])}"
+            )
+        self.manager.copy_to_container(container_id, str(host_workspace), _WORKSPACE)
+
+    def _invoke_agent_bounded(
+        self,
+        adapter: HarnessAdapter,
+        agent_argv: tuple[str, ...],
+        workspace: Path,
+        wall_clock: int,
+    ) -> tuple[int, str, bool]:
+        """Run the host-side agent, bounding it to the wall-clock cap.
+
+        Returns ``(returncode, stdout, timed_out)``. ``timed_out`` is the
+        single point of truth for the live path (#251): it is True only when
+        the invoker's ``TimeoutExpired`` fired -- i.e. the harness genuinely
+        overran its wall-clock cap. A live CLI that *itself* exits
+        ``TIMEOUT_EXIT_CODE`` for an unrelated reason is NOT flagged, so a
+        consumer never conflates a harness kill with an agent-chosen 124.
+        A live harness that overruns the cap is killed by the invoker's
+        timeout with whatever partial transcript was captured, so the run
+        always yields a bounded :class:`SandboxResult` rather than raising
+        and leaving the scenario half-verified.
+        """
+        try:
+            result = self._agent_invoker(
+                agent_argv, workspace, adapter.env_overrides(), wall_clock
+            )
+            return int(result.returncode), result.stdout, False
+        except subprocess.TimeoutExpired as exc:
+            logger.warn(
+                f"Live harness {adapter.name!r} exceeded the {wall_clock}s "
+                f"wall-clock cap; terminating (exit {TIMEOUT_EXIT_CODE})."
+            )
+            return TIMEOUT_EXIT_CODE, _coerce_text(exc.stdout), True
+
+    def _run_live_scenario(
+        self,
+        resolved: SandboxScenario,
+        variant: str,
+        agent_id: str,
+        harness: str,
+        harness_model: str,
+    ) -> SandboxResult:
+        """Live-harness path: the agent runs on the host, the container verifies.
+
+        Egress model (owner decision 2): the harness process runs ON THE HOST
+        against a throwaway copy of the seeded repo; only the scenario's
+        verification (churn manifest + ``test_command``) runs inside the
+        network-isolated container, exactly as the scripted path does.
+        """
+        adapter = self._build_harness_adapter(harness, harness_model)
+        # Probe-gate only the production path: an injected invoker means a test
+        # replaying a recorded transcript, which must not require the real CLI.
+        if self._probe_live and not adapter.probe():
+            raise HarnessNotAvailableError(harness)
+
+        wall_clock = self.limits.wall_clock_seconds
+        config = self._container_config(resolved.scenario_id, variant)
+        started = time.time()
+
+        with tempfile.TemporaryDirectory(
+            prefix=f"rfc-sandbox-live-{resolved.scenario_id}-"
+        ) as tmp:
+            agent_workspace = Path(tmp) / "workspace"
+            shutil.copytree(resolved.repo_dir, agent_workspace)
+
+            agent_argv = tuple(adapter.build_argv(resolved.task, agent_workspace))
+            agent_returncode, agent_stdout, agent_timed_out = (
+                self._invoke_agent_bounded(
+                    adapter, agent_argv, agent_workspace, wall_clock
+                )
+            )
+
+            container_id = self.manager.create_container(config)
+            logger.info(
+                f"Sandbox verify up for {resolved.scenario_id}/{variant} "
+                f"(harness={harness}, {self.limits.image}, "
+                f"mem={self.limits.memory_mb}MB, wall={wall_clock}s, "
+                f"net={self.limits.network_mode})"
+            )
+            try:
+                # Baseline: the pristine scenario repo, manifested in-container
+                # exactly as the scripted path does.
+                self.manager.copy_to_container(
+                    container_id, str(resolved.repo_dir), _WORKSPACE
+                )
+                baseline = self._manifest(container_id)
+                # Bring the agent's host-side output into the container so the
+                # churn diff + tests run against exactly what the agent produced.
+                self._sync_workspace(container_id, agent_workspace)
+                after = self._manifest(container_id)
+                changed = diff_manifests(baseline, after)
+                unexpected = filter_unexpected(changed, resolved.allowed_paths)
+
+                test_command = (
+                    f"timeout -k {_KILL_AFTER_SECONDS}s {wall_clock}s "
+                    f"{resolved.test_command}"
+                )
+                tests_result = self.manager.execute_command(
+                    container_id,
+                    test_command,
+                    timeout=wall_clock + 30,
+                    workdir=_WORKSPACE,
+                )
+            finally:
+                self.manager.stop_container(container_id)
+
+        duration = time.time() - started
+        commands, questions = adapter.parse_output(agent_stdout)
+        test_row = AgentCommand(
+            argv=("sh", "-c", test_command),
+            cwd=_WORKSPACE,
+            returncode=int(tests_result["exit_code"]),
+            stdout_tail=_tail(tests_result["stdout"]),
+            changed_paths_after=changed,
+        )
+        run = AgentRun(
+            agent_id=agent_id,
+            scenario_id=resolved.scenario_id,
+            task=resolved.task,
+            base_branch=_SANDBOX_BASE_BRANCH,
+            branch_name=make_branch_name(resolved.task, prefix=adapter.branch_prefix),
+            commands=(*commands, test_row),
+            questions=questions,
+        )
+        result = SandboxResult(
+            scenario_id=resolved.scenario_id,
+            agent_id=agent_id,
+            variant=variant,
+            agent_exit_code=agent_returncode,
+            agent_output_tail=_tail(redact(agent_stdout)),
+            tests_exit_code=int(tests_result["exit_code"]),
+            tests_output_tail=_tail(tests_result["stdout"]),
+            changed_paths=changed,
+            unexpected_paths=unexpected,
+            duration_seconds=round(duration, 3),
+            run=run,
+            timed_out=agent_timed_out,
+            tests_timed_out=int(tests_result["exit_code"]) == TIMEOUT_EXIT_CODE,
+        )
+        logger.info(
+            f"Sandbox live run {resolved.scenario_id}/{variant} "
+            f"(harness={harness}): agent_exit={result.agent_exit_code} "
             f"tests_exit={result.tests_exit_code} "
             f"changed={list(changed)} unexpected={list(unexpected)} "
             f"({result.duration_seconds}s)"

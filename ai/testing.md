@@ -48,6 +48,42 @@ Simple Math Should Be Deterministic
     Should Be Equal    ${RESULT}    42
 ```
 
+### Axis tags
+
+Beyond `tier:*`/`verify:*`, every suite declares exactly **one** `axis:*` tag
+naming the single variable it is designed to discriminate — the *independent
+variable* of the experiment, orthogonal to how the test is graded:
+
+- `axis:model` — the LLM model (same prompt + harness, vary the model). Most
+  eval suites.
+- `axis:harness` — the coding-agent harness (claude-code / opencode / codex),
+  the model held constant. The `harness_matrix` and harness-plumbing suites.
+- `axis:prompt` — a prompt / template version (a prompt A/B).
+- `axis:none` — pure code: no model, harness, or prompt in the loop (config /
+  DB / BI plumbing, deterministic keyword-library behavior).
+
+A discriminating test varies exactly one axis and holds everything else
+constant, so a moving scoreboard cell can be attributed to that one variable
+(RFC-008). `tier`/`verify` describe the grading *mechanism*; `axis` names the
+*independent variable* — a `tier:2 verify:llm` eval is `axis:model`, while a
+`tier:4` harness suite that also drives an LLM is `axis:harness` (the model is
+held constant, the harness varies). The tag lives on the suite (`Test Tags` /
+`Force Tags`) or on an ancestor `__init__.robot`, which cascades it to every
+child suite.
+
+`modules/ops/scripts/check_test_axes.py` checks this mechanically from each
+suite's transitive `Library`/`Resource` import surface: a suite that imports an
+LLM or harness keyword library may not claim `axis:none`, and a declared
+`axis:harness`/`axis:model` must match the surface it exercises (`axis:prompt`
+is a data variation and has no import signature). It ships in **report** mode —
+proposing an axis for every untagged suite and warning, but not failing CI —
+and flips to **enforce** once the tags are backfilled across all suites. Which
+model digest, prompt hash, or harness version *actually ran* is runtime
+provenance recorded in the spine, never in a static tag: a static tag says a
+suite discriminates the harness axis, not which harness ran. Legacy provenance
+tags (`harness:*`, `agent:*`, `prompt:*`) remain usable as `--include` filters
+but are no longer the provenance record.
+
 ### Tier Expectations
 
 - **Tier 0 – Pure Robot**

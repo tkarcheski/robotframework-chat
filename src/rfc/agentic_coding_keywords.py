@@ -156,10 +156,23 @@ class AgenticCodingKeywords:
     # ------------------------------------------------------------------
 
     def run_sandboxed_coding_scenario(
-        self, agent: str, scenario: str, variant: str = "good"
+        self,
+        agent: str,
+        scenario: str,
+        variant: str = "good",
+        harness: str | None = None,
+        harness_model: str = "",
     ) -> "SandboxResult":
         """Run ``scenario`` for ``agent`` in a Docker sandbox; skips when
-        the Docker daemon is unavailable."""
+        the Docker daemon is unavailable.
+
+        ``harness=None`` (the default) runs the scripted ``agents/<variant>.sh``
+        stand-in inside the container, keeping CI deterministic. Naming a live
+        harness (from :data:`rfc.harness_cli.TOOLS`, e.g. ``opencode``) instead
+        drives that coding-agent CLI host-side against the seeded repo (owner
+        egress decision 2) while the container still verifies tests + churn; an
+        absent harness CLI skips cleanly. ``harness_model`` overrides the model
+        where the CLI takes one (opencode)."""
         from rfc.agent_sandbox import AgentSandbox
 
         config = self._agent_config(agent)
@@ -170,7 +183,13 @@ class AgenticCodingKeywords:
                 f"(image, cpu_cores, memory_mb, wall_clock_seconds)"
             )
         sandbox = AgentSandbox(limits=config.sandbox)
-        return sandbox.run_scenario(scenario, variant=variant, agent_id=agent)
+        return sandbox.run_scenario(
+            scenario,
+            variant=variant,
+            agent_id=agent,
+            harness=harness or None,
+            harness_model=harness_model,
+        )
 
     def sandbox_agent_command_should_succeed(self, result: "SandboxResult") -> None:
         if result.agent_exit_code != 0:

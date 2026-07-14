@@ -1,6 +1,8 @@
 # Tier:4 sandbox scenario (#290): a refactor task with a hidden regression
 # guard. test_hidden_contract.py is committed up front but not mentioned in
 # the task; a naive refactor breaks it and the harness must surface that.
+# test_punctuation_contract.py is the committed red baseline for the task
+# itself (#219): it fails on the seed and passes only after the refactor.
 scenario_id: tier4_regression_guard
 task: >
   Refactor slugify in textutils.py to also strip punctuation (keep letters,
@@ -12,3 +14,13 @@ allowed_paths:
 agents:
   careful: agents/careful.sh
   naive: agents/naive.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- `careful` strips punctuation AND preserves lowercasing,
+#     so the whole suite (visible + hidden + punctuation baseline) goes green.
+#   * negative_variant  -- `naive` strips punctuation but drops lowercasing; the
+#     hidden regression guard fails, so the grader rejects it via a test failure.
+#   * failing-first proof lives in the seed: test_punctuation_contract is red at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: careful
+negative_variant: naive
+timeout_seconds: 120
