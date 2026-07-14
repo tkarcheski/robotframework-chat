@@ -20,10 +20,11 @@ Documentation     Cross-harness conformance matrix (#173): the SAME fixture task
 Library           rfc.harness_keywords.HarnessKeywords
 Library           rfc.agentic_coding_keywords.AgenticCodingKeywords
 Library           OperatingSystem
+Resource          harness_matrix.resource
 
 Suite Setup       Require Live Matrix
 
-Test Tags         tier:4    verify:python    harness-matrix    category:live
+Test Tags         tier:4    verify:python    harness-matrix    category:live    axis:harness
 
 *** Variables ***
 ${TASK}           Add a greet helper named greet to src/rfc/example.py and cover it with a test.
@@ -102,9 +103,3 @@ Harness Run Should Conform
     ${transcript}=    Get Agent Transcript
     Should Be Equal    ${transcript}    ${run}
     No Commit Should Occur While Tests Red    ${run}
-
-End Session And Cleanup
-    [Documentation]    Close the session row and remove the throwaway workspace.
-    [Arguments]    ${ws}
-    Run Keyword And Ignore Error    End Harness Session    outcome=success
-    Remove Directory    ${ws}[path]    recursive=True
