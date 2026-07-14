@@ -7,6 +7,7 @@ Documentation     Multi-LLM joke judging tests using consensus grading.
 ...               Tests a simple, medium, and complex joke for quality.
 Resource          creativity.resource
 Test Timeout      250 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Judge Simple Fart Joke

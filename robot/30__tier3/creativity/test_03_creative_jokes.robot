@@ -4,6 +4,7 @@ Documentation     Complex creative joke tests with multiple constraints.
 ...               Tests constrained wordplay, emotional arcs, and absurd combinations.
 Resource          creativity.resource
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Byte And Bite Wordplay

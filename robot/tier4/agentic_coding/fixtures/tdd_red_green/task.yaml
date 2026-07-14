@@ -1,5 +1,0 @@
-# Live-runner input for the tdd_red_green scenario.
-# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
-scenario_id: tdd_red_green
-task: "Add is_palindrome(s) to src/rfc/strings.py with a pytest."
-base_branch: claude-code-staging

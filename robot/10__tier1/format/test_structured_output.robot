@@ -7,7 +7,7 @@ Documentation     Structured Output Format Tests
 
 Resource          format.resource
 
-Test Tags         structured-output    tier:1    verify:python
+Test Tags         structured-output    tier:1    verify:python    axis:model
 
 *** Test Cases ***
 

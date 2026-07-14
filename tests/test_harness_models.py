@@ -1,10 +1,12 @@
 """Tests for harness dataclasses (CLAUDE.md: no Optional fields)."""
 
 from rfc.harness_models import (
+    METRIC_CACHE_HIT_RATE,
     METRIC_CHURN_RATIO,
     METRIC_GRADER_SCORE,
     METRIC_LATENCY_MS,
     METRIC_PROCESS_VIOLATIONS,
+    METRIC_SUITE_RUNTIME_MS,
     METRIC_TASK_SUCCESS,
     METRIC_TOKENS_IN,
     METRIC_TOKENS_OUT,
@@ -42,6 +44,9 @@ class TestAgenticHarness:
         assert h.replay_of_recording_id == ""
         assert h.scenario_id == ""
         assert h.battery_run_id == ""
+        # #277: repeat_idx uses the int-id sentinel convention (-1), NOT the ""
+        # string one, so a genuine repeat 0 is distinguishable from "unset".
+        assert h.repeat_idx == -1
 
     def test_spine_grouping_columns_accept_values(self) -> None:
         h = AgenticHarness(
@@ -53,6 +58,15 @@ class TestAgenticHarness:
         )
         assert h.scenario_id == "tier4_bug_fix"
         assert h.battery_run_id == "battery-42"
+
+    def test_repeat_idx_accepts_value(self) -> None:
+        h = AgenticHarness(
+            session_id="abc123",
+            tool_name="opencode",
+            started_at="2026-05-09T00:00:00Z",
+            repeat_idx=2,
+        )
+        assert h.repeat_idx == 2
 
 
 class TestAgenticPlugin:
@@ -136,7 +150,12 @@ class TestReservedMetricKeys:
         assert METRIC_LATENCY_MS == "latency_ms"
         assert METRIC_GRADER_SCORE == "grader_score"
 
-    def test_reserved_set_is_the_seven_keys_in_order(self) -> None:
+    def test_efficiency_keys_have_expected_spelling(self) -> None:
+        # RFC-010 slice S1 (#258): writer, view, and drift-guard must agree.
+        assert METRIC_CACHE_HIT_RATE == "cache_hit_rate"
+        assert METRIC_SUITE_RUNTIME_MS == "suite_runtime_ms"
+
+    def test_reserved_set_is_the_nine_keys_in_order(self) -> None:
         assert RESERVED_METRIC_KEYS == (
             "task_success",
             "churn_ratio",
@@ -145,6 +164,8 @@ class TestReservedMetricKeys:
             "tokens_out",
             "latency_ms",
             "grader_score",
+            "cache_hit_rate",
+            "suite_runtime_ms",
         )
 
     def test_reserved_keys_are_unique(self) -> None:

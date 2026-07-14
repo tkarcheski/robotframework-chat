@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Applied accounting and financial math skill measurements.
 Resource          ../../resources/ask_and_validate.resource
+Test Tags         axis:model
 
 *** Test Cases ***
 IQ 100 Profit Or Loss

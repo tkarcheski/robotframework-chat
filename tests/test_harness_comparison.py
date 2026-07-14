@@ -8,6 +8,7 @@ path (fake container manager + replayed transcript).
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import pytest
 from rfc.agent_config import SandboxLimits
 from rfc.agent_run import AgentCommand, AgentQuestion, AgentRun
 from rfc.agent_sandbox import AgentSandbox, SandboxResult
+from rfc.churn_manifest import parse_manifest
 from rfc.exceptions import HarnessNotAvailableError
 from rfc.harness_adapters import ClaudeProcessResult
 from rfc.harness_comparison import (
@@ -43,6 +45,25 @@ from rfc.harness_models import (
     METRIC_PROCESS_VIOLATIONS,
     METRIC_TASK_SUCCESS,
 )
+from rfc.opencode_config import VerifiedLocalModel, assert_model_resolves_local
+
+# A minimal declared-local opencode config the gate accepts, for minting real
+# VerifiedLocalModel tokens in the Tier-A invariant tests (#278).
+_LOCAL_CFG = {
+    "model": "ollama/my-model",
+    "provider": {
+        "ollama": {
+            "options": {"baseURL": "http://localhost:11434/v1"},
+            "models": {"my-model": {}},
+        }
+    },
+}
+
+
+def _local_token(model_ref: str = "ollama/my-model") -> VerifiedLocalModel:
+    """Mint a genuine gate-verified token for a Tier-A row test."""
+    return assert_model_resolves_local(model_ref, _LOCAL_CFG, source="test")
+
 
 FIXED_CLOCK = "2026-07-13T00:00:00Z"
 
@@ -282,6 +303,94 @@ class TestComparisonRunner:
         assert metrics[METRIC_CHURN_RATIO] == 1.0
         assert metrics[METRIC_PROCESS_VIOLATIONS] == 0.0
         assert METRIC_LATENCY_MS in metrics
+        # No digest resolver injected: model_digest is "" (NULL) by default (#242).
+        assert stored.model_digest == ""
+
+    def test_injected_digest_resolver_populates_model_digest(
+        self, tmp_path: Path
+    ) -> None:
+        # RFC-008 A3 (#242): the injectable, deterministic resolver records the
+        # model's content digest on the spine row (like clock / id factory).
+        db = _db(tmp_path)
+        seen: list[str] = []
+
+        def resolver(model_id: str) -> str:
+            seen.append(model_id)
+            return "sha256:opencode-digest"
+
+        runner = _runner(
+            db=db, sandbox=StubSandbox(_result()), repeats=1, digest_resolver=resolver
+        )
+        report = runner.run(
+            ["tier4_bug_fix"], [HarnessLeg("opencode")], battery_run_id="b-d"
+        )
+        stored = db.get_harness(report.rows[0].session_id)
+        assert stored is not None
+        assert stored.model_digest == "sha256:opencode-digest"
+        assert seen == [stored.model_id]  # resolver was called with the row's model_id
+
+    def test_digest_resolver_failure_is_swallowed(self, tmp_path: Path) -> None:
+        # A resolver that raises must never break the metric write (skip-and-log).
+        db = _db(tmp_path)
+
+        def boom(_model_id: str) -> str:
+            raise RuntimeError("ollama offline")
+
+        runner = _runner(
+            db=db, sandbox=StubSandbox(_result()), repeats=1, digest_resolver=boom
+        )
+        report = runner.run(
+            ["tier4_bug_fix"], [HarnessLeg("opencode")], battery_run_id="b-e"
+        )
+        stored = db.get_harness(report.rows[0].session_id)
+        assert stored is not None
+        assert stored.model_digest == ""
+
+    def test_production_wiring_leaves_model_digest_null_never_fabricated(
+        self, tmp_path: Path
+    ) -> None:
+        # RFC-008 A3 honesty (#242): run_comparison constructs the runner with NO
+        # digest_resolver, so production rows carry NULL model_digest — the field is
+        # genuinely UNWIRED (a fabricated digest would be the §5-forbidden dishonest
+        # coordinate), not merely coincidentally empty. Pin both facts.
+        db = _db(tmp_path)
+        runner = _runner(db=db, sandbox=StubSandbox(_result()), repeats=1)
+        assert runner._digest_resolver is None  # unwired, not defaulted-away
+        report = runner.run(
+            ["tier4_bug_fix"], [HarnessLeg("opencode")], battery_run_id="b-null"
+        )
+        stored = db.get_harness(report.rows[0].session_id)
+        assert stored is not None
+        assert stored.model_digest == ""
+
+    def test_repeat_idx_persisted_to_spine_for_pairing(self, tmp_path: Path) -> None:
+        # #277: S4 pairs on the STORED (scenario_id, repeat_idx) key, so every
+        # in-memory pair must be reconstructable straight from the spine -- not
+        # inferred from row order. repeat 0 must persist as 0 (not NULL/-1).
+        db = _db(tmp_path)
+        stub = StubSandbox()
+        runner = _runner(stub, db, repeats=3)
+        report = runner.run(
+            ["tier4_bug_fix", "tier4_regression_guard"],
+            [HarnessLeg("opencode")],
+            battery_run_id="batt-pair",
+        )
+        spine_pairs: set[tuple[str, int]] = set()
+        for row in report.rows:
+            stored = db.get_harness(row.session_id)
+            assert stored is not None
+            # The stored key equals the in-memory index -- persisted, never -1.
+            assert stored.repeat_idx == row.repeat_idx
+            assert stored.repeat_idx >= 0
+            spine_pairs.add((stored.scenario_id, stored.repeat_idx))
+        assert spine_pairs == {
+            ("tier4_bug_fix", 0),
+            ("tier4_bug_fix", 1),
+            ("tier4_bug_fix", 2),
+            ("tier4_regression_guard", 0),
+            ("tier4_regression_guard", 1),
+            ("tier4_regression_guard", 2),
+        }
 
     def test_tags_cost_tiers(self, tmp_path: Path) -> None:
         stub = StubSandbox()
@@ -370,8 +479,32 @@ OPENCODE_FIX_TRANSCRIPT = (
 
 
 def _manifest(entries: dict[str, str]) -> dict:
-    text = "".join(f"{h}  /workspace/{p}\n" for p, h in entries.items())
+    # Faithfully replay the in-container ``manifest_command`` wire format: records
+    # are NUL-terminated (``sha256sum -z ... | sort -z``), never newline-separated
+    # (#274). ``parse_manifest`` splits on NUL, so a newline-delimited stub would
+    # collapse every path into one malformed record that reads as unexpected churn.
+    text = "".join(f"{h}  /workspace/{p}\0" for p, h in entries.items())
     return {"stdout": text, "stderr": "", "exit_code": 0, "duration_ms": 1}
+
+
+def test_manifest_fixture_speaks_parse_manifest_wire_format() -> None:
+    """Cross-format guard (#282): the fake-container ``_manifest`` stub must emit
+    the exact wire format the *production* ``parse_manifest`` reads, so a future
+    manifest format change (as #274 flipped newline -> NUL) cannot silently skew
+    the fake into phantom churn again.
+
+    Proven against the REAL shipped parser, not a duplicated literal: two records
+    in, two distinct records out. If the stub and ``parse_manifest`` ever disagree
+    on the record terminator/separator, the round-trip collapses and this fails at
+    the fixture -- instead of surfacing three layers down as a bogus ``partial``.
+    """
+    entries = {"calculator.py": "hash-a", "test_calculator.py": "hash-b"}
+    assert parse_manifest(_manifest(entries)["stdout"]) == entries
+
+    # Regression witness: the pre-#284 newline stub collapses under the NUL parser
+    # into ONE malformed record -- the precise mechanism of the #282 red.
+    newline_stub = "".join(f"{h}  /workspace/{p}\n" for p, h in entries.items())
+    assert len(parse_manifest(newline_stub)) == 1
 
 
 class _FakeContainerManager:
@@ -592,20 +725,93 @@ class _NoWriteDB:
 
 
 class TestTierAStructuralInvariant:
-    def test_comparison_row_tier_a_requires_model_id(self) -> None:
-        # #273 facet 2, at the type: a Tier-A row with empty model_id cannot exist.
-        with pytest.raises(ComparabilityError, match="empty model_id"):
+    def test_comparison_row_tier_a_requires_verification_token(self) -> None:
+        # #273/#278 facet 2, at the type: a Tier-A row without a gate-minted
+        # VerifiedLocalModel token cannot exist, even if model_id is non-empty.
+        # A future runner building ComparisonRow(tier="A", model_id="openai/gpt-4o")
+        # directly (non-empty, remote) is now rejected -- it has no token.
+        with pytest.raises(ComparabilityError, match="no gate-verified local model"):
             ComparisonRow(
                 scenario_id="tier4_bug_fix",
                 battery_run_id="b",
                 harness="claude-code",
-                model_id="",
+                model_id="openai/gpt-4o",
                 tier=TIER_A_FIXED_LOCAL,
                 repeat_idx=0,
                 session_id="s",
                 outcome="success",
                 metrics={},
             )
+
+    def test_comparison_row_tier_a_accepts_verified_token(self) -> None:
+        # #278: with a genuine gate-minted token whose model_id matches, the
+        # Tier-A row constructs normally.
+        token = _local_token()
+        row = ComparisonRow(
+            scenario_id="tier4_bug_fix",
+            battery_run_id="b",
+            harness="opencode",
+            model_id="ollama/my-model",
+            tier=TIER_A_FIXED_LOCAL,
+            repeat_idx=0,
+            session_id="s",
+            outcome="success",
+            metrics={},
+            verified_model=token,
+        )
+        assert row.model_id == "ollama/my-model"
+        assert row.verified_model is token
+
+    def test_comparison_row_tier_a_rejects_token_for_a_different_model(self) -> None:
+        # #278: a token attests exactly one model; a row cannot carry a token for a
+        # different model than the model_id it records (no launder-through-token).
+        token = _local_token("ollama/my-model")
+        with pytest.raises(ComparabilityError, match="attests"):
+            ComparisonRow(
+                scenario_id="tier4_bug_fix",
+                battery_run_id="b",
+                harness="opencode",
+                model_id="ollama/some-other-model",
+                tier=TIER_A_FIXED_LOCAL,
+                repeat_idx=0,
+                session_id="s",
+                outcome="success",
+                metrics={},
+                verified_model=token,
+            )
+
+    def test_dataclasses_replace_on_token_cannot_relabel_it_remote(self) -> None:
+        # Forge attempt (test-design, #278): dataclasses.replace re-runs __init__ /
+        # __post_init__ with the InitVar mint key at its default (None), so mutating
+        # a genuine local token's model_id to a remote one FAILS the mint check --
+        # replace cannot launder a verified local token into a remote one.
+        token = _local_token("ollama/my-model")
+        with pytest.raises(ComparabilityError, match="only be minted by the"):
+            dataclasses.replace(token, model_id="openai/gpt-4o")
+        # Even explicitly re-passing the (guessed) default key is refused.
+        with pytest.raises(ComparabilityError, match="only be minted by the"):
+            dataclasses.replace(token, model_id="openai/gpt-4o", _mint_key=None)
+
+    def test_dataclasses_replace_on_row_cannot_swap_in_a_remote_model(self) -> None:
+        # Forge attempt (test-design, #278): take a valid Tier-A row and try to
+        # dataclasses.replace its model_id to a remote one while keeping the (local)
+        # token. replace re-runs ComparisonRow.__post_init__, so the token/model_id
+        # mismatch check fires -- a row cannot be relabeled onto a model its token
+        # does not attest.
+        good = ComparisonRow(
+            scenario_id="tier4_bug_fix",
+            battery_run_id="b",
+            harness="opencode",
+            model_id="ollama/my-model",
+            tier=TIER_A_FIXED_LOCAL,
+            repeat_idx=0,
+            session_id="s",
+            outcome="success",
+            metrics={},
+            verified_model=_local_token("ollama/my-model"),
+        )
+        with pytest.raises(ComparabilityError, match="attests"):
+            dataclasses.replace(good, model_id="openai/gpt-4o")
 
     def test_comparison_row_tier_b_allows_empty_model_id(self) -> None:
         row = ComparisonRow(
@@ -622,12 +828,13 @@ class TestTierAStructuralInvariant:
         assert row.tier == TIER_B_NATIVE and row.model_id == ""
 
     def test_runner_rejects_tier_a_non_gated_harness(self, tmp_path: Path) -> None:
-        # #273 facet 2, end-to-end: a Tier-A leg on a harness that cannot pin the
-        # local model reaches row construction and fails closed -- nothing persisted.
+        # #273/#278 facet 2, end-to-end: a Tier-A leg on a harness that cannot pin
+        # the local model reaches row construction with no token and fails closed --
+        # nothing persisted.
         stub = StubSandbox(_result())
         db = _NoWriteDB()
         runner = _runner(stub, db, repeats=1)
-        with pytest.raises(ComparabilityError, match="empty model_id"):
+        with pytest.raises(ComparabilityError, match="no gate-verified local model"):
             runner.run(
                 ["tier4_bug_fix"],
                 [HarnessLeg("claude-code", tier=TIER_A_FIXED_LOCAL)],

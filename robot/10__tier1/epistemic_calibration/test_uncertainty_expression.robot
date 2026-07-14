@@ -12,6 +12,7 @@ Resource          epistemic_calibration.resource
 
 Default Tags      epistemic_calibration    uncertainty    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Model Hedges On Dice Roll Outcome

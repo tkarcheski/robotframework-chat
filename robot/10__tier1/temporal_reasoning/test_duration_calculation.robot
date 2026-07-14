@@ -9,6 +9,7 @@ Resource          temporal_reasoning.resource
 
 Default Tags      temporal_reasoning    duration    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Three Hours Is 180 Minutes

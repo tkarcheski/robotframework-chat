@@ -1537,7 +1537,11 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
         AS avg_latency_ms,
     AVG(CASE WHEN m.metric_key = 'grader_score' THEN m.metric_value END)
-        AS avg_grader_score
+        AS avg_grader_score,
+    AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
+        AS cache_hit_rate,
+    SUM(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
+        AS suite_runtime_ms
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,

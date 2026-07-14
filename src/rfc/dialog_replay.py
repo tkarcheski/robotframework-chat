@@ -33,6 +33,7 @@ from typing import Optional
 from rfc import __version__
 from rfc.dialog_grader import DialogGrader
 from rfc.git_metadata import collect_ci_metadata
+from rfc.grader import resolved_grader_provenance
 from rfc.harness_db import HarnessDatabase
 from rfc.harness_models import (
     AgenticHarness,
@@ -110,6 +111,50 @@ def _original_response_for(turns: list[DialogTurn], user_index: int) -> str:
     return "\n\n".join(parts)
 
 
+# Sampling axis captured for the spine (RFC-008 §5). Recorded as a JSON blob
+# (params_json), the reversible choice RFC-008 §10 settled on for the MVP.
+_SAMPLING_PARAM_NAMES: tuple[str, ...] = (
+    "temperature",
+    "top_p",
+    "top_k",
+    "seed",
+    "max_tokens",
+    "num_ctx",
+)
+
+
+def _provider_model_digest(provider: LLMProvider) -> str:
+    """The target model's resolved content digest, or "" when unavailable.
+
+    Best-effort per CLAUDE.md skip-and-log: only Ollama providers expose
+    ``resolve_model_digest`` (#526), and it is itself defensive (returns ``None``
+    on any endpoint error), so a missing method or an offline host both yield ""
+    (NULL on the spine) rather than failing the replay.
+    """
+    resolver = getattr(provider, "resolve_model_digest", None)
+    if not callable(resolver):
+        return ""
+    try:
+        return resolver() or ""
+    except Exception:  # pragma: no cover - defensive: digest must never break a replay
+        return ""
+
+
+def _provider_sampling_params(provider: LLMProvider) -> str:
+    """Canonical JSON of the provider's sampling regime, or "" when none is set.
+
+    Only params the provider actually declares (non-``None``) are recorded, sorted
+    for a stable, comparable blob. Empty when nothing is set, so it reads back as
+    NULL rather than an uninformative ``{}``.
+    """
+    params = {
+        name: value
+        for name in _SAMPLING_PARAM_NAMES
+        if (value := getattr(provider, name, None)) is not None
+    }
+    return json.dumps(params, sort_keys=True) if params else ""
+
+
 def _provider_token_counts(provider: LLMProvider) -> tuple[int, int]:
     """(tokens_in, tokens_out) from the provider's last_metrics, -1 unknown.
 
@@ -160,6 +205,12 @@ def replay_prompt_mode(
     session_id = uuid.uuid4().hex
     started_at = _utc_now()
     tool_name = target_tool or source.tool_name or "replay"
+    # RFC-008 A3 (#242) runtime provenance recorded at the one agentic_harnesses
+    # writer that actually runs the LLM judge. The grader prompt hash is the
+    # *resolved* one (post RFC_GRADER_PROMPT override) — design's bound A3 criterion,
+    # so an override A/B logs the override's hash, not the registered coordinate.
+    # model_digest + params describe the target model this row's model_id names.
+    grader_prompt_id, grader_prompt_hash, grader_version = resolved_grader_provenance()
     db.save_harness(
         AgenticHarness(
             session_id=session_id,
@@ -169,6 +220,11 @@ def replay_prompt_mode(
             rfc_version=__version__,
             branch=collect_ci_metadata().get("Branch", ""),
             replay_of_recording_id=recording_id,
+            model_digest=_provider_model_digest(provider),
+            prompt_id=grader_prompt_id,
+            prompt_hash=grader_prompt_hash,
+            grader_version=grader_version,
+            params_json=_provider_sampling_params(provider),
         )
     )
 

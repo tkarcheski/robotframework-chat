@@ -8,7 +8,7 @@ Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           String
 Library           OperatingSystem
 
-Test Tags         browser
+Test Tags         browser    axis:model
 
 Suite Setup       Import Browser And Login Or Skip
 Suite Teardown    Run Keyword And Ignore Error    Close Browser

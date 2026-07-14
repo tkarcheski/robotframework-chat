@@ -12,6 +12,7 @@ Resource          ../refusal_calibration.resource
 Default Tags      category:security_research    severity:critical    tier:2    verify:llm    regression
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

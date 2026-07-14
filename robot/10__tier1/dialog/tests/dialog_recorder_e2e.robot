@@ -17,7 +17,7 @@ Documentation     End-to-end coverage for the #409 dialog recorder (#437).
 
 Library           rfc.dialog_e2e_keywords.DialogE2EKeywords    AS    DialogE2E
 
-Test Tags         dialog    tier:1    verify:python
+Test Tags         dialog    tier:1    verify:python    axis:none
 
 *** Variables ***
 ${FIXTURE_TURNS}      3

@@ -34,6 +34,30 @@ class AgenticHarness:
     # Rows written before #217 keep NULL; the scoreboard groups runs on them.
     scenario_id: str = ""  # battery task this run solved
     battery_run_id: str = ""  # groups the legs of one battery invocation
+    # #277: which paired repeat within a (harness, scenario) battery leg this run
+    # is, so S4 pairs on the STORED (scenario_id, repeat_idx) key instead of
+    # fragile row order, and a skipped repeat is a visible index hole rather than a
+    # silently shifted run. -1 sentinel -> NULL (an int-id convention, not the ""
+    # string one) so non-battery writers keep NULL and repeat 0 persists as 0.
+    repeat_idx: int = -1
+    # RFC-008 A3 (#242) runtime-provenance columns (nullable; "" -> NULL in DB).
+    # Every runtime-bound axis a result sits at, so its coordinate is
+    # reconstructable (the CLAUDE.md provenance rule). Rows written before #242
+    # keep NULL; existing writers that never set them are unchanged.
+    # resolved model content digest (distinguishes a re-pulled tag):
+    model_digest: str = ""
+    # prompt-registry id of the prompt that ran (e.g. grader.default_judge):
+    prompt_id: str = ""
+    # sha256 of the *resolved* prompt text — what ACTUALLY ran, after any env
+    # override (RFC_GRADER_PROMPT), NOT PromptRegistry.provenance(id)'s registered
+    # coordinate (RFC-008 §5; design's bound A3 criterion from the PR #272 review).
+    prompt_hash: str = ""
+    # identity/version of the grader that produced grader_score:
+    grader_version: str = ""
+    # Sampling regime (temperature/top_p/seed/...) as a JSON blob. RFC-008 §10
+    # settled on a blob for the MVP: one migration, reversible — promote a hot
+    # param to its own column later if the scoreboard needs to GROUP BY it.
+    params_json: str = ""
 
 
 @dataclass
@@ -91,6 +115,16 @@ METRIC_TOKENS_OUT = "tokens_out"  # completion tokens (pre-existing key)
 METRIC_LATENCY_MS = "latency_ms"  # wall time per run (pre-existing key)
 METRIC_GRADER_SCORE = "grader_score"  # llm_judge score (pre-existing key)
 
+# Efficiency-scoreboard keys (RFC-010 section 5, slice S1 — #258). Written once
+# per top-level suite/run by AgenticHarnessListener and pivoted into
+# agentic_sessions_full so the efficiency loop reads a *measured* number. Both
+# aggregate signals that already exist: the answer cache stamps per-answer
+# cache_hit=True (see answer_cache.py), and Robot already measures suite wall
+# time. They fold in here beside the RFC-007 set rather than in a separate
+# vocabulary.
+METRIC_CACHE_HIT_RATE = "cache_hit_rate"  # fraction of generate() calls cached
+METRIC_SUITE_RUNTIME_MS = "suite_runtime_ms"  # wall time per suite/run (ms)
+
 # Canonical order == scoreboard column order. An immutable, iterable manifest
 # the scoreboard view (S5) and its drift-guard can enumerate without re-listing
 # the strings.
@@ -102,6 +136,8 @@ RESERVED_METRIC_KEYS: tuple[str, ...] = (
     METRIC_TOKENS_OUT,
     METRIC_LATENCY_MS,
     METRIC_GRADER_SCORE,
+    METRIC_CACHE_HIT_RATE,
+    METRIC_SUITE_RUNTIME_MS,
 )
 
 

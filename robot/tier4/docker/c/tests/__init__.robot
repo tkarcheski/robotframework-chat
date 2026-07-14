@@ -1,2 +1,0 @@
-*** Settings ***
-Name              Docker C

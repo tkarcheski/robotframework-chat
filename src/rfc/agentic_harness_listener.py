@@ -13,6 +13,12 @@ Captured per test:
 - ``latency_ms``    from ``RFC_DATA:llm_metrics`` ``total_duration_ns``
 - ``grader_score``  from ``RFC_DATA:score``
 
+Captured once per top-level suite/run (RFC-010 slice S1, #258):
+
+- ``cache_hit_rate``    fraction of ``generate()`` calls served from the answer
+                        cache, aggregated from each payload's ``cache_hit`` flag
+- ``suite_runtime_ms``  the suite's wall time, from Robot's ``result.elapsedtime``
+
 No sidecar / no env var means a single warning at suite start and no
 persistence; DB failures are skip-and-log per CLAUDE.md — the test
 outcome is never affected.
@@ -37,7 +43,11 @@ from typing import Any, Optional
 from .base_listener import BaseListener
 from .harness_cli import active_session_id
 from .harness_db import HarnessDatabase
-from .harness_models import AgenticMetric
+from .harness_models import (
+    METRIC_CACHE_HIT_RATE,
+    METRIC_SUITE_RUNTIME_MS,
+    AgenticMetric,
+)
 from .metrics import extract_llm_metrics
 
 logger = logging.getLogger(__name__)
@@ -51,7 +61,13 @@ def _utc_now() -> str:
 
 
 class AgenticHarnessListener(BaseListener):
-    """Persist per-test LLM metrics to ``agentic_metrics`` at end-of-test."""
+    """Persist per-test LLM metrics, plus per-suite efficiency metrics.
+
+    Per-test rows (``tokens_in`` / ``tokens_out`` / ``latency_ms`` /
+    ``grader_score``) are written at end-of-test; the two efficiency-scoreboard
+    metrics (``cache_hit_rate`` / ``suite_runtime_ms``, RFC-010 S1) are
+    aggregated across the suite and written once at end-of-suite.
+    """
 
     def __init__(self, database_url: Optional[str] = None) -> None:
         super().__init__()
@@ -65,6 +81,11 @@ class AgenticHarnessListener(BaseListener):
         self._persisted_count = 0
         self._verified_session_id = ""
         self._session_has_harness_row = False
+        # Per-suite answer-cache accounting, reset at on_suite_start. Each
+        # ``llm_metrics`` payload is one generate() call; ``cache_hit`` marks the
+        # ones the answer cache served (see answer_cache.CachingProvider).
+        self._suite_generate_calls = 0
+        self._suite_cache_hits = 0
 
     @property
     def persisted_count(self) -> int:
@@ -84,6 +105,8 @@ class AgenticHarnessListener(BaseListener):
 
     def on_suite_start(self, data: Any, result: Any) -> None:
         self._session_id = active_session_id() or os.getenv("SESSION_ID", "")
+        self._suite_generate_calls = 0
+        self._suite_cache_hits = 0
         if not self._session_id:
             logger.warning(
                 "AgenticHarnessListener: no active harness session (sidecar "
@@ -93,7 +116,16 @@ class AgenticHarnessListener(BaseListener):
     def on_test_end(self, data: Any, result: Any) -> None:
         if not self._session_id:
             return
-        metrics = self._collect_metrics()
+        self._persist(self._collect_metrics())
+
+    def on_suite_end(self, data: Any, result: Any) -> None:
+        """Emit the per-suite efficiency metrics once the run has ended (#258)."""
+        if not self._session_id:
+            return
+        self._persist(self._collect_suite_metrics(result))
+
+    def _persist(self, metrics: list[AgenticMetric]) -> None:
+        """Save *metrics*, gated by config + harness row; skip-and-log on error."""
         if not metrics:
             return
         db = self._get_db()
@@ -146,6 +178,11 @@ class AgenticHarnessListener(BaseListener):
                     "AgenticHarnessListener: bad llm_metrics payload skipped."
                 )
                 continue
+            # One valid payload == one generate() call. Accumulate the cache-hit
+            # rate across the suite; emitted once at on_suite_end (#258).
+            self._suite_generate_calls += 1
+            if parsed.get("cache_hit"):
+                self._suite_cache_hits += 1
             for metric_key, raw in (
                 ("tokens_in", parsed.get("prompt_eval_count")),
                 ("tokens_out", parsed.get("eval_count")),
@@ -177,6 +214,56 @@ class AgenticHarnessListener(BaseListener):
                     "AgenticHarnessListener: non-numeric score %r skipped.", score
                 )
         return rows
+
+    def _collect_suite_metrics(self, result: Any) -> list[AgenticMetric]:
+        """Build the per-suite efficiency rows (RFC-010 S1, #258).
+
+        ``suite_runtime_ms`` comes from Robot's own ``result.elapsedtime`` (the
+        suite wall time, in ms) — no parallel clock — and is skipped when the
+        result object carries no usable elapsed time. ``cache_hit_rate`` is the
+        fraction of this suite's ``generate()`` calls the answer cache served,
+        and is skipped when the suite made no generate() calls (an undefined
+        rate is not persisted as a fabricated 0.0).
+        """
+        recorded_at = _utc_now()
+        rows: list[AgenticMetric] = []
+        elapsed_ms = _suite_elapsed_ms(result)
+        if elapsed_ms is not None:
+            rows.append(
+                AgenticMetric(
+                    session_id=self._session_id,
+                    metric_key=METRIC_SUITE_RUNTIME_MS,
+                    recorded_at=recorded_at,
+                    metric_value=elapsed_ms,
+                )
+            )
+        if self._suite_generate_calls > 0:
+            rate = self._suite_cache_hits / self._suite_generate_calls
+            rows.append(
+                AgenticMetric(
+                    session_id=self._session_id,
+                    metric_key=METRIC_CACHE_HIT_RATE,
+                    recorded_at=recorded_at,
+                    metric_value=rate,
+                )
+            )
+        return rows
+
+
+def _suite_elapsed_ms(result: Any) -> Optional[float]:
+    """Return the suite's wall time in ms from a Robot result, else None.
+
+    Robot's ``end_suite`` result exposes ``elapsedtime`` (int milliseconds).
+    A result object without a numeric elapsed time (e.g. a stub in a unit
+    test) yields None so no ``suite_runtime_ms`` row is written.
+    """
+    elapsed = getattr(result, "elapsedtime", None)
+    if elapsed is None:
+        return None
+    try:
+        return float(elapsed)
+    except (ValueError, TypeError):
+        return None
 
 
 def _ns_to_ms(value: Any) -> Optional[float]:
