@@ -13,6 +13,7 @@ Resource          ceo.resource
 Variables         ${CURDIR}/variables/vending_inputs.yaml
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

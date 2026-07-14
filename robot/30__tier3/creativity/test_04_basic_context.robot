@@ -4,6 +4,7 @@ Documentation     Basic context awareness tests with 2-3 turn conversations.
 ...               and character relationship tracking.
 Resource          creativity.resource
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Name Recall

@@ -11,7 +11,7 @@ Documentation     Variance Tests — Temperature 0.7 Stability
 
 Resource          ../consistency.resource
 
-Test Tags         consistency    variance    tier:2    verify:llm
+Test Tags         consistency    variance    tier:2    verify:llm    axis:model
 
 Test Timeout      180 minutes
 

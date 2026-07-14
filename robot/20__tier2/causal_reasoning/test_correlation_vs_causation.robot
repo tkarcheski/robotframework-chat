@@ -10,6 +10,7 @@ Resource          causal_reasoning.resource
 
 Default Tags      causal_reasoning    correlation    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

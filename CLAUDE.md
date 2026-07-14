@@ -38,7 +38,7 @@ Every new session begins with a repo health check, before writing any code:
    ```
 2. **Pre-check the repo** — fix or ask before building on a broken baseline:
    ```bash
-   uv run pytest
+   uv run --extra dev --extra superset --extra swebench pytest
    pre-commit run --all-files
    make code-quality-check
    make robot-dryrun
@@ -88,11 +88,15 @@ Run **all** of the following before every commit (no exceptions unless the user
 says to skip a step), then self-review `git diff --staged`:
 
 ```bash
-uv run pytest                     # Python unit tests — must pass
+uv run --extra dev --extra superset --extra swebench pytest   # Python unit tests — must pass
 pre-commit run --all-files        # Hooks: yaml, json, whitespace, ruff, mypy
 make code-quality-check           # Lint (ruff) + typecheck (mypy)
 make robot-dryrun                 # Validate Robot tests parse correctly
 ```
+
+The extras match the environment CI syncs before running the suite; without
+them the sqlalchemy/swebench-gated tests (~40) silently skip, so a bare
+`uv run pytest` is a weaker gate than the one CI enforces.
 
 Self-review checklist: no changes outside intended scope; no debug prints or
 commented-out code; no unresolved `TODO`/`FIXME`; no new files outside `src/rfc/`
@@ -141,7 +145,7 @@ Multiple agents may work on this repo simultaneously, so:
   `axis:harness` / `axis:prompt` / `axis:none` — naming the single variable it
   discriminates (a discriminating test varies exactly one axis). A suite importing
   an LLM or harness keyword library may not claim `axis:none`;
-  `check_test_axes.py` enforces it (report mode in A1; enforced from A4).
+  `check_test_axes.py` enforces it.
 - **Provenance: unattributable results don't count.** Every runtime-bound axis —
   model (id + digest), prompt (id + content hash), harness (name + version),
   sampling params, grader version — is recorded in the spine for the run. A result
@@ -334,5 +338,5 @@ After editing `.env`, sanity-check the wiring without spending model time:
 
 ```bash
 make robot-dryrun      # parses suites (catches Test Timeout / variable errors)
-uv run pytest          # unit tests, no live LLM required
+uv run --extra dev --extra superset --extra swebench pytest   # unit tests, no live LLM required
 ```

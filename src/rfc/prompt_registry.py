@@ -147,9 +147,13 @@ class PromptRegistry:
     def resolve(self, prompt_id: str) -> PromptRecord:
         """Return the resolved record for ``prompt_id`` (identity + on-disk text).
 
-        The ``content_hash`` is computed live from the text on disk, so it reflects what
-        would *actually* run — the value the runtime logs for provenance (RFC-008 §5),
-        which may differ from the catalog's recorded hash when the prompt has drifted.
+        The ``content_hash`` is the live sha256 of the **registered file** on disk, so it
+        catches drift from the catalog's recorded hash (an edit without a version bump).
+        It is *not*, on its own, "what actually ran": a runtime may resolve a **different**
+        text via an env override (e.g. the grader's ``RFC_GRADER_PROMPT``) before executing.
+        The spine (RFC-008 §5) therefore logs the *resolved* hash of the text that actually
+        ran — see :func:`rfc.grader.resolved_grader_provenance` — which equals this
+        registered hash only when no override is in effect.
         """
         try:
             entry = self.entries[prompt_id]
@@ -191,11 +195,18 @@ class PromptRegistry:
         return [msg for pid in self.entries if (msg := self.drift(pid)) is not None]
 
     def provenance(self, prompt_id: str) -> tuple[str, int, str]:
-        """Return ``(prompt_id, version, content_hash)`` for a run to log (RFC-008 §5).
+        """Return the ``(prompt_id, version, content_hash)`` **registered** coordinate.
 
-        The runtime-linkage seam for A3 (#242): a caller records this triple on the spine
-        so a result can be re-placed at its exact prompt coordinate. Uses the *live* hash
-        (what actually ran); A3 owns the spine write, this method only exposes the value.
+        This is the id's *registered* coordinate — the version and the live hash of the
+        registered file — NOT necessarily what actually ran. Under an env override (e.g.
+        the grader's ``RFC_GRADER_PROMPT``) the runtime executes a *different* prompt, so a
+        spine write must record the **resolved** hash of the text that ran
+        (:func:`rfc.grader.resolved_grader_provenance`), not this registered coordinate.
+        Wiring ``provenance(id)`` straight to the spine would make both arms of an override
+        A/B log the same coordinate while running different text (RFC-008 §5/§7). This
+        method is a valid primitive for the registered coordinate; the resolved-hash
+        obligation lives at the spine seam (design's bound A3 criterion, pinned green in A2
+        by ``test_provenance_reports_registered_hash_not_the_env_override``).
         """
         record = self.resolve(prompt_id)
         return (record.prompt_id, record.version, record.content_hash)

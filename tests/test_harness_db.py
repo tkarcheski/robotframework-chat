@@ -33,6 +33,86 @@ CREATE TABLE agentic_harnesses (
 );
 """
 
+# Pre-#242 agentic_harnesses DDL: has the #217 spine columns but NOT the
+# RFC-008 A3 runtime-provenance columns, to exercise the A3 backfill migration
+# on a DB created after #217 but before #242.
+_PRE_A3_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT
+);
+"""
+
+# The #242 provenance column set, named once for the migration assertions.
+_A3_PROVENANCE_COLUMNS = {
+    "model_digest",
+    "prompt_id",
+    "prompt_hash",
+    "grader_version",
+    "params_json",
+}
+
+# Pre-#277 agentic_harnesses DDL: a DB carrying the #217 spine columns AND the
+# #242 provenance set, but not yet repeat_idx — to exercise the #277 backfill.
+_PRE_277_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT,
+    model_digest            TEXT,
+    prompt_id               TEXT,
+    prompt_hash             TEXT,
+    grader_version          TEXT,
+    params_json             TEXT
+);
+"""
+
+# Out-of-order / partial migration history (test-design, #277): a DB that already
+# carries repeat_idx (physically BEFORE the provenance set) but is MISSING two of
+# #292's provenance columns (model_digest, prompt_id). Exercises that the
+# per-statement backfill adds only the missing columns AND that reads stay
+# index-aligned despite the non-canonical physical column order -- because both
+# backends read by explicit column list / Table order, never SELECT *.
+_OUT_OF_ORDER_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT,
+    repeat_idx              INTEGER,
+    prompt_hash             TEXT,
+    grader_version          TEXT,
+    params_json             TEXT
+);
+"""
+
 NOW = "2026-05-09T00:00:00Z"
 
 
@@ -171,6 +251,86 @@ class TestHarnessLifecycle:
         assert fetched is not None
         assert fetched.scenario_id == ""
         assert fetched.battery_run_id == ""
+
+    def test_save_and_get_with_provenance_columns(self, harness_db):
+        # RFC-008 A3 (#242): the runtime-provenance coordinate round-trips.
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-prov",
+                tool_name="replay",
+                started_at=NOW,
+                model_digest="sha256:abc123",
+                prompt_id="grader.default_judge",
+                prompt_hash="deadbeef",
+                grader_version="judge-3",
+                params_json='{"seed": 7, "temperature": 0.0}',
+            )
+        )
+        fetched = harness_db.get_harness("s-prov")
+        assert fetched is not None
+        assert fetched.model_digest == "sha256:abc123"
+        assert fetched.prompt_id == "grader.default_judge"
+        assert fetched.prompt_hash == "deadbeef"
+        assert fetched.grader_version == "judge-3"
+        assert fetched.params_json == '{"seed": 7, "temperature": 0.0}'
+
+    def test_provenance_columns_default_to_empty_string(self, harness_db):
+        # An existing writer that never sets the A3 fields: NULL -> "" sentinel,
+        # so old writers are unchanged (backward-compatible, columns nullable).
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-prov-null", tool_name="claude-code", started_at=NOW
+            )
+        )
+        fetched = harness_db.get_harness("s-prov-null")
+        assert fetched is not None
+        assert fetched.model_digest == ""
+        assert fetched.prompt_id == ""
+        assert fetched.prompt_hash == ""
+        assert fetched.grader_version == ""
+        assert fetched.params_json == ""
+
+    def test_save_and_get_with_repeat_idx(self, harness_db):
+        # #277: repeat_idx round-trips on the spine so S4 pairs on the stored key.
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-rep",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-7",
+                repeat_idx=3,
+            )
+        )
+        fetched = harness_db.get_harness("s-rep")
+        assert fetched is not None
+        assert fetched.repeat_idx == 3
+
+    def test_repeat_idx_zero_persists_as_zero(self, harness_db):
+        # The falsy-zero guard: repeat 0 is a real index, NOT "unset". It must
+        # round-trip as 0 (a `harness.repeat_idx or None` write would corrupt it
+        # to NULL -> -1 and silently drop the first repeat from every pairing).
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-rep0",
+                tool_name="opencode",
+                started_at=NOW,
+                repeat_idx=0,
+            )
+        )
+        fetched = harness_db.get_harness("s-rep0")
+        assert fetched is not None
+        assert fetched.repeat_idx == 0
+
+    def test_repeat_idx_defaults_to_sentinel(self, harness_db):
+        # A non-battery writer that never sets repeat_idx: NULL -> -1 sentinel,
+        # so those rows are distinguishable from a genuine repeat 0.
+        harness_db.save_harness(
+            AgenticHarness(session_id="s-rep-null", tool_name="replay", started_at=NOW)
+        )
+        fetched = harness_db.get_harness("s-rep-null")
+        assert fetched is not None
+        assert fetched.repeat_idx == -1
 
 
 class TestSnapshots:
@@ -558,3 +718,296 @@ class TestSpineColumnMigration:
         self._seed_old_db(db_file)
         HarnessDatabase(database_url=f"sqlite:///{db_file}")
         HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise
+
+
+class TestProvenanceColumnMigration:
+    """#242 (RFC-008 A3): provenance columns backfilled onto a pre-#242 DB.
+
+    Mirrors TestSpineColumnMigration (#217) exactly — the established backfill
+    pattern — across a fresh, a migrated, and a half-migrated DB on both backends.
+    """
+
+    def _seed_pre_a3_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_PRE_A3_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at, scenario_id) VALUES (?, ?, ?, ?)",
+                ("pre-a3-row", "opencode", NOW, "tier4_bug_fix"),
+            )
+
+    def test_columns_absent_before_migration(self, tmp_path):
+        # Guard: the fixture really models a pre-#242 schema (has #217 cols, not A3).
+        db_file = tmp_path / "prea3.db"
+        self._seed_pre_a3_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert {"scenario_id", "battery_run_id"}.issubset(cols)  # #217 present
+        assert _A3_PROVENANCE_COLUMNS.isdisjoint(cols)  # A3 absent
+
+    def test_sqlite_native_migration_adds_columns(self, tmp_path):
+        db_file = tmp_path / "prea3.db"
+        self._seed_pre_a3_db(db_file)
+        db = HarnessDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert _A3_PROVENANCE_COLUMNS.issubset(cols)
+        # Pre-existing row intact: #217 column preserved, new fields read as "".
+        old = db.get_harness("pre-a3-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.model_digest == ""
+        assert old.prompt_hash == ""
+        assert old.params_json == ""
+        # A new row round-trips the provenance coordinate on the upgraded DB.
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-a3",
+                tool_name="replay",
+                started_at=NOW,
+                model_digest="dg",
+                prompt_id="grader.default_judge",
+                prompt_hash="hh",
+                grader_version="1",
+                params_json='{"seed": 3}',
+            )
+        )
+        new = db.get_harness("new-a3")
+        assert new is not None
+        assert new.model_digest == "dg"
+        assert new.prompt_hash == "hh"
+        assert new.params_json == '{"seed": 3}'
+
+    def test_sqlite_native_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "prea3.db"
+        self._seed_pre_a3_db(db_file)
+        HarnessDatabase(db_path=str(db_file))
+        HarnessDatabase(db_path=str(db_file))  # second open must not raise
+
+    def test_half_migrated_db_backfills_only_missing_columns(self, tmp_path):
+        """#225 precedent: a DB with SOME A3 columns already present adds only the
+        rest. Per-statement idempotent migrations, not all-or-nothing — the two
+        pre-added ALTERs raise 'duplicate column' (caught) and the other three land.
+        """
+        db_file = tmp_path / "half.db"
+        self._seed_pre_a3_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute("ALTER TABLE agentic_harnesses ADD COLUMN model_digest TEXT")
+            conn.execute("ALTER TABLE agentic_harnesses ADD COLUMN prompt_id TEXT")
+        db = HarnessDatabase(db_path=str(db_file))  # must not raise on the dup ALTERs
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert _A3_PROVENANCE_COLUMNS.issubset(cols)
+        db.save_harness(
+            AgenticHarness(
+                session_id="half-new",
+                tool_name="replay",
+                started_at=NOW,
+                model_digest="dg2",
+                prompt_hash="hh2",
+                grader_version="1",
+                params_json="{}",
+            )
+        )
+        new = db.get_harness("half-new")
+        assert new is not None
+        assert new.model_digest == "dg2"
+        assert new.prompt_hash == "hh2"
+        assert new.grader_version == "1"
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_adds_columns(self, tmp_path):
+        db_file = tmp_path / "prea3.db"
+        self._seed_pre_a3_db(db_file)
+        # create_all leaves the existing pre-#242 table alone, so _run_migrations
+        # must ALTER-add the provenance columns.
+        db = HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        old = db.get_harness("pre-a3-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.model_digest == ""
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-a3",
+                tool_name="replay",
+                started_at=NOW,
+                prompt_id="grader.default_judge",
+                prompt_hash="hh",
+                params_json='{"top_p": 0.9}',
+            )
+        )
+        new = db.get_harness("new-a3")
+        assert new is not None
+        assert new.prompt_id == "grader.default_judge"
+        assert new.prompt_hash == "hh"
+        assert new.params_json == '{"top_p": 0.9}'
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "prea3.db"
+        self._seed_pre_a3_db(db_file)
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise
+
+
+class TestRepeatIdxColumnMigration:
+    """#277: repeat_idx backfilled onto a pre-#277 DB (has #217 + #242 columns).
+
+    Mirrors TestSpineColumnMigration (#217) / TestProvenanceColumnMigration (#242):
+    the established additive backfill across a fresh, a migrated, and a
+    half-migrated DB on both backends. Sequenced AFTER the #242 provenance set so
+    the positional index (17) never collides with theirs (12–16).
+    """
+
+    def _seed_pre_277_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_PRE_277_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at, scenario_id) VALUES (?, ?, ?, ?)",
+                ("pre-277-row", "opencode", NOW, "tier4_bug_fix"),
+            )
+
+    def test_column_absent_before_migration(self, tmp_path):
+        # Guard: the fixture really models a pre-#277 schema (A3 present, not #277).
+        db_file = tmp_path / "pre277.db"
+        self._seed_pre_277_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert _A3_PROVENANCE_COLUMNS.issubset(cols)  # #242 present
+        assert "repeat_idx" not in cols  # #277 absent
+
+    def test_sqlite_native_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre277.db"
+        self._seed_pre_277_db(db_file)
+        db = HarnessDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "repeat_idx" in cols
+        # Pre-existing row intact: reads repeat_idx as the -1 sentinel (NULL).
+        old = db.get_harness("pre-277-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.repeat_idx == -1
+        # A new row round-trips repeat_idx on the upgraded DB, incl. the 0 index.
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-277",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_regression_guard",
+                battery_run_id="battery-9",
+                repeat_idx=0,
+            )
+        )
+        new = db.get_harness("new-277")
+        assert new is not None
+        assert new.repeat_idx == 0
+
+    def test_sqlite_native_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre277.db"
+        self._seed_pre_277_db(db_file)
+        HarnessDatabase(db_path=str(db_file))
+        HarnessDatabase(db_path=str(db_file))  # second open must not raise
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre277.db"
+        self._seed_pre_277_db(db_file)
+        # create_all leaves the existing pre-#277 table alone, so _run_migrations
+        # must ALTER-add repeat_idx.
+        db = HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        old = db.get_harness("pre-277-row")
+        assert old is not None
+        assert old.repeat_idx == -1
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-277",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-1",
+                repeat_idx=4,
+            )
+        )
+        new = db.get_harness("new-277")
+        assert new is not None
+        assert new.repeat_idx == 4
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre277.db"
+        self._seed_pre_277_db(db_file)
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise
+
+    def _seed_out_of_order_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_OUT_OF_ORDER_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at, scenario_id, repeat_idx) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("ooo-row", "opencode", NOW, "tier4_bug_fix", 2),
+            )
+
+    @pytest.mark.parametrize("use_url", [False, True])
+    def test_out_of_order_history_backfills_and_reads_aligned(self, tmp_path, use_url):
+        # test-design (#277): a DB with repeat_idx present (physically out of
+        # canonical order) but missing two provenance columns. The per-statement
+        # backfill must add ONLY the missing provenance columns (skipping the
+        # already-present repeat_idx), and every read must stay index-aligned
+        # despite the non-canonical physical order -- on BOTH backends.
+        if use_url and not HAS_SQLALCHEMY:
+            pytest.skip("sqlalchemy not installed")
+        db_file = tmp_path / "ooo.db"
+        self._seed_out_of_order_db(db_file)
+        db = (
+            HarnessDatabase(database_url=f"sqlite:///{db_file}")
+            if use_url
+            else HarnessDatabase(db_path=str(db_file))
+        )
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert _A3_PROVENANCE_COLUMNS.issubset(cols)  # missing provenance backfilled
+        assert "repeat_idx" in cols
+        # Pre-existing out-of-order row survived, and its stored repeat_idx (2) and
+        # scenario_id read back correctly even though repeat_idx sits at a
+        # non-canonical physical position -- explicit-column reads are immune.
+        old = db.get_harness("ooo-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.repeat_idx == 2
+        # A fresh row round-trips a DISTINCT repeat_idx alongside provenance
+        # sentinels: if any column read were misaligned, one of these would be wrong.
+        db.save_harness(
+            AgenticHarness(
+                session_id="ooo-new",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_regression_guard",
+                battery_run_id="batt-ooo",
+                repeat_idx=0,
+                model_digest="DG_SENTINEL",
+                prompt_id="PID_SENTINEL",
+                params_json="PJ_SENTINEL",
+            )
+        )
+        new = db.get_harness("ooo-new")
+        assert new is not None
+        assert new.repeat_idx == 0  # a genuine 0, not corrupted to the -1 sentinel
+        assert new.model_digest == "DG_SENTINEL"
+        assert new.prompt_id == "PID_SENTINEL"
+        assert new.params_json == "PJ_SENTINEL"

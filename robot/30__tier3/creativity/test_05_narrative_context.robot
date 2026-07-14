@@ -4,6 +4,7 @@ Documentation     Narrative context tests with 3-4 turn conversations.
 ...               and topic switching with return.
 Resource          creativity.resource
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Instruction Persistence

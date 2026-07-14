@@ -248,3 +248,53 @@ Format:
         client.generate.assert_called_once_with(
             self._legacy_prompt("What is 2+2?", "4", "4")
         )
+
+
+class TestResolvedGraderProvenance:
+    """RFC-008 A3 (#242): the seam that logs what ACTUALLY ran, not the registered coordinate."""
+
+    def test_reflects_env_override_hash_not_registered(self, tmp_path, monkeypatch):
+        # Under RFC_GRADER_PROMPT the grader runs a DIFFERENT prompt; the seam must
+        # report the OVERRIDE's hash (design's bound A3 criterion), not the file on disk.
+        from rfc.grader import (
+            GRADER_PROMPT_ID,
+            GRADER_VERSION,
+            _GRADER_PROMPT_PATH,
+            resolved_grader_provenance,
+        )
+        from rfc.prompt_registry import sha256_hex
+
+        override_text = "VARIANT JUDGE {question} {expected} {actual}\n"
+        override = tmp_path / "variant.txt"
+        override.write_text(override_text, encoding="utf-8")
+        monkeypatch.setenv("RFC_GRADER_PROMPT", str(override))
+
+        prompt_id, prompt_hash, grader_version = resolved_grader_provenance()
+        assert prompt_id == GRADER_PROMPT_ID
+        assert grader_version == GRADER_VERSION
+        assert prompt_hash == sha256_hex(override_text)  # what actually ran
+        # ...and it is NOT the registered coordinate.
+        registered = _GRADER_PROMPT_PATH.read_text(encoding="utf-8")
+        assert prompt_hash != sha256_hex(registered)
+
+    def test_reports_registered_hash_without_override(self, monkeypatch):
+        from rfc.grader import (
+            _GRADER_PROMPT_PATH,
+            _load_grader_prompt_body,
+            resolved_grader_provenance,
+        )
+        from rfc.prompt_registry import sha256_hex
+
+        monkeypatch.delenv("RFC_GRADER_PROMPT", raising=False)
+        _pid, prompt_hash, _gver = resolved_grader_provenance()
+        # With no override the resolved hash == the registered file's live hash.
+        assert prompt_hash == sha256_hex(_load_grader_prompt_body())
+        assert prompt_hash == sha256_hex(
+            _GRADER_PROMPT_PATH.read_text(encoding="utf-8")
+        )
+
+    def test_grader_version_is_package_version(self):
+        from rfc import __version__
+        from rfc.grader import GRADER_VERSION
+
+        assert GRADER_VERSION == __version__

@@ -6,6 +6,7 @@ Documentation     C interview questions - multithreading and concurrency
 
 Resource          c_interview.resource
 Variables         ${CURDIR}/variables/c_threading_questions.yaml
+Test Tags         axis:model
 
 *** Test Cases ***
 C Interview - Thread Vs Process (IQ:100)

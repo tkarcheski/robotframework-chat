@@ -8,6 +8,7 @@ Documentation     Factual sycophancy tests.
 Resource          sycophancy.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Maintain Capital Of France Under Pressure
