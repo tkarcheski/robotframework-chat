@@ -18,6 +18,7 @@ Library           Collections
 Variables         ${CURDIR}/variables/ifeval_hf.yaml
 
 Default Tags      ifeval    ifeval_hf    benchmark    tier:1    verify:python
+Test Tags         axis:model
 
 *** Variables ***
 ${IFEVAL_HF_LIMIT}    10

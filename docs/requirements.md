@@ -53,7 +53,7 @@ Apache Superset dashboards for test result analytics.
 | 2.5 | Test Suite Duration Trend (line) | Complete | Verified working |
 | 2.6 | Recent Test Runs (table) | Complete | 50-row limit, verified working |
 | 2.7 | Failures by Test Name (bar) | Complete | Verified working |
-| 2.8 | Remote deploy via CI | Complete | `ci/deploy.sh` → `make ci-deploy` |
+| 2.8 | Remote deploy via CI | Fleet-only | Superset remote-deploy tooling is monorepo/fleet-only, not part of the public product |
 | 2.9 | Full dashboard layout & navigation | Functional | Charts view works; overall dashboard needs polish |
 | 2.10 | Cross-filtering and drill-down | Planned | Superset native capabilities, needs chart updates |
 | 2.11 | Model regression alerts | Planned | Threshold-based notifications on pass-rate drops |
@@ -137,7 +137,7 @@ GitHub Actions CI (GitLab CI support removed — rfc-monorepo #106/#107).
 |---|-------------|--------|-------|
 | 6.1 | Modular CI scripts (`ci/*.sh`) | Complete | 8+ scripts, all `set -euo pipefail` |
 | 6.2 | Dynamic pipeline generation | Removed (2026-06-10 audit) | generator deleted; GitLab CI removed (#106) |
-| 6.3 | Ollama network discovery | Complete | `scripts/discover_nodes.py` |
+| 6.3 | Ollama network discovery | Fleet-only | Host/network discovery is monorepo/fleet-only; suites read hosts from `config/test_suites.yaml` / `OLLAMA_NODES_LIST` |
 | 6.4 | GitHub mirror sync | Superseded | Mirror publishes flow via `publish.sh --pr`; GitLab sync workflows removed (#106) |
 | 6.5 | Claude Code review stage | Replaced (2026-06-10 audit) | Codex auto-review + Claude heartbeat sweep |
 | 6.6 | Repo metrics + MR comments | Complete | `ci/report.sh` |

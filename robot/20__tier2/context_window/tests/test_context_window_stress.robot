@@ -19,6 +19,7 @@ Default Tags      context_window    tier:2    verify:llm
 Test Timeout      100 minutes
 
 Suite Setup       Set Suite Variable    ${CONTEXT_WINDOW}    ${CONTEXT_WINDOW}
+Test Tags         axis:model
 
 *** Variables ***
 ${CONTEXT_WINDOW}    8192

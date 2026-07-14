@@ -10,4 +10,4 @@ Documentation     Coding-agent workflow evaluation suite.
 ...               AgentRun fixtures. A live adapter that shells out to the real
 ...               CLI is a follow-up.
 
-Force Tags        agentic_coding
+Force Tags        agentic_coding    axis:harness

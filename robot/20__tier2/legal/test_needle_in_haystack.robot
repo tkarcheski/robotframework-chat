@@ -10,7 +10,7 @@ Documentation     Needle-in-a-Haystack Legal Document Tests
 
 Resource          legal.resource
 
-Test Tags         needle-in-haystack    tier:2    verify:llm
+Test Tags         needle-in-haystack    tier:2    verify:llm    axis:model
 
 *** Test Cases ***
 

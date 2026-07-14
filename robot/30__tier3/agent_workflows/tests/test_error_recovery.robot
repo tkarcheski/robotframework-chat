@@ -9,6 +9,7 @@ Documentation     Tool failure and retry-after-failure handling.
 Resource          ../agent_workflows.resource
 
 Default Tags      agent-workflow    error-handling    tier:1    verify:python
+Test Tags         axis:none
 
 *** Test Cases ***
 Workflow Captures Tool Failures And Recovery

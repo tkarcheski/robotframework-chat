@@ -24,7 +24,13 @@ import pytest
 # cleanly instead (see CLAUDE.md § Rules: prefer skip-and-log for optional deps).
 fakeredis = pytest.importorskip("fakeredis")
 
-from rfc.answer_cache import AnswerCache, CachingProvider  # noqa: E402
+from rfc.answer_cache import (  # noqa: E402
+    DEFAULT_CACHE_MODE,
+    AnswerCache,
+    AnswerCacheMiss,
+    CacheMode,
+    CachingProvider,
+)
 
 
 # ── Test doubles ────────────────────────────────────────────────────────
@@ -597,3 +603,292 @@ def test_as_ollama_none_for_non_ollama_client():
 
     wrapped = CachingProvider(FakeProvider(), make_cache())
     assert as_ollama(wrapped) is None
+
+
+# ── RFC-010 S2: replay modes (#259, scopes #19) ─────────────────────────
+#
+# The load-bearing honesty rule: a stale/missing entry must fail explicitly —
+# never silently pass and never silently go live. cache_only enforces it; the
+# two live-on-miss modes keep the historical behaviour.
+
+
+def test_default_mode_is_record_and_replay():
+    """A CachingProvider built without a mode is record_and_replay (unchanged)."""
+    assert DEFAULT_CACHE_MODE is CacheMode.RECORD_AND_REPLAY
+    wrapped = CachingProvider(FakeProvider(), make_cache())
+    assert wrapped.cache_mode is CacheMode.RECORD_AND_REPLAY
+
+
+def test_mode_contract_flags():
+    """Each mode's policy flags encode its contract (the pinned distinction)."""
+    # Only cache_only refuses to go live on a miss.
+    assert CacheMode.RECORD_AND_REPLAY.call_upstream_on_miss is True
+    assert CacheMode.EXACT_ONLY.call_upstream_on_miss is True
+    assert CacheMode.CACHE_ONLY.call_upstream_on_miss is False
+    # Only record_and_replay's contract permits a future semantic reuse layer;
+    # exact_only / cache_only are guaranteed exact-digest-only.
+    assert CacheMode.RECORD_AND_REPLAY.semantic_reuse_allowed is True
+    assert CacheMode.EXACT_ONLY.semantic_reuse_allowed is False
+    assert CacheMode.CACHE_ONLY.semantic_reuse_allowed is False
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("record_and_replay", CacheMode.RECORD_AND_REPLAY),
+        ("exact_only", CacheMode.EXACT_ONLY),
+        ("cache_only", CacheMode.CACHE_ONLY),
+        ("  CACHE_ONLY  ", CacheMode.CACHE_ONLY),  # case/space-insensitive
+        ("bogus", None),
+        ("", None),
+    ],
+)
+def test_cache_mode_from_str(raw, expected):
+    assert CacheMode.from_str(raw) is expected
+
+
+# record_and_replay (default) — serve on hit, live+store on miss.
+
+
+def test_record_and_replay_miss_goes_live_and_stores():
+    cache = make_cache()
+    inner = FakeProvider(answer="fresh")
+    wrapped = CachingProvider(inner, cache, mode=CacheMode.RECORD_AND_REPLAY)
+
+    assert wrapped.generate("q") == "fresh"  # miss → live
+    assert wrapped.generate("q") == "fresh"  # hit → served, provider not re-hit
+    assert inner.calls == ["q"]
+
+
+# exact_only — same observable behaviour as record_and_replay today, but the
+# contract forbids any semantic reuse.
+
+
+def test_exact_only_miss_goes_live_and_stores():
+    cache = make_cache()
+    inner = FakeProvider(answer="fresh")
+    wrapped = CachingProvider(inner, cache, mode=CacheMode.EXACT_ONLY)
+
+    assert wrapped.generate("q") == "fresh"  # miss → live
+    assert wrapped.generate("q") == "fresh"  # exact hit → served
+    assert inner.calls == ["q"]
+
+
+def test_exact_only_nondeterministic_still_bypasses_to_live():
+    """A non-deterministic request in a live-on-miss mode goes live (not stored)."""
+    cache = make_cache()
+    inner = FakeProvider(temperature=0.7, seed=None, answer="varies")
+    wrapped = CachingProvider(inner, cache, mode=CacheMode.EXACT_ONLY)
+
+    wrapped.generate("q")
+    wrapped.generate("q")
+    assert inner.calls == ["q", "q"]  # both reached the provider
+
+
+# cache_only — never call upstream; a miss/outage/nondeterministic request is a
+# LOUD, machine-readable failure.
+
+
+def test_cache_only_hit_serves_without_upstream():
+    """cache_only serves a primed exact hit with zero upstream calls."""
+    redis = fakeredis.FakeStrictRedis()
+    # Prime via a record_and_replay run sharing the same Redis.
+    primer = FakeProvider(answer="primed")
+    CachingProvider(primer, AnswerCache(redis_client=redis)).generate("q")
+
+    inner = FakeProvider(answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
+    )
+    assert wrapped.generate("q") == "primed"
+    assert inner.calls == []  # upstream never called
+    assert wrapped.last_metrics is not None
+    assert wrapped.last_metrics.get("cache_hit") is True
+
+
+def test_cache_only_miss_raises_and_never_goes_live():
+    """A genuine miss is a loud AnswerCacheMiss — never a silent live call."""
+    cache = make_cache()
+    inner = FakeProvider(answer="never")
+    wrapped = CachingProvider(inner, cache, mode=CacheMode.CACHE_ONLY)
+
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("unprimed")
+
+    err = excinfo.value
+    assert inner.calls == []  # the honesty rule: zero upstream calls
+    # Machine-readable fields so a caller / Robot test can assert on the failure.
+    assert err.mode is CacheMode.CACHE_ONLY
+    assert err.reason == "cache-miss"
+    assert err.key is not None
+    assert err.model == inner.model
+
+
+def test_cache_only_outage_is_loud_not_silent_passthrough():
+    """A down cache under cache_only fails loud — it must NOT go live.
+
+    This is the deliberate exception to the passthrough rule: silently going
+    live would break cache_only's zero-token guarantee.
+    """
+    inner = FakeProvider(answer="never")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=UnreachableRedis()), mode=CacheMode.CACHE_ONLY
+    )
+
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
+
+    assert inner.calls == []
+    assert excinfo.value.reason == "cache-unreachable"
+
+
+def test_cache_only_nondeterministic_request_is_loud():
+    """A non-cacheable request under cache_only fails loud, not live."""
+    cache = make_cache()
+    inner = FakeProvider(temperature=0.7, seed=None, answer="never")
+    wrapped = CachingProvider(inner, cache, mode=CacheMode.CACHE_ONLY)
+
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
+
+    assert inner.calls == []
+    assert excinfo.value.reason == "nondeterministic-request"
+    assert excinfo.value.key is None  # never keyed
+
+
+def test_answer_cache_available_reflects_outage_latch():
+    up = make_cache()
+    assert up.available is True
+
+    down = AnswerCache(redis_client=UnreachableRedis())
+    assert down.available is True  # not tripped until first use
+    down.get("k")  # latches _disabled
+    assert down.available is False
+
+
+# ── test-design adversarial coverage for PR #317 (RFC-010 S2 verdict) ────
+#
+# Added by test-design (Mr. Meeseeks) attacking the honesty contract on angles
+# the engineering suite did not already pin: a MID-run Redis drop (vs. an outage
+# present from the start), digest-keying stability across the record→replay
+# seam, a model re-pull changing the digest, and the read-side blank-value gap
+# (characterized here, tracked as from:testing #319).
+
+
+class _FlakyRedis:
+    """fakeredis that starts healthy then drops mid-run once ``down`` is set.
+
+    Models a Redis connection dying *after* the provider has already served a
+    healthy hit — distinct from ``UnreachableRedis``, which is down from op #1.
+    """
+
+    def __init__(self) -> None:
+        self._backing = fakeredis.FakeStrictRedis()
+        self.down = False
+
+    def get(self, *a: Any, **k: Any) -> Any:
+        if self.down:
+            import redis
+
+            raise redis.ConnectionError("redis dropped mid-run")
+        return self._backing.get(*a, **k)
+
+    def set(self, *a: Any, **k: Any) -> Any:
+        if self.down:
+            import redis
+
+            raise redis.ConnectionError("redis dropped mid-run")
+        return self._backing.set(*a, **k)
+
+
+def test_cache_only_redis_drops_midrun_is_loud_not_live():
+    """A Redis outage that begins mid-run still fails LOUD — never a live call.
+
+    Serves one healthy hit, then Redis dies; the next key must be a loud
+    ``cache-unreachable`` miss with zero upstream calls, not a silent
+    degrade-to-live that would breach the zero-token guarantee.
+    """
+    flaky = _FlakyRedis()
+    # Prime one key while healthy (record_and_replay over the same store).
+    CachingProvider(
+        FakeProvider(answer="primed"), AnswerCache(redis_client=flaky)
+    ).generate("primed-q")
+
+    inner = FakeProvider(answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=flaky), mode=CacheMode.CACHE_ONLY
+    )
+    assert wrapped.generate("primed-q") == "primed"  # healthy hit
+    assert inner.calls == []
+
+    flaky.down = True  # connection drops mid-run
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("other-q")
+    assert inner.calls == []  # STILL zero upstream after the drop
+    assert excinfo.value.reason == "cache-unreachable"
+
+
+def test_cache_key_is_mode_independent_across_record_replay_seam():
+    """A digest-keyed entry primed under record_and_replay is served under
+    cache_only: the key is computed by AnswerCache (mode-independent), so the
+    record→replay seam is a hit. A mode-dependent key would silently zero the
+    hit rate. Exercises the #526 ``model_digest`` field on both sides.
+    """
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        MaybeDigestProvider(digest="sha-A", answer="primed"),
+        AnswerCache(redis_client=redis),
+    ).generate("q")  # record_and_replay (default)
+
+    inner = MaybeDigestProvider(digest="sha-A", answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
+    )
+    assert wrapped.generate("q") == "primed"  # cross-mode hit on the same key
+    assert inner.calls == []
+
+
+def test_cache_only_model_repull_new_digest_is_loud_miss():
+    """A model re-pull changes the resolved digest (#526), changing the key:
+    cache_only must MISS LOUD on the new digest, never serve the stale-weights
+    answer that was keyed under the old digest.
+    """
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        MaybeDigestProvider(digest="sha-old", answer="old-weights"),
+        AnswerCache(redis_client=redis),
+    ).generate("q")  # recorded under the old digest
+
+    new = MaybeDigestProvider(digest="sha-new", answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        new, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
+    )
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
+    assert new.calls == []  # zero upstream — no stale-weights hit
+    assert excinfo.value.reason == "cache-miss"  # key-absent, not an outage
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_cache_only_serves_blank_stored_value_as_hit_characterization(blank):
+    """CHARACTERIZATION of a known read-side gap (from:testing #319).
+
+    The write side never memoizes a blank answer, but the read side serves any
+    ``cached is not None`` value — so a blank entry written out-of-band / by
+    legacy data is replayed as a confident cache_hit under cache_only rather
+    than a loud miss. The zero-token guarantee is intact (no upstream call);
+    this pins the CURRENT behaviour so a future read-side blank guard (#319) is
+    a deliberate, tested change.
+    """
+    redis = fakeredis.FakeStrictRedis()
+    key = AnswerCache(redis_client=redis).make_key(FakeProvider(), "q")
+    redis.set(key, blank)  # out-of-band blank; current code never writes this
+
+    inner = FakeProvider(answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
+    )
+    assert wrapped.generate("q") == blank  # served blank as a "hit"
+    assert inner.calls == []  # zero upstream — the guarantee still holds
+    assert wrapped.last_metrics is not None
+    assert wrapped.last_metrics.get("cache_hit") is True

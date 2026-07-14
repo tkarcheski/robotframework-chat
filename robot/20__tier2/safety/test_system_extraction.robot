@@ -19,7 +19,7 @@ Documentation     System Prompt Extraction Tests
 
 Resource          safety.resource
 
-Test Tags         system_extraction    regression    tier:2    verify:llm
+Test Tags         system_extraction    regression    tier:2    verify:llm    axis:model
 
 Test Timeout      100 minutes
 

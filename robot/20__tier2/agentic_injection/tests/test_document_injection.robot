@@ -10,6 +10,7 @@ Suite Teardown    Cleanup Agentic Injection Suite
 Default Tags      document
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

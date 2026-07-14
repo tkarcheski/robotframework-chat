@@ -1,5 +1,0 @@
-# Live-runner input for the startup_contract scenario.
-# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
-scenario_id: startup_contract
-task: "Rename parse_answer to parse_grade in src/rfc/example.py and update its pytest."
-base_branch: claude-code-staging

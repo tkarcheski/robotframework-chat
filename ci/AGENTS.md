@@ -13,10 +13,11 @@ support was removed entirely (rfc-monorepo #106–#108).
 | Script | Used by | Purpose |
 |--------|---------|---------|
 | `ci/lint.sh` | Actions + local | Run ruff linter and formatter checks |
-| `ci/deploy.sh` | manual / local | Deploy Superset to remote host |
 | `ci/release.sh` | Actions + local | Build + verify sdist/wheel (`make build-check`) |
-| `ci/backup_push.sh` | manual | Push Superset export + DB dump to the backups repo |
 | `ci/audit_markdown.sh` | manual | Audit markdown file references (Ollama) |
+
+Fleet-only remote-deploy and backups-push helpers are monorepo/fleet-only
+(RFC-011 S2, #286) and are not part of the public product.
 
 Removed by the 2026-06-10 CI/CD audit (elons-algorithm report
 `2026-06-10-cicd-pipelines.md`): `ci/test.sh`, `ci/sync.sh`,
@@ -38,8 +39,8 @@ Removed with GitLab CI support (rfc-monorepo #108): `ci/common.yml`,
 Keep CI pipelines minimal. Debugging generated pipeline YAML is painful, so
 prefer pushing logic into developer tools that work the same locally and in CI:
 
-- **Makefile** — entry points for CI operations (`make ci-deploy`,
-  `make run-ci-pipeline`, etc.). A developer should be able to reproduce any
+- **Makefile** — entry points for CI operations (`make run-ci-pipeline`,
+  `make code-quality-check`, etc.). A developer should be able to reproduce any
   CI job locally.
 - **Bash scripts** (`ci/*.sh`) — reusable scripts that set up the
   environment and call Python or other tools. Keep them short and linear.

@@ -4,7 +4,9 @@ from pathlib import Path
 
 from robot.api import logger
 
+from . import __version__
 from .models import GradeResult
+from .prompt_registry import sha256_hex
 from .rfc_data import emit_rfc_data
 from .thinking import extract_json, parse_thinking
 
@@ -19,6 +21,13 @@ from .thinking import extract_json, parse_thinking
 # so grading never breaks. ``check_prompt_registry.py`` guards the file against silent
 # edits; ``GRADER_PROMPT_ID`` is the seam A3 (#242) uses to log the resolved hash on the spine.
 GRADER_PROMPT_ID = "grader.default_judge"
+
+# The grader's *code* identity: the rfc release that produced the grade. Together
+# with (prompt_id, resolved prompt_hash) — the judge prompt, the measurement
+# instrument — this fully identifies the grader for RFC-008 §5 provenance. Bound
+# to the package version so it is never a stale hand-maintained constant (a version
+# nobody bumps is merely decorative); when grading code changes, the release bumps.
+GRADER_VERSION = __version__
 
 _GRADER_PROMPT_ENV = "RFC_GRADER_PROMPT"
 _GRADER_PROMPT_PATH = (
@@ -69,6 +78,23 @@ def _load_grader_prompt_body() -> str:
         except OSError:
             continue
     return _GRADER_PROMPT_FALLBACK
+
+
+def resolved_grader_provenance() -> tuple[str, str, str]:
+    """Return ``(prompt_id, resolved_hash, grader_version)`` for the grader that ACTUALLY runs.
+
+    The honesty seam for RFC-008 A3 (#242), implementing design's bound acceptance
+    criterion from the PR #272 review. The hash is computed over
+    :func:`_load_grader_prompt_body` — i.e. **after** ``RFC_GRADER_PROMPT``
+    env-override resolution — so a prompt A/B override run logs the *override's*
+    hash on the spine, not the registry's registered coordinate. This is the
+    distinction design pinned green in A2: :meth:`PromptRegistry.provenance` reports
+    the *registered* hash; the spine must record the *resolved* hash, or both arms
+    of an override A/B record the same coordinate while running different text
+    (RFC-008 §5/§7). ``sha256_hex`` is the registry's own hashing primitive, so the
+    resolved hash is directly comparable to a registered / catalog hash.
+    """
+    return GRADER_PROMPT_ID, sha256_hex(_load_grader_prompt_body()), GRADER_VERSION
 
 
 class Grader:

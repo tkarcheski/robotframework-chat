@@ -51,14 +51,11 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         retry-failed retry-skipped \
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models run-all-external \
-        robot-autopilot \
-        cron-install cron-uninstall cron-sync-models \
         code-quality-lint code-quality-format code-quality-typecheck \
         code-quality-check code-quality-coverage code-quality-audit \
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
         model-cards \
-        ci-deploy \
         opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
 
@@ -94,7 +91,7 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 
 # ── Foundation: Robot Framework Tests ────────────────────────────────
 # Pass extra `robot` CLI args via ARGS, e.g.:
-#   make robot ARGS="--include agent:claude_code"
+#   make robot ARGS="--include axis:harness"
 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
 
@@ -210,17 +207,9 @@ run-local-models: ## Run suites against curated hosts from host-config.toml with
 run-all-external: ## Legacy wide-net run: env-var/subnet discovery, runs everything found (AUDIT=0, ITERATIONS as above)
 	uv run python scripts/run_local_models.py --mode external $(if $(ITERATIONS),--iterations $(ITERATIONS),) $(if $(filter 0,$(AUDIT)),--no-audit,)
 
-robot-autopilot: ## Poll for git updates → update + install + run-local-models; idle 6h → re-run
-	@scripts/robot_autopilot.sh
-
-cron-install: ## Install hourly cron job for update + sync-models + run-local-models
-	@scripts/cron_run_local_models.sh --install
-
-cron-uninstall: ## Remove hourly cron job
-	@scripts/cron_run_local_models.sh --uninstall
-
-cron-sync-models: ## Pull any master models missing from local Ollama
-	@scripts/cron_run_local_models.sh --sync-models
+# Fleet-only autopilot + cron targets were removed with their scripts — they
+# are monorepo/fleet-only (RFC-011 S2, #286). The sources stay under
+# modules/ops/scripts/ in the private monorepo.
 
 # ── Layer 1: Python Code Quality ─────────────────────────────────────
 
@@ -301,13 +290,11 @@ sync-metrics: ## Trigger immediate RF Metrics dashboard regeneration from output
 superset-sanitize: ## Truncate all RFC data tables (preserves dashboards/charts)
 	uv run python scripts/sanitize_superset_db.py
 
-# backup_push.sh sits at ci/ on the flat mirror/deploy layout and at
-# ../modules/ops/ci/ when this Makefile is invoked from the monorepo core/.
-# Resolve whichever exists so superset-export runs from both layouts; the
-# trailing default keeps the error legible (bash: No such file) if neither is.
-BACKUP_PUSH_SH := $(firstword $(wildcard ci/backup_push.sh ../modules/ops/ci/backup_push.sh) ci/backup_push.sh)
-
-superset-export: ## Export Superset dashboards + DB dump to backups/, then commit + push to the backups repo (main)
+# superset-export writes a timestamped dashboard export + DB dump to backups/.
+# The commit+push-to-backups-repo tail was fleet-only and was removed with its
+# script (RFC-011 S2, #286/#294); the daily off-site backup now runs as a
+# self-hosted monorepo CI pipeline (#160/#161).
+superset-export: ## Export Superset dashboards + DB dump to backups/ (timestamped, local)
 	@mkdir -p backups
 	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
 	$(COMPOSE) exec superset superset export-dashboards \
@@ -323,8 +310,7 @@ superset-export: ## Export Superset dashboards + DB dump to backups/, then commi
 	else \
 		echo "WARNING: pg_dump failed — skipping DB dump"; \
 		rm -f "backups/db_$${TIMESTAMP}.sql" "backups/db_$${TIMESTAMP}.sql.gz"; \
-	fi; \
-	bash "$(BACKUP_PUSH_SH)" "chore: backup $${TIMESTAMP}"
+	fi
 
 superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py
@@ -340,9 +326,9 @@ model-cards: ## Generate Markdown model cards from test results (requires Supers
 	uv run python -m rfc.make_model_cards
 
 # ── Layer 3: CI Pipelines ────────────────────────────────────────────
-
-ci-deploy: ## Deploy Superset to remote host
-	bash ci/deploy.sh
+# The Superset remote-deploy target was fleet-only and was removed with its
+# script (RFC-011 S2, #286); the source stays under modules/ops/ci/ in the
+# private monorepo.
 
 opencode-audit-markdown: ## Audit markdown file references for broken/stale paths (Ollama)
 	bash ci/audit_markdown.sh

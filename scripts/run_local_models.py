@@ -37,8 +37,10 @@ Environment variables (external mode):
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -87,14 +89,62 @@ from rfc.providers import (  # noqa: E402
     load_providers,
     resolve_api_key,
 )
-from scripts.discover_ollama import (  # noqa: E402
-    _probe_port,
-    _query_loaded_models,
-    _query_models,
-)
+# ---------------------------------------------------------------------------
+# Ollama API probe helpers.
+#
+# Vendored here (RFC-011 S2, #286/#294) so this kept-public script stands
+# alone on the flat public mirror: the fleet's network-discovery tooling is
+# monorepo-only and keeps its own copies of these probes. Duplicating three
+# small, dependency-free helpers beats shipping a fleet tool to the mirror
+# just to host them.
+# ---------------------------------------------------------------------------
+
+#: Timeout (seconds) for one Ollama HTTP API request in the probes below.
+OLLAMA_REQUEST_TIMEOUT = 5
+
+
+def _probe_port(host: str, port: int, timeout: float = 2) -> bool:
+    """Return True if *host:port* accepts a TCP connection."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, TimeoutError):
+        return False
+
+
+def _query_models(endpoint: str) -> list[str]:
+    """Query an Ollama endpoint's ``/api/tags`` and return model names."""
+    try:
+        resp = requests.get(f"{endpoint}/api/tags", timeout=OLLAMA_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return [m["name"] for m in resp.json().get("models", [])]
+    except Exception:  # noqa: BLE001 - an unreachable host simply has no models
+        return []
+
+
+def _query_loaded_models(endpoint: str) -> list[str]:
+    """Query an Ollama endpoint's ``/api/ps`` and return loaded model names.
+
+    Returns an empty list on any error (older Ollama versions may not
+    support ``/api/ps``; an unreachable host is simply "nothing loaded").
+    """
+    try:
+        resp = requests.get(f"{endpoint}/api/ps", timeout=OLLAMA_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return [m["name"] for m in resp.json().get("models", [])]
+    except Exception:  # noqa: BLE001
+        return []
+
 
 #: Env var pointing at the cross-run leftover (deferred-jobs) store (#510).
 LEFTOVER_FILE_ENV = "RFC_PROVIDER_LEFTOVER_FILE"
+
+#: Optional post-run coverage-audit hook (#286/#294): a dotted module path
+#: exposing ``run_audit(results_root=..., version=..., audit_dir=..., commit=...)``
+#: plus ``DEFAULT_AUDIT_DIR`` / ``DEFAULT_RESULTS_ROOT`` constants. The fleet's
+#: private wrappers point this at the monorepo-only audit tool; when unset
+#: (the default, and always on the public mirror) the audit step is skipped.
+AUDIT_HOOK_ENV = "RFC_AUDIT_HOOK"
 
 DEFAULT_CONFIG = _project_root / "config" / "local_models.yaml"
 TEST_SUITES_CONFIG = _project_root / "config" / "test_suites.yaml"
@@ -1167,6 +1217,12 @@ def _maybe_audit(*, dry_run: bool, audit: bool) -> None:
     repeat data, so re-auditing each pass would just churn the report and the
     git history.
 
+    The audit tool itself is fleet-only (RFC-011 S2, #286/#294): this script
+    publishes to the flat public mirror, so instead of importing a module that
+    is absent there, the audit is loaded from the ``RFC_AUDIT_HOOK`` env var (a
+    dotted module path; the fleet's private wrappers set it). Unset, the audit
+    is skipped silently.
+
     The audit is a post-processing convenience, never a gate: a multi-hour test
     run must not die because the report failed to render or commit. So any error
     here is logged and swallowed, mirroring CLAUDE.md's skip-and-log rule for
@@ -1174,18 +1230,16 @@ def _maybe_audit(*, dry_run: bool, audit: bool) -> None:
     """
     if dry_run or not audit:
         return
+    hook = os.environ.get(AUDIT_HOOK_ENV, "").strip()
+    if not hook:
+        return
     try:
-        from scripts.audit_robot_reports import (
-            DEFAULT_AUDIT_DIR,
-            DEFAULT_RESULTS_ROOT,
-            run_audit,
-        )
-
+        mod = importlib.import_module(hook)
         print(f"\n{'#' * 70}\n  Coverage audit (first executed pass)\n{'#' * 70}\n")
-        run_audit(
-            results_root=DEFAULT_RESULTS_ROOT,
+        mod.run_audit(
+            results_root=mod.DEFAULT_RESULTS_ROOT,
             version=None,
-            audit_dir=DEFAULT_AUDIT_DIR,
+            audit_dir=mod.DEFAULT_AUDIT_DIR,
             commit=True,
         )
     except Exception as e:  # noqa: BLE001 - audit must never abort the run
