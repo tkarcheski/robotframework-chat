@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     started_at              TEXT NOT NULL,
     ended_at                TEXT,
     outcome                 TEXT,
-    replay_of_recording_id  TEXT
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
 
@@ -166,7 +168,15 @@ CREATE INDEX IF NOT EXISTS idx_hitl_session ON hitl_interactions(session_id);
 CREATE INDEX IF NOT EXISTS idx_hitl_action  ON hitl_interactions(target_action_id);
 """
 
-_SQLITE_MIGRATIONS: list[str] = []  # placeholder for future column adds
+# Backfill columns onto agentic_harnesses created before #217. Each ALTER runs
+# after the CREATE-IF-NOT-EXISTS above: on a fresh DB the column already exists
+# and SQLite raises "duplicate column name" (caught as idempotent); on a pre-#217
+# DB the column is added, leaving existing rows NULL. Nullable, so old writers
+# keep working unchanged.
+_SQLITE_MIGRATIONS: list[str] = [
+    "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id TEXT",
+]
 
 # Canonical body of the ``agentic_sessions_full`` view (issue #353).
 #
@@ -221,6 +231,8 @@ def _harness_from_row(row: Sequence[Any]) -> AgenticHarness:
         ended_at=row[7] or "",
         outcome=row[8] or "",
         replay_of_recording_id=row[9] or "",
+        scenario_id=row[10] or "",
+        battery_run_id=row[11] or "",
     )
 
 
@@ -449,8 +461,9 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 """
                 INSERT INTO agentic_harnesses
                 (session_id, tool_name, tool_version, model_id, rfc_version,
-                 branch, started_at, ended_at, outcome, replay_of_recording_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 branch, started_at, ended_at, outcome, replay_of_recording_id,
+                 scenario_id, battery_run_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     harness.session_id,
@@ -463,6 +476,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                     harness.ended_at or None,
                     harness.outcome or None,
                     harness.replay_of_recording_id or None,
+                    harness.scenario_id or None,
+                    harness.battery_run_id or None,
                 ),
             )
         return harness.session_id
@@ -481,7 +496,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
             row = conn.execute(
                 """
                 SELECT session_id, tool_name, tool_version, model_id, rfc_version,
-                       branch, started_at, ended_at, outcome, replay_of_recording_id
+                       branch, started_at, ended_at, outcome, replay_of_recording_id,
+                       scenario_id, battery_run_id
                 FROM agentic_harnesses WHERE session_id = ?
                 """,
                 (session_id,),
@@ -847,7 +863,14 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
     using postgresql:// URLs land here too.
     """
 
-    _PG_MIGRATIONS: list[str] = []  # placeholder for future column adds
+    # See _SQLITE_MIGRATIONS: the same backfill for the SQLAlchemy backend
+    # (Postgres in production, sqlite:/// in tests). Plain ADD COLUMN (no
+    # dialect-specific IF NOT EXISTS) keeps the statement portable; _run_migrations
+    # runs each in its own transaction and treats "already exists" as idempotent.
+    _PG_MIGRATIONS: list[str] = [
+        "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id VARCHAR",
+    ]
 
     def __init__(self, database_url: str) -> None:
         if not HAS_SQLALCHEMY:
@@ -893,6 +916,8 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             Column("ended_at", String),
             Column("outcome", String),
             Column("replay_of_recording_id", String),
+            Column("scenario_id", String),
+            Column("battery_run_id", String),
         )
         self._plugins = Table(
             "agentic_plugins",
@@ -1042,12 +1067,17 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         self._run_migrations()
 
     def _run_migrations(self) -> None:
-        with self.engine.begin() as conn:
-            for sql in self._PG_MIGRATIONS:
-                try:
+        # Each migration runs in its OWN transaction: on PostgreSQL a failed
+        # statement (e.g. ADD COLUMN of a column that already exists on a fresh
+        # DB) aborts the whole transaction, so batching them would poison every
+        # later statement. Per-statement transactions keep each idempotent add
+        # independent across both the PostgreSQL and sqlite:/// backends.
+        for sql in self._PG_MIGRATIONS:
+            try:
+                with self.engine.begin() as conn:
                     conn.execute(self._text(sql))
-                except Exception as exc:  # idempotent
-                    logger.debug("migration skipped: %s (%s)", sql, exc)
+            except Exception as exc:  # idempotent: column exists, etc.
+                logger.debug("migration skipped: %s (%s)", sql, exc)
 
     # CRUD ---------------------------------------------------------------------
 
@@ -1066,6 +1096,8 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                     "ended_at": harness.ended_at or None,
                     "outcome": harness.outcome or None,
                     "replay_of_recording_id": harness.replay_of_recording_id or None,
+                    "scenario_id": harness.scenario_id or None,
+                    "battery_run_id": harness.battery_run_id or None,
                 },
             )
         return harness.session_id

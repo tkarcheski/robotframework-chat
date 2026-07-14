@@ -1,10 +1,74 @@
 import json
+import os
+from pathlib import Path
 
 from robot.api import logger
 
 from .models import GradeResult
 from .rfc_data import emit_rfc_data
 from .thinking import extract_json, parse_thinking
+
+
+# --- Prompt-registry identity (RFC-008 §6, A2) -------------------------------
+# The judge prompt is the measurement instrument, so it is a first-class, versioned
+# artifact registered as ``grader.default_judge`` in ``core/config/prompts.yaml``.
+# Externalizing the text (below) generalizes the
+# ``resources/generative_mutate_prompts.resource`` precedent: the prompt lives in a
+# reviewable file, is loaded at runtime (override with ``RFC_GRADER_PROMPT`` to A/B a
+# variant), and falls back to a byte-identical in-code copy if the file is unreadable —
+# so grading never breaks. ``check_prompt_registry.py`` guards the file against silent
+# edits; ``GRADER_PROMPT_ID`` is the seam A3 (#242) uses to log the resolved hash on the spine.
+GRADER_PROMPT_ID = "grader.default_judge"
+
+_GRADER_PROMPT_ENV = "RFC_GRADER_PROMPT"
+_GRADER_PROMPT_PATH = (
+    Path(__file__).resolve().parent / "prompts" / "grader_default_judge.txt"
+)
+
+# Keep byte-identical to grader_default_judge.txt (test_prompt_registry.py asserts it).
+_GRADER_PROMPT_FALLBACK = (
+    "You are an automaed grader.\n"
+    "\n"
+    "Question:\n"
+    "{question}\n"
+    "\n"
+    "Expected answer:\n"
+    "{expected}\n"
+    "\n"
+    "Model answer:\n"
+    "{actual}\n"
+    "\n"
+    "Rules:\n"
+    "- Respond ONLY with valid JSON\n"
+    "- No markdown\n"
+    "- No commentary\n"
+    "- score must be a number between 0.0 and 1.0\n"
+    "- use partial credit when the answer is only partially correct\n"
+    "\n"
+    "Format:\n"
+    "{\n"
+    '  "score": 0.0 to 1.0,\n'
+    '  "reason": "short explanation"\n'
+    "}\n"
+)
+
+
+def _load_grader_prompt_body() -> str:
+    """Return the judge-prompt template body (with ``{question}``/``{expected}``/``{actual}``).
+
+    Resolution mirrors the generative-listener precedent: an explicit env override, then
+    the registered file, then a byte-identical in-code fallback so grading is robust even
+    if the file is missing.
+    """
+    override = os.environ.get(_GRADER_PROMPT_ENV)
+    candidates = [Path(override)] if override else []
+    candidates.append(_GRADER_PROMPT_PATH)
+    for candidate in candidates:
+        try:
+            return candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return _GRADER_PROMPT_FALLBACK
 
 
 class Grader:
@@ -34,31 +98,16 @@ class Grader:
                 score=0.0,
                 reason="Empty response — model produced no content to evaluate",
             )
-        prompt = f"""
-You are an automaed grader.
-
-Question:
-{question}
-
-Expected answer:
-{expected}
-
-Model answer:
-{actual}
-
-Rules:
-- Respond ONLY with valid JSON
-- No markdown
-- No commentary
-- score must be a number between 0.0 and 1.0
-- use partial credit when the answer is only partially correct
-
-Format:
-{{
-  "score": 0.0 to 1.0,
-  "reason": "short explanation"
-}}
-"""
+        # Load the registered judge prompt and substitute the three fields. Plain
+        # ``.replace`` (not ``str.format``) keeps the literal JSON braces in the template
+        # intact; the leading newline reproduces the historical prompt byte-for-byte.
+        body = (
+            _load_grader_prompt_body()
+            .replace("{question}", question)
+            .replace("{expected}", expected)
+            .replace("{actual}", actual)
+        )
+        prompt = "\n" + body
 
         raw = self._grade_generate(prompt)
         last_metrics = getattr(self.llm, "last_metrics", None)

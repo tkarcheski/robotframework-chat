@@ -97,7 +97,8 @@ make robot-dryrun                 # Validate Robot tests parse correctly
 Self-review checklist: no changes outside intended scope; no debug prints or
 commented-out code; no unresolved `TODO`/`FIXME`; no new files outside `src/rfc/`
 (Python) or `robot/` (Robot tests); type hints on new Python; every Robot test
-tagged `tier:*` + `verify:*`; no violations of `ai/agents.md` / `ai/testing.md`.
+tagged `tier:*` + `verify:*` + `axis:*`; no violations of `ai/agents.md` /
+`ai/testing.md`.
 If something looks wrong, fix it or ask (fix now / leave / split).
 
 ---
@@ -136,6 +137,16 @@ Multiple agents may work on this repo simultaneously, so:
 - Never use `Optional` for database dataclass fields — use concrete defaults.
 - Use `RETURN` (not `[Return]`) in Robot Framework keywords.
 - Every Robot test tagged with exactly one `tier:*` and one `verify:*` tag.
+- Every Robot suite also declares exactly one **`axis:*`** tag — `axis:model` /
+  `axis:harness` / `axis:prompt` / `axis:none` — naming the single variable it
+  discriminates (a discriminating test varies exactly one axis). A suite importing
+  an LLM or harness keyword library may not claim `axis:none`;
+  `check_test_axes.py` enforces it (report mode in A1; enforced from A4).
+- **Provenance: unattributable results don't count.** Every runtime-bound axis —
+  model (id + digest), prompt (id + content hash), harness (name + version),
+  sampling params, grader version — is recorded in the spine for the run. A result
+  whose coordinate is not recorded is not a comparison signal; the scoreboard
+  ignores it.
 - New Robot test suites must be registered in `config/test_suites.yaml` and
   `config/local_models.yaml`.
 - Always rebase onto `claude-code-staging`, not `main`.

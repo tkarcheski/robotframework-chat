@@ -180,3 +180,71 @@ class TestGraderThinkRetry:
         with pytest.raises(RuntimeError, match="provider down"):
             Grader(client).grade("q", "e", "a")
         assert client.think is None  # restored despite the exception
+
+
+class TestGraderPromptRegistry:
+    """The judge prompt is externalized (RFC-008 A2) but the instrument is unchanged."""
+
+    @staticmethod
+    def _legacy_prompt(question: str, expected: str, actual: str) -> str:
+        # The exact f-string grader.py used before the prompt was externalized.
+        return f"""
+You are an automaed grader.
+
+Question:
+{question}
+
+Expected answer:
+{expected}
+
+Model answer:
+{actual}
+
+Rules:
+- Respond ONLY with valid JSON
+- No markdown
+- No commentary
+- score must be a number between 0.0 and 1.0
+- use partial credit when the answer is only partially correct
+
+Format:
+{{
+  "score": 0.0 to 1.0,
+  "reason": "short explanation"
+}}
+"""
+
+    def test_prompt_is_byte_identical_to_legacy(self):
+        client = MagicMock()
+        client.generate.return_value = '{"score": 1, "reason": "ok"}'
+        Grader(client).grade("What is 2+2?", "4", "4")
+        client.generate.assert_called_once_with(
+            self._legacy_prompt("What is 2+2?", "4", "4")
+        )
+
+    def test_prompt_id_is_registered_identity(self):
+        from rfc.grader import GRADER_PROMPT_ID
+
+        assert GRADER_PROMPT_ID == "grader.default_judge"
+
+    def test_env_override_swaps_the_prompt(self, tmp_path, monkeypatch):
+        override = tmp_path / "judge.txt"
+        override.write_text("VARIANT {question} :: {actual}\n", encoding="utf-8")
+        monkeypatch.setenv("RFC_GRADER_PROMPT", str(override))
+
+        client = MagicMock()
+        client.generate.return_value = '{"score": 0.5, "reason": "x"}'
+        Grader(client).grade("Q?", "E", "A")
+
+        sent = client.generate.call_args.args[0]
+        assert sent == "\nVARIANT Q? :: A\n"
+
+    def test_falls_back_when_override_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("RFC_GRADER_PROMPT", str(tmp_path / "absent.txt"))
+        client = MagicMock()
+        client.generate.return_value = '{"score": 1, "reason": "ok"}'
+        Grader(client).grade("What is 2+2?", "4", "4")
+        # A missing override falls through to the registered file / in-code fallback.
+        client.generate.assert_called_once_with(
+            self._legacy_prompt("What is 2+2?", "4", "4")
+        )

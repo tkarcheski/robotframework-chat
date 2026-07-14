@@ -30,6 +30,10 @@ class AgenticHarness:
     replay_of_recording_id: str = (
         ""  # nullable; points at dialog_recordings.id (Phase 2)
     )
+    # RFC-007 section 6.2 spine grouping columns (nullable; "" -> NULL in DB).
+    # Rows written before #217 keep NULL; the scoreboard groups runs on them.
+    scenario_id: str = ""  # battery task this run solved
+    battery_run_id: str = ""  # groups the legs of one battery invocation
 
 
 @dataclass
@@ -67,6 +71,38 @@ class AgenticMetric:
     test_run_id: int = -1  # -1 sentinel matches TestRun.id convention
     test_result_id: int = -1
     id: str = ""
+
+
+# Reserved agentic_metrics.metric_key vocabulary (RFC-007 section 6.1).
+#
+# The harness comparison scoreboard (RFC-007 slice S5) pivots exactly these
+# EAV keys, one agentic_metrics row per (session[, test_run]). A metric key
+# outside this set is not a comparison signal and the scoreboard ignores it.
+# These are *reserved names*, not a schema change: any per-run metric is still
+# just a new metric_key string, but the keys below have a named consumer (the
+# scoreboard) and a fixed meaning, so writers and the view must agree on the
+# spelling. tokens_in / tokens_out / latency_ms / grader_score predate #217 and
+# are named here so the whole reserved set lives in one place.
+METRIC_TASK_SUCCESS = "task_success"  # 0/1: tests pass AND negative case not hit
+METRIC_CHURN_RATIO = "churn_ratio"  # changed lines / reference-diff lines
+METRIC_PROCESS_VIOLATIONS = "process_violations"  # count of agent_verifiers fails
+METRIC_TOKENS_IN = "tokens_in"  # prompt tokens (pre-existing key)
+METRIC_TOKENS_OUT = "tokens_out"  # completion tokens (pre-existing key)
+METRIC_LATENCY_MS = "latency_ms"  # wall time per run (pre-existing key)
+METRIC_GRADER_SCORE = "grader_score"  # llm_judge score (pre-existing key)
+
+# Canonical order == scoreboard column order. An immutable, iterable manifest
+# the scoreboard view (S5) and its drift-guard can enumerate without re-listing
+# the strings.
+RESERVED_METRIC_KEYS: tuple[str, ...] = (
+    METRIC_TASK_SUCCESS,
+    METRIC_CHURN_RATIO,
+    METRIC_PROCESS_VIOLATIONS,
+    METRIC_TOKENS_IN,
+    METRIC_TOKENS_OUT,
+    METRIC_LATENCY_MS,
+    METRIC_GRADER_SCORE,
+)
 
 
 @dataclass

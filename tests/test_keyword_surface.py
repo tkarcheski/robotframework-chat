@@ -8,21 +8,33 @@ Robot Framework auto-exposes **every public method** of a keyword-library class
 as a keyword unless the class sets ``ROBOT_AUTO_KEYWORDS = False``. The
 ``@keyword`` decorator is therefore optional: it only *renames* a keyword, or —
 with auto-keywords switched off — opts a single method in. Snapshotting only the
-``@keyword``-decorated methods (the previous AST approach) was structurally blind
+``@keyword``-decorated methods (the original AST approach) was structurally blind
 to that auto-exposed surface: an undecorated public method — or an entire
 undecorated library such as ``AgenticCodingKeywords`` — was a live keyword that
 tier-4 suites invoke, yet invisible to the guard, so a rename could silently
 break those suites (#152).
 
-This guard imports each ``src/rfc/*_keywords.py`` library class and enumerates the
-exact keyword names Robot exposes at runtime, applying Robot's own discovery
-rules — ``ROBOT_AUTO_KEYWORDS``, ``@keyword`` renames (``robot_name``),
+The library **set** to enumerate is derived from the suites themselves: every
+``Library rfc.<...>`` import across ``robot/`` (both ``.robot`` suites and
+``.resource`` files) is parsed and resolved to its Python object. This is the
+truth the guard must protect — exactly what suites load — rather than a filename
+heuristic. The earlier ``src/rfc/*_keywords.py`` glob missed two live surfaces
+(#208): ``rfc.keywords.LLMKeywords`` (13 keywords incl. ``Ask LLM`` /
+``Grade Answer``, the most-imported library — its file has no ``_`` before
+``keywords.py``), and any library class not named ``*Keywords`` (e.g.
+``rfc.harness_cli_kw.HarnessCliRunner``, ``rfc.dialog_recorder.DialogRecorder``).
+Deriving from imports also covers module keyword libraries (``Library rfc.graders``).
+
+Each resolved library — class or module — is enumerated for the exact keyword
+names Robot exposes at runtime, applying Robot's own discovery rules
+(``ROBOT_AUTO_KEYWORDS``, ``@keyword`` renames via ``robot_name``,
 ``@not_keyword`` exclusions, private ``_``-prefixed methods, property/non-routine
-exclusion, and inherited methods — together with Robot's own ``printable_name``
-formatter. Enumeration runs at the *class* level (never instantiating the
-library) so libraries whose ``__init__`` requires arguments (a model, a database
-URL) are still covered. ``test_enumeration_matches_robot_discovery`` pins this
-replication to Robot's real ``TestLibrary`` discovery so it cannot silently drift.
+exclusion, module ``__all__``, and inherited methods) together with Robot's own
+``printable_name`` formatter. Enumeration runs at the *class* level (never
+instantiating the library) so libraries whose ``__init__`` requires arguments (a
+model, a database URL) are still covered. The ``*_matches_robot_discovery`` tests
+pin this replication to Robot's real ``TestLibrary`` discovery — for the fixture
+shapes and for every no-arg library actually imported — so it cannot drift.
 
 Regenerate the snapshot after an *intentional* surface change with::
 
@@ -32,7 +44,9 @@ Regenerate the snapshot after an *intentional* surface change with::
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
+import re
 from collections.abc import Iterator
 from functools import cached_property, partial
 from pathlib import Path
@@ -40,22 +54,81 @@ from pathlib import Path
 from robot.api.deco import keyword, not_keyword
 from robot.utils import printable_name
 
-_RFC_DIR = Path(__file__).resolve().parent.parent / "src" / "rfc"
+_ROBOT_DIR = Path(__file__).resolve().parent.parent / "robot"
 _SNAPSHOT = Path(__file__).resolve().parent / "keyword_surface_snapshot.txt"
 
+# A ``Library    rfc.<dotted.path>`` setting, capturing the import path only (no
+# ``WITH NAME`` alias, no arguments). Only ``rfc.*`` libraries are the project's
+# own public surface; Robot's standard libraries (Collections, String, …) are
+# out of scope. Settings are case-insensitive in Robot, hence ``IGNORECASE``.
+_LIBRARY_IMPORT = re.compile(
+    r"^\s*Library\s+(rfc\.[\w.]+)", re.IGNORECASE | re.MULTILINE
+)
 
-def _exposed_keyword_names(library: type) -> set[str]:
+
+def _parse_library_imports(robot_dir: Path = _ROBOT_DIR) -> set[str]:
+    """Return the distinct ``rfc.*`` library import paths across the suite tree.
+
+    Scans every ``.robot`` suite and ``.resource`` file (suites import libraries
+    directly and via shared resources) for ``Library rfc...`` settings.
+    """
+    paths: set[str] = set()
+    for path in (*robot_dir.rglob("*.robot"), *robot_dir.rglob("*.resource")):
+        text = path.read_text(encoding="utf-8")
+        paths.update(match.group(1) for match in _LIBRARY_IMPORT.finditer(text))
+    return paths
+
+
+def _resolve_library(import_path: str) -> object:
+    """Resolve a Robot ``Library`` import path to its Python object.
+
+    ``rfc.graders`` resolves to a *module* (a module keyword library);
+    ``rfc.keywords.LLMKeywords`` resolves to the *class* ``LLMKeywords`` in module
+    ``rfc.keywords``. This mirrors Robot's own resolution: a path importable as a
+    module is a module library, otherwise the final segment names a class in the
+    parent module. Import failures are deliberately not swallowed — a library that
+    will not import has no discoverable surface, and hiding it would reopen the
+    exact blind spot this guard exists to close (#152/#208). Only the "path is not
+    itself a module" case (``ModuleNotFoundError`` naming the full path) falls
+    through to class resolution; a deeper missing dependency propagates.
+    """
+    try:
+        spec = importlib.util.find_spec(import_path)
+    except ModuleNotFoundError as exc:
+        if exc.name != import_path:
+            raise
+        spec = None
+    if spec is not None:
+        return importlib.import_module(import_path)
+    module_name, _, class_name = import_path.rpartition(".")
+    return getattr(importlib.import_module(module_name), class_name)
+
+
+def _iter_libraries(robot_dir: Path = _ROBOT_DIR) -> Iterator[object]:
+    """Yield each distinct ``rfc.*`` keyword library (class or module) imported."""
+    for import_path in sorted(_parse_library_imports(robot_dir)):
+        yield _resolve_library(import_path)
+
+
+def _exposed_keyword_names(library: object) -> set[str]:
     """Return the Robot keyword names ``library`` exposes at runtime.
 
-    Mirrors ``robot.running.testlibraries.StaticKeywordCreator`` (Robot 7): a
-    class attribute becomes a keyword when it is a public routine — or is
-    explicitly opted in with ``@keyword`` while ``ROBOT_AUTO_KEYWORDS`` is off —
-    and is neither marked ``@not_keyword`` nor a property. The keyword name is
-    the ``@keyword("...")`` override when given, else ``printable_name`` of the
-    method name. Operates on the class, not an instance, so libraries with
-    required constructor arguments are covered without being instantiated.
+    Mirrors ``robot.running.testlibraries`` discovery (Robot 7) for both class and
+    module libraries: an attribute becomes a keyword when it is a public routine —
+    or is explicitly opted in with ``@keyword`` while ``ROBOT_AUTO_KEYWORDS`` is
+    off — and is neither marked ``@not_keyword`` nor a property. A *module* library
+    that defines ``__all__`` exposes only its exported routines (Robot honours
+    ``__all__``). The keyword name is the ``@keyword("...")`` override when given,
+    else ``printable_name`` of the attribute. Operates on the class, not an
+    instance, so libraries with required constructor arguments are covered without
+    being instantiated.
     """
     auto_keywords = getattr(library, "ROBOT_AUTO_KEYWORDS", True)
+    module_exports: set[str] | None = None
+    if inspect.ismodule(library):
+        exports = getattr(library, "__all__", None)
+        if exports is not None:
+            module_exports = set(exports)
     names: set[str] = set()
     for attr_name in dir(library):
         try:
@@ -64,11 +137,18 @@ def _exposed_keyword_names(library: type) -> set[str]:
             continue
         func = attr.__func__ if isinstance(attr, (classmethod, staticmethod)) else attr
         # Inclusion: any public attribute under auto-keywords, or a method that
-        # opted in with @keyword (which sets ``robot_name``) when auto is off.
+        # opted in with @keyword (which sets ``robot_name``) when auto is off. A
+        # module's ``__all__`` further restricts the public set to its exports.
         explicitly_included = hasattr(func, "robot_name")
         included = (
             auto_keywords and not attr_name.startswith("_")
         ) or explicitly_included
+        if (
+            module_exports is not None
+            and attr_name not in module_exports
+            and not explicitly_included
+        ):
+            included = False
         if not included:
             continue
         # Exclusion: properties / non-routines are not keywords, and @not_keyword
@@ -84,27 +164,10 @@ def _exposed_keyword_names(library: type) -> set[str]:
     return names
 
 
-def _iter_library_classes(rfc_dir: Path = _RFC_DIR) -> Iterator[type]:
-    """Yield every Robot keyword-library class in ``src/rfc/*_keywords.py``.
-
-    A library class is one defined in the module whose name ends in ``Keywords``
-    (helper dataclasses like ``ToolCall`` are skipped). Import failures are
-    deliberately not swallowed: a library that will not import has no discoverable
-    surface, and silently dropping it would reintroduce the exact blind spot this
-    guard exists to close.
-    """
-    for path in sorted(rfc_dir.glob("*_keywords.py")):
-        module_name = f"rfc.{path.stem}"
-        module = importlib.import_module(module_name)
-        for _, obj in inspect.getmembers(module, inspect.isclass):
-            if obj.__module__ == module_name and obj.__name__.endswith("Keywords"):
-                yield obj
-
-
-def collect_keyword_surface(rfc_dir: Path = _RFC_DIR) -> list[str]:
-    """Return the sorted, de-duplicated Robot keyword surface of the tree."""
+def collect_keyword_surface(robot_dir: Path = _ROBOT_DIR) -> list[str]:
+    """Return the sorted, de-duplicated Robot keyword surface suites import."""
     names: set[str] = set()
-    for library in _iter_library_classes(rfc_dir):
+    for library in _iter_libraries(robot_dir):
         names |= _exposed_keyword_names(library)
     return sorted(names)
 
@@ -293,6 +356,196 @@ def test_enumeration_matches_robot_discovery_auto_keywords_off() -> None:
     }
     assert _exposed_keyword_names(_AutoKeywordsOffKeywords) == robot_names
     assert robot_names == {"Opted In", "Custom Name"}
+
+
+# --------------------------------------------------------------------------
+# Import-derived discovery tests: the library set now tracks real Library
+# imports (#208), covering module libraries and non-``*Keywords`` classes.
+# --------------------------------------------------------------------------
+
+
+def test_module_library_enumeration_matches_robot_discovery() -> None:
+    """Pin module-library discovery to Robot using the real ``rfc.graders`` lib.
+
+    ``Library rfc.graders`` is a module keyword library whose ``get_grader``
+    factory the tier-0 openai-evals suite invokes as ``Get Grader``. Module
+    libraries take a different Robot discovery path (``__all__``-aware, functions
+    only) than class libraries, so pin it against Robot's real ``from_module``.
+    """
+    import rfc.graders
+    from robot.running.testlibraries import TestLibrary
+
+    robot_names = {kw.name for kw in TestLibrary.from_module(rfc.graders).keywords}
+    assert _exposed_keyword_names(rfc.graders) == robot_names
+    assert "Get Grader" in robot_names
+
+
+def test_enumeration_matches_robot_for_no_arg_imported_libraries() -> None:
+    """Every imported library Robot can build without args enumerates identically.
+
+    Cross-checks the guard's static enumeration against Robot's own runtime
+    discovery for each ``rfc.*`` library actually imported by a suite. Libraries
+    whose ``__init__`` requires arguments cannot be instantiated by Robot with no
+    args and are enumerated at class level only — the documented gap (#207) — so
+    they are skipped here rather than masking a real mismatch.
+    """
+    from robot.errors import DataError
+    from robot.running.testlibraries import TestLibrary
+
+    checked = 0
+    for import_path in sorted(_parse_library_imports()):
+        library = _resolve_library(import_path)
+        try:
+            robot_lib = (
+                TestLibrary.from_module(library)
+                if inspect.ismodule(library)
+                else TestLibrary.from_class(library)
+            )
+            robot_names = {kw.name for kw in robot_lib.keywords}
+        except DataError:
+            continue  # requires constructor arguments — class-level enumeration
+        assert _exposed_keyword_names(library) == robot_names, import_path
+        checked += 1
+    assert checked, "no importable libraries were cross-checked against Robot"
+
+
+def test_guard_fails_when_a_suite_imports_an_unsnapshotted_library(
+    tmp_path: Path,
+) -> None:
+    """A suite importing a library absent from the snapshot must break the guard.
+
+    This is the #208 regression: ``rfc.keywords.LLMKeywords`` was imported by
+    dozens of suites yet the file-glob guard enumerated an empty surface for it
+    and stayed green. Deriving the library set from the import makes the surface
+    track reality, so an unsnapshotted import shows up as drift.
+    """
+    suite = tmp_path / "uses_llm.robot"
+    suite.write_text(
+        "*** Settings ***\n"
+        "Library    rfc.keywords.LLMKeywords    WITH NAME    LLM\n"
+        "*** Test Cases ***\n"
+        "Smoke\n"
+        "    Log    hi\n",
+        encoding="utf-8",
+    )
+    derived = set(collect_keyword_surface(robot_dir=tmp_path))
+    # The parser + resolver followed the import to the real library surface …
+    assert {"Ask LLM", "Grade Answer"} <= derived
+    # … so a snapshot missing any of those names is unequal to the derived
+    # surface, i.e. the guard's comparison fails (the #208 breakage it now
+    # catches but the file-glob guard did not).
+    stale_snapshot = derived - {"Ask LLM"}
+    assert derived != stale_snapshot
+
+
+# --------------------------------------------------------------------------
+# Parser-hardening tests (test-design, #253 verdict): the import parser is the
+# new core of the guard (#208). These pin its contract directly so a future
+# "simplification" of the regex or resolver cannot silently reopen a blind spot.
+# --------------------------------------------------------------------------
+
+
+def _write_suite(root: Path, name: str, body: str) -> None:
+    path = root / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def test_parse_library_imports_strips_aliases_and_excludes_noise(
+    tmp_path: Path,
+) -> None:
+    """Capture the ``rfc.*`` path only, from every alias/arg form, and nothing else.
+
+    Robot accepts both ``WITH NAME`` (legacy) and ``AS`` (Robot 7) aliases and
+    positional library arguments — all of which follow the import path. Robot
+    standard libraries, commented-out imports, and prose that merely mentions the
+    word ``Library`` must never be captured, and the same class imported from
+    several files collapses to one path.
+    """
+    _write_suite(
+        tmp_path,
+        "suite.robot",
+        "*** Settings ***\n"
+        "Documentation     Uses Library rfc.prose.NotAnImport in its text\n"
+        "Library    rfc.keywords.LLMKeywords    WITH NAME    LLM\n"
+        "Library    rfc.hitl_keywords.HitlKeywords    AS    Hitl\n"
+        "Library    rfc.safety_keywords.SafetyKeywords    arg1    arg2\n"
+        "Library    rfc.graders    # trailing inline comment\n"
+        "Library    Collections\n"
+        "Library    Browser    headless=True\n"
+        "# Library    rfc.commented.ShouldNotAppear\n"
+        "    # Library    rfc.indented_comment.AlsoNot\n",
+    )
+    _write_suite(
+        tmp_path,
+        "shared/base.resource",
+        "*** Settings ***\n"
+        # same class, different file + alias — must dedupe to one path
+        "Library    rfc.keywords.LLMKeywords    WITH NAME    LLM2\n",
+    )
+    assert _parse_library_imports(tmp_path) == {
+        "rfc.keywords.LLMKeywords",
+        "rfc.hitl_keywords.HitlKeywords",
+        "rfc.safety_keywords.SafetyKeywords",
+        "rfc.graders",
+    }
+
+
+def test_parse_library_imports_skips_variable_substituted_imports(
+    tmp_path: Path,
+) -> None:
+    """A ``Library ${VAR}`` import resolves at runtime and is NOT captured.
+
+    This is a documented limitation, not an accident: the guard sees only
+    statically-written ``rfc.<dotted.path>`` imports. No suite in the tree uses a
+    variable-substituted ``rfc.*`` library today (grep is empty), so the gap is
+    latent — but if one is ever added it would be invisible to this guard, so this
+    test pins the current behaviour to make that a conscious future decision.
+    """
+    _write_suite(
+        tmp_path,
+        "var.robot",
+        "*** Settings ***\nLibrary    ${LIB}\nLibrary    ${PKG}.keywords.LLMKeywords\n",
+    )
+    assert _parse_library_imports(tmp_path) == set()
+
+
+def test_resolve_library_raises_on_unresolvable_import() -> None:
+    """An import path that does not resolve fails loudly rather than being skipped.
+
+    Silently dropping an unresolvable ``Library`` import is the exact blind spot
+    the guard exists to close (#152/#208): a typo'd or dependency-broken import
+    would then contribute an empty surface and the guard would stay green. A
+    missing module and a missing class must each raise.
+    """
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        _resolve_library("rfc.no_such_module.Thing")
+    with pytest.raises(AttributeError):
+        _resolve_library("rfc.keywords.NoSuchClass")
+
+
+def test_guard_enumerates_non_keywords_named_library_class(tmp_path: Path) -> None:
+    """The #208 class-name blind spot: a ``Library`` on a non-``*Keywords`` class.
+
+    ``rfc.computer_use_keywords.ComputerUseDispatcher`` is a real library class
+    whose name does not end in ``Keywords``. The retired glob+suffix guard only
+    enumerated ``*Keywords``-named classes, so its ``Dispatch`` keyword was
+    invisible and a rename could silently break any suite importing it. Deriving
+    the set from the actual import makes that surface visible.
+    """
+    assert not "ComputerUseDispatcher".endswith("Keywords")  # why old guard missed it
+    _write_suite(
+        tmp_path,
+        "uses_dispatcher.robot",
+        "*** Settings ***\n"
+        "Library    rfc.computer_use_keywords.ComputerUseDispatcher\n"
+        "*** Test Cases ***\n"
+        "Smoke\n"
+        "    Log    hi\n",
+    )
+    assert "Dispatch" in set(collect_keyword_surface(robot_dir=tmp_path))
 
 
 if __name__ == "__main__":

@@ -2,6 +2,9 @@
 Documentation     Test PostgreSQL connectivity and verify 2-table schema.
 Library           rfc.superset_keywords.SupersetKeywords    WITH NAME    Superset
 
+# RFC-008 A1: pure DB/BI plumbing -- no model, harness, or prompt in the loop.
+Test Tags         axis:none
+
 
 *** Test Cases ***
 Database Connection Is Alive
