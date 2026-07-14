@@ -8,6 +8,7 @@ Documentation     Continual meta-learning probe tests.
 Resource          meta_learning.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Simple Skill Retention - Formatting Rule

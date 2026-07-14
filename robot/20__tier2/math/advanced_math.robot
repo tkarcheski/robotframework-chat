@@ -1,6 +1,7 @@
 *** Settings ***
 Documentation     Advanced math tests covering percentages, exponents, geometry, statistics, and sequences.
 Resource          ../../resources/ask_and_validate.resource
+Test Tags         axis:model
 
 *** Test Cases ***
 IQ 105 Percentage Calculation

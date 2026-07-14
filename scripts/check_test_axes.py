@@ -37,12 +37,13 @@ Three checks, per RFC-008 section 4.3:
 
 Two modes, mirroring the RFC-008 migration (section 11):
 
-  * ``--report`` (default) -- classify every suite from its imports, list the
-     UNTAGGED suites with a proposed axis, and surface any violations as
-     warnings, but **exit 0**: this ships before the tags are backfilled, so it
-     must not turn CI red. This is the A1 posture.
-  * ``--enforce`` -- **exit 1** on any violation, including an untagged suite.
-     A4 flips the default to this once every suite carries an axis tag.
+  * ``--enforce`` (default) -- **exit 1** on any violation, including an
+     untagged suite. A4 made this the default once every suite carried an axis
+     tag: the guard is now a hard gate, like ``check_rfc_index.py``.
+  * ``--report`` -- classify every suite from its imports, list the UNTAGGED
+     suites with a proposed axis, and surface violations as warnings, but
+     **exit 0**. The A1 posture, kept for local triage of a work-in-progress
+     tree; CI always runs the default (enforce).
 
 Legacy provenance tags (``harness:opencode``, ``agent:claude_code``,
 ``prompt:reference`` -- runtime facts encoded as static tags, RFC-008 section
@@ -50,8 +51,8 @@ Legacy provenance tags (``harness:opencode``, ``agent:claude_code``,
 drop-as-provenance). Their presence here is a note, not a violation.
 
 Usage:
-  python modules/ops/scripts/check_test_axes.py              # --report (default)
-  python modules/ops/scripts/check_test_axes.py --enforce
+  python modules/ops/scripts/check_test_axes.py              # --enforce (default)
+  python modules/ops/scripts/check_test_axes.py --report     # A1 triage posture
   python modules/ops/scripts/check_test_axes.py --root path/to/robot
   python modules/ops/scripts/check_test_axes.py --suite harness_matrix
 """
@@ -83,15 +84,25 @@ AXIS_TAGS: frozenset[str] = frozenset(
     {"axis:model", "axis:harness", "axis:prompt", "axis:none"}
 )
 
-# The harness keyword surface (RFC-008 section 4.3, verbatim): a suite that
-# imports any of these -- directly or transitively via a ``.resource`` or an
-# ancestor ``__init__.robot`` -- exercises the harness axis. Matched by module
-# prefix so ``rfc.harness_keywords.HarnessKeywords`` matches ``rfc.harness_keywords``.
+# The harness keyword surface (RFC-008 section 4.3, plus the A4 audit's
+# agentic_coding addition): a suite that imports any of these -- directly or
+# transitively via a ``.resource`` or an ancestor ``__init__.robot`` -- exercises
+# the harness axis. Matched by module prefix so
+# ``rfc.harness_keywords.HarnessKeywords`` matches ``rfc.harness_keywords``.
 HARNESS_LIBRARY_MODULES: frozenset[str] = frozenset(
     {
         "rfc.harness_keywords",
         "rfc.harness_cli_kw",
         "rfc.harness_listener_kw",
+        # A4 (RFC-008 section 8 / open question section 10): the agentic_coding
+        # suites drive coding-agent scenarios that, since #174/#230, run live
+        # harness adapters (SANDBOX_HARNESS / harness= param). Their keyword
+        # library is a harness surface, not a model one -- the suites
+        # discriminate the coding-agent harness, so they are axis:harness. This
+        # is the audit's substantive re-classification (import => model,
+        # intent => harness); it also keeps harness_matrix (which imports it)
+        # consistent.
+        "rfc.agentic_coding_keywords",
     }
 )
 
@@ -103,8 +114,9 @@ HARNESS_LIBRARY_MODULES: frozenset[str] = frozenset(
 # section 8's ~98 ``axis:model`` count only holds if those domain keyword
 # libraries count as an LLM surface, so the heuristic in :func:`_is_llm_library`
 # treats any ``rfc.*_keywords`` library as model-under-test EXCEPT the handful
-# that are pure infrastructure (below). This is the A1 surface; A4's audit
-# refines the membership for the ~11% of suites that need human judgment.
+# that are pure infrastructure (below). A4's audit refined this membership for
+# the suites that needed human judgment (agentic_coding -> harness surface;
+# computer_use / dialog_e2e -> infrastructure).
 LLM_EXPLICIT_MODULES: frozenset[str] = frozenset(
     {
         "rfc.keywords",  # rfc.keywords.LLMKeywords -- the canonical LLM surface
@@ -124,6 +136,10 @@ NON_LLM_KEYWORD_MODULES: frozenset[str] = frozenset(
         "rfc.agent_workflow_keywords",  # synthetic workflows are deterministic
         "rfc.benchmark_keywords",  # token-throughput measurement
         "rfc.dialog_recorder",  # records dialogs to disk
+        # A4 audit (RFC-008 section 8, human-adjudicated): tool/DB substrate
+        # suites that import a domain *_keywords library but drive no model.
+        "rfc.computer_use_keywords",  # browser/ToolSchema dispatch substrate
+        "rfc.dialog_e2e_keywords",  # dialog-recorder e2e DB plumbing
     }
 )
 
@@ -526,12 +542,12 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument(
         "--report",
         action="store_true",
-        help="Classify and warn but never fail (exit 0). Default behaviour (A1).",
+        help="Classify and warn but never fail (exit 0); the A1 triage posture.",
     )
     mode.add_argument(
         "--enforce",
         action="store_true",
-        help="Fail (exit 1) on any violation, including an untagged suite (A4).",
+        help="Fail (exit 1) on any violation, including an untagged suite. Default since A4.",
     )
     parser.add_argument(
         "--root",
@@ -546,6 +562,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Check only suites whose filename stem matches this (substring).",
     )
     args = parser.parse_args(argv)
+    # A4: enforce is the default gate; --report explicitly opts back out.
+    enforce = not args.report
 
     root: Path = args.root
     if not root.is_dir():
@@ -564,9 +582,9 @@ def main(argv: list[str] | None = None) -> int:
 
     facts = [collect_suite_facts(s, root) for s in suites]
     report = build_report(facts)
-    print_report(report, root, enforce=args.enforce)
+    print_report(report, root, enforce=enforce)
 
-    if args.enforce:
+    if enforce:
         # Enforce: an untagged suite is a failure, as is any check violation.
         failures = len(report.violations) + len(report.untagged)
         if failures:
@@ -578,11 +596,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\naxis guard: ok ({report.suite_count} suite(s), enforce mode)")
         return 0
 
-    # Report mode (A1): classify and warn, but never fail CI.
+    # Report mode (A1 triage posture, opt-in via --report): classify and warn.
     print(
         f"\naxis guard: report mode ({report.suite_count} suite(s); "
         f"{len(report.untagged)} untagged, {len(report.violations)} warning(s)) "
-        "-- not a gate yet (A4 flips to --enforce)"
+        "-- opt-in triage; CI runs the default (--enforce)"
     )
     return 0
 

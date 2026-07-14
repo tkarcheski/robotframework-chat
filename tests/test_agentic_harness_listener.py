@@ -60,6 +60,27 @@ def _run_one_test(listener: AgenticHarnessListener, rfc_data: dict[str, str]) ->
     listener.end_suite(SimpleNamespace(name="root"), SimpleNamespace())
 
 
+def _run_suite(
+    listener: AgenticHarnessListener,
+    tests: list[dict[str, str]],
+    *,
+    suite_result: object = None,
+) -> None:
+    """Drive a full suite of *tests* (each a dict of RFC_DATA payloads).
+
+    ``suite_result`` is passed to ``end_suite``; pass a namespace carrying an
+    ``elapsedtime`` (ms) to exercise the suite_runtime_ms path.
+    """
+    listener.start_suite(SimpleNamespace(name="root"), SimpleNamespace())
+    for i, rfc_data in enumerate(tests):
+        listener.start_test(SimpleNamespace(name=f"t{i}"), SimpleNamespace())
+        for key, payload in rfc_data.items():
+            listener._current_test_data[key] = payload
+            listener._rfc_data_history.setdefault(key, []).append(payload)
+        listener.end_test(SimpleNamespace(name=f"t{i}"), SimpleNamespace())
+    listener.end_suite(SimpleNamespace(name="root"), suite_result or SimpleNamespace())
+
+
 @pytest.fixture()
 def plain_cwd(tmp_path, monkeypatch):
     """A non-git cwd with no session env, so no sidecar is found."""
@@ -78,10 +99,14 @@ class TestSessionResolution:
         db = _seed_harness(tmp_path)
         listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
         _run_one_test(listener, {LLM_METRICS_DATA_KEY: _metrics_payload()})
+        # cache_hit_rate is emitted per-suite (0.0 with the cache off); no
+        # suite_runtime_ms here because the stub end_suite result has no
+        # elapsedtime (see TestEfficiencyMetrics for that path).
         assert {m.metric_key for m in db.get_metrics("sess-1")} == {
             "tokens_in",
             "tokens_out",
             "latency_ms",
+            "cache_hit_rate",
         }
 
     def test_session_id_from_sidecar(self, tmp_path, monkeypatch):
@@ -96,7 +121,8 @@ class TestSessionResolution:
         db = _seed_harness(tmp_path, "sess-2")
         listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
         _run_one_test(listener, {LLM_METRICS_DATA_KEY: _metrics_payload()})
-        assert len(db.get_metrics("sess-2")) == 3
+        # 3 per-test rows (tokens_in/out, latency_ms) + 1 per-suite cache_hit_rate
+        assert len(db.get_metrics("sess-2")) == 4
 
     def test_env_session_without_harness_row_skips_persist(
         self, plain_cwd, tmp_path, monkeypatch, caplog
@@ -139,7 +165,9 @@ class TestMetricCapture:
         assert by_key["tokens_in"] == 100.0
         assert by_key["tokens_out"] == 40.0
         assert by_key["latency_ms"] == 2500.0
-        assert listener.persisted_count == 3
+        # cache off (payload carries no cache_hit) -> honest 0.0 baseline
+        assert by_key["cache_hit_rate"] == 0.0
+        assert listener.persisted_count == 4
 
     def test_grader_score_captured(self, plain_cwd, tmp_path, monkeypatch):
         monkeypatch.setenv("SESSION_ID", "sess-1")
@@ -179,7 +207,12 @@ class TestMetricCapture:
             listener,
             {LLM_METRICS_DATA_KEY: json.dumps({"eval_count": 7})},
         )
-        assert {m.metric_key for m in db.get_metrics("sess-1")} == {"tokens_out"}
+        # missing token keys are skipped, but the payload is still one
+        # generate() call, so cache_hit_rate is emitted for the suite.
+        assert {m.metric_key for m in db.get_metrics("sess-1")} == {
+            "tokens_out",
+            "cache_hit_rate",
+        }
 
     def test_bad_payload_logged_and_skipped(
         self, plain_cwd, tmp_path, monkeypatch, caplog
@@ -214,6 +247,87 @@ class TestActiveSessionId:
             json.dumps({"session_id": "sess-7"})
         )
         assert active_session_id() == "sess-7"
+
+
+class TestEfficiencyMetrics:
+    """RFC-010 slice S1 (#258): per-suite cache_hit_rate + suite_runtime_ms."""
+
+    def _only(self, db: HarnessDatabase, key: str) -> list[float]:
+        return [m.metric_value for m in db.get_metrics("sess-1", metric_key=key)]
+
+    def test_cache_hit_rate_aggregates_across_the_suite(
+        self, plain_cwd, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SESSION_ID", "sess-1")
+        db = _seed_harness(tmp_path)
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        # 4 generate() calls across 4 tests; 3 served from cache -> 0.75.
+        _run_suite(
+            listener,
+            [
+                {LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=True)},
+                {LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=True)},
+                {LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=True)},
+                {LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=False)},
+            ],
+        )
+        assert self._only(db, "cache_hit_rate") == [0.75]
+
+    def test_cache_hit_rate_zero_when_cache_off(self, plain_cwd, tmp_path, monkeypatch):
+        monkeypatch.setenv("SESSION_ID", "sess-1")
+        db = _seed_harness(tmp_path)
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        _run_suite(listener, [{LLM_METRICS_DATA_KEY: _metrics_payload()}])
+        assert self._only(db, "cache_hit_rate") == [0.0]
+
+    def test_suite_runtime_ms_from_result_elapsedtime(
+        self, plain_cwd, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SESSION_ID", "sess-1")
+        db = _seed_harness(tmp_path)
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        _run_suite(
+            listener,
+            [{LLM_METRICS_DATA_KEY: _metrics_payload()}],
+            suite_result=SimpleNamespace(elapsedtime=4200),
+        )
+        assert self._only(db, "suite_runtime_ms") == [4200.0]
+
+    def test_no_generate_calls_records_runtime_only(
+        self, plain_cwd, tmp_path, monkeypatch
+    ):
+        """A python-only suite still records runtime but no cache rate."""
+        monkeypatch.setenv("SESSION_ID", "sess-1")
+        db = _seed_harness(tmp_path)
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        _run_suite(listener, [{}], suite_result=SimpleNamespace(elapsedtime=900))
+        assert self._only(db, "cache_hit_rate") == []
+        assert self._only(db, "suite_runtime_ms") == [900.0]
+
+    def test_accumulators_reset_between_suites(self, plain_cwd, tmp_path, monkeypatch):
+        """A second suite must not inherit the first suite's hit tally."""
+        monkeypatch.setenv("SESSION_ID", "sess-1")
+        db = _seed_harness(tmp_path)
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        _run_suite(listener, [{LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=True)}])
+        _run_suite(
+            listener, [{LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=False)}]
+        )
+        assert sorted(self._only(db, "cache_hit_rate")) == [0.0, 1.0]
+
+    def test_efficiency_metrics_need_harness_row(
+        self, plain_cwd, tmp_path, monkeypatch
+    ):
+        """No agentic_harnesses row -> nothing persisted (FK safety, #419)."""
+        monkeypatch.setenv("SESSION_ID", "make-fresh-uuid")
+        HarnessDatabase(database_url=_db_url(tmp_path))  # DB exists, no seeded row
+        listener = AgenticHarnessListener(database_url=_db_url(tmp_path))
+        _run_suite(
+            listener,
+            [{LLM_METRICS_DATA_KEY: _metrics_payload(cache_hit=True)}],
+            suite_result=SimpleNamespace(elapsedtime=100),
+        )
+        assert listener.persisted_count == 0
 
 
 class TestListenerRegistration:

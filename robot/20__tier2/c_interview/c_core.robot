@@ -6,6 +6,7 @@ Documentation     C core language interview questions - pointers, memory, and fu
 
 Resource          c_interview.resource
 Variables         ${CURDIR}/variables/c_interview_questions.yaml
+Test Tags         axis:model
 
 *** Test Cases ***
 C Interview - What Is A Pointer (IQ:100)

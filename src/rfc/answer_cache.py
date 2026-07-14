@@ -16,8 +16,15 @@ This is a **measurement harness**, so correctness beats convenience:
   unless ``ANSWER_CACHE_NONDETERMINISTIC=1``.
 * **Provenance-recorded.** On a cache hit the served answer's ``last_metrics``
   carries ``cache_hit=True`` so result rows are honest about being replayed.
-* **Never fails a request.** If Redis is unreachable, the cache logs once and
-  degrades to a passthrough — a down cache must never fail a test.
+* **Never fails a request** *in a live-on-miss mode.* If Redis is unreachable,
+  the cache logs once and degrades to a passthrough — a down cache must never
+  fail a ``record_and_replay`` test.
+* **Replay modes** (RFC-010 S2, #259). :class:`CachingProvider` takes an explicit
+  :class:`CacheMode` — ``record_and_replay`` (default, live+store on miss),
+  ``exact_only`` (exact-digest-only, no semantic reuse), or ``cache_only`` (never
+  call upstream; a miss or an unreachable cache is a LOUD :class:`AnswerCacheMiss`,
+  the CI zero-token guarantee). ``cache_only`` deliberately does *not* passthrough
+  on outage: silently going live would break its zero-token contract.
 
 The cache key is the SHA-256 of a canonical JSON document over every attribute
 that affects model output, plus a version namespace so the whole cache can be
@@ -32,6 +39,7 @@ vLLM per-process weights) lack the resolver and simply omit the digest field.
 
 from __future__ import annotations
 
+import enum
 import hashlib
 import json
 import logging
@@ -71,6 +79,95 @@ _KEY_ATTRS = (
     # payload lacked the field — acceptable given the 7-day TTL.
     "think",
 )
+
+
+class CacheMode(enum.Enum):
+    """Replay mode for :class:`CachingProvider` (RFC-010 S2, #259; scopes #19).
+
+    An explicit, per-run switch over what a cache *miss* means. The load-bearing
+    honesty rule (RFC-010 §3): a stale or missing entry must fail explicitly —
+    never silently pass, never silently go live.
+
+    * ``RECORD_AND_REPLAY`` (default) — serve on an exact hit; on a miss call
+      upstream and store the answer. The historical behaviour. This is the only
+      mode whose contract permits a future *policy-allowed semantic* reuse layer
+      (#17 / RFC-004), which stays parked and forbidden in a measurement path
+      (RFC-010 §2/§4), so today it is exact-match like the others.
+    * ``EXACT_ONLY`` — same observable behaviour as ``RECORD_AND_REPLAY`` on
+      today's exact-only cache (serve exact hits, live+store on miss), but its
+      declared contract forbids *any* semantic reuse: only an exact-digest match
+      is ever served. It is the named policy S3 / #17 build against.
+    * ``CACHE_ONLY`` — never call upstream. A miss — or an unreachable cache — is
+      a LOUD, machine-readable :class:`AnswerCacheMiss`, never a silent live call
+      and never a fabricated answer. This is the CI re-run mode that guarantees
+      ~0 tokens for an unchanged suite against an unchanged model, and turns a
+      silent cache-off into an explicit "cache not primed".
+    """
+
+    RECORD_AND_REPLAY = "record_and_replay"
+    EXACT_ONLY = "exact_only"
+    CACHE_ONLY = "cache_only"
+
+    @property
+    def call_upstream_on_miss(self) -> bool:
+        """Whether a miss may fall through to a live upstream ``generate()``.
+
+        ``False`` only for :attr:`CACHE_ONLY`, which fails loud instead of
+        silently going live — the RFC-010 honesty rule.
+        """
+        return self is not CacheMode.CACHE_ONLY
+
+    @property
+    def semantic_reuse_allowed(self) -> bool:
+        """Whether the mode's contract permits a (future) semantic reuse layer.
+
+        ``True`` only for :attr:`RECORD_AND_REPLAY`. No semantic backend exists
+        today — it is parked at #17 / RFC-004 and forbidden in a measurement
+        path (RFC-010 §2/§4) — so this changes no behaviour now; it pins the
+        policy so ``EXACT_ONLY`` / ``CACHE_ONLY`` are guaranteed exact-digest-only
+        and any future semantic layer must consult this flag before activating.
+        """
+        return self is CacheMode.RECORD_AND_REPLAY
+
+    @classmethod
+    def from_str(cls, value: str) -> Optional["CacheMode"]:
+        """Parse a mode name (case/space-insensitive); ``None`` if unrecognized."""
+        try:
+            return cls(value.strip().lower())
+        except ValueError:
+            return None
+
+
+DEFAULT_CACHE_MODE = CacheMode.RECORD_AND_REPLAY
+
+
+class AnswerCacheMiss(RuntimeError):
+    """Raised when a no-upstream mode cannot serve a request (RFC-010 S2, #259).
+
+    The honesty contract: in :attr:`CacheMode.CACHE_ONLY` a missing or
+    unreachable cache entry is a LOUD, machine-readable failure — never a silent
+    live call and never a fabricated answer. The attributes make the failure
+    assertable by callers / Robot tests.
+    """
+
+    def __init__(
+        self,
+        *,
+        mode: "CacheMode",
+        reason: str,
+        key: Optional[str],
+        model: Optional[str],
+    ) -> None:
+        self.mode = mode
+        # One of: "cache-miss", "cache-unreachable", "nondeterministic-request".
+        self.reason = reason
+        self.key = key
+        self.model = model
+        super().__init__(
+            f"answer cache miss in {mode.value} mode "
+            f"(reason={reason}, model={model!r}, key={key!r}): refusing to call "
+            "upstream. Prime the cache with a record_and_replay/verify run first."
+        )
 
 
 class _CacheableClient(Protocol):
@@ -219,6 +316,17 @@ class AnswerCache:
             )
             self._logged_unreachable = True
 
+    @property
+    def available(self) -> bool:
+        """False once a Redis outage has latched this cache to passthrough.
+
+        Lets a no-upstream mode distinguish a genuine key-absent miss (``True``)
+        from an unreachable cache (``False``) when reporting why it refused to
+        serve — both are a loud failure under ``cache_only``, but the reason
+        matters for diagnosis.
+        """
+        return not self._disabled
+
 
 def _cache_hit_metrics(model: Optional[str]) -> Dict[str, Any]:
     """Honest zero-cost metrics for a cache hit.
@@ -268,21 +376,30 @@ class CachingProvider:
         client: _CacheableClient,
         cache: AnswerCache,
         cache_nondeterministic: Optional[bool] = None,
+        mode: Optional[CacheMode] = None,
     ) -> None:
         if cache_nondeterministic is None:
             cache_nondeterministic = (
                 os.getenv("ANSWER_CACHE_NONDETERMINISTIC", "") == "1"
             )
+        if mode is None:
+            mode = DEFAULT_CACHE_MODE
         # Bypass __setattr__ proxying for our own private attributes.
         object.__setattr__(self, "_client", client)
         object.__setattr__(self, "_cache", cache)
         object.__setattr__(
             self, "_cache_nondeterministic", bool(cache_nondeterministic)
         )
+        object.__setattr__(self, "_mode", mode)
         # Standard wrapper accessor (functools.wraps convention) so callers
         # that need the concrete underlying type — e.g. the OllamaClient
         # isinstance gates in keywords.py — can unwrap the proxy (#523).
         object.__setattr__(self, "__wrapped__", client)
+
+    @property
+    def cache_mode(self) -> CacheMode:
+        """The active replay mode for this provider (RFC-010 S2, #259)."""
+        return self._mode
 
     def unwrap(self) -> _CacheableClient:
         """Return the wrapped client (peels exactly one cache layer)."""
@@ -290,9 +407,20 @@ class CachingProvider:
 
     def generate(self, prompt: str) -> str:
         client = self._client
+        mode = self._mode
 
         cacheable = self._cache_nondeterministic or is_deterministic(client)
         if not cacheable:
+            # A non-deterministic request is never keyed or stored, so it can
+            # only be answered by a live call. A no-upstream mode must fail loud
+            # rather than sneak a live call past its zero-token guarantee.
+            if not mode.call_upstream_on_miss:
+                raise AnswerCacheMiss(
+                    mode=mode,
+                    reason="nondeterministic-request",
+                    key=None,
+                    model=getattr(client, "model", None),
+                )
             return client.generate(prompt)
 
         key = self._cache.make_key(client, prompt)
@@ -301,6 +429,18 @@ class CachingProvider:
         if cached is not None:
             self._record_hit(client)
             return cached
+
+        # Exact miss. Only ``record_and_replay`` / ``exact_only`` may go live;
+        # ``cache_only`` refuses — a stale/missing entry is a LOUD failure, never
+        # a silent live call (RFC-010 §3 honesty rule). An unreachable cache is a
+        # miss too and must NOT degrade to a live call under a no-upstream mode.
+        if not mode.call_upstream_on_miss:
+            raise AnswerCacheMiss(
+                mode=mode,
+                reason="cache-miss" if self._cache.available else "cache-unreachable",
+                key=key,
+                model=getattr(client, "model", None),
+            )
 
         answer = client.generate(prompt)
         # Never memoize an empty/whitespace answer: caching an error/blank
@@ -345,4 +485,11 @@ class CachingProvider:
         setattr(self._client, name, value)
 
 
-__all__ = ["AnswerCache", "CachingProvider", "is_deterministic"]
+__all__ = [
+    "AnswerCache",
+    "AnswerCacheMiss",
+    "CacheMode",
+    "CachingProvider",
+    "DEFAULT_CACHE_MODE",
+    "is_deterministic",
+]

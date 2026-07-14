@@ -4,6 +4,7 @@ Documentation     Switch topics abruptly mid-conversation and verify the model
 ...               window evaluation over post-switch responses.
 Resource          multi_turn.resource
 Test Timeout      360 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Cooking To Astronomy Handoff

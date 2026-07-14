@@ -14,6 +14,7 @@ Resource          causal_reasoning.resource
 
 Default Tags      causal_reasoning    counterfactual    tier:2    verify:llm
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

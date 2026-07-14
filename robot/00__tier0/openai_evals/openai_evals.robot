@@ -11,6 +11,7 @@ Documentation     OpenAI-Evals umbrella suite (#561/#562).
 ...               resolve cleanly with no external dataset or network.
 Library           rfc.graders
 Library           Collections
+Test Tags         axis:model
 
 *** Test Cases ***
 OpenAI Evals Scaffolding Is Importable

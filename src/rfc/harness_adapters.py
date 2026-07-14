@@ -54,6 +54,13 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from .agent_run import AgentCommand, AgentQuestion
+from .opencode_config import (
+    _DEFAULT_OPENCODE_CONFIG,
+    VerifiedLocalModel,
+    assert_model_resolves_local,
+    gate_config,
+    load_opencode_config,
+)
 
 # ---------------------------------------------------------------------------
 # Process-invocation primitives (shared by the driver and its adapters).
@@ -451,6 +458,15 @@ class OpenCodeAdapter:
     ``opencode.json`` (local Ollama, no external egress). ``model`` overrides
     the model via ``--model provider/model`` when the config's default is not
     wanted.
+
+    #278: this adapter is the layer that materializes the opencode config for a
+    run, so it is the durable home of the Tier-A comparability gate. Any consumer
+    can ask :meth:`verify_local_model` whether this run's model resolves to a
+    declared-local provider (getting back the :class:`VerifiedLocalModel` token a
+    Tier-A ``ComparisonRow`` requires) instead of re-implementing the check. When
+    ``require_local_comparability`` is set, :meth:`env_overrides` runs that gate
+    before the config is materialized, so a run using this config CANNOT proceed
+    with a non-local model even if the runner never calls the gate itself.
     """
 
     name = "opencode"
@@ -462,10 +478,12 @@ class OpenCodeAdapter:
         opencode_bin: str = "opencode",
         config_path: Path | None = None,
         model: str | None = None,
+        require_local_comparability: bool = False,
     ) -> None:
         self.opencode_bin = opencode_bin
         self.config_path = config_path
         self.model = model
+        self.require_local_comparability = require_local_comparability
 
     def build_argv(self, task: str, workspace: Path) -> list[str]:
         argv = [self.opencode_bin, "run", "--format", "json"]
@@ -474,7 +492,34 @@ class OpenCodeAdapter:
         argv.append(task)
         return argv
 
+    def verify_local_model(self) -> VerifiedLocalModel:
+        """Gate this adapter's opencode config, returning the Tier-A token (#278).
+
+        The run's model — the ``--model`` override if set, else the config's pinned
+        default — must resolve to a DECLARED LOCAL provider (#191/#273), or this
+        raises :class:`~rfc.opencode_config.ComparabilityError`. Returns the
+        gate-minted :class:`VerifiedLocalModel`, the capability a Tier-A
+        ``ComparisonRow`` requires. An override is resolved against the SAME
+        config, so it cannot smuggle a remote model past the config default. This
+        is the adapter-layer home of the selected-model-resolves-local check: a
+        second comparison runner calls this one method rather than re-deriving the
+        gate procedurally.
+        """
+        path = self.config_path or _DEFAULT_OPENCODE_CONFIG
+        config = load_opencode_config(path)
+        if self.model:
+            return assert_model_resolves_local(
+                self.model, config, source=f"opencode --model override ({path})"
+            )
+        return gate_config(config, source=f"opencode.json ({path})")
+
     def env_overrides(self) -> dict[str, str]:
+        # #278: when armed for a Tier-A comparison run, fail closed BEFORE the
+        # config materializes, so a non-local model can never reach the CLI. Opt-in
+        # (default off) so the general live-runner path over arbitrary configs is
+        # unchanged.
+        if self.require_local_comparability:
+            self.verify_local_model()
         if self.config_path is not None:
             return {"OPENCODE_CONFIG": str(self.config_path)}
         return {}
