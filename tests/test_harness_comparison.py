@@ -16,6 +16,7 @@ import pytest
 from rfc.agent_config import SandboxLimits
 from rfc.agent_run import AgentCommand, AgentQuestion, AgentRun
 from rfc.agent_sandbox import AgentSandbox, SandboxResult
+from rfc.churn_manifest import parse_manifest
 from rfc.exceptions import HarnessNotAvailableError
 from rfc.harness_adapters import ClaudeProcessResult
 from rfc.harness_comparison import (
@@ -370,8 +371,32 @@ OPENCODE_FIX_TRANSCRIPT = (
 
 
 def _manifest(entries: dict[str, str]) -> dict:
-    text = "".join(f"{h}  /workspace/{p}\n" for p, h in entries.items())
+    # Faithfully replay the in-container ``manifest_command`` wire format: records
+    # are NUL-terminated (``sha256sum -z ... | sort -z``), never newline-separated
+    # (#274). ``parse_manifest`` splits on NUL, so a newline-delimited stub would
+    # collapse every path into one malformed record that reads as unexpected churn.
+    text = "".join(f"{h}  /workspace/{p}\0" for p, h in entries.items())
     return {"stdout": text, "stderr": "", "exit_code": 0, "duration_ms": 1}
+
+
+def test_manifest_fixture_speaks_parse_manifest_wire_format() -> None:
+    """Cross-format guard (#282): the fake-container ``_manifest`` stub must emit
+    the exact wire format the *production* ``parse_manifest`` reads, so a future
+    manifest format change (as #274 flipped newline -> NUL) cannot silently skew
+    the fake into phantom churn again.
+
+    Proven against the REAL shipped parser, not a duplicated literal: two records
+    in, two distinct records out. If the stub and ``parse_manifest`` ever disagree
+    on the record terminator/separator, the round-trip collapses and this fails at
+    the fixture -- instead of surfacing three layers down as a bogus ``partial``.
+    """
+    entries = {"calculator.py": "hash-a", "test_calculator.py": "hash-b"}
+    assert parse_manifest(_manifest(entries)["stdout"]) == entries
+
+    # Regression witness: the pre-#284 newline stub collapses under the NUL parser
+    # into ONE malformed record -- the precise mechanism of the #282 red.
+    newline_stub = "".join(f"{h}  /workspace/{p}\n" for p, h in entries.items())
+    assert len(parse_manifest(newline_stub)) == 1
 
 
 class _FakeContainerManager:

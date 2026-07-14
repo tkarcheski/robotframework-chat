@@ -181,8 +181,11 @@ _SQLITE_MIGRATIONS: list[str] = [
 # Canonical body of the ``agentic_sessions_full`` view (issue #353).
 #
 # Denormalizes ``agentic_harnesses`` and pre-pivots the EAV rows in
-# ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score)
-# into one row per harness session. The Superset bootstrap
+# ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score, plus
+# the RFC-010 S1 efficiency pair cache_hit_rate / suite_runtime_ms — #258) into
+# one row per harness session. cache_hit_rate is AVG'd (mean per-run rate) and
+# suite_runtime_ms is SUM'd (total wall time across the session's suites). The
+# Superset bootstrap
 # (superset/bootstrap_dashboards.py) embeds a copy of this SQL in its DDL;
 # a drift-guard test in tests/test_bootstrap_dashboards.py keeps the two
 # in sync. Written in the portable subset shared by PostgreSQL and SQLite.
@@ -206,7 +209,11 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
         AS avg_latency_ms,
     AVG(CASE WHEN m.metric_key = 'grader_score' THEN m.metric_value END)
-        AS avg_grader_score
+        AS avg_grader_score,
+    AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
+        AS cache_hit_rate,
+    SUM(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
+        AS suite_runtime_ms
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,

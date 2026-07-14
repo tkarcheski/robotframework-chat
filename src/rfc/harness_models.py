@@ -91,6 +91,16 @@ METRIC_TOKENS_OUT = "tokens_out"  # completion tokens (pre-existing key)
 METRIC_LATENCY_MS = "latency_ms"  # wall time per run (pre-existing key)
 METRIC_GRADER_SCORE = "grader_score"  # llm_judge score (pre-existing key)
 
+# Efficiency-scoreboard keys (RFC-010 section 5, slice S1 — #258). Written once
+# per top-level suite/run by AgenticHarnessListener and pivoted into
+# agentic_sessions_full so the efficiency loop reads a *measured* number. Both
+# aggregate signals that already exist: the answer cache stamps per-answer
+# cache_hit=True (see answer_cache.py), and Robot already measures suite wall
+# time. They fold in here beside the RFC-007 set rather than in a separate
+# vocabulary.
+METRIC_CACHE_HIT_RATE = "cache_hit_rate"  # fraction of generate() calls cached
+METRIC_SUITE_RUNTIME_MS = "suite_runtime_ms"  # wall time per suite/run (ms)
+
 # Canonical order == scoreboard column order. An immutable, iterable manifest
 # the scoreboard view (S5) and its drift-guard can enumerate without re-listing
 # the strings.
@@ -102,6 +112,8 @@ RESERVED_METRIC_KEYS: tuple[str, ...] = (
     METRIC_TOKENS_OUT,
     METRIC_LATENCY_MS,
     METRIC_GRADER_SCORE,
+    METRIC_CACHE_HIT_RATE,
+    METRIC_SUITE_RUNTIME_MS,
 )
 
 

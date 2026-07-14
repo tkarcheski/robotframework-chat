@@ -17,6 +17,19 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.23.2] — Unreleased
+
+### Added
+
+- **Efficiency scoreboard — `cache_hit_rate` + `suite_runtime_ms`** (RFC-010
+  slice S1, #258): two reserved `agentic_metrics` keys, written once per
+  top-level suite/run by `AgenticHarnessListener` (cache-hit fraction from each
+  `llm_metrics` payload's `cache_hit` flag; suite wall time from Robot's
+  `result.elapsedtime`) and pivoted into the `agentic_sessions_full` scoreboard
+  view. A new `rfc harness scoreboard` command reads a session's rollup. No
+  schema change (EAV rows only); the Superset dashboard stays out of scope
+  (#221/S5). This makes every later efficiency lever's win a *measured* one.
+
 ## [1.23.1] — Unreleased
 
 ### Fixed
