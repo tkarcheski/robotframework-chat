@@ -6,6 +6,7 @@ Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 Library           rfc.swebench_keywords.SWEBenchKeywords
 Library           BuiltIn
 Library           Collections
+Test Tags         axis:model
 
 *** Variables ***
 ${SWEBENCH_SPLIT}       test

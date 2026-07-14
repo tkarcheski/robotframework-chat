@@ -11,7 +11,7 @@ Documentation     Quantization Degradation Tests
 
 Resource          quantization.resource
 
-Test Tags         quantization    degradation    tier:2    verify:llm
+Test Tags         quantization    degradation    tier:2    verify:llm    axis:model
 
 Test Timeout      250 minutes
 

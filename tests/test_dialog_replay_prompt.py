@@ -458,3 +458,91 @@ class TestOriginalResponseSelection:
             self._turn(3, "user", "next"),
         ]
         assert _original_response_for(turns, 0) == ""
+
+
+class TestReplayProvenance:
+    """RFC-008 A3 (#242): the replay harness row records the runtime coordinate.
+
+    dialog_replay is the one agentic_harnesses writer that actually runs the LLM
+    judge, so it is where design's bound resolved-hash criterion becomes real.
+    """
+
+    def test_spine_row_records_resolved_grader_hash_under_override(
+        self, db, tmp_path, monkeypatch
+    ):
+        # The load-bearing honesty test: an RFC_GRADER_PROMPT override run must log
+        # the OVERRIDE's hash on the spine, not the registry's registered coordinate.
+        from rfc.grader import GRADER_PROMPT_ID, _GRADER_PROMPT_PATH
+        from rfc.prompt_registry import sha256_hex
+
+        override_text = "VARIANT JUDGE {question} {expected} {actual}\n"
+        override = tmp_path / "variant.txt"
+        override.write_text(override_text, encoding="utf-8")
+        monkeypatch.setenv("RFC_GRADER_PROMPT", str(override))
+
+        rec_id = seed_recording(db)
+        result = replay_prompt_mode(
+            db,
+            rec_id,
+            target_model="target-model",
+            provider=FakeProvider(),
+            grader=DialogGrader(FakeGraderProvider()),
+        )
+        harness = db.get_harness(result.session_id)
+        assert harness is not None
+        assert harness.prompt_id == GRADER_PROMPT_ID
+        assert harness.prompt_hash == sha256_hex(override_text)  # what actually ran
+        registered = _GRADER_PROMPT_PATH.read_text(encoding="utf-8")
+        assert harness.prompt_hash != sha256_hex(registered)  # NOT the registered coord
+        assert harness.grader_version != ""
+
+    def test_spine_row_records_sampling_params(self, db):
+        rec_id = seed_recording(db)
+        provider = FakeProvider()
+        provider.seed = 13
+        provider.top_p = 0.9
+        result = replay_prompt_mode(
+            db,
+            rec_id,
+            target_model="target-model",
+            provider=provider,
+            grader=DialogGrader(FakeGraderProvider()),
+        )
+        harness = db.get_harness(result.session_id)
+        assert harness is not None
+        params = json.loads(harness.params_json)
+        assert params["seed"] == 13
+        assert params["top_p"] == 0.9
+        assert params["temperature"] == 0.0  # 0.0 is set, not None -> recorded
+        assert params["max_tokens"] == 256
+
+    def test_spine_row_records_model_digest_when_provider_exposes_it(self, db):
+        class DigestProvider(FakeProvider):
+            def resolve_model_digest(self):
+                return "sha256:cafe"
+
+        rec_id = seed_recording(db)
+        result = replay_prompt_mode(
+            db,
+            rec_id,
+            target_model="target-model",
+            provider=DigestProvider(),
+            grader=DialogGrader(FakeGraderProvider()),
+        )
+        harness = db.get_harness(result.session_id)
+        assert harness is not None
+        assert harness.model_digest == "sha256:cafe"
+
+    def test_provider_without_digest_leaves_digest_empty(self, db):
+        # FakeProvider has no resolve_model_digest: best-effort skip-and-log -> "".
+        rec_id = seed_recording(db)
+        result = replay_prompt_mode(
+            db,
+            rec_id,
+            target_model="target-model",
+            provider=FakeProvider(),
+            grader=DialogGrader(FakeGraderProvider()),
+        )
+        harness = db.get_harness(result.session_id)
+        assert harness is not None
+        assert harness.model_digest == ""

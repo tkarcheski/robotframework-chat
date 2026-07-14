@@ -270,6 +270,96 @@ class TestRunModeCacheGate:
         mock_from_env.assert_not_called()
 
 
+class TestReplayModeSelection:
+    """RFC_RUN_MODE=replay and ANSWER_CACHE_MODE select a replay mode (#259).
+
+    Complements TestRunModeCacheGate (which decides on/off): this covers *which*
+    mode the enabled cache runs in.
+    """
+
+    @staticmethod
+    def _env(**overrides: str) -> dict[str, str]:
+        env = os.environ.copy()
+        for key in ("RFC_RUN_MODE", "ANSWER_CACHE_MODE", "ANSWER_CACHE_ENABLED"):
+            env.pop(key, None)
+        env.update(overrides)
+        return env
+
+    def test_replay_forces_cache_on(self) -> None:
+        """RFC_RUN_MODE=replay turns the cache on (like verify)."""
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="replay"), clear=True):
+            assert rfc.llm_client._cache_enabled_for_run_mode() is True
+
+    def test_replay_selects_cache_only(self) -> None:
+        from rfc.answer_cache import CacheMode
+
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="replay"), clear=True):
+            assert rfc.llm_client._cache_mode_for_run() is CacheMode.CACHE_ONLY
+
+    def test_replay_cannot_be_downgraded_by_answer_cache_mode(self) -> None:
+        """The CI zero-token guarantee wins over a leftover ANSWER_CACHE_MODE."""
+        from rfc.answer_cache import CacheMode
+
+        with patch.dict(
+            os.environ,
+            self._env(RFC_RUN_MODE="replay", ANSWER_CACHE_MODE="exact_only"),
+            clear=True,
+        ):
+            assert rfc.llm_client._cache_mode_for_run() is CacheMode.CACHE_ONLY
+
+    def test_explicit_answer_cache_mode_selects_mode(self) -> None:
+        from rfc.answer_cache import CacheMode
+
+        with patch.dict(
+            os.environ,
+            self._env(ANSWER_CACHE_ENABLED="1", ANSWER_CACHE_MODE="exact_only"),
+            clear=True,
+        ):
+            assert rfc.llm_client._cache_mode_for_run() is CacheMode.EXACT_ONLY
+
+    def test_default_mode_is_record_and_replay(self) -> None:
+        from rfc.answer_cache import CacheMode
+
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="verify"), clear=True):
+            assert rfc.llm_client._cache_mode_for_run() is CacheMode.RECORD_AND_REPLAY
+
+    def test_unknown_answer_cache_mode_warns_once_and_defaults(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from rfc.answer_cache import CacheMode
+
+        rfc.llm_client._warned_unknown_cache_mode = False
+        with patch.dict(
+            os.environ,
+            self._env(ANSWER_CACHE_ENABLED="1", ANSWER_CACHE_MODE="bogus"),
+            clear=True,
+        ):
+            with caplog.at_level(logging.WARNING, logger="rfc.llm_client"):
+                mode1 = rfc.llm_client._cache_mode_for_run()
+                mode2 = rfc.llm_client._cache_mode_for_run()
+        assert mode1 is CacheMode.RECORD_AND_REPLAY
+        assert mode2 is CacheMode.RECORD_AND_REPLAY
+        warnings = [r for r in caplog.records if "ANSWER_CACHE_MODE" in r.message]
+        assert len(warnings) == 1  # latched
+
+    @patch("rfc.answer_cache.AnswerCache.from_env")
+    def test_replay_wraps_provider_in_cache_only(
+        self, mock_from_env: MagicMock
+    ) -> None:
+        """End-to-end: RFC_RUN_MODE=replay wraps in a cache_only CachingProvider."""
+        from rfc.answer_cache import CacheMode
+
+        mock_from_env.return_value = MagicMock()
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="replay"), clear=True):
+            client = _maybe_wrap_with_cache(OllamaClient(model="test-model"))
+        assert type(client) is CachingProvider
+        assert client.cache_mode is CacheMode.CACHE_ONLY
+
+    def test_replay_is_case_and_whitespace_insensitive(self) -> None:
+        with patch.dict(os.environ, self._env(RFC_RUN_MODE="  REPLAY  "), clear=True):
+            assert rfc.llm_client._cache_enabled_for_run_mode() is True
+
+
 def _fake_graylog_module() -> types.ModuleType:
     """A stand-in for the private ``robot_graylog_llm`` submodule.
 

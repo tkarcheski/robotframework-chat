@@ -7,6 +7,7 @@ Documentation     Tool hallucination detection tests.
 Resource          tool_hallucination.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Variables ***
 # Standard fake tools used across tests

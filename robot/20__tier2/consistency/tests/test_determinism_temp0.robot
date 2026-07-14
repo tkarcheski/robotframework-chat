@@ -11,7 +11,7 @@ Documentation     Determinism Tests — Temperature 0 Stability
 
 Resource          ../consistency.resource
 
-Test Tags         consistency    determinism    tier:1    verify:python
+Test Tags         consistency    determinism    tier:1    verify:python    axis:model
 
 Test Timeout      250 minutes
 

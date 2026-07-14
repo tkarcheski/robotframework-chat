@@ -23,6 +23,7 @@ Documentation     GAIA-Style Tool-Use Tests
 Resource          gaia.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 
 *** Test Cases ***

@@ -11,7 +11,7 @@ Documentation     Covert Adversarial Prompt Injection Tests
 
 Resource          adversarial.resource
 
-Test Tags         adversarial    covert_injection    tier:2    verify:llm
+Test Tags         adversarial    covert_injection    tier:2    verify:llm    axis:model
 
 Test Timeout      100 minutes
 

@@ -37,7 +37,6 @@ metric-writing path against hermetic sqlite with an injected sandbox invoker
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import uuid
@@ -45,7 +44,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from robot.api import logger
 from robot.api.deco import keyword  # type: ignore[import-untyped]
@@ -74,6 +72,18 @@ from rfc.harness_models import (
     AgenticHarness,
     AgenticMetric,
 )
+from rfc.opencode_config import (
+    _DEFAULT_OPENCODE_CONFIG,
+    ComparabilityError,
+    VerifiedLocalModel,
+    assert_model_resolves_local,
+    gate_config,
+    load_opencode_config,
+)
+
+# Re-exported so existing callers/tests keep importing the gate from here even
+# though it now lives in the config-loader layer (#278).
+from rfc.opencode_config import assert_opencode_comparable as assert_opencode_comparable
 
 # RFC-007 section 8: start at N=5 paired repeats per (harness, scenario).
 DEFAULT_REPEATS = 5
@@ -93,146 +103,9 @@ TIER_B_NATIVE = "B"  # claude-code: native frontier model, descriptive only
 # commit-while-red process gate tracks the ``unittest`` needle.
 _SANDBOX_TEST_NEEDLE = "unittest"
 
-# Repo opencode.json (the Tier-A comparability substrate, #191/#226). Lives at
-# the core/ root, two parents up from this package (src/rfc/ -> src/ -> core/).
-_DEFAULT_OPENCODE_CONFIG = (
-    Path(__file__).resolve().parent.parent.parent / "opencode.json"
-)
-
-_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
-
-
-class ComparabilityError(RuntimeError):
-    """The Tier-A fixed-model contract cannot be honoured (RFC-007 section 5).
-
-    Raised when ``opencode.json`` is not self-contained local-Ollama, so a
-    "same model for every harness" claim would be a lie. #218 hard-blocks on
-    #191 rather than assuming it (RFC-007 section 11).
-    """
-
 
 def _utc_now() -> str:
     return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
-
-
-def _is_local_url(url: str) -> bool:
-    return (urlparse(url).hostname or "") in _LOCAL_HOSTS
-
-
-def _load_opencode_config(path: Path) -> dict:
-    """Read + parse opencode.json, or raise :class:`ComparabilityError`."""
-    if not path.is_file():
-        raise ComparabilityError(
-            f"opencode.json not found at {path} -- the Tier-A comparability gate "
-            "(#191) cannot be verified; refusing to claim a fixed-model run."
-        )
-    try:
-        config = json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        raise ComparabilityError(f"opencode.json is not valid JSON: {exc}") from exc
-    if not isinstance(config, dict):
-        raise ComparabilityError(
-            f"opencode.json ({path}) is not a JSON object -- cannot verify the "
-            "Tier-A local-model contract."
-        )
-    return config
-
-
-def _assert_model_resolves_local(model_ref: str, config: dict, *, source: str) -> str:
-    """Require ``model_ref`` (``provider/model``) to resolve to a DECLARED LOCAL provider.
-
-    The load-bearing honesty check (#273): a Tier-A "fixed local model" is only
-    honest if the *selected* model is actually served locally. So the model's
-    ``provider/`` prefix must name a provider DECLARED in ``config`` whose
-    ``options.baseURL`` is present AND points at localhost. Nothing is
-    whitelisted: an undeclared provider (built-in ``openai``/``anthropic`` egress
-    to their real endpoints by default), an absent ``baseURL`` (same egress), a
-    remote ``baseURL``, or a model the local provider does not list all FAIL
-    closed. Returns ``model_ref`` on success.
-    """
-    ref = (model_ref or "").strip()
-    if not ref:
-        raise ComparabilityError(
-            f"{source}: empty model reference -- cannot verify a local model."
-        )
-    if "/" not in ref:
-        raise ComparabilityError(
-            f"{source}: model {ref!r} is not in 'provider/model' form -- cannot "
-            "resolve it to a declared local provider, so it is not verifiably local."
-        )
-    provider_prefix, model_name = ref.split("/", 1)
-    providers = config.get("provider") or {}
-    if provider_prefix not in providers:
-        raise ComparabilityError(
-            f"{source}: model provider {provider_prefix!r} is not declared in "
-            "opencode.json -- built-in providers (openai/anthropic/...) egress to "
-            "their real endpoints by default, so this is not a local model "
-            "(RFC-007 section 5, the single most common way this benchmark lies)."
-        )
-    provider = providers.get(provider_prefix) or {}
-    base_url = ((provider.get("options") or {}).get("baseURL") or "").strip()
-    if not base_url:
-        raise ComparabilityError(
-            f"{source}: provider {provider_prefix!r} declares no baseURL -- an "
-            "absent baseURL means built-in remote egress, not a local model "
-            "(RFC-007 section 5)."
-        )
-    if not _is_local_url(base_url):
-        raise ComparabilityError(
-            f"{source}: provider {provider_prefix!r} baseURL {base_url!r} is not "
-            "local -- external egress breaks the fixed-local-model comparability "
-            "contract (#191)."
-        )
-    models = provider.get("models") or {}
-    if models and model_name not in models:
-        raise ComparabilityError(
-            f"{source}: model {model_name!r} is not among the models served by "
-            f"local provider {provider_prefix!r} ({sorted(models)}) -- refusing to "
-            "record a model the local provider does not declare."
-        )
-    return ref
-
-
-def _gate_config(config: dict, *, source: str) -> str:
-    """Run the #191/#273 comparability gate over an already-loaded config.
-
-    Returns the verified local model id; raises :class:`ComparabilityError`
-    otherwise.
-    """
-    model = config.get("model")
-    if not model:
-        raise ComparabilityError(
-            f"{source} declares no top-level 'model' -- without a pinned default "
-            "the harnesses would not share one local model."
-        )
-    # Defense in depth: no DECLARED provider may egress off-localhost, even if the
-    # selected model does not use it (a remote provider in the file is a smell).
-    for provider_name, provider in (config.get("provider") or {}).items():
-        base_url = ((provider or {}).get("options") or {}).get("baseURL") or ""
-        if base_url and not _is_local_url(base_url):
-            raise ComparabilityError(
-                f"opencode.json provider {provider_name!r} baseURL {base_url!r} is "
-                "not local -- external egress breaks the fixed-local-model "
-                "comparability contract (#191)."
-            )
-    # The load-bearing check (#273): the SELECTED model must resolve to a local
-    # provider -- not merely "no declared baseURL is remote".
-    return _assert_model_resolves_local(str(model), config, source=source)
-
-
-def assert_opencode_comparable(config_path: Path | None = None) -> str:
-    """Hard-block on #191/#273: opencode.json must pin one LOCAL model, no egress.
-
-    Returns the pinned default model id (for the row ``model_id``) on success;
-    raises :class:`ComparabilityError` otherwise. Verified: (1) a top-level
-    ``model`` default exists, (2) no declared provider ``baseURL`` egresses
-    off-localhost, and (3) -- the check #273 added -- the *selected* model
-    resolves to a DECLARED provider whose ``baseURL`` is present and local, so
-    the Tier-A "same local model for every harness" claim is honest instead of
-    assumed. An absent baseURL or an undeclared/built-in provider FAILS closed.
-    """
-    path = config_path or _DEFAULT_OPENCODE_CONFIG
-    return _gate_config(_load_opencode_config(path), source=f"opencode.json ({path})")
 
 
 @dataclass(frozen=True)
@@ -261,22 +134,43 @@ class ComparisonRow:
     session_id: str
     outcome: str
     metrics: dict[str, float]
+    # #278: the gate-minted token proving ``model_id`` resolves to a declared-local
+    # provider. Required for Tier A (see the invariant below); ``None`` for Tier B,
+    # whose native model is descriptive only.
+    verified_model: VerifiedLocalModel | None = None
 
     def __post_init__(self) -> None:
-        # Structural invariant (#273), not convention: a Tier-A ("fixed local
-        # model") row MUST name a non-empty, gate-verified local model. Enforced
-        # at row construction so EVERY leg -- not just opencode -- hits it, and a
-        # Tier-A row that names no model is impossible to build (so cannot be
-        # persisted or paired). A harness that cannot pin the local model belongs
-        # in Tier B (RFC-007 section 5 / RFC-008).
-        if self.tier == TIER_A_FIXED_LOCAL and not (self.model_id or "").strip():
+        # Structural invariant (#273 + #278), not convention: a Tier-A ("fixed
+        # local model") row must be backed by a gate-minted VerifiedLocalModel
+        # TOKEN -- not merely a non-empty model_id string. Enforced at row
+        # construction so EVERY leg -- not just opencode, and any FUTURE runner
+        # building rows directly -- hits it. Because the comparability gate
+        # (rfc.opencode_config) is the only intended minter of a
+        # VerifiedLocalModel, a runner that omits the gate cannot build a Tier-A
+        # row for an unverified (remote / undeclared) model: accidental omission
+        # fails closed, so such a row is never persisted or paired. (Deliberate
+        # in-process forgery remains possible, as with any Python capability
+        # token -- defended by review + dual sign-off; hardening in #314.) A
+        # harness that cannot pin the local model belongs in Tier B (RFC-007
+        # section 5 / RFC-008).
+        if self.tier != TIER_A_FIXED_LOCAL:
+            return
+        if self.verified_model is None:
             raise ComparabilityError(
                 f"Tier-A row for harness {self.harness!r} (scenario "
-                f"{self.scenario_id!r}) has an empty model_id -- a Tier-A "
-                "(fixed-local) row must name the gate-verified local model; a "
-                "harness that cannot pin the local model belongs in Tier B "
-                "(RFC-007 section 5). Refusing to persist a Tier-A row that names "
-                "no model."
+                f"{self.scenario_id!r}) has no gate-verified local model -- a "
+                "Tier-A (fixed-local) row must carry the VerifiedLocalModel token "
+                "minted by the comparability gate (#273/#278); a harness that "
+                "cannot pin the local model belongs in Tier B (RFC-007 section 5). "
+                "Refusing to persist an unverified Tier-A row."
+            )
+        if self.verified_model.model_id != self.model_id:
+            raise ComparabilityError(
+                f"Tier-A row for harness {self.harness!r} records model_id "
+                f"{self.model_id!r} but its verification token attests "
+                f"{self.verified_model.model_id!r} -- the recorded model must be "
+                "exactly the gate-verified one, so a row cannot carry a token for a "
+                "different model than it names (#278)."
             )
 
 
@@ -409,6 +303,7 @@ class HarnessComparison:
         session_id_factory: Callable[[], str] | None = None,
         clock: Callable[[], str] | None = None,
         branch: str = "",
+        digest_resolver: Callable[[str], str] | None = None,
     ) -> None:
         if repeats < 1:
             raise ValueError(f"repeats must be >= 1, got {repeats}")
@@ -419,6 +314,15 @@ class HarnessComparison:
         self._new_id = session_id_factory or (lambda: uuid.uuid4().hex)
         self._clock = clock or _utc_now
         self._branch = branch
+        # RFC-008 A3 (#242): resolves model_id -> content digest for the spine.
+        # Injected (like the clock and id factory) so the metric-writing path stays
+        # deterministic — a resolver that reaches Ollama has no place in the hermetic
+        # twin. Left None in the production wiring below: this exec-graded runner
+        # only knows opencode's `provider/model` ref, and mapping that to an Ollama
+        # tag+digest is separate plumbing; a fabricated digest would be a dishonest
+        # coordinate (the very failure §5 forbids). The live digest path is exercised
+        # by dialog_replay, which holds the provider itself.
+        self._digest_resolver = digest_resolver
 
     def run(
         self,
@@ -440,12 +344,13 @@ class HarnessComparison:
         # Hard-block on #191/#273 before any Tier-A leg runs (RFC-007 s5/s11): the
         # gate now verifies the SELECTED model resolves to a declared LOCAL
         # provider, and it arms for ANY Tier-A leg (not just opencode), so a
-        # mislabeled Tier-A leg cannot slip past by omitting opencode.
-        verified_local_model = ""
+        # mislabeled Tier-A leg cannot slip past by omitting opencode. The gate
+        # returns a VerifiedLocalModel token (#278) that the row then requires.
+        verified_local_model: VerifiedLocalModel | None = None
         config_data: dict = {}
         if any(leg.tier == TIER_A_FIXED_LOCAL for leg in legs):
-            config_data = _load_opencode_config(self._opencode_config)
-            verified_local_model = _gate_config(
+            config_data = load_opencode_config(self._opencode_config)
+            verified_local_model = gate_config(
                 config_data, source=f"opencode.json ({self._opencode_config})"
             )
 
@@ -454,7 +359,9 @@ class HarnessComparison:
         skipped: list[tuple[str, str]] = []
 
         for leg in legs:
-            model_id = self._leg_model_id(leg, verified_local_model, config_data)
+            model_id, verified_model = self._leg_model(
+                leg, verified_local_model, config_data
+            )
             leg_available = True
             for scenario in resolved:
                 if not leg_available:
@@ -479,7 +386,13 @@ class HarnessComparison:
                         break
                     rows.append(
                         self._record(
-                            scenario, leg, model_id, repeat_idx, battery_run_id, result
+                            scenario,
+                            leg,
+                            model_id,
+                            verified_model,
+                            repeat_idx,
+                            battery_run_id,
+                            result,
                         )
                     )
         return ComparisonReport(
@@ -493,6 +406,7 @@ class HarnessComparison:
         scenario: SandboxScenario,
         leg: HarnessLeg,
         model_id: str,
+        verified_model: VerifiedLocalModel | None,
         repeat_idx: int,
         battery_run_id: str,
         result: SandboxResult,
@@ -502,10 +416,10 @@ class HarnessComparison:
         ended_at = self._clock()
         outcome = derive_outcome(result)
         metrics = compute_metrics(result, len(scenario.allowed_paths))
-        # Build the row FIRST: ComparisonRow enforces the Tier-A -> non-empty
-        # gate-verified local model_id invariant in __post_init__, so a mislabeled
-        # leg raises ComparabilityError BEFORE any DB write -- no half-persisted,
-        # dishonest spine row is ever left behind (#273).
+        # Build the row FIRST: ComparisonRow enforces the Tier-A -> gate-verified
+        # local model TOKEN invariant in __post_init__, so a mislabeled leg raises
+        # ComparabilityError BEFORE any DB write -- no half-persisted, dishonest
+        # spine row is ever left behind (#273/#278).
         row = ComparisonRow(
             scenario_id=scenario.scenario_id,
             battery_run_id=battery_run_id,
@@ -516,8 +430,12 @@ class HarnessComparison:
             session_id=session_id,
             outcome=outcome,
             metrics=metrics,
+            verified_model=verified_model,
         )
-        # save_harness FIRST: agentic_metrics carries a FK on session_id.
+        # save_harness FIRST: agentic_metrics carries a FK on session_id. repeat_idx
+        # is persisted to the spine (#277) so S4 pairs on the stored (scenario_id,
+        # repeat_idx) key -- not fragile row order -- and a skipped repeat leaves a
+        # visible hole in the stored indices rather than a silently shifted run.
         self._db.save_harness(
             AgenticHarness(
                 session_id=session_id,
@@ -530,6 +448,8 @@ class HarnessComparison:
                 outcome=outcome,
                 scenario_id=scenario.scenario_id,
                 battery_run_id=battery_run_id,
+                repeat_idx=repeat_idx,
+                model_digest=self._resolve_digest(model_id),
             )
         )
         self._db.save_metrics(
@@ -545,6 +465,20 @@ class HarnessComparison:
         )
         return row
 
+    def _resolve_digest(self, model_id: str) -> str:
+        """Resolve ``model_id`` to a content digest for the spine, "" when unknown.
+
+        Exception-safe (like the digest resolver it wraps): any failure yields ""
+        (NULL) so a digest lookup can never break the metric write. Returns "" when
+        no resolver was injected — the deterministic default.
+        """
+        if not self._digest_resolver or not model_id:
+            return ""
+        try:
+            return self._digest_resolver(model_id) or ""
+        except Exception:  # pragma: no cover - defensive: digest must never break a run
+            return ""
+
     def _resolve(self, scenario: SandboxScenario | Path | str) -> SandboxScenario:
         if isinstance(scenario, SandboxScenario):
             return scenario
@@ -554,26 +488,35 @@ class HarnessComparison:
         return load_sandbox_scenario(path)
 
     @staticmethod
-    def _leg_model_id(leg: HarnessLeg, verified_local_model: str, config: dict) -> str:
-        """Resolve the model_id a leg's rows carry, fail-closed for Tier A.
+    def _leg_model(
+        leg: HarnessLeg,
+        verified_local_model: VerifiedLocalModel | None,
+        config: dict,
+    ) -> tuple[str, VerifiedLocalModel | None]:
+        """Resolve ``(model_id, verification token)`` for a leg, fail-closed for Tier A.
 
         Tier A ("fixed local model"): an explicit override must ITSELF resolve to
         a declared local provider (so ``--opencode-model`` cannot smuggle a remote
-        model past the config gate); with no override, ``opencode`` takes the
-        gate-verified local default, and any other harness resolves to ``""`` --
-        which :class:`ComparisonRow` then rejects, because this runner has no way
-        to pin a non-opencode harness to the local model (RFC-008). Tier B: the
-        native model is recorded as-is (may be empty/unknown to this runner).
+        model past the config gate), minting its own token; with no override,
+        ``opencode`` takes the gate-verified local default token, and any other
+        harness resolves to ``("", None)`` -- which :class:`ComparisonRow` then
+        rejects for lack of a token, because this runner has no way to pin a
+        non-opencode harness to the local model (RFC-008). Tier B: the native
+        model is recorded as-is with no token (descriptive only).
         """
         if leg.tier == TIER_A_FIXED_LOCAL:
             if leg.model:
-                return _assert_model_resolves_local(
+                token = assert_model_resolves_local(
                     leg.model, config, source=f"Tier-A {leg.harness} model override"
                 )
-            if leg.harness == "opencode":
-                return verified_local_model  # gate-verified opencode.json default
-            return ""  # non-opencode Tier-A: no local pin here -> ComparisonRow rejects
-        return leg.model  # Tier B: native model, descriptive only
+                return token.model_id, token
+            if leg.harness == "opencode" and verified_local_model is not None:
+                # gate-verified opencode.json default token
+                return verified_local_model.model_id, verified_local_model
+            # non-opencode Tier-A (or an unreachable missing-gate state): no local
+            # pin here -> ComparisonRow rejects for lack of a token.
+            return "", None
+        return leg.model, None  # Tier B: native model, descriptive only
 
 
 def run_comparison(

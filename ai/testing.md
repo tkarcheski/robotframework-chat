@@ -75,9 +75,10 @@ child suite.
 suite's transitive `Library`/`Resource` import surface: a suite that imports an
 LLM or harness keyword library may not claim `axis:none`, and a declared
 `axis:harness`/`axis:model` must match the surface it exercises (`axis:prompt`
-is a data variation and has no import signature). It ships in **report** mode —
-proposing an axis for every untagged suite and warning, but not failing CI —
-and flips to **enforce** once the tags are backfilled across all suites. Which
+is a data variation and has no import signature). It runs in **enforce** mode —
+every suite must carry exactly one axis tag or CI fails (a hard gate, like
+`check_rfc_index.py`); it shipped in report mode during the RFC-008 A1→A4
+backfill window (#243). Which
 model digest, prompt hash, or harness version *actually ran* is runtime
 provenance recorded in the spine, never in a static tag: a static tag says a
 suite discriminates the harness axis, not which harness ran. Legacy provenance
@@ -179,6 +180,13 @@ field: `public` (the default when absent) or `local-only`.
 
 Mark a suite `local-only` the moment proprietary content enters it —
 the guard is mechanical protection, not memory.
+
+## Comparing across dependency arms
+
+When comparing skip/pass counts across dependency arms, run an exact
+`uv sync --extra ...` for each arm before `pytest`. `uv run --extra X pytest`
+does **not** prune extras already present in the venv, so a fat `.venv`
+silently hides skips and yields false comparisons (design's #291 ruling).
 
 ---
 

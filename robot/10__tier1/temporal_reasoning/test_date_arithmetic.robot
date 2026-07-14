@@ -9,6 +9,7 @@ Resource          temporal_reasoning.resource
 
 Default Tags      temporal_reasoning    date_arithmetic    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 February Has 28 Days In A Non-Leap Year

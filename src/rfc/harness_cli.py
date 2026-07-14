@@ -19,12 +19,20 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 from rfc import __version__
 from rfc.dialog_import import register_dialog_command
 from rfc.git_metadata import _git_command, collect_ci_metadata
-from rfc.harness_models import AgenticHarness
+from rfc.harness_models import (
+    METRIC_CACHE_HIT_RATE,
+    METRIC_SUITE_RUNTIME_MS,
+    AgenticHarness,
+)
 from rfc.harness_snapshot import snapshot_plugins, snapshot_skills
+
+if TYPE_CHECKING:
+    from rfc.harness_db import HarnessDatabase
 
 SIDECAR_NAME = "rfc-harness-session.json"
 TOOLS = ("claude-code", "codex", "opencode")
@@ -189,6 +197,77 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+class EfficiencySummary(NamedTuple):
+    """Per-session rollup of the RFC-010 S1 efficiency metrics (#258)."""
+
+    cache_hit_rate: Optional[float]  # mean per-run rate; None if never recorded
+    cache_runs: int  # number of runs that contributed a cache_hit_rate
+    suite_runtime_ms: Optional[float]  # total wall time; None if never recorded
+    suites: int  # number of suites that contributed a runtime
+
+
+def summarize_efficiency(db: "HarnessDatabase", session_id: str) -> EfficiencySummary:
+    """Aggregate the efficiency EAV rows for *session_id*.
+
+    Mirrors the ``agentic_sessions_full`` pivot: ``cache_hit_rate`` is averaged
+    (mean per-run rate) and ``suite_runtime_ms`` is summed (total wall time
+    across the session's suites). Reads through the same ``get_metrics`` API
+    every other metric consumer uses.
+    """
+    rates = [
+        m.metric_value
+        for m in db.get_metrics(session_id, metric_key=METRIC_CACHE_HIT_RATE)
+    ]
+    runtimes = [
+        m.metric_value
+        for m in db.get_metrics(session_id, metric_key=METRIC_SUITE_RUNTIME_MS)
+    ]
+    return EfficiencySummary(
+        cache_hit_rate=(sum(rates) / len(rates)) if rates else None,
+        cache_runs=len(rates),
+        suite_runtime_ms=sum(runtimes) if runtimes else None,
+        suites=len(runtimes),
+    )
+
+
+def _cmd_scoreboard(args: argparse.Namespace) -> int:
+    """Print the efficiency scoreboard for a session (RFC-010 S1, #258)."""
+    session_id = args.session or active_session_id()
+    if not session_id:
+        print(
+            "ERROR: no session (pass --session or start one with `rfc harness start`).",
+            file=sys.stderr,
+        )
+        return 1
+    db = _open_db(args.database_url)
+    if db is None:
+        print(
+            "ERROR: no database configured (set DATABASE_URL or --database-url).",
+            file=sys.stderr,
+        )
+        return 1
+    summary = summarize_efficiency(db, session_id)
+    print(f"efficiency scoreboard — session {session_id}")
+    if summary.cache_hit_rate is None and summary.suite_runtime_ms is None:
+        print("  (no efficiency metrics recorded yet)")
+        return 0
+    if summary.cache_hit_rate is None:
+        print("  cache_hit_rate:   n/a")
+    else:
+        print(
+            f"  cache_hit_rate:   {summary.cache_hit_rate:.3f}"
+            f"  (mean of {summary.cache_runs} run(s))"
+        )
+    if summary.suite_runtime_ms is None:
+        print("  suite_runtime_ms: n/a")
+    else:
+        print(
+            f"  suite_runtime_ms: {summary.suite_runtime_ms:.1f}"
+            f"  (total of {summary.suites} suite(s))"
+        )
+    return 0
+
+
 def active_session_id() -> str:
     """The sidecar's session_id, or '' when no session is active.
 
@@ -244,6 +323,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = actions.add_parser("status", help="show the active session")
     status.set_defaults(func=_cmd_status)
+
+    scoreboard = actions.add_parser(
+        "scoreboard", help="print a session's efficiency metrics (RFC-010 S1)"
+    )
+    scoreboard.add_argument(
+        "--session", default="", help="session_id (default: active sidecar)"
+    )
+    scoreboard.add_argument("--database-url", default="")
+    scoreboard.set_defaults(func=_cmd_scoreboard)
 
     register_dialog_command(commands)
     return parser

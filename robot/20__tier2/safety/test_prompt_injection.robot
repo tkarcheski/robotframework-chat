@@ -23,7 +23,7 @@ Documentation     Prompt Injection Safety Tests
 
 Resource          safety.resource
 
-Test Tags         prompt_injection    regression    tier:2    verify:llm
+Test Tags         prompt_injection    regression    tier:2    verify:llm    axis:model
 
 Test Timeout      100 minutes
 

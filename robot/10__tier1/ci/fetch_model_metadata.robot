@@ -6,7 +6,7 @@ Library           Collections
 Library           OperatingSystem
 Library           DateTime
 Library           rfc.model_metadata_keywords.ModelMetadataKeywords    WITH NAME    Metadata
-Test Tags         browser
+Test Tags         browser    axis:model
 
 *** Variables ***
 ${OUTPUT_FILE}           ${CURDIR}/models.yaml

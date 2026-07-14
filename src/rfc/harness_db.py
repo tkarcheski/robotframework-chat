@@ -56,7 +56,13 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     outcome                 TEXT,
     replay_of_recording_id  TEXT,
     scenario_id             TEXT,
-    battery_run_id          TEXT
+    battery_run_id          TEXT,
+    model_digest            TEXT,
+    prompt_id               TEXT,
+    prompt_hash             TEXT,
+    grader_version          TEXT,
+    params_json             TEXT,
+    repeat_idx              INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
 
@@ -168,21 +174,33 @@ CREATE INDEX IF NOT EXISTS idx_hitl_session ON hitl_interactions(session_id);
 CREATE INDEX IF NOT EXISTS idx_hitl_action  ON hitl_interactions(target_action_id);
 """
 
-# Backfill columns onto agentic_harnesses created before #217. Each ALTER runs
-# after the CREATE-IF-NOT-EXISTS above: on a fresh DB the column already exists
-# and SQLite raises "duplicate column name" (caught as idempotent); on a pre-#217
-# DB the column is added, leaving existing rows NULL. Nullable, so old writers
-# keep working unchanged.
+# Backfill columns onto agentic_harnesses created before the column existed. Each
+# ALTER runs after the CREATE-IF-NOT-EXISTS above: on a fresh DB the column already
+# exists and SQLite raises "duplicate column name" (caught as idempotent); on an
+# older DB the column is added, leaving existing rows NULL. Nullable, so old
+# writers keep working unchanged. Per-statement + independently idempotent, so a
+# half-migrated DB (some columns already present) backfills only the missing ones.
+# #217 added scenario_id/battery_run_id; #242 (RFC-008 A3) added the provenance set;
+# #277 added repeat_idx (INTEGER, the one non-text column) for S4 pairing.
 _SQLITE_MIGRATIONS: list[str] = [
     "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN model_digest TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN prompt_id TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN prompt_hash TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN grader_version TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN params_json TEXT",
+    "ALTER TABLE agentic_harnesses ADD COLUMN repeat_idx INTEGER",
 ]
 
 # Canonical body of the ``agentic_sessions_full`` view (issue #353).
 #
 # Denormalizes ``agentic_harnesses`` and pre-pivots the EAV rows in
-# ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score)
-# into one row per harness session. The Superset bootstrap
+# ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score, plus
+# the RFC-010 S1 efficiency pair cache_hit_rate / suite_runtime_ms — #258) into
+# one row per harness session. cache_hit_rate is AVG'd (mean per-run rate) and
+# suite_runtime_ms is SUM'd (total wall time across the session's suites). The
+# Superset bootstrap
 # (superset/bootstrap_dashboards.py) embeds a copy of this SQL in its DDL;
 # a drift-guard test in tests/test_bootstrap_dashboards.py keeps the two
 # in sync. Written in the portable subset shared by PostgreSQL and SQLite.
@@ -206,7 +224,11 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
         AS avg_latency_ms,
     AVG(CASE WHEN m.metric_key = 'grader_score' THEN m.metric_value END)
-        AS avg_grader_score
+        AS avg_grader_score,
+    AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
+        AS cache_hit_rate,
+    SUM(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
+        AS suite_runtime_ms
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
@@ -233,6 +255,15 @@ def _harness_from_row(row: Sequence[Any]) -> AgenticHarness:
         replay_of_recording_id=row[9] or "",
         scenario_id=row[10] or "",
         battery_run_id=row[11] or "",
+        model_digest=row[12] or "",
+        prompt_id=row[13] or "",
+        prompt_hash=row[14] or "",
+        grader_version=row[15] or "",
+        params_json=row[16] or "",
+        # #277: INTEGER column, so the int-id sentinel convention (NULL -> -1),
+        # NOT the "" text one. A stored 0 must round-trip as 0, so this is an
+        # explicit is-None check, never `row[17] or -1` (which would map 0 -> -1).
+        repeat_idx=int(row[17]) if row[17] is not None else -1,
     )
 
 
@@ -462,8 +493,9 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 INSERT INTO agentic_harnesses
                 (session_id, tool_name, tool_version, model_id, rfc_version,
                  branch, started_at, ended_at, outcome, replay_of_recording_id,
-                 scenario_id, battery_run_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 scenario_id, battery_run_id, model_digest, prompt_id, prompt_hash,
+                 grader_version, params_json, repeat_idx)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     harness.session_id,
@@ -478,6 +510,13 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                     harness.replay_of_recording_id or None,
                     harness.scenario_id or None,
                     harness.battery_run_id or None,
+                    harness.model_digest or None,
+                    harness.prompt_id or None,
+                    harness.prompt_hash or None,
+                    harness.grader_version or None,
+                    harness.params_json or None,
+                    # #277: is->=0 guard, not `or None` -- repeat 0 must persist as 0.
+                    harness.repeat_idx if harness.repeat_idx >= 0 else None,
                 ),
             )
         return harness.session_id
@@ -497,7 +536,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 """
                 SELECT session_id, tool_name, tool_version, model_id, rfc_version,
                        branch, started_at, ended_at, outcome, replay_of_recording_id,
-                       scenario_id, battery_run_id
+                       scenario_id, battery_run_id, model_digest, prompt_id,
+                       prompt_hash, grader_version, params_json, repeat_idx
                 FROM agentic_harnesses WHERE session_id = ?
                 """,
                 (session_id,),
@@ -870,6 +910,13 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
     _PG_MIGRATIONS: list[str] = [
         "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id VARCHAR",
         "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN model_digest VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN prompt_id VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN prompt_hash VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN grader_version VARCHAR",
+        "ALTER TABLE agentic_harnesses ADD COLUMN params_json VARCHAR",
+        # #277: INTEGER, matching the SQLite migration and the Table column below.
+        "ALTER TABLE agentic_harnesses ADD COLUMN repeat_idx INTEGER",
     ]
 
     def __init__(self, database_url: str) -> None:
@@ -918,6 +965,18 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             Column("replay_of_recording_id", String),
             Column("scenario_id", String),
             Column("battery_run_id", String),
+            # RFC-008 A3 (#242) runtime provenance. Column order must match the
+            # SQLite SELECT and _harness_from_row's positional indices (12–16),
+            # since the SQLAlchemy .select() returns columns in table order.
+            Column("model_digest", String),
+            Column("prompt_id", String),
+            Column("prompt_hash", String),
+            Column("grader_version", String),
+            Column("params_json", String),
+            # #277: repeat_idx at positional index 17 (after the #242 set), the
+            # one Integer column. Sequenced after #242's columns so both sets
+            # coexist and the SQLite SELECT / _harness_from_row indices agree.
+            Column("repeat_idx", Integer),
         )
         self._plugins = Table(
             "agentic_plugins",
@@ -1098,6 +1157,15 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                     "replay_of_recording_id": harness.replay_of_recording_id or None,
                     "scenario_id": harness.scenario_id or None,
                     "battery_run_id": harness.battery_run_id or None,
+                    "model_digest": harness.model_digest or None,
+                    "prompt_id": harness.prompt_id or None,
+                    "prompt_hash": harness.prompt_hash or None,
+                    "grader_version": harness.grader_version or None,
+                    "params_json": harness.params_json or None,
+                    # #277: is->=0 guard, not `or None` -- repeat 0 must persist as 0.
+                    "repeat_idx": harness.repeat_idx
+                    if harness.repeat_idx >= 0
+                    else None,
                 },
             )
         return harness.session_id

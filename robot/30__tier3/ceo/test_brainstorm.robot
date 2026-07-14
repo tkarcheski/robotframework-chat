@@ -8,6 +8,7 @@ Documentation     CEO Agent — Stage 1: Idea Brainstorming Tests
 Resource          ceo.resource
 
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Brainstorm Generates Structured Ideas

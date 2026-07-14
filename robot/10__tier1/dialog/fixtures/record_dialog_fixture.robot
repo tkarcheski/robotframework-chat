@@ -17,7 +17,7 @@ Library           rfc.dialog_recorder.DialogRecorder
 Library           rfc.dialog_e2e_keywords.DialogE2EKeywords
 Library           OperatingSystem
 
-Test Tags         dialog    dialog-e2e-fixture    tier:1    verify:python
+Test Tags         dialog    dialog-e2e-fixture    tier:1    verify:python    axis:none
 
 *** Test Cases ***
 Record A Minimal Dialog
