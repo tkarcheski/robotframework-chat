@@ -2,6 +2,11 @@
 Documentation     Docker-based testing suite root configuration
 Library           rfc.docker_keywords.ConfigurableDockerKeywords    WITH NAME    Docker
 
+# RFC-008 A1: every docker suite runs LLM-generated code in a container and
+# discriminates the MODEL (the harness and prompt are held constant). Set at the
+# directory root so it cascades to every ``docker/*/tests/*.robot`` suite.
+Test Tags         axis:model
+
 Suite Setup       Run Keywords
 ...               Verify Docker Setup
 ...               AND

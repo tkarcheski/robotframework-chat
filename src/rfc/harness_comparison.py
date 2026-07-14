@@ -1,0 +1,717 @@
+"""RFC-007 S2 (#218): harness comparison mode over the tier:4 sandbox battery.
+
+Where ``harness_matrix.robot`` runs ONE trivial task under each harness and
+asserts the outcomes are *identical* (conformance, PR #212), this module runs
+the discriminating tier:4 sandbox battery under each *available* harness,
+``N`` paired repeats each, and *records* per-run metrics on the DB spine
+instead of asserting equality. The McNemar significance gate over the pairs is
+S4/#220 -- this module's job is only to write honestly-pairable rows.
+
+What is honestly comparable today (RFC-007 section 5, the comparability
+contract):
+
+* **Tier A -- fixed local model.** ``opencode`` is pinned to the repo
+  ``opencode.json`` default (a local Ollama model, no external egress -- the
+  #191/#226 gate, hard-blocked below, not assumed). This is the only tier that
+  holds the model constant for free, so it is the only tier a harness-vs-harness
+  claim may live in. In the currently-available harness set it has exactly ONE
+  member (opencode): ``codex`` is absent (it would join Tier A when installed)
+  and ``claude-code`` cannot pin a local model (RFC-008). So the honest cross-
+  harness head-to-head is *not available yet* -- it unlocks when a second
+  fixed-local harness arrives. Until then Tier A yields within-harness
+  reliability (opencode across scenarios x repeats) and correctly-paired rows
+  ready for the second leg.
+* **Tier B -- native model.** ``claude-code`` runs at its native frontier model.
+  It is recorded and TAGGED as its own cost tier (``tier="B"``, a distinct
+  ``model_id``), never subtracted from a Tier-A local number. The scoreboard
+  (S5) must never place a Tier-A and a Tier-B cell in the same comparison.
+
+The runner is shaped for N harnesses: add a second Tier-A leg and it pairs
+automatically by ``(scenario_id, repeat_idx)``.
+
+Deterministic twin: ``tests/test_harness_comparison.py`` drives the whole
+metric-writing path against hermetic sqlite with an injected sandbox invoker
+(no models, no Docker, no tokens).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import uuid
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+from robot.api import logger
+from robot.api.deco import keyword  # type: ignore[import-untyped]
+
+from rfc import __version__
+from rfc.agent_run import AgentRun
+from rfc.agent_sandbox import (
+    DEFAULT_SANDBOX_SCENARIOS_ROOT,
+    AgentSandbox,
+    SandboxResult,
+    SandboxScenario,
+    load_sandbox_scenario,
+)
+from rfc.agent_verifiers import (
+    VerificationFailure,
+    assert_no_commit_while_tests_red,
+    assert_questions_are_multiple_choice,
+)
+from rfc.exceptions import HarnessNotAvailableError
+from rfc.harness_db import HarnessDatabase
+from rfc.harness_models import (
+    METRIC_CHURN_RATIO,
+    METRIC_LATENCY_MS,
+    METRIC_PROCESS_VIOLATIONS,
+    METRIC_TASK_SUCCESS,
+    AgenticHarness,
+    AgenticMetric,
+)
+
+# RFC-007 section 8: start at N=5 paired repeats per (harness, scenario).
+DEFAULT_REPEATS = 5
+
+# The two quality-barred sandbox scenarios (#227/#245) the Wave-3 cut runs.
+DEFAULT_BATTERY_SCENARIOS: tuple[str, ...] = (
+    "tier4_bug_fix",
+    "tier4_regression_guard",
+)
+
+# Cost tiers (RFC-007 section 4.3 / section 5). Only Tier-A legs -- every one
+# pinned to the SAME local model -- are honestly comparable head-to-head.
+TIER_A_FIXED_LOCAL = "A"  # opencode (+ codex when installed): pinned local Ollama
+TIER_B_NATIVE = "B"  # claude-code: native frontier model, descriptive only
+
+# The sandbox battery verifies with ``python -m unittest``, so the
+# commit-while-red process gate tracks the ``unittest`` needle.
+_SANDBOX_TEST_NEEDLE = "unittest"
+
+# Repo opencode.json (the Tier-A comparability substrate, #191/#226). Lives at
+# the core/ root, two parents up from this package (src/rfc/ -> src/ -> core/).
+_DEFAULT_OPENCODE_CONFIG = (
+    Path(__file__).resolve().parent.parent.parent / "opencode.json"
+)
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+
+
+class ComparabilityError(RuntimeError):
+    """The Tier-A fixed-model contract cannot be honoured (RFC-007 section 5).
+
+    Raised when ``opencode.json`` is not self-contained local-Ollama, so a
+    "same model for every harness" claim would be a lie. #218 hard-blocks on
+    #191 rather than assuming it (RFC-007 section 11).
+    """
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+
+
+def _is_local_url(url: str) -> bool:
+    return (urlparse(url).hostname or "") in _LOCAL_HOSTS
+
+
+def _load_opencode_config(path: Path) -> dict:
+    """Read + parse opencode.json, or raise :class:`ComparabilityError`."""
+    if not path.is_file():
+        raise ComparabilityError(
+            f"opencode.json not found at {path} -- the Tier-A comparability gate "
+            "(#191) cannot be verified; refusing to claim a fixed-model run."
+        )
+    try:
+        config = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ComparabilityError(f"opencode.json is not valid JSON: {exc}") from exc
+    if not isinstance(config, dict):
+        raise ComparabilityError(
+            f"opencode.json ({path}) is not a JSON object -- cannot verify the "
+            "Tier-A local-model contract."
+        )
+    return config
+
+
+def _assert_model_resolves_local(model_ref: str, config: dict, *, source: str) -> str:
+    """Require ``model_ref`` (``provider/model``) to resolve to a DECLARED LOCAL provider.
+
+    The load-bearing honesty check (#273): a Tier-A "fixed local model" is only
+    honest if the *selected* model is actually served locally. So the model's
+    ``provider/`` prefix must name a provider DECLARED in ``config`` whose
+    ``options.baseURL`` is present AND points at localhost. Nothing is
+    whitelisted: an undeclared provider (built-in ``openai``/``anthropic`` egress
+    to their real endpoints by default), an absent ``baseURL`` (same egress), a
+    remote ``baseURL``, or a model the local provider does not list all FAIL
+    closed. Returns ``model_ref`` on success.
+    """
+    ref = (model_ref or "").strip()
+    if not ref:
+        raise ComparabilityError(
+            f"{source}: empty model reference -- cannot verify a local model."
+        )
+    if "/" not in ref:
+        raise ComparabilityError(
+            f"{source}: model {ref!r} is not in 'provider/model' form -- cannot "
+            "resolve it to a declared local provider, so it is not verifiably local."
+        )
+    provider_prefix, model_name = ref.split("/", 1)
+    providers = config.get("provider") or {}
+    if provider_prefix not in providers:
+        raise ComparabilityError(
+            f"{source}: model provider {provider_prefix!r} is not declared in "
+            "opencode.json -- built-in providers (openai/anthropic/...) egress to "
+            "their real endpoints by default, so this is not a local model "
+            "(RFC-007 section 5, the single most common way this benchmark lies)."
+        )
+    provider = providers.get(provider_prefix) or {}
+    base_url = ((provider.get("options") or {}).get("baseURL") or "").strip()
+    if not base_url:
+        raise ComparabilityError(
+            f"{source}: provider {provider_prefix!r} declares no baseURL -- an "
+            "absent baseURL means built-in remote egress, not a local model "
+            "(RFC-007 section 5)."
+        )
+    if not _is_local_url(base_url):
+        raise ComparabilityError(
+            f"{source}: provider {provider_prefix!r} baseURL {base_url!r} is not "
+            "local -- external egress breaks the fixed-local-model comparability "
+            "contract (#191)."
+        )
+    models = provider.get("models") or {}
+    if models and model_name not in models:
+        raise ComparabilityError(
+            f"{source}: model {model_name!r} is not among the models served by "
+            f"local provider {provider_prefix!r} ({sorted(models)}) -- refusing to "
+            "record a model the local provider does not declare."
+        )
+    return ref
+
+
+def _gate_config(config: dict, *, source: str) -> str:
+    """Run the #191/#273 comparability gate over an already-loaded config.
+
+    Returns the verified local model id; raises :class:`ComparabilityError`
+    otherwise.
+    """
+    model = config.get("model")
+    if not model:
+        raise ComparabilityError(
+            f"{source} declares no top-level 'model' -- without a pinned default "
+            "the harnesses would not share one local model."
+        )
+    # Defense in depth: no DECLARED provider may egress off-localhost, even if the
+    # selected model does not use it (a remote provider in the file is a smell).
+    for provider_name, provider in (config.get("provider") or {}).items():
+        base_url = ((provider or {}).get("options") or {}).get("baseURL") or ""
+        if base_url and not _is_local_url(base_url):
+            raise ComparabilityError(
+                f"opencode.json provider {provider_name!r} baseURL {base_url!r} is "
+                "not local -- external egress breaks the fixed-local-model "
+                "comparability contract (#191)."
+            )
+    # The load-bearing check (#273): the SELECTED model must resolve to a local
+    # provider -- not merely "no declared baseURL is remote".
+    return _assert_model_resolves_local(str(model), config, source=source)
+
+
+def assert_opencode_comparable(config_path: Path | None = None) -> str:
+    """Hard-block on #191/#273: opencode.json must pin one LOCAL model, no egress.
+
+    Returns the pinned default model id (for the row ``model_id``) on success;
+    raises :class:`ComparabilityError` otherwise. Verified: (1) a top-level
+    ``model`` default exists, (2) no declared provider ``baseURL`` egresses
+    off-localhost, and (3) -- the check #273 added -- the *selected* model
+    resolves to a DECLARED provider whose ``baseURL`` is present and local, so
+    the Tier-A "same local model for every harness" claim is honest instead of
+    assumed. An absent baseURL or an undeclared/built-in provider FAILS closed.
+    """
+    path = config_path or _DEFAULT_OPENCODE_CONFIG
+    return _gate_config(_load_opencode_config(path), source=f"opencode.json ({path})")
+
+
+@dataclass(frozen=True)
+class HarnessLeg:
+    """One harness in the comparison, tagged with its cost tier.
+
+    ``model`` overrides the harness's default; ``""`` keeps the config default
+    (for opencode, the pinned local model from ``opencode.json``).
+    """
+
+    harness: str  # a rfc.harness_cli.TOOLS taxonomy name
+    model: str = ""
+    tier: str = TIER_A_FIXED_LOCAL
+
+
+@dataclass(frozen=True)
+class ComparisonRow:
+    """One (scenario, harness, repeat) result, as written to the spine."""
+
+    scenario_id: str
+    battery_run_id: str
+    harness: str
+    model_id: str
+    tier: str
+    repeat_idx: int
+    session_id: str
+    outcome: str
+    metrics: dict[str, float]
+
+    def __post_init__(self) -> None:
+        # Structural invariant (#273), not convention: a Tier-A ("fixed local
+        # model") row MUST name a non-empty, gate-verified local model. Enforced
+        # at row construction so EVERY leg -- not just opencode -- hits it, and a
+        # Tier-A row that names no model is impossible to build (so cannot be
+        # persisted or paired). A harness that cannot pin the local model belongs
+        # in Tier B (RFC-007 section 5 / RFC-008).
+        if self.tier == TIER_A_FIXED_LOCAL and not (self.model_id or "").strip():
+            raise ComparabilityError(
+                f"Tier-A row for harness {self.harness!r} (scenario "
+                f"{self.scenario_id!r}) has an empty model_id -- a Tier-A "
+                "(fixed-local) row must name the gate-verified local model; a "
+                "harness that cannot pin the local model belongs in Tier B "
+                "(RFC-007 section 5). Refusing to persist a Tier-A row that names "
+                "no model."
+            )
+
+
+@dataclass(frozen=True)
+class ComparisonReport:
+    """The rows written by one battery invocation, plus skipped legs."""
+
+    battery_run_id: str
+    rows: tuple[ComparisonRow, ...] = ()
+    skipped: tuple[tuple[str, str], ...] = ()  # (harness, reason)
+
+
+# ---------------------------------------------------------------------------
+# Pure metric derivation from a SandboxResult (RFC-007 section 6.1). Only the
+# reserved keys honestly capturable today; each is a named scoreboard consumer.
+# ---------------------------------------------------------------------------
+
+
+def compute_task_success(result: SandboxResult) -> float:
+    """1.0 iff tests pass, no unexpected churn, and no harness timeout.
+
+    "Negative case not triggered" (RFC-007 6.1) collapses, for a reference run,
+    to "no churn outside allowed_paths". A timeout (#251) is never a success.
+    """
+    ok = (
+        result.tests_passed and not result.has_unexpected_churn and not result.timed_out
+    )
+    return 1.0 if ok else 0.0
+
+
+def compute_churn_ratio(result: SandboxResult, allowed_path_count: int) -> float:
+    """Path-granularity edit-economy proxy (RFC-007 section 6.1).
+
+    Numerator: changed paths, with churn outside ``allowed_paths`` counted
+    double. Denominator: the sanctioned edit surface (``allowed_paths`` count).
+    A minimal edit touching only allowed files scores low; sprawl inflates it.
+    This is a *path*-level proxy -- line-level churn against the reference
+    variant's diff needs that diff and is filed as a follow-up.
+    """
+    numerator = len(result.changed_paths) + len(result.unexpected_paths)
+    return round(numerator / max(allowed_path_count, 1), 4)
+
+
+def count_process_violations(
+    run: AgentRun, *, test_needle: str = _SANDBOX_TEST_NEEDLE
+) -> int:
+    """Count contract-free ``agent_verifiers`` failures over a run (RFC-007 6.1).
+
+    Applies only the sandbox-applicable, contract-free checks that pass
+    vacuously when the behaviour is absent: no-commit-while-red and
+    questions-are-multiple-choice. A harness that commits on red, or asks a
+    free-form (non multiple-choice) question, trips one. Order/branch/PR-body
+    verifiers need a per-scenario contract and are out of the honest sandbox
+    set today.
+    """
+    violations = 0
+    try:
+        assert_no_commit_while_tests_red(run, test_needle=test_needle)
+    except VerificationFailure:
+        violations += 1
+    try:
+        assert_questions_are_multiple_choice(run)
+    except VerificationFailure:
+        violations += 1
+    return violations
+
+
+def derive_outcome(result: SandboxResult) -> str:
+    """Honest session outcome (post-#249): never hardcoded to success.
+
+    ``failed`` -- timed out or tests red (task not solved). ``partial`` -- tests
+    green but the harness sprawled outside ``allowed_paths``. ``success`` --
+    tests green and the edit stayed in bounds.
+    """
+    if result.timed_out or not result.tests_passed:
+        return "failed"
+    if result.has_unexpected_churn:
+        return "partial"
+    return "success"
+
+
+def compute_metrics(result: SandboxResult, allowed_path_count: int) -> dict[str, float]:
+    """The reserved-key metrics honestly capturable from a SandboxResult today.
+
+    ``tokens_in``/``tokens_out`` are omitted: the sandbox ``AgentRun`` carries
+    no token counts yet (follow-up). ``grader_score`` is llm_judge-only and not
+    produced by the exec-graded sandbox.
+    """
+    return {
+        METRIC_TASK_SUCCESS: compute_task_success(result),
+        METRIC_CHURN_RATIO: compute_churn_ratio(result, allowed_path_count),
+        METRIC_PROCESS_VIOLATIONS: float(count_process_violations(result.run)),
+        METRIC_LATENCY_MS: round(result.duration_seconds * 1000.0, 3),
+    }
+
+
+def default_legs(
+    *, include_claude: bool = False, opencode_model: str = ""
+) -> list[HarnessLeg]:
+    """The Wave-3 available-harness set: opencode (Tier A) + optional claude (Tier B).
+
+    ``codex`` is omitted (absent on this box; it would join Tier A when
+    installed). ``claude-code`` cannot pin the local model (RFC-008), so it is
+    Tier B -- descriptive only, never placed in a Tier-A comparison cell.
+    """
+    legs = [
+        HarnessLeg(harness="opencode", model=opencode_model, tier=TIER_A_FIXED_LOCAL)
+    ]
+    if include_claude:
+        legs.append(HarnessLeg(harness="claude-code", model="", tier=TIER_B_NATIVE))
+    return legs
+
+
+class HarnessComparison:
+    """Run the sandbox battery under each harness, N repeats, write the spine.
+
+    Deterministic by construction: the DB, the :class:`AgentSandbox` (whose
+    agent invoker is injectable), the session-id factory, and the clock are all
+    injected, so the metric-writing path is exercised against hermetic sqlite
+    with no models.
+    """
+
+    def __init__(
+        self,
+        sandbox: AgentSandbox,
+        db: HarnessDatabase,
+        *,
+        repeats: int = DEFAULT_REPEATS,
+        opencode_config: Path | None = None,
+        session_id_factory: Callable[[], str] | None = None,
+        clock: Callable[[], str] | None = None,
+        branch: str = "",
+    ) -> None:
+        if repeats < 1:
+            raise ValueError(f"repeats must be >= 1, got {repeats}")
+        self._sandbox = sandbox
+        self._db = db
+        self._repeats = int(repeats)
+        self._opencode_config = opencode_config or _DEFAULT_OPENCODE_CONFIG
+        self._new_id = session_id_factory or (lambda: uuid.uuid4().hex)
+        self._clock = clock or _utc_now
+        self._branch = branch
+
+    def run(
+        self,
+        scenarios: Sequence[SandboxScenario | Path | str],
+        legs: Sequence[HarnessLeg],
+        *,
+        battery_run_id: str = "",
+    ) -> ComparisonReport:
+        """Run every (scenario x leg x repeat) and write one spine row each.
+
+        A shared ``battery_run_id`` groups all legs of this invocation so
+        repeats and harness pairs join. An absent harness CLI skips the whole
+        leg cleanly (skip-and-log per CLAUDE.md), recording nothing for it.
+        """
+        if not legs:
+            raise ValueError("no harness legs to compare")
+        battery_run_id = battery_run_id or self._new_id()
+
+        # Hard-block on #191/#273 before any Tier-A leg runs (RFC-007 s5/s11): the
+        # gate now verifies the SELECTED model resolves to a declared LOCAL
+        # provider, and it arms for ANY Tier-A leg (not just opencode), so a
+        # mislabeled Tier-A leg cannot slip past by omitting opencode.
+        verified_local_model = ""
+        config_data: dict = {}
+        if any(leg.tier == TIER_A_FIXED_LOCAL for leg in legs):
+            config_data = _load_opencode_config(self._opencode_config)
+            verified_local_model = _gate_config(
+                config_data, source=f"opencode.json ({self._opencode_config})"
+            )
+
+        resolved = [self._resolve(s) for s in scenarios]
+        rows: list[ComparisonRow] = []
+        skipped: list[tuple[str, str]] = []
+
+        for leg in legs:
+            model_id = self._leg_model_id(leg, verified_local_model, config_data)
+            leg_available = True
+            for scenario in resolved:
+                if not leg_available:
+                    break
+                for repeat_idx in range(self._repeats):
+                    try:
+                        result = self._sandbox.run_scenario(
+                            scenario,
+                            variant=leg.harness,
+                            agent_id=leg.harness,
+                            harness=leg.harness,
+                            harness_model=leg.model,
+                        )
+                    except HarnessNotAvailableError:
+                        leg_available = False
+                        reason = f"{leg.harness} CLI not available"
+                        logger.info(
+                            f"harness comparison: skipping leg {leg.harness!r} "
+                            f"(tier {leg.tier}) -- {reason}"
+                        )
+                        skipped.append((leg.harness, reason))
+                        break
+                    rows.append(
+                        self._record(
+                            scenario, leg, model_id, repeat_idx, battery_run_id, result
+                        )
+                    )
+        return ComparisonReport(
+            battery_run_id=battery_run_id,
+            rows=tuple(rows),
+            skipped=tuple(skipped),
+        )
+
+    def _record(
+        self,
+        scenario: SandboxScenario,
+        leg: HarnessLeg,
+        model_id: str,
+        repeat_idx: int,
+        battery_run_id: str,
+        result: SandboxResult,
+    ) -> ComparisonRow:
+        session_id = self._new_id()
+        started_at = self._clock()
+        ended_at = self._clock()
+        outcome = derive_outcome(result)
+        metrics = compute_metrics(result, len(scenario.allowed_paths))
+        # Build the row FIRST: ComparisonRow enforces the Tier-A -> non-empty
+        # gate-verified local model_id invariant in __post_init__, so a mislabeled
+        # leg raises ComparabilityError BEFORE any DB write -- no half-persisted,
+        # dishonest spine row is ever left behind (#273).
+        row = ComparisonRow(
+            scenario_id=scenario.scenario_id,
+            battery_run_id=battery_run_id,
+            harness=leg.harness,
+            model_id=model_id,
+            tier=leg.tier,
+            repeat_idx=repeat_idx,
+            session_id=session_id,
+            outcome=outcome,
+            metrics=metrics,
+        )
+        # save_harness FIRST: agentic_metrics carries a FK on session_id.
+        self._db.save_harness(
+            AgenticHarness(
+                session_id=session_id,
+                tool_name=leg.harness,
+                started_at=started_at,
+                model_id=model_id,
+                rfc_version=__version__,
+                branch=self._branch,
+                ended_at=ended_at,
+                outcome=outcome,
+                scenario_id=scenario.scenario_id,
+                battery_run_id=battery_run_id,
+            )
+        )
+        self._db.save_metrics(
+            [
+                AgenticMetric(
+                    session_id=session_id,
+                    metric_key=key,
+                    recorded_at=ended_at,
+                    metric_value=value,
+                )
+                for key, value in metrics.items()
+            ]
+        )
+        return row
+
+    def _resolve(self, scenario: SandboxScenario | Path | str) -> SandboxScenario:
+        if isinstance(scenario, SandboxScenario):
+            return scenario
+        path = Path(scenario)
+        if not path.is_absolute() and not path.is_dir():
+            path = DEFAULT_SANDBOX_SCENARIOS_ROOT / str(scenario)
+        return load_sandbox_scenario(path)
+
+    @staticmethod
+    def _leg_model_id(leg: HarnessLeg, verified_local_model: str, config: dict) -> str:
+        """Resolve the model_id a leg's rows carry, fail-closed for Tier A.
+
+        Tier A ("fixed local model"): an explicit override must ITSELF resolve to
+        a declared local provider (so ``--opencode-model`` cannot smuggle a remote
+        model past the config gate); with no override, ``opencode`` takes the
+        gate-verified local default, and any other harness resolves to ``""`` --
+        which :class:`ComparisonRow` then rejects, because this runner has no way
+        to pin a non-opencode harness to the local model (RFC-008). Tier B: the
+        native model is recorded as-is (may be empty/unknown to this runner).
+        """
+        if leg.tier == TIER_A_FIXED_LOCAL:
+            if leg.model:
+                return _assert_model_resolves_local(
+                    leg.model, config, source=f"Tier-A {leg.harness} model override"
+                )
+            if leg.harness == "opencode":
+                return verified_local_model  # gate-verified opencode.json default
+            return ""  # non-opencode Tier-A: no local pin here -> ComparisonRow rejects
+        return leg.model  # Tier B: native model, descriptive only
+
+
+def run_comparison(
+    *,
+    database_url: str,
+    scenarios: Sequence[str] = DEFAULT_BATTERY_SCENARIOS,
+    repeats: int = DEFAULT_REPEATS,
+    include_claude: bool = False,
+    opencode_model: str = "",
+    agent_id: str = "claude-code",
+    battery_run_id: str = "",
+    branch: str = "",
+) -> ComparisonReport:
+    """Production wiring: real sandbox caps + real DB, over the default battery.
+
+    ``agent_id`` names the ``local_agents.yaml`` agent whose ``sandbox:`` block
+    supplies the Docker resource caps (default ``claude-code``).
+    """
+    from rfc.agent_config import load_agent_config
+
+    config = load_agent_config(agent_id)
+    if config.sandbox is None:
+        raise ValueError(
+            f"agent {agent_id!r} declares no sandbox: block -- tier:4 comparison "
+            "needs resource caps (image, cpu_cores, memory_mb, wall_clock_seconds)"
+        )
+    sandbox = AgentSandbox(limits=config.sandbox)
+    db = HarnessDatabase(database_url=database_url)
+    runner = HarnessComparison(sandbox, db, repeats=repeats, branch=branch)
+    legs = default_legs(include_claude=include_claude, opencode_model=opencode_model)
+    return runner.run(scenarios, legs, battery_run_id=battery_run_id)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rfc-harness-comparison", description=__doc__)
+    parser.add_argument("--database-url", default="")
+    parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        dest="scenarios",
+        default=[],
+        help="scenario id (repeatable); defaults to the two quality-barred sandbox scenarios",
+    )
+    parser.add_argument(
+        "--include-claude",
+        action="store_true",
+        help="add the Tier-B claude-code leg (native model, descriptive only)",
+    )
+    parser.add_argument("--opencode-model", default="")
+    parser.add_argument(
+        "--agent",
+        default="claude-code",
+        help="local_agents.yaml agent id whose sandbox: block supplies caps",
+    )
+    parser.add_argument("--battery-run-id", default="")
+    return parser
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    args = build_parser().parse_args(argv)
+    url = args.database_url or os.environ.get("DATABASE_URL", "")
+    if not url:
+        print(
+            "ERROR: no database configured -- pass --database-url or set "
+            "DATABASE_URL (the spine rows are the point of comparison mode).",
+            file=sys.stderr,
+        )
+        return 2
+    scenarios = args.scenarios or list(DEFAULT_BATTERY_SCENARIOS)
+    try:
+        report = run_comparison(
+            database_url=url,
+            scenarios=scenarios,
+            repeats=args.repeats,
+            include_claude=args.include_claude,
+            opencode_model=args.opencode_model,
+            agent_id=args.agent,
+            battery_run_id=args.battery_run_id,
+        )
+    except ComparabilityError as exc:
+        print(f"ERROR: comparability gate failed (#191): {exc}", file=sys.stderr)
+        return 3
+    skipped = [harness for harness, _ in report.skipped]
+    print(
+        f"battery_run_id={report.battery_run_id} "
+        f"rows={len(report.rows)} skipped={skipped}"
+    )
+    for row in report.rows:
+        print(
+            f"  {row.scenario_id} {row.harness} tier={row.tier} "
+            f"repeat={row.repeat_idx} outcome={row.outcome} "
+            f"task_success={row.metrics.get(METRIC_TASK_SUCCESS)}"
+        )
+    return 0
+
+
+class HarnessComparisonKeywords:
+    """Robot keyword surface for RFC-007 S2 comparison mode (#218).
+
+    A thin wrapper over :func:`run_comparison` so the tier:4 ``harness_matrix``
+    suite can drive one bounded live battery. The deterministic coverage is
+    ``tests/test_harness_comparison.py``; this surface is for the gated live
+    smoke only.
+    """
+
+    ROBOT_LIBRARY_SCOPE = "SUITE"
+
+    @keyword("Run Harness Comparison Battery")
+    def run_harness_comparison_battery(
+        self,
+        database_url: str,
+        repeats: int = 1,
+        include_claude: bool = False,
+        opencode_model: str = "",
+        scenarios: "Sequence[str] | None" = None,
+    ) -> ComparisonReport:
+        """Run the battery under each available harness and return the report."""
+        return run_comparison(
+            database_url=database_url,
+            scenarios=tuple(scenarios) if scenarios else DEFAULT_BATTERY_SCENARIOS,
+            repeats=int(repeats),
+            include_claude=bool(include_claude),
+            opencode_model=opencode_model,
+        )
+
+    @keyword("Comparison Report Should Have Rows For")
+    def comparison_report_should_have_rows_for(
+        self, report: ComparisonReport, harness: str
+    ) -> None:
+        """Assert at least one spine row was written for ``harness``."""
+        seen = sorted({row.harness for row in report.rows})
+        if harness not in seen:
+            raise AssertionError(
+                f"no comparison rows for harness {harness!r}; got {seen} "
+                f"(skipped: {[h for h, _ in report.skipped]})"
+            )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

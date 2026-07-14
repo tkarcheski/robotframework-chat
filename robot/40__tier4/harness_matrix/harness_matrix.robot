@@ -19,11 +19,13 @@ Documentation     Cross-harness conformance matrix (#173): the SAME fixture task
 
 Library           rfc.harness_keywords.HarnessKeywords
 Library           rfc.agentic_coding_keywords.AgenticCodingKeywords
+Library           rfc.harness_comparison.HarnessComparisonKeywords
 Library           OperatingSystem
+Resource          harness_matrix.resource
 
 Suite Setup       Require Live Matrix
 
-Test Tags         tier:4    verify:python    harness-matrix    category:live
+Test Tags         tier:4    verify:python    harness-matrix    category:live    axis:harness
 
 *** Variables ***
 ${TASK}           Add a greet helper named greet to src/rfc/example.py and cover it with a test.
@@ -73,6 +75,26 @@ Codex Joins The Matrix When Installed
     Harness Run Should Conform    ${run}    codex    codex
     [Teardown]    End Session And Cleanup    ${ws}
 
+Comparison Mode Records The Battery Per Harness
+    [Documentation]    RFC-007 S2 (#218): instead of asserting equality, run
+    ...                the discriminating tier:4 sandbox battery under opencode
+    ...                (Tier A -- pinned to the same local Ollama model via the
+    ...                #191 comparability gate) and RECORD per-run metrics to the
+    ...                spine tagged with scenario_id + a shared battery_run_id,
+    ...                rather than asserting cross-harness equality. Bounded live
+    ...                smoke: the smallest scenario, N=1. The honest cross-harness
+    ...                head-to-head needs a SECOND fixed-local harness (see the
+    ...                rfc.harness_comparison docstring); this proves the recorder
+    ...                writes pairable opencode rows. The McNemar gate is S4/#220.
+    [Tags]    comparison    harness:opencode
+    Skip Unless Harness Available    opencode
+    ${ws}=    New Matrix Workspace
+    ${scenarios}=    Create List    tier4_bug_fix
+    ${report}=    Run Harness Comparison Battery    database_url=${ws}[database_url]
+    ...    repeats=1    scenarios=${scenarios}
+    Comparison Report Should Have Rows For    ${report}    opencode
+    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+
 *** Keywords ***
 Require Live Matrix
     [Documentation]    Gate the whole suite: it drives real agents and git.
@@ -102,9 +124,3 @@ Harness Run Should Conform
     ${transcript}=    Get Agent Transcript
     Should Be Equal    ${transcript}    ${run}
     No Commit Should Occur While Tests Red    ${run}
-
-End Session And Cleanup
-    [Documentation]    Close the session row and remove the throwaway workspace.
-    [Arguments]    ${ws}
-    Run Keyword And Ignore Error    End Harness Session    outcome=success
-    Remove Directory    ${ws}[path]    recursive=True

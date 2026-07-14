@@ -14,7 +14,7 @@ Library           rfc.harness_cli_kw.HarnessCliRunner    WITH NAME    Harness
 Test Setup        Create Workspace
 Test Teardown     Remove Workspace
 
-Test Tags         harness-cli    tier:1    verify:python
+Test Tags         harness-cli    tier:1    verify:python    axis:harness
 
 *** Keywords ***
 Create Workspace

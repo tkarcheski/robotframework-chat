@@ -14,3 +14,13 @@ allowed_paths:
 agents:
   good: agents/good.sh
   churn: agents/churn.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- must PASS the composite grade (tests green + no churn).
+#   * negative_variant  -- must be REJECTED by the grader. Here `churn` fixes the
+#     bug (tests pass) but leaves scratch files outside allowed_paths, so the
+#     rejection comes from the file-churn check, not a test failure.
+#   * failing-first proof lives in the seed: test_subtract is red at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: good
+negative_variant: churn
+timeout_seconds: 120

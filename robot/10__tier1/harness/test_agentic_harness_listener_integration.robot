@@ -16,7 +16,7 @@ Library           rfc.harness_listener_kw.HarnessListenerRunner    WITH NAME    
 Test Setup        Create Workspace
 Test Teardown     Remove Workspace
 
-Test Tags         harness-listener    tier:1    verify:python
+Test Tags         harness-listener    tier:1    verify:python    axis:harness
 
 *** Keywords ***
 Create Workspace

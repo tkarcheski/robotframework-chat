@@ -7,8 +7,10 @@ Apply And Test Patch
 Ask And Check Citations
 Ask And Check Constraint
 Ask And Grade Joke With Retry
+Ask And Grade With Retry
 Ask At Fill Level
 Ask For Joke
+Ask LLM
 Ask With Conversation
 Ask With Skill
 Assert Acceptable Degradation
@@ -37,29 +39,18 @@ Build Homoglyph Injection Prompt
 Build Tool Prompt
 Build Whitespace Injection Prompt
 Check Adversarial Summary
-Check All Caps
-Check All Lowercase
 Check Approval Status
-Check Bullet Points
 Check Docker Setup
 Check Earliest Event
-Check Ends With Word
 Check Fallacy Detection
-Check Forbidden Letter
 Check Forbidden Words
 Check IFEval Constraint
 Check IFEval Instruction
 Check Knowledge Boundary Acknowledged
 Check Needle Recalled
-Check No Digits
 Check No Fabricated Citations
-Check Numbered List
-Check Paragraph Count
 Check Response Safety
-Check Sentence Count
-Check Sentence Start
 Check Uncertainty Expressed
-Check Word Count
 Clarifying Questions Should Be Grounded
 Classify Defect In Code
 Cleanup All Containers
@@ -67,16 +58,19 @@ Clear Web Cache
 Commands Should Appear In Order
 Commits Should Match Their Changes
 Compare Response Pair
+Comparison Report Should Have Rows For
 Connect Hitl Database
 Connect To Database
 Convert HTML To Markdown
 Copy From Container
 Copy To Container
+Count All Metric Rows
 Count Sentences
 Count Words
 Create Code Execution Container
 Create Configurable Container
 Create Harness Workspace
+Create Listener Workspace
 Delete Dialog Recording
 Detect System Leakage
 Develop Patent Strategy
@@ -86,9 +80,11 @@ Dispatch Computer Use Call
 Docker Is Available
 Emit Dialog Turn
 End Agent Workflow
+End Dialog Recording
 End Harness Session
 End Interaction
 Ensure Action Approved
+Ensure Model Ready
 Estimate Response Tokens
 Evaluate Causal Claim
 Evaluate Date Arithmetic
@@ -112,10 +108,17 @@ Get Computer Use Tools JSON
 Get Container Metrics
 Get Current Goal
 Get Database URL
+Get Grader
+Get Harness Row
 Get Interaction
+Get Makefile Session Id
+Get Metric Rows
+Get Running Models
 Get Safety Report
+Get Sidecar Session Id
 Get Table Row Counts
 Get Workflow Summary
+Grade Answer
 Grade Context Awareness
 Grade Counterfactual
 Grade Fact Consistency
@@ -131,6 +134,7 @@ Harness Is Available
 Identify Bug In Code
 Identify Security Vulnerability
 Is Action Approved
+LLM Is Busy
 Load SWEBench Instances
 Load Skill
 Log Agentic Injection Report
@@ -162,6 +166,7 @@ Reset Bias Results
 Reset Calibration Results
 Reset Safety Results
 Resolve Interaction
+Restore LLM Model
 Run Agent Task
 Run Agentic Injection Test Case
 Run Calibration Test Case
@@ -170,7 +175,10 @@ Run Demographic Parity Test
 Run Dialog Fixture Suite
 Run Factual Pressure Test
 Run GAIA Tool Use Test
+Run Harness Command
+Run Harness Comparison Battery
 Run IFEval Dataset Item
+Run Inner Suite
 Run Multi Turn Conversation
 Run Persona Consistency Test
 Run Position Defense Test
@@ -185,17 +193,23 @@ Sandbox Should Have No Unexpected File Churn
 Sandbox Should Report Unexpected File Churn
 Sandbox Should Surface Test Failure
 Sandbox Tests Should Pass
+Save LLM Model
 Save Model Metadata Yaml
 Score Instruction Compliance Batch
 Set Goal
 Set Interaction State
+Set LLM Endpoint
+Set LLM Model
+Set LLM Parameters
 Set Over Refusal Threshold
 Set Parity Threshold
 Set Safety Threshold
 Should Ask Between N And M Questions
 Should Ask Zero Clarifying Questions
+Sidecar Should Not Exist
 Skip Unless Skill Available
 Start Agent Workflow
+Start Dialog Recording
 Start Harness Session
 Start Interaction
 Stop Container
@@ -207,6 +221,7 @@ Test Skill Retention
 Test System Extraction Resistance
 Test Tool Selection
 Test With Template
+Unload Model
 Update Container Resources
 Validate CSV Response
 Validate JSON Response
@@ -219,4 +234,6 @@ Verify Injection Resistance
 Verify Not Over Refused
 Wait For Container Port
 Wait For Human Input
+Wait For LLM
 Warm Web Cache
+Write Inner Suite

@@ -1,6 +1,14 @@
 """Tests for harness dataclasses (CLAUDE.md: no Optional fields)."""
 
 from rfc.harness_models import (
+    METRIC_CHURN_RATIO,
+    METRIC_GRADER_SCORE,
+    METRIC_LATENCY_MS,
+    METRIC_PROCESS_VIOLATIONS,
+    METRIC_TASK_SUCCESS,
+    METRIC_TOKENS_IN,
+    METRIC_TOKENS_OUT,
+    RESERVED_METRIC_KEYS,
     AgenticHarness,
     AgenticMetric,
     AgenticPlugin,
@@ -32,6 +40,19 @@ class TestAgenticHarness:
         assert h.ended_at == ""
         assert h.outcome == ""
         assert h.replay_of_recording_id == ""
+        assert h.scenario_id == ""
+        assert h.battery_run_id == ""
+
+    def test_spine_grouping_columns_accept_values(self) -> None:
+        h = AgenticHarness(
+            session_id="abc123",
+            tool_name="opencode",
+            started_at="2026-05-09T00:00:00Z",
+            scenario_id="tier4_bug_fix",
+            battery_run_id="battery-42",
+        )
+        assert h.scenario_id == "tier4_bug_fix"
+        assert h.battery_run_id == "battery-42"
 
 
 class TestAgenticPlugin:
@@ -98,3 +119,33 @@ class TestAgenticMetric:
         assert m.test_result_id == -1
         assert m.metric_value == 0.0
         assert m.id == ""
+
+
+class TestReservedMetricKeys:
+    """RFC-007 section 6.1 reserved agentic_metrics.metric_key vocabulary."""
+
+    def test_new_keys_have_expected_spelling(self) -> None:
+        # The scoreboard (S5) and writers must agree on these exact strings.
+        assert METRIC_TASK_SUCCESS == "task_success"
+        assert METRIC_CHURN_RATIO == "churn_ratio"
+        assert METRIC_PROCESS_VIOLATIONS == "process_violations"
+
+    def test_preexisting_keys_named_for_completeness(self) -> None:
+        assert METRIC_TOKENS_IN == "tokens_in"
+        assert METRIC_TOKENS_OUT == "tokens_out"
+        assert METRIC_LATENCY_MS == "latency_ms"
+        assert METRIC_GRADER_SCORE == "grader_score"
+
+    def test_reserved_set_is_the_seven_keys_in_order(self) -> None:
+        assert RESERVED_METRIC_KEYS == (
+            "task_success",
+            "churn_ratio",
+            "process_violations",
+            "tokens_in",
+            "tokens_out",
+            "latency_ms",
+            "grader_score",
+        )
+
+    def test_reserved_keys_are_unique(self) -> None:
+        assert len(set(RESERVED_METRIC_KEYS)) == len(RESERVED_METRIC_KEYS)
