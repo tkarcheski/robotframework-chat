@@ -423,11 +423,13 @@ def _recording_invoker(stdout: str = "", returncode: int = 0, calls=None):
 
 class TestAgentSandboxLiveHarness:
     def _verify_manager(self, after_entries: dict[str, str]) -> FakeContainerManager:
-        # exec order: baseline manifest, workspace clear, after manifest, tests.
+        # exec order (#235): baseline manifest, after manifest, tests. The agent
+        # routes code-exec into /workspace via the broker, so there is no
+        # host-side copy-back / workspace-clear step -- the container is manifested
+        # in place before and after the agent runs.
         return FakeContainerManager(
             exec_results=[
                 _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
-                {"stdout": "", "stderr": "", "exit_code": 0, "duration_ms": 1},
                 _manifest(after_entries),
                 {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
             ]
@@ -465,17 +467,17 @@ class TestAgentSandboxLiveHarness:
             BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
         )
         # The agent CLI ran exactly once, host-side, via the injected invoker,
-        # in a throwaway host workspace (not inside the container).
+        # in a throwaway host CWD stub (not inside the container).
         assert len(calls) == 1
         assert calls[0]["argv"][0] == "opencode"
         assert calls[0]["cwd"].name == "workspace"
         assert calls[0]["timeout"] == _limits().wall_clock_seconds
-        # The container only ever received copies to /workspace (repo + the
-        # agent's output) — never an agent script into /tmp, and the four exec
-        # calls are verification only (baseline, clear, after, tests).
+        # The container is seeded ONCE from the pristine repo (#235: no host-side
+        # copy-back), and the three exec calls are baseline manifest, after
+        # manifest, and tests -- never an agent script into /tmp.
         assert {c[2] for c in fake.copy_calls} == {"/workspace"}
-        assert len(fake.copy_calls) == 2
-        assert len(fake.exec_calls) == 4
+        assert len(fake.copy_calls) == 1
+        assert len(fake.exec_calls) == 3
 
     def test_live_harness_captures_trajectory_and_test_row(self) -> None:
         fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
@@ -555,7 +557,7 @@ class TestAgentSandboxLiveHarness:
         assert result.tests_timed_out is False
         assert not result.tests_passed
         # verification still ran against the partial workspace.
-        assert len(fake.exec_calls) == 4
+        assert len(fake.exec_calls) == 3
 
     def test_live_cli_exit_124_is_not_flagged_as_timeout(self) -> None:
         # #251 conflation fix: a live CLI that itself exits 124 on the happy
@@ -585,3 +587,135 @@ class TestAgentSandboxLiveHarness:
             sandbox.run_scenario(
                 BUG_FIX_DIR, variant="nope", agent_id="nope", harness="nope"
             )
+
+
+# claude-code stream-json: one container-routed mcp__rfc-exec__bash tool call
+# that fixes the subtract bug, paired with its tool_result.
+CLAUDE_MCP_FIX_TRANSCRIPT = (
+    json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tu1",
+                        "name": "mcp__rfc-exec__bash",
+                        "input": {"command": "sed -i 's/a + b/a - b/' calculator.py"},
+                    }
+                ]
+            },
+        }
+    )
+    + "\n"
+    + json.dumps(
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tu1",
+                        "content": [{"type": "text", "text": "done"}],
+                        "is_error": False,
+                    }
+                ]
+            },
+        }
+    )
+    + "\n"
+)
+
+
+def _claude_routing_invoker(samples: list[float], calls: list[dict] | None = None):
+    """A claude-code invoker double that plays the rfc-exec MCP child.
+
+    It reads the metrics-sink path out of the ``--mcp-config`` env block (exactly
+    where the sandbox threads it) and writes ``samples`` there, standing in for
+    the broker having dispatched that many code-exec calls into the container.
+    """
+
+    def invoker(argv, cwd, env, timeout):
+        argv_list = list(argv)
+        if calls is not None:
+            calls.append({"argv": tuple(argv_list), "cwd": Path(cwd)})
+        mcp_json = argv_list[argv_list.index("--mcp-config") + 1]
+        env_block = json.loads(mcp_json)["mcpServers"]["rfc-exec"]["env"]
+        metrics_path = env_block.get("RFC_EXEC_METRICS_PATH")
+        if metrics_path:
+            Path(metrics_path).write_text("".join(f"{s}\n" for s in samples))
+        return ClaudeProcessResult(
+            returncode=0, stdout=CLAUDE_MCP_FIX_TRANSCRIPT, stderr=""
+        )
+
+    return invoker
+
+
+class TestAgentSandboxLiveExecRouting:
+    """#235: claude-code's code-exec routes into the pre-warmed container."""
+
+    def _verify_manager(self, after_entries: dict[str, str]) -> FakeContainerManager:
+        return FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
+                _manifest(after_entries),
+                {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
+            ]
+        )
+
+    def test_routing_threaded_and_overhead_recorded(self) -> None:
+        calls: list[dict] = []
+        fake = self._verify_manager(
+            {"calculator.py": "new", "test_calculator.py": "t"}
+        )
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_claude_routing_invoker([15.0, 22.0], calls=calls),
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
+        )
+        # Deny-settings strip the native code tools; the mcp-config binds the
+        # rfc-exec server to THIS run's pre-warmed container id.
+        argv = list(calls[0]["argv"])
+        deny = json.loads(argv[argv.index("--settings") + 1])["permissions"]["deny"]
+        assert "Bash" in deny
+        mcp = json.loads(argv[argv.index("--mcp-config") + 1])
+        assert (
+            mcp["mcpServers"]["rfc-exec"]["env"]["RFC_EXEC_CONTAINER_ID"]
+            == "cid-1234567890"
+        )
+        # The routed mcp__rfc-exec__bash command populated the trajectory (else
+        # remoted calls silently vanish from the AgentRun).
+        assert result.run.commands[0].argv == (
+            "bash",
+            "-lc",
+            "sed -i 's/a + b/a - b/' calculator.py",
+        )
+        # Per-call overhead samples surfaced from the broker's metrics sink.
+        assert result.sandbox_exec_overhead_ms == (15.0, 22.0)
+        assert result.tests_passed
+        assert result.changed_paths == ("calculator.py",)
+
+    def test_no_samples_when_broker_not_exercised(self) -> None:
+        # An injected invoker that writes no samples leaves the overhead tuple
+        # empty and the (vacuous) budget met -- no false measurement.
+        fake = self._verify_manager(
+            {"calculator.py": "new", "test_calculator.py": "t"}
+        )
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_claude_routing_invoker([]),
+        )
+        result = sandbox.run_scenario(
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
+        )
+        assert result.sandbox_exec_overhead_ms == ()

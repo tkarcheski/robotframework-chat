@@ -17,7 +17,39 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [1.25.0] — Unreleased
+## [1.26.0] — Unreleased
+
+### Added
+
+- **#235 — per-tool-call code execution routed into the isolated container.** A
+  live agent's code-exec tool calls (bash/write/edit) now run inside the
+  pre-warmed, network-isolated sandbox container instead of on the host, through
+  one host-side seam:
+  - **`rfc.container_exec_broker.ContainerExecBroker`** — owns a `docker exec`
+    channel into one container and speaks the harness-agnostic
+    `SandboxToolCall -> SandboxToolResult` contract. `write`/`edit` materialize
+    whole-file content via base64; large payloads stream to an out-of-tree temp
+    file in bounded chunks so they never hit the inline-argv `MAX_ARG_STRLEN`
+    ceiling. `write`/`edit` paths are confined to `/workspace` (host-side `..`
+    rejection + an in-container `realpath` guard against symlink-parent escapes).
+  - **`sandbox_exec_overhead_ms`** — a reserved RFC-007 S1 metric key (EAV, no
+    migration). Each code-exec call is self-timed inside the container shell, so
+    the recorded overhead is `broker_wall - command_own_runtime` = docker-exec
+    transport + marshalling (the cost this path ADDS over a host exec). A budget
+    gate (`check_overhead_budget`, p50 ≤ 120 ms / p95 ≤ 300 ms) can therefore see
+    a create-per-call / transport regression. Measured live: p50 ≈ 64 ms.
+  - **`rfc.exec_mcp`** — the `rfc-exec` MCP stdio server exposing `bash`/`write`/
+    `edit`, backed by the broker. The claude-code adapter denies the native
+    `Bash`/`Write`/`Edit`/`Read` tools via `--settings` and registers the server
+    via `--mcp-config`; `parse_transcript` keys the routed `mcp__rfc-exec__bash`
+    alongside native `Bash`. The opencode MCP overlay ships but is marked PENDING
+    LIVE CONFORMANCE (CLI not installed to verify).
+  - **`AgentSandbox._run_live_scenario`** rewritten to the coherence ruling: the
+    container's `/workspace` is the single working tree, seeded at t0, mutated in
+    place by the agent's broker'd tools, then manifested for churn + tested in
+    place. `_sync_workspace` (host-side copy-back) is deleted.
+
+## [1.25.0]
 
 ### Added
 

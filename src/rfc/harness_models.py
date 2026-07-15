@@ -125,6 +125,16 @@ METRIC_GRADER_SCORE = "grader_score"  # llm_judge score (pre-existing key)
 METRIC_CACHE_HIT_RATE = "cache_hit_rate"  # fraction of generate() calls cached
 METRIC_SUITE_RUNTIME_MS = "suite_runtime_ms"  # wall time per suite/run (ms)
 
+# Sandbox exec-broker key (RFC-007 S1 spine, #235). The host-side
+# ContainerExecBroker routes a live agent's code-exec tool calls into the
+# network-isolated container and records, per call, the broker-dispatch wall
+# time minus the in-container command's own runtime. One EAV row per code-exec
+# call; the scoreboard aggregates per (harness, scenario, run) via the same AVG
+# path the other reserved keys use. Budget: p50 <= 120 ms, p95 <= 300 ms. This
+# is a *reserved name*, not a schema change -- the agentic_metrics table is EAV,
+# so it needs no migration.
+METRIC_SANDBOX_EXEC_OVERHEAD_MS = "sandbox_exec_overhead_ms"
+
 # Canonical order == scoreboard column order. An immutable, iterable manifest
 # the scoreboard view (S5) and its drift-guard can enumerate without re-listing
 # the strings.
@@ -138,6 +148,7 @@ RESERVED_METRIC_KEYS: tuple[str, ...] = (
     METRIC_GRADER_SCORE,
     METRIC_CACHE_HIT_RATE,
     METRIC_SUITE_RUNTIME_MS,
+    METRIC_SANDBOX_EXEC_OVERHEAD_MS,
 )
 
 

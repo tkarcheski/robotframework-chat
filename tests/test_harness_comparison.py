@@ -545,12 +545,12 @@ def _limits() -> SandboxLimits:
 
 class TestRealSandboxPath:
     def test_live_opencode_leg_writes_success_row(self, tmp_path: Path) -> None:
-        # Live path exec order: baseline manifest, workspace clear, after
-        # manifest, tests -- the opencode transcript fixes calculator.py green.
+        # Live path exec order (#235: code-exec routes into /workspace via the
+        # broker, so no host-side copy-back / workspace-clear): baseline manifest,
+        # after manifest, tests -- the opencode transcript fixes calculator.py.
         fake = _FakeContainerManager(
             exec_results=[
                 _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
-                {"stdout": "", "stderr": "", "exit_code": 0, "duration_ms": 1},
                 _manifest({"calculator.py": "new", "test_calculator.py": "t"}),
                 {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
             ]
