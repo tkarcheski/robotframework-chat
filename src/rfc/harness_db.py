@@ -236,6 +236,86 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
          h.replay_of_recording_id"""
 
 
+# Canonical body of the ``harness_scoreboard`` view (RFC-007 S5 / issue #221).
+#
+# The owner's headline product: SEEING which harness is better. One row per
+# comparison cell ``(tool_name, model_id, scenario_id)`` over the battery runs on
+# the spine — sibling to ``AGENTIC_SESSIONS_FULL_VIEW_BODY``, same portable
+# SQLite/Postgres subset, same drift-guard pattern (a copy is embedded in
+# superset/bootstrap_dashboards.py::_AGENTIC_TABLE_DDL and kept in sync by a test
+# in tests/test_bootstrap_dashboards.py).
+#
+# Pivots the RFC-007 reserved metric keys into per-cell aggregates:
+#   * ``pass_rate``   = AVG(task_success)  — task_success is 0/1, so its mean over
+#                       the cell's runs is the pass rate; ``pass_count`` is the SUM.
+#   * economy         = AVG(churn_ratio), AVG(process_violations)
+#   * efficiency      = AVG(tokens_in / tokens_out / latency_ms) plus the RFC-010
+#                       S1 pair AVG(cache_hit_rate / suite_runtime_ms) (#258)
+# Each aggregate is a mean over the runs in the cell (comparison runs write one
+# metric row per key per session), NULL-skipping like ``agentic_sessions_full``.
+#
+# HONEST TIER SEPARATION (RFC-007 section 5, the #273 lesson). Tier-A ("fixed
+# local model", head-to-head comparable) and Tier-B ("native model", descriptive
+# only) numbers must NEVER share a comparison cell. The view carries a ``tier``
+# column consumers MUST respect. It is a **name approximation, not a
+# verification**: the spine persists no tier, so the view derives it from a
+# tool_name allowlist (opencode/codex -> A; every other name, incl.
+# claude-code's native frontier model, -> B). The unknown-name default is
+# fail-closed, but the allowlist **fails open on a name** — a misconfigured
+# opencode/codex run that did not actually resolve to the pinned local model
+# would still be labelled Tier A here (#350). The genuine invariant ("did the
+# model resolve local?") is enforced only at write time by the
+# VerifiedLocalModel gate in ComparisonRow.__post_init__ and is NOT mirrored by
+# this CASE. Per the #350 ruling, the fix is a persisted tier/verified_local
+# spine column this view reads fail-closed; the #220 significance-overlay JOIN
+# is gated on that column landing. ``cell_label`` bakes the tier letter into the
+# harness axis label so a Tier-B cell is structurally distinct on the heatmap
+# and can never overlay a Tier-A one.
+#
+# Scoped to battery/comparison runs only (``scenario_id`` present) — ad-hoc
+# harness sessions (no scenario) are not a scoreboard cell.
+#
+# SEAM for #220 (RFC-007 S4, McNemar gate, feat/220-mcnemar-gate): this view
+# deliberately computes NO significance. The "is the difference real?" overlay —
+# per-pair p-value + delta, so a not-significant cell renders *tied* and never a
+# faint-green *better* — is #220's output; the dashboard LEFT JOINs it onto this
+# view once that lands AND the #350 persisted-tier column unifies the row
+# population (see above). Statistics live in harness_comparison.py, not here.
+HARNESS_SCOREBOARD_VIEW_BODY: str = """\
+SELECT
+    h.tool_name,
+    h.model_id,
+    h.scenario_id,
+    CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+        AS tier,
+    '[' || CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+        || '] ' || h.tool_name || ' @ ' || COALESCE(h.model_id, '')
+        AS cell_label,
+    COUNT(DISTINCT h.session_id) AS run_count,
+    SUM(CASE WHEN m.metric_key = 'task_success' THEN m.metric_value END)
+        AS pass_count,
+    AVG(CASE WHEN m.metric_key = 'task_success' THEN m.metric_value END)
+        AS pass_rate,
+    AVG(CASE WHEN m.metric_key = 'churn_ratio' THEN m.metric_value END)
+        AS avg_churn_ratio,
+    AVG(CASE WHEN m.metric_key = 'process_violations' THEN m.metric_value END)
+        AS avg_process_violations,
+    AVG(CASE WHEN m.metric_key = 'tokens_in' THEN m.metric_value END)
+        AS avg_tokens_in,
+    AVG(CASE WHEN m.metric_key = 'tokens_out' THEN m.metric_value END)
+        AS avg_tokens_out,
+    AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
+        AS avg_latency_ms,
+    AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
+        AS avg_cache_hit_rate,
+    AVG(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
+        AS avg_suite_runtime_ms
+FROM agentic_harnesses h
+LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
+WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
+GROUP BY h.tool_name, h.model_id, h.scenario_id"""
+
+
 # Row marshallers: map a positional row to its dataclass. Positional indexing
 # works for both sqlite3 tuples and SQLAlchemy Row objects, so one helper serves
 # both backends; column order matches each backend's SELECT / Table definition.
