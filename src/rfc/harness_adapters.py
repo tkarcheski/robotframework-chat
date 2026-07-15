@@ -58,6 +58,7 @@ from .exec_mcp import (
     SandboxExecRouting,
     claude_mcp_config_json,
     deny_settings_json,
+    opencode_deny_config,
     opencode_mcp_config,
 )
 from .opencode_config import (
@@ -488,6 +489,25 @@ def parse_opencode_events(
     return tuple(commands), tuple(questions)
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge ``overlay`` onto a copy of ``base`` (overlay wins).
+
+    Nested dicts merge key-by-key; any non-dict overlay value replaces the base
+    value. Used to layer the exec-routing overlay (``mcp`` + ``permission`` +
+    ``tools`` denials) onto the pinned local ``opencode.json`` without disturbing
+    its ``model`` / ``provider`` (the Tier-A local pin the comparability gate
+    checks).
+    """
+    merged = dict(base)
+    for key, value in overlay.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(existing, value)
+        else:
+            merged[key] = value
+    return merged
+
+
 class OpenCodeAdapter:
     """Drive the opencode CLI headless (``opencode run --format json <task>``).
 
@@ -522,23 +542,58 @@ class OpenCodeAdapter:
         self.config_path = config_path
         self.model = model
         self.require_local_comparability = require_local_comparability
-        # #235: when set, code execution should route into the sandbox container
+        # #235/#381: when set, code execution routes into the sandbox container
         # via the rfc-exec MCP server. opencode speaks MCP (its ``mcp`` config
-        # key), so :meth:`exec_config_overlay` returns the block to merge into the
-        # run's opencode config. PENDING LIVE CONFORMANCE: the opencode CLI is not
-        # installed here to verify the tool-substitution behaviour, so the live
-        # driver leaves opencode on the host-native path until the binary lands
-        # (mirrors CodexAdapter). The overlay itself is pure and unit-tested.
+        # key) and denies its native code tools via its ``permission`` + ``tools``
+        # config keys, so :meth:`exec_config_overlay` returns the block to merge
+        # into the run's opencode config. LIVE-CONFORMED (#381): verified against
+        # the real opencode 1.2.9 CLI -- with the overlay merged, opencode's
+        # per-tool-call bash/write/edit dispatch through the broker into the
+        # container ``/workspace``, not the host.
         self.exec_routing = exec_routing
+        # Path to the run-scoped merged config (base opencode.json + exec overlay)
+        # that :meth:`apply_routed_config` materializes; ``None`` on the
+        # host-native path. When set, :meth:`env_overrides` points OPENCODE_CONFIG
+        # at it so the denials + rfc-exec server actually take effect.
+        self._routed_config_path: Path | None = None
 
     def exec_config_overlay(self) -> dict:
-        """The opencode ``mcp`` config block routing code-exec into the container.
+        """The opencode config overlay routing code-exec into the container (#381).
 
-        Empty when ``exec_routing`` is unset. PENDING LIVE CONFORMANCE (#235).
+        Empty when ``exec_routing`` is unset. Otherwise the ``mcp`` block that
+        registers the rfc-exec server PLUS the ``permission`` + ``tools`` denials
+        that strip opencode's native host-executing code tools -- so the model's
+        only path to bash/write/edit is the broker'd MCP tools. LIVE-CONFORMED
+        against the real opencode 1.2.9 CLI (#381).
         """
         if self.exec_routing is None:
             return {}
-        return opencode_mcp_config(self.exec_routing)
+        overlay = opencode_mcp_config(self.exec_routing)
+        overlay.update(opencode_deny_config())
+        return overlay
+
+    def apply_routed_config(self, dest_dir: Path) -> Path | None:
+        """Materialize the run-scoped merged opencode config for exec routing (#381).
+
+        Deep-merges :meth:`exec_config_overlay` onto the pinned ``opencode.json``
+        (preserving its ``model`` / ``provider`` local pin) and writes the result
+        to ``dest_dir/opencode.routed.json``, then records it so
+        :meth:`env_overrides` exports it as ``OPENCODE_CONFIG``. No-op (returns
+        ``None``) when routing is unset. Unlike claude-code -- which takes the
+        deny-settings + mcp-config inline on argv -- opencode consumes a config
+        FILE, so the overlay must be materialized per run. Written into the run's
+        temp dir by the sandbox, it is torn down with the run.
+        """
+        if self.exec_routing is None:
+            return None
+        base: dict = {}
+        if self.config_path is not None:
+            base = load_opencode_config(self.config_path)
+        merged = _deep_merge(base, self.exec_config_overlay())
+        dest = Path(dest_dir) / "opencode.routed.json"
+        dest.write_text(json.dumps(merged, indent=2))
+        self._routed_config_path = dest
+        return dest
 
     def build_argv(self, task: str, workspace: Path) -> list[str]:
         argv = [self.opencode_bin, "run", "--format", "json"]
@@ -575,8 +630,13 @@ class OpenCodeAdapter:
         # unchanged.
         if self.require_local_comparability:
             self.verify_local_model()
-        if self.config_path is not None:
-            return {"OPENCODE_CONFIG": str(self.config_path)}
+        # #381: when exec routing is wired, export the merged routed config (with
+        # the rfc-exec server + native-tool denials) instead of the bare base, so
+        # the container routing + fail-closed denials actually take effect. Falls
+        # back to the base config on the host-native path.
+        config = self._routed_config_path or self.config_path
+        if config is not None:
+            return {"OPENCODE_CONFIG": str(config)}
         return {}
 
     def parse_output(

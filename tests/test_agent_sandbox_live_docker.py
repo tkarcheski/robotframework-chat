@@ -23,6 +23,7 @@ import json
 import os
 import shlex
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -122,6 +123,61 @@ def _run(manager, mutate):
         agent_id="claude-code",
         harness="claude-code",
     )
+
+
+def _run_opencode(manager, mutate):
+    """Drive one live opencode scenario against a REAL container (#381).
+
+    opencode routes via a materialized merged config FILE (OPENCODE_CONFIG), not
+    inline argv like claude-code, so this invoker reads the run's container id out
+    of the ``mcp`` block of that merged config -- proving the sandbox wired
+    opencode's routed config end-to-end -- then lets ``mutate`` route code-exec
+    into that exact container through the broker (the same seam opencode's denied,
+    rerouted native tools take live).
+    """
+
+    def invoker(argv, cwd, env, timeout):
+        cfg = json.loads(Path(env["OPENCODE_CONFIG"]).read_text())
+        cid = cfg["mcp"]["rfc-exec"]["environment"][CONTAINER_ID_ENV]
+        # The merged routed config must actually deny opencode's native tools.
+        assert cfg["permission"]["bash"] == "deny"
+        mutate(_ContainerFS(manager, cid))
+        return ClaudeProcessResult(returncode=0, stdout="", stderr="")
+
+    sandbox = AgentSandbox(limits=_limits(), manager=manager, invoker=invoker)
+    return sandbox.run_scenario(
+        BUG_FIX_DIR,
+        variant="opencode",
+        agent_id="opencode",
+        harness="opencode",
+    )
+
+
+class TestLiveOpenCodeExecBrokerRealDocker:
+    """#381: opencode's routed config drives real edits into a real container."""
+
+    def test_opencode_routed_fix_lands_in_container(self, docker_manager) -> None:
+        # opencode's merged routed config binds the rfc-exec server to the run's
+        # container; a fix routed through the broker lands in /workspace and is
+        # observed by the in-place churn manifest -- no host-side copy-back.
+        result = _run_opencode(docker_manager, lambda fs: fs.apply_fix())
+        assert result.changed_paths == ("calculator.py",)
+        assert result.unexpected_paths == ()
+        assert result.tests_passed
+        assert not result.has_unexpected_churn
+
+    def test_opencode_routed_out_of_allowlist_churn_flagged(
+        self, docker_manager
+    ) -> None:
+        # A scratch file opencode writes outside allowed_paths must register as
+        # unexpected churn -- the same honest verification claude-code gets.
+        def mutate(fs: _ContainerFS) -> None:
+            fs.apply_fix()
+            fs.write("debug.log", "junk\n")
+
+        result = _run_opencode(docker_manager, mutate)
+        assert result.unexpected_paths == ("debug.log",)
+        assert result.has_unexpected_churn
 
 
 class TestLiveExecBrokerRealDocker:
@@ -230,7 +286,9 @@ def live_container(docker_manager):
         working_dir="/workspace",
     )
     cid = docker_manager.create_container(cfg)
-    docker_manager.execute_command(cid, "mkdir -p /workspace", timeout=30, workdir="/workspace")
+    docker_manager.execute_command(
+        cid, "mkdir -p /workspace", timeout=30, workdir="/workspace"
+    )
     try:
         yield docker_manager, cid
     finally:

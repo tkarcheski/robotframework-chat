@@ -16,7 +16,12 @@ host-side :class:`~rfc.container_exec_broker.ContainerExecBroker` INTO a
 pre-warmed, network-isolated container whose ``/workspace`` is the single working
 tree. The churn diff + ``test_command`` then run in place against exactly what
 the agent produced (no host-side copy-back). An absent harness CLI skips the run
-cleanly (:class:`~rfc.exceptions.HarnessNotAvailableError`). Every run is
+cleanly (:class:`~rfc.exceptions.HarnessNotAvailableError`). Only harnesses whose
+code-exec actually routes into the container (``claude-code`` #235, ``opencode``
+#381, see :data:`_CONTAINER_ROUTED_HARNESSES`) may take this path; a still-host-
+native harness (``codex`` -- CLI absent, exec un-routed) FAILS CLOSED with
+:class:`~rfc.exceptions.LiveHarnessNotRoutedError` rather than be verified
+against a ``/workspace`` its edits never reached (#377). Every run is
 normalized into the same :class:`~rfc.agent_run.AgentRun` the rest of the suite's
 verifiers consume.
 
@@ -54,7 +59,7 @@ from rfc.churn_manifest import (
     parse_manifest,
 )
 from rfc.container_exec_broker import check_overhead_budget, read_overhead_samples
-from rfc.exceptions import HarnessNotAvailableError
+from rfc.exceptions import HarnessNotAvailableError, LiveHarnessNotRoutedError
 from rfc.exec_mcp import SandboxExecRouting
 from rfc.harness_adapters import (
     HarnessAdapter,
@@ -96,6 +101,18 @@ _KILL_AFTER_SECONDS = 10
 # harness kill from a magic number -- a live CLI can itself exit 124 for
 # reasons unrelated to a timeout.
 TIMEOUT_EXIT_CODE = 124
+# Live harnesses whose per-tool-call code execution ROUTES INTO the verification
+# container today (via the ``rfc-exec`` MCP broker, #235). Single source of truth
+# for both ``_wire_exec_routing`` and the ``_run_live_scenario`` fail-closed gate.
+# claude-code (#235) and opencode (#381 F5, live-conformed against opencode 1.2.9)
+# both have a live-verified broker path: their native code tools are denied and
+# bash/write/edit route into the container ``/workspace``. codex code-exec is
+# still host-native AND its CLI is absent (probe-gated), so it FAILS CLOSED --
+# container-verifying it would compare a fix against a pristine tree it never
+# touched (#377). A harness joins this set ONLY after its own live conformance
+# passes -- one live-verified harness at a time; the fail-closed guard is the
+# permanent invariant, never removed (#378 ruling).
+_CONTAINER_ROUTED_HARNESSES: frozenset[str] = frozenset({"claude-code", "opencode"})
 _SANDBOX_BASE_BRANCH = "claude-code-staging"
 
 _REQUIRED_SCENARIO_KEYS = ("scenario_id", "task", "test_command")
@@ -540,25 +557,40 @@ class AgentSandbox:
     def _wire_exec_routing(
         self, adapter: HarnessAdapter, container_id: str, metrics_path: Path
     ) -> None:
-        """Point the adapter's code-exec tools at the pre-warmed container (#235).
+        """Point the adapter's code-exec tools at the pre-warmed container (#235/#381).
 
-        Only claude-code has a live-verified broker path today: its native code
-        tools are denied and code execution routes through the rfc-exec MCP
-        server into ``container_id``. opencode's MCP routing is PENDING LIVE
-        CONFORMANCE and codex isn't installed, so they stay host-native (their
-        code-exec does not reach the container yet). ``metrics_path`` is where
+        claude-code and opencode both have a live-verified broker path: their
+        native code tools are denied and code execution routes through the
+        rfc-exec MCP server into ``container_id``. codex isn't installed and
+        isn't routed, so it stays host-native (and never reaches here --
+        ``_run_live_scenario`` fails it closed first). ``metrics_path`` is where
         the broker child appends per-call overhead samples for this process to
         collect after the run.
+
+        Wiring is two-step and adapter-shaped: setting ``exec_routing`` hands the
+        runtime container id (unknown at build time) to the adapter. claude-code
+        then emits its deny-settings + mcp-config inline on argv. opencode instead
+        consumes a config FILE, so it additionally materializes a merged routed
+        config (base opencode.json + the exec overlay) into the run's temp dir via
+        ``apply_routed_config``; ``env_overrides`` then exports it as
+        OPENCODE_CONFIG. Both land in ``_CONTAINER_ROUTED_HARNESSES``; the guard
+        stays as defence in depth and is unit-tested directly.
         """
-        if adapter.name != "claude-code":
+        if adapter.name not in _CONTAINER_ROUTED_HARNESSES:
             return
         routing = SandboxExecRouting(
             container_id=container_id, metrics_path=str(metrics_path)
         )
-        # ClaudeCodeAdapter carries a mutable exec_routing attribute; setting it
-        # here (post container-create) is how the runtime container id reaches
-        # build_argv, which the adapter constructor can't know at build time.
+        # Adapters carry a mutable exec_routing attribute; setting it here (post
+        # container-create) is how the runtime container id reaches build_argv /
+        # the routed config, which the adapter constructor can't know at build time.
         setattr(adapter, "exec_routing", routing)
+        # opencode routes via a materialized merged config file (not inline argv
+        # like claude-code); write it beside the metrics sink so it is torn down
+        # with the run. Adapters without this hook (claude-code) route inline.
+        apply_routed_config = getattr(adapter, "apply_routed_config", None)
+        if callable(apply_routed_config):
+            apply_routed_config(metrics_path.parent)
 
     def _invoke_agent_bounded(
         self,
@@ -612,12 +644,27 @@ class AgentSandbox:
         produced -- no host-side copy-back (``_sync_workspace`` is gone). Each
         broker dispatch records ``sandbox_exec_overhead_ms``; the perf budget is
         checked and logged.
+
+        FAIL CLOSED for non-routed harnesses (#377): container-verification is
+        only honest when the harness's code-exec actually routes into
+        ``/workspace``. codex is still host-native (CLI absent, exec un-routed),
+        so its edits would land in a throwaway host tree the container never sees
+        -- verifying against the pristine ``/workspace`` would silently record a
+        wrong result (a red-seed fix always reads as "not fixed"). Rather than
+        corrupt the sacred Tier-A spine, the run refuses with
+        :class:`~rfc.exceptions.LiveHarnessNotRoutedError` (a clean skip) before
+        any container is created. opencode crossed this guard on live conformance
+        (#381); codex crosses it only once its exec is wired + verified (#378).
         """
         adapter = self._build_harness_adapter(harness, harness_model)
         # Probe-gate only the production path: an injected invoker means a test
         # replaying a recorded transcript, which must not require the real CLI.
         if self._probe_live and not adapter.probe():
             raise HarnessNotAvailableError(harness)
+        # Fail closed BEFORE any container work: a host-native harness cannot be
+        # container-verified without silently ignoring the agent's actual edits.
+        if adapter.name not in _CONTAINER_ROUTED_HARNESSES:
+            raise LiveHarnessNotRoutedError(harness)
 
         wall_clock = self.limits.wall_clock_seconds
         config = self._container_config(resolved.scenario_id, variant)

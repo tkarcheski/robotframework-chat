@@ -62,12 +62,13 @@ from rfc.agent_verifiers import (
     assert_no_commit_while_tests_red,
     assert_questions_are_multiple_choice,
 )
-from rfc.exceptions import HarnessNotAvailableError
+from rfc.exceptions import HarnessNotAvailableError, LiveHarnessNotRoutedError
 from rfc.harness_db import HarnessDatabase
 from rfc.harness_models import (
     METRIC_CHURN_RATIO,
     METRIC_LATENCY_MS,
     METRIC_PROCESS_VIOLATIONS,
+    METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_TASK_SUCCESS,
     AgenticHarness,
     AgenticMetric,
@@ -138,6 +139,12 @@ class ComparisonRow:
     # provider. Required for Tier A (see the invariant below); ``None`` for Tier B,
     # whose native model is descriptive only.
     verified_model: VerifiedLocalModel | None = None
+    # #381: per-code-exec-call broker overhead samples (ms), carried up from the
+    # run's :class:`~rfc.agent_sandbox.SandboxResult`. Populates the Tier-A cost
+    # tier -- an honest Tier-A row proves not just task-success but WHAT the
+    # container routing cost (docker-exec transport + marshalling per tool call).
+    # Empty for a run whose code-exec never routed through the broker.
+    sandbox_exec_overhead_ms: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         # Structural invariant (#273 + #278), not convention: a Tier-A ("fixed
@@ -271,14 +278,21 @@ def compute_metrics(result: SandboxResult, allowed_path_count: int) -> dict[str,
 
     ``tokens_in``/``tokens_out`` are omitted: the sandbox ``AgentRun`` carries
     no token counts yet (follow-up). ``grader_score`` is llm_judge-only and not
-    produced by the exec-graded sandbox.
+    produced by the exec-graded sandbox. ``sandbox_exec_overhead_ms`` (#381) is
+    added -- as the mean per-call broker overhead -- only when the run actually
+    routed code-exec through the broker (a container-routed harness), so a
+    scripted or un-routed run records no phantom-zero cost.
     """
-    return {
+    metrics = {
         METRIC_TASK_SUCCESS: compute_task_success(result),
         METRIC_CHURN_RATIO: compute_churn_ratio(result, allowed_path_count),
         METRIC_PROCESS_VIOLATIONS: float(count_process_violations(result.run)),
         METRIC_LATENCY_MS: round(result.duration_seconds * 1000.0, 3),
     }
+    samples = result.sandbox_exec_overhead_ms
+    if samples:
+        metrics[METRIC_SANDBOX_EXEC_OVERHEAD_MS] = round(sum(samples) / len(samples), 4)
+    return metrics
 
 
 def default_legs(
@@ -398,6 +412,19 @@ class HarnessComparison:
                         )
                         skipped.append((leg.harness, reason))
                         break
+                    except LiveHarnessNotRoutedError:
+                        # #377: the harness runs, but its code-exec is still
+                        # host-native (F5 gap), so a container-verified row would
+                        # be a silent lie. Record the leg as skipped with the
+                        # honest reason -- NEVER a fabricated success/failure row.
+                        leg_available = False
+                        reason = f"{leg.harness} exec-routing not wired (F5, #377)"
+                        logger.info(
+                            f"harness comparison: skipping leg {leg.harness!r} "
+                            f"(tier {leg.tier}) -- {reason}"
+                        )
+                        skipped.append((leg.harness, reason))
+                        break
                     rows.append(
                         self._record(
                             scenario,
@@ -445,6 +472,7 @@ class HarnessComparison:
             outcome=outcome,
             metrics=metrics,
             verified_model=verified_model,
+            sandbox_exec_overhead_ms=result.sandbox_exec_overhead_ms,
         )
         # save_harness FIRST: agentic_metrics carries a FK on session_id. repeat_idx
         # is persisted to the spine (#277) so S4 pairs on the stored (scenario_id,

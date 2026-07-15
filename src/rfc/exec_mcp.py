@@ -46,6 +46,18 @@ METRICS_PATH_ENV = "RFC_EXEC_METRICS_PATH"
 # ``bash cat`` so it never sees the stale host CWD stub.
 DENY_TOOLS: tuple[str, ...] = ("Bash", "Write", "Edit", "Read")
 
+# opencode's native code tools (lowercase, opencode's own tool ids), the
+# opencode-name parallel to :data:`DENY_TOOLS`. Denying these is how opencode's
+# per-tool-call bash/write/edit stop running host-native and route through the
+# rfc-exec MCP server into the container instead (#381 F5). ``patch`` is
+# opencode's structured whole-file edit tool -- denied too so an edit can't slip
+# past to the host. ``read`` is denied for the same MVP coherence reason as
+# claude-code: the agent reads via the broker'd ``rfc-exec_bash`` (cat) and never
+# sees the stale host CWD stub. The namespaced MCP tools (``rfc-exec_bash`` etc.)
+# are NOT gated by these native tool ids -- verified live: denying native
+# ``bash`` leaves ``rfc-exec_bash`` fully callable.
+OPENCODE_DENY_TOOLS: tuple[str, ...] = ("bash", "edit", "write", "patch", "read")
+
 # JSON-RPC 2.0 error codes.
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -175,13 +187,13 @@ def claude_mcp_config_json(routing: SandboxExecRouting) -> str:
 
 
 def opencode_mcp_config(routing: SandboxExecRouting) -> Dict[str, Any]:
-    """The opencode ``mcp`` config block pointing its tools at this server.
+    """The opencode ``mcp`` config block registering this server as a local tool.
 
-    PENDING LIVE CONFORMANCE: opencode speaks MCP (its ``mcp`` config key), but
-    the opencode CLI is not installed here to verify the exact tool-substitution
-    behaviour, so this block is written against opencode's documented ``mcp``
-    schema and marked pending -- mirroring how :class:`CodexAdapter` is handled
-    until the owner installs the binary.
+    LIVE-CONFORMED (#381): verified against the real opencode 1.2.9 CLI with a
+    local Ollama model -- with this block merged into the run config, opencode
+    launches ``python -m rfc.exec_mcp`` as a local MCP server and the model calls
+    its ``rfc-exec_bash`` / ``rfc-exec_write`` / ``rfc-exec_edit`` tools, whose
+    edits land in the bound container's ``/workspace`` (not a host tree).
     """
     return {
         "mcp": {
@@ -192,6 +204,35 @@ def opencode_mcp_config(routing: SandboxExecRouting) -> Dict[str, Any]:
                 "environment": _server_env(routing),
             }
         }
+    }
+
+
+def opencode_deny_config() -> Dict[str, Any]:
+    """opencode config keys that DENY its native host-executing code tools (#381).
+
+    The opencode-name parallel to claude-code's ``--settings`` deny payload
+    (:func:`deny_settings`). Two config-level layers, both honoured by opencode's
+    own config loader:
+
+      * ``permission`` -- opencode's permission engine gates each native tool to
+        ``deny`` (the enforced, fail-closed layer: a denied tool call is refused
+        before it executes on the host). This is the load-bearing mechanism --
+        verified live that ``tools``-disable alone can be bypassed under
+        adversarial prompting while a ``permission: deny`` native ``bash`` call is
+        refused.
+      * ``tools`` -- disables each native tool in the registry (the primary layer;
+        the model is not offered the native tool at all).
+
+    Together they are the F4 defense-in-depth for opencode's deny surface:
+    ``tools`` removes the native tool from the offer, ``permission`` fails closed
+    if a denied tool is somehow still invoked. opencode has no PreToolUse hook
+    (that is a claude-code-specific mechanism); this config-level dual denial IS
+    opencode's equivalent, and it is what forces per-tool-call exec through the
+    rfc-exec broker instead of the host.
+    """
+    return {
+        "permission": {tool: "deny" for tool in OPENCODE_DENY_TOOLS},
+        "tools": {tool: False for tool in OPENCODE_DENY_TOOLS},
     }
 
 

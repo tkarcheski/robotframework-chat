@@ -14,7 +14,13 @@ from __future__ import annotations
 
 import json
 
-from rfc.exec_mcp import CONTAINER_ID_ENV, SERVER_NAME, SandboxExecRouting
+from rfc.exec_mcp import (
+    CONTAINER_ID_ENV,
+    OPENCODE_DENY_TOOLS,
+    SERVER_NAME,
+    SandboxExecRouting,
+    opencode_deny_config,
+)
 from rfc.harness_adapters import (
     ClaudeCodeAdapter,
     OpenCodeAdapter,
@@ -141,3 +147,35 @@ class TestOpenCodeAdapterRouting:
         server = overlay["mcp"][SERVER_NAME]
         assert server["type"] == "local"
         assert server["environment"][CONTAINER_ID_ENV] == "cid-oc"
+
+    def test_overlay_denies_native_code_tools(self) -> None:
+        # #381 F4/config-level proof (the opencode parallel to #352's claude-code
+        # deny-settings assertion): the routing overlay must STRIP opencode's
+        # native host-executing code tools, so the model's only path to
+        # bash/write/edit is the broker'd rfc-exec tools. Two layers -- the
+        # ``tools`` registry disable AND the ``permission`` deny gate (the
+        # load-bearing, fail-closed layer verified live against opencode 1.2.9).
+        routing = SandboxExecRouting(container_id="cid-oc")
+        overlay = OpenCodeAdapter(exec_routing=routing).exec_config_overlay()
+        # Every native code tool is denied by opencode's permission engine ...
+        for tool in ("bash", "write", "edit", "read", "patch"):
+            assert overlay["permission"][tool] == "deny", tool
+            # ... AND disabled in the tool registry (defence in depth).
+            assert overlay["tools"][tool] is False, tool
+        # The MCP server is still registered -- denying NATIVE bash does not gate
+        # the namespaced rfc-exec_bash tool (verified live #381).
+        assert SERVER_NAME in overlay["mcp"]
+
+
+class TestOpenCodeDenyConfig:
+    def test_deny_config_covers_every_deny_tool(self) -> None:
+        # opencode_deny_config is the opencode-name parallel to claude-code's
+        # deny_settings: it must deny (permission) AND disable (tools) exactly the
+        # OPENCODE_DENY_TOOLS set -- no native code tool left un-stripped.
+        cfg = opencode_deny_config()
+        assert set(cfg["permission"]) == set(OPENCODE_DENY_TOOLS)
+        assert set(cfg["tools"]) == set(OPENCODE_DENY_TOOLS)
+        assert all(action == "deny" for action in cfg["permission"].values())
+        assert all(enabled is False for enabled in cfg["tools"].values())
+        # bash/write/edit/read -- the code-exec + coherence surface -- are covered.
+        assert {"bash", "write", "edit", "read"} <= set(OPENCODE_DENY_TOOLS)
