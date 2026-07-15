@@ -85,6 +85,22 @@ Provenance notes:
     non-empty. `assert_opencode_comparable` still returns the model-id string
     and is re-exported from `rfc.harness_comparison`, so existing callers are
     unchanged. The #273 bypass regression suite still fails closed.
+- **#326 — the open-tolkein seam fails closed under `local_only` (RFC-012 §3.4,
+  MS3).** The MS1 consumption seam (#324) ships a down-gateway fallback: when
+  `OPEN_TOLKEIN_BASE_URL` is set but the gateway is unreachable,
+  `select_backend` skip-and-logs back to the direct provider path. That fallback
+  is the one seam line that can egress a `local_only` prompt — a down gateway
+  plus a remote direct provider plus a cache miss would build a remote client
+  and leave the fleet boundary (the #273 lesson). `select_backend` now raises the
+  new typed `LocalOnlyEgressError` on exactly that path: a `local_only` request
+  whose down-gateway fallback provider is not localhost-class (`ollama`/`vllm`
+  are; `openai` and unknowns are not) is refused rather than downgraded to a
+  remote BYOK path. Deliberately a hard failure, not an `RFCSkipError` — a
+  locality-safety breach must fail loudly, not skip. A reachable gateway (it owns
+  the routing), the inert seam (no gateway boundary, RFC-012 §3.3), and every
+  non-`local_only` request are unchanged. Paired with the gateway-side
+  URL-derived locality guard in `tkarcheski/open-tolkein` (#2), the up-path half
+  of the same invariant.
 
 ### Changed
 
