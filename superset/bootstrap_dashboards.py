@@ -13,6 +13,9 @@ Run inside the Superset container after ``superset init`` to create:
     ``agentic_decisions``, ``dialog_recordings``, ``dialog_turns``), the
     ``agentic_sessions_full`` view, and the "Agentic Stack Tracker"
     dashboard (issue #353)
+  - The ``harness_scoreboard`` view (per (tool_name, model_id, scenario_id)
+    comparison cells with honest Tier-A/Tier-B separation) and the
+    "Harness Scoreboard" dashboard (RFC-007 S5 / issue #221)
 
 Lean schema: the two primary tables store only metrics; heavy data
 (output.xml gzip, question/answer/grading/thinking text) lives in the
@@ -1417,7 +1420,12 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     started_at              TEXT NOT NULL,
     ended_at                TEXT,
     outcome                 TEXT,
-    replay_of_recording_id  TEXT
+    replay_of_recording_id  TEXT,
+    -- #217 spine column the harness_scoreboard view (RFC-007 S5 / #221) groups
+    -- by. The canonical HarnessDatabase schema adds the full #217/#242/#277 set
+    -- via migration -- the bootstrap declares only what the embedded scoreboard
+    -- view references so it executes standalone (e.g. the idempotency test).
+    scenario_id             TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
 
@@ -1547,6 +1555,50 @@ LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
          h.rfc_version, h.branch, h.started_at, h.ended_at, h.outcome,
          h.replay_of_recording_id;
+
+-- harness_scoreboard (RFC-007 S5 / #221): one row per comparison cell
+-- (tool_name, model_id, scenario_id) over battery runs, with a name-derived
+-- ``tier`` column (tool_name allowlist approximation — see #350). Tier-A vs
+-- Tier-B never in the same cell (section 5 / #273). Body is a copy of
+-- rfc.harness_db.HARNESS_SCOREBOARD_VIEW_BODY -- the drift-guard test in
+-- tests/test_bootstrap_dashboards.py keeps the two in sync. The McNemar
+-- significance overlay (#220) LEFT JOINs onto this view once S4 and the #350
+-- persisted-tier spine column land.
+DROP VIEW IF EXISTS harness_scoreboard;
+
+CREATE VIEW harness_scoreboard AS
+SELECT
+    h.tool_name,
+    h.model_id,
+    h.scenario_id,
+    CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+        AS tier,
+    '[' || CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+        || '] ' || h.tool_name || ' @ ' || COALESCE(h.model_id, '')
+        AS cell_label,
+    COUNT(DISTINCT h.session_id) AS run_count,
+    SUM(CASE WHEN m.metric_key = 'task_success' THEN m.metric_value END)
+        AS pass_count,
+    AVG(CASE WHEN m.metric_key = 'task_success' THEN m.metric_value END)
+        AS pass_rate,
+    AVG(CASE WHEN m.metric_key = 'churn_ratio' THEN m.metric_value END)
+        AS avg_churn_ratio,
+    AVG(CASE WHEN m.metric_key = 'process_violations' THEN m.metric_value END)
+        AS avg_process_violations,
+    AVG(CASE WHEN m.metric_key = 'tokens_in' THEN m.metric_value END)
+        AS avg_tokens_in,
+    AVG(CASE WHEN m.metric_key = 'tokens_out' THEN m.metric_value END)
+        AS avg_tokens_out,
+    AVG(CASE WHEN m.metric_key = 'latency_ms' THEN m.metric_value END)
+        AS avg_latency_ms,
+    AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
+        AS avg_cache_hit_rate,
+    AVG(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
+        AS avg_suite_runtime_ms
+FROM agentic_harnesses h
+LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
+WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
+GROUP BY h.tool_name, h.model_id, h.scenario_id;
 """
 
 # Physical tables / views registered as Superset datasets.
@@ -1557,6 +1609,7 @@ _AGENTIC_DATASET_TABLES: list[str] = [
     "agentic_metrics",
     "agentic_decisions",
     "agentic_sessions_full",
+    "harness_scoreboard",
 ]
 
 # Virtual datasets. Written in the PostgreSQL/SQLite-portable subset
@@ -1891,6 +1944,226 @@ _AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
 
 
 # ---------------------------------------------------------------------------
+# Harness Scoreboard dashboard (RFC-007 S5 / issue #221)
+# ---------------------------------------------------------------------------
+# The owner's headline product: SEEING which harness is better. Reads the
+# ``harness_scoreboard`` view (one row per (tool_name, model_id, scenario_id)
+# cell, with a name-derived ``tier`` column — tool_name allowlist approximation,
+# see #350). Charts keep Tier-A and Tier-B in
+# distinct rows via ``cell_label`` (which bakes the tier letter into the harness
+# axis) — RFC-007 section 5 / the #273 lesson.
+#
+# SEAM for #220 (McNemar gate, S4): the pass-rate heatmap shows pass-rate
+# MAGNITUDE, not peer-superiority. The "is the difference real?" overlay — which
+# renders a not-significant cell as *tied* rather than faint-green *better* —
+# is #220's per-pair p-value/delta output, LEFT JOINed onto the view once S4
+# and the #350 persisted-tier spine column land. Until then these charts are
+# honestly descriptive, never comparative.
+
+_SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
+    {
+        "slice_name": "Harness Pass Rate",
+        "viz_type": "heatmap_v2",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "x_axis": "scenario_id",
+            "groupby": "cell_label",
+            "metric": {
+                "expressionType": "SIMPLE",
+                "column": {"column_name": "pass_rate"},
+                "aggregate": "AVG",
+                "label": "Pass Rate",
+            },
+            "legend_type": "continuous",
+            "normalize_across": "heatmap",
+        },
+    },
+    {
+        # The honest raw grid — exact numbers, and the ``tier`` column consumers
+        # MUST respect. Deliberately uncoloured: a "better" colour is a
+        # comparative claim that only #220's significance overlay may make.
+        "slice_name": "Harness Scoreboard",
+        "viz_type": "table",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "columns": [
+                "tier",
+                "cell_label",
+                "scenario_id",
+                "run_count",
+                "pass_count",
+                "pass_rate",
+                "avg_churn_ratio",
+                "avg_process_violations",
+                "avg_tokens_in",
+                "avg_tokens_out",
+                "avg_latency_ms",
+                "avg_cache_hit_rate",
+                "avg_suite_runtime_ms",
+            ],
+            "order_desc": True,
+            "row_limit": 200,
+        },
+    },
+    {
+        "slice_name": "Harness Economy",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_churn_ratio"},
+                    "aggregate": "AVG",
+                    "label": "Churn Ratio",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_process_violations"},
+                    "aggregate": "AVG",
+                    "label": "Process Violations",
+                },
+            ],
+            "groupby": ["cell_label"],
+            "order_desc": False,
+        },
+    },
+    {
+        "slice_name": "Harness Token Efficiency",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_tokens_in"},
+                    "aggregate": "AVG",
+                    "label": "Tokens In",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_tokens_out"},
+                    "aggregate": "AVG",
+                    "label": "Tokens Out",
+                },
+            ],
+            "groupby": ["cell_label"],
+            "order_desc": False,
+        },
+    },
+    {
+        "slice_name": "Harness Runtime & Latency",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_latency_ms"},
+                    "aggregate": "AVG",
+                    "label": "Latency (ms)",
+                },
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_suite_runtime_ms"},
+                    "aggregate": "AVG",
+                    "label": "Suite Runtime (ms)",
+                },
+            ],
+            "groupby": ["cell_label"],
+            "order_desc": False,
+        },
+    },
+    {
+        "slice_name": "Harness Cache Hit Rate",
+        "viz_type": "echarts_bar",
+        "datasource_id_key": "harness_scoreboard",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SIMPLE",
+                    "column": {"column_name": "avg_cache_hit_rate"},
+                    "aggregate": "AVG",
+                    "label": "Cache Hit Rate",
+                },
+            ],
+            "groupby": ["cell_label"],
+            "order_desc": False,
+            "y_axis_bounds": [0, 1],
+        },
+    },
+]
+
+_SCOREBOARD_FILTER_CONFIGS: list[dict[str, Any]] = [
+    {
+        "id": "SCOREBOARD_FILTER-TIER",
+        "name": "Tier",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "tier"},
+                "datasetId": "__SCOREBOARD_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "SCOREBOARD_FILTER-TOOL",
+        "name": "Harness",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "tool_name"},
+                "datasetId": "__SCOREBOARD_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+    {
+        "id": "SCOREBOARD_FILTER-SCENARIO",
+        "name": "Scenario",
+        "filterType": "filter_select",
+        "targets": [
+            {
+                "column": {"name": "scenario_id"},
+                "datasetId": "__SCOREBOARD_ID__",
+            },
+        ],
+        "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
+    },
+]
+
+_SCOREBOARD_LAYOUT_SECTIONS: list[dict[str, Any]] = [
+    {
+        "label": "Pass Rate — which harness wins (Tier-A comparable only)",
+        "charts": [
+            {"name": "Harness Pass Rate", "width": 12, "height": 60},
+        ],
+    },
+    {
+        "label": "Scoreboard grid (exact numbers + tier)",
+        "charts": [
+            {"name": "Harness Scoreboard", "width": 12, "height": 60},
+        ],
+    },
+    {
+        "label": "Economy & Token Efficiency",
+        "charts": [
+            {"name": "Harness Economy", "width": 6, "height": 50},
+            {"name": "Harness Token Efficiency", "width": 6, "height": 50},
+        ],
+    },
+    {
+        "label": "Runtime & Cache",
+        "charts": [
+            {"name": "Harness Runtime & Latency", "width": 6, "height": 50},
+            {"name": "Harness Cache Hit Rate", "width": 6, "height": 50},
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -2206,6 +2479,34 @@ def _build_agentic_json_metadata(sessions_dataset_id: int) -> dict[str, Any]:
     }
 
 
+def _build_scoreboard_position_json(chart_id_map: dict[str, int]) -> dict[str, Any]:
+    """Build dashboard ``position_json`` for the Harness Scoreboard (#221)."""
+    return _build_sectioned_position_json(
+        _SCOREBOARD_LAYOUT_SECTIONS, "Harness Scoreboard", chart_id_map
+    )
+
+
+def _build_scoreboard_json_metadata(scoreboard_dataset_id: int) -> dict[str, Any]:
+    """Build dashboard ``json_metadata`` for the Harness Scoreboard (#221).
+
+    Substitutes the ``__SCOREBOARD_ID__`` placeholder in
+    _SCOREBOARD_FILTER_CONFIGS with the ``harness_scoreboard`` dataset ID.
+    """
+    filters = []
+    for fconf in _SCOREBOARD_FILTER_CONFIGS:
+        f = json.loads(json.dumps(fconf))  # deep copy
+        for target in f.get("targets", []):
+            if target.get("datasetId") == "__SCOREBOARD_ID__":
+                target["datasetId"] = scoreboard_dataset_id
+        filters.append(f)
+
+    return {
+        "native_filter_configuration": filters,
+        "chart_configuration": {},
+        "cross_filters_enabled": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Bootstrap functions
 # ---------------------------------------------------------------------------
@@ -2242,6 +2543,7 @@ def bootstrap() -> None:
         _create_infra_dashboard(db_id)
         _create_agentic_datasets(db_id)
         _create_agentic_dashboard(db_id)
+        _create_harness_scoreboard_dashboard(db_id)
 
     log.info("Bootstrap complete.")
 
@@ -2763,6 +3065,89 @@ def _create_agentic_dashboard(db_id: int) -> None:
     superset_db.session.add(dashboard)
     superset_db.session.commit()
     log.info(f"Created dashboard: Agentic Stack Tracker (id={dashboard.id})")
+
+
+def _create_harness_scoreboard_dashboard(db_id: int) -> None:
+    """Create charts and the Harness Scoreboard dashboard (RFC-007 S5 / #221).
+
+    Reads the ``harness_scoreboard`` dataset (registered by
+    ``_create_agentic_datasets``). Idempotent per the Agentic Stack Tracker
+    pattern: existing charts/dashboard are looked up by name/slug and updated.
+    """
+    from superset import db as superset_db  # type: ignore[attr-defined]
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
+
+    scoreboard_ds = (
+        superset_db.session.query(SqlaTable)
+        .filter_by(table_name="harness_scoreboard", database_id=db_id)
+        .first()
+    )
+    if not scoreboard_ds:
+        log.warning(
+            "harness_scoreboard dataset not found; skipping scoreboard dashboard."
+        )
+        return
+    scoreboard_ds_id = scoreboard_ds.id
+
+    # Create charts from _SCOREBOARD_CHART_DEFS
+    chart_id_map: dict[str, int] = {}
+    for chart_def in _SCOREBOARD_CHART_DEFS:
+        slice_name = chart_def["slice_name"]
+        existing = (
+            superset_db.session.query(Slice).filter_by(slice_name=slice_name).first()
+        )
+        if existing:
+            chart_id_map[slice_name] = existing.id
+            log.info(f"Scoreboard chart already exists: {slice_name}")
+            continue
+
+        chart = Slice(
+            slice_name=slice_name,
+            viz_type=chart_def["viz_type"],
+            datasource_id=scoreboard_ds_id,
+            datasource_type="table",
+            params=json.dumps(chart_def["params"]),
+        )
+        superset_db.session.add(chart)
+        superset_db.session.commit()
+        chart_id_map[slice_name] = chart.id
+        log.info(f"Created scoreboard chart: {slice_name} (id={chart.id})")
+
+    # Build layout and metadata
+    position = _build_scoreboard_position_json(chart_id_map)
+    metadata = _build_scoreboard_json_metadata(scoreboard_ds_id)
+
+    slug = "harness-scoreboard"
+    existing_dash = superset_db.session.query(Dashboard).filter_by(slug=slug).first()
+    if existing_dash:
+        existing_dash.position_json = json.dumps(position)
+        existing_dash.json_metadata = json.dumps(metadata)
+        existing_dash.slices = [
+            superset_db.session.query(Slice).get(cid)
+            for cid in chart_id_map.values()
+            if superset_db.session.query(Slice).get(cid)
+        ]
+        superset_db.session.commit()
+        log.info(f"Updated dashboard: Harness Scoreboard (id={existing_dash.id})")
+        return
+
+    dashboard = Dashboard(
+        dashboard_title="Harness Scoreboard",
+        slug=slug,
+        published=True,
+        position_json=json.dumps(position),
+        json_metadata=json.dumps(metadata),
+    )
+    dashboard.slices = [
+        superset_db.session.query(Slice).get(cid)
+        for cid in chart_id_map.values()
+        if superset_db.session.query(Slice).get(cid)
+    ]
+    superset_db.session.add(dashboard)
+    superset_db.session.commit()
+    log.info(f"Created dashboard: Harness Scoreboard (id={dashboard.id})")
 
 
 if __name__ == "__main__":
