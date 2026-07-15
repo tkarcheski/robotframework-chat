@@ -665,9 +665,7 @@ class TestAgentSandboxLiveExecRouting:
 
     def test_routing_threaded_and_overhead_recorded(self) -> None:
         calls: list[dict] = []
-        fake = self._verify_manager(
-            {"calculator.py": "new", "test_calculator.py": "t"}
-        )
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
@@ -704,9 +702,7 @@ class TestAgentSandboxLiveExecRouting:
     def test_no_samples_when_broker_not_exercised(self) -> None:
         # An injected invoker that writes no samples leaves the overhead tuple
         # empty and the (vacuous) budget met -- no false measurement.
-        fake = self._verify_manager(
-            {"calculator.py": "new", "test_calculator.py": "t"}
-        )
+        fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
