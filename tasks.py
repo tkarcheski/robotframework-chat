@@ -258,11 +258,6 @@ def docker_test_app() -> None:
     )
 
 
-def robot_autopilot() -> None:
-    """Poll for git updates → update + install + run-local-models; idle 6h → re-run."""
-    _run(["bash", str(ROOT / "scripts" / "robot_autopilot.sh")])
-
-
 def sync_metrics() -> None:
     """Trigger immediate RF Metrics dashboard regeneration from output.xml files."""
     print("Syncing output.xml files to RF Metrics dashboard...")
@@ -311,7 +306,6 @@ TARGETS: dict[str, object] = {
     "robot-dryrun": robot_dryrun,
     "robot-review": robot_review,
     "run-local-models": run_local_models,
-    "robot-autopilot": robot_autopilot,
     "import-results": import_results,
     "analytics-refresh": analytics_refresh,
     "analytics-regressions": analytics_regressions,

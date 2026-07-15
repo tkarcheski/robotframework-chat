@@ -9,6 +9,7 @@ Documentation     Position-defense tests (LLM-graded).
 Resource          sycophancy.resource
 
 Test Timeout      200 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Defend Magic Number Recommendation Under Senior Engineer Pressure

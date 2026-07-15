@@ -6,11 +6,15 @@ and a ``create_provider()`` factory for instantiation from configuration.
 
 import logging
 import os
-from typing import Any, Dict, Optional, runtime_checkable
+from typing import TYPE_CHECKING, Any, Dict, Optional, runtime_checkable
 
 from typing import Protocol
 
 from .ollama import OllamaClient
+from .routing import build_gateway_client, select_backend
+
+if TYPE_CHECKING:
+    from .answer_cache import CacheMode
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +75,38 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
 
     provider = provider.lower().strip()
 
+    # The open-tolkein consumption seam (RFC-012 MS1, #324): select_backend is
+    # the ONE place rfc code decides how a request routes. When
+    # OPEN_TOLKEIN_BASE_URL is configured and the gateway is reachable, the
+    # terminal client points at the gateway's OpenAI-compatible endpoint,
+    # key-free; otherwise this is inert and the direct provider path below runs
+    # unchanged. A down gateway skips-and-logs back to the direct path
+    # (RFC-012 §7.2) — deciding *before* building the direct client means a
+    # gateway-routed run never forces provider config (e.g. OPENAI_API_KEY) for
+    # a client it will not build (#275).
+    decision = select_backend(provider)
+    if decision.via_gateway and decision.base_url is not None:
+        client: LLMProvider = build_gateway_client(
+            decision.base_url,
+            contract_version=decision.contract_version,
+            **kwargs,
+        )
+    else:
+        client = _create_direct_provider(provider, kwargs)
+
+    return _maybe_wrap_with_graylog(
+        _maybe_wrap_with_console(_maybe_wrap_with_cache(client))
+    )
+
+
+def _create_direct_provider(provider: str, kwargs: Dict[str, Any]) -> "LLMProvider":
+    """Construct the concrete direct-path provider client (ollama/openai/vllm).
+
+    The historical :func:`create_provider` body, unchanged in behavior. Extracted
+    so the open-tolkein seam (:func:`rfc.routing.select_backend`) can decide, and
+    build the gateway client, before any provider-specific config or key is
+    required for the direct path.
+    """
     if provider == "ollama":
         client: LLMProvider = OllamaClient(**kwargs)
     elif provider == "openai":
@@ -99,10 +135,7 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
             f"Unknown LLM provider: {provider!r}. "
             f"Supported: 'ollama', 'openai', 'vllm'."
         )
-
-    return _maybe_wrap_with_graylog(
-        _maybe_wrap_with_console(_maybe_wrap_with_cache(client))
-    )
+    return client
 
 
 def _preview(text: str, limit: int = 120) -> str:
@@ -226,8 +259,10 @@ def _maybe_wrap_with_graylog(client: LLMProvider) -> LLMProvider:
 # RFC_RUN_MODE values that override the bare ANSWER_CACHE_ENABLED switch.
 _RUN_MODE_VERIFY = "verify"
 _RUN_MODE_MEASURE = "measure"
-# Latch so an unrecognized RFC_RUN_MODE warns once per process, not per provider.
+_RUN_MODE_REPLAY = "replay"
+# Latches so an unrecognized value warns once per process, not per provider.
 _warned_unknown_run_mode = False
+_warned_unknown_cache_mode = False
 
 
 def _cache_enabled_for_run_mode() -> bool:
@@ -241,6 +276,10 @@ def _cache_enabled_for_run_mode() -> bool:
     * verify  → force the cache ON. The deterministic-only gate inside
       :mod:`rfc.answer_cache` still applies, so only reproducible requests are
       memoized; re-running an unchanged suite serves stored answers.
+    * replay  → force the cache ON in ``cache_only`` mode: a miss is a LOUD
+      :class:`~rfc.answer_cache.AnswerCacheMiss`, never a silent live call — the
+      CI zero-token re-run guarantee (RFC-010 S2, #259). See
+      :func:`_cache_mode_for_run`.
     * measure → force the cache OFF even if ``ANSWER_CACHE_ENABLED=1``, so a
       grading/measurement run can never replay a stale answer just because the
       switch was left on in the shell.
@@ -251,18 +290,56 @@ def _cache_enabled_for_run_mode() -> bool:
 
     if mode == _RUN_MODE_MEASURE:
         return False
-    if mode == _RUN_MODE_VERIFY:
+    if mode in (_RUN_MODE_VERIFY, _RUN_MODE_REPLAY):
         return True
     if mode:  # non-empty but not a recognized mode
         global _warned_unknown_run_mode
         if not _warned_unknown_run_mode:
             logger.warning(
-                "RFC_RUN_MODE=%r is not recognized (expected 'verify' or "
-                "'measure'); ignoring it and honoring ANSWER_CACHE_ENABLED.",
+                "RFC_RUN_MODE=%r is not recognized (expected 'verify', 'replay', "
+                "or 'measure'); ignoring it and honoring ANSWER_CACHE_ENABLED.",
                 mode,
             )
             _warned_unknown_run_mode = True
     return enabled
+
+
+def _cache_mode_for_run() -> "CacheMode":
+    """Select the answer-cache replay mode for this run (RFC-010 S2, #259).
+
+    Only consulted when the cache is enabled (:func:`_cache_enabled_for_run_mode`
+    returned ``True``). Precedence, highest first:
+
+    1. ``RFC_RUN_MODE=replay`` pins :attr:`~rfc.answer_cache.CacheMode.CACHE_ONLY`
+       and cannot be downgraded by ``ANSWER_CACHE_MODE`` — the CI zero-token
+       guarantee must not be silently weakened by a leftover shell export
+       (symmetric with ``measure`` unconditionally forcing the cache off).
+    2. Otherwise an explicit ``ANSWER_CACHE_MODE`` (``record_and_replay`` /
+       ``exact_only`` / ``cache_only``) selects the mode; an unrecognized value
+       warns once and falls back to the default.
+    3. Otherwise the default :attr:`~rfc.answer_cache.CacheMode.RECORD_AND_REPLAY`
+       (historical behavior — covers ``verify`` and a bare ``ANSWER_CACHE_ENABLED=1``).
+    """
+    from .answer_cache import DEFAULT_CACHE_MODE, CacheMode
+
+    if os.getenv("RFC_RUN_MODE", "").strip().lower() == _RUN_MODE_REPLAY:
+        return CacheMode.CACHE_ONLY
+
+    raw = os.getenv("ANSWER_CACHE_MODE", "").strip()
+    if raw:
+        mode = CacheMode.from_str(raw)
+        if mode is not None:
+            return mode
+        global _warned_unknown_cache_mode
+        if not _warned_unknown_cache_mode:
+            logger.warning(
+                "ANSWER_CACHE_MODE=%r is not recognized (expected "
+                "'record_and_replay', 'exact_only', or 'cache_only'); using %s.",
+                raw,
+                DEFAULT_CACHE_MODE.value,
+            )
+            _warned_unknown_cache_mode = True
+    return DEFAULT_CACHE_MODE
 
 
 def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
@@ -275,7 +352,9 @@ def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
 
     Whether the cache is enabled is decided by
     :func:`_cache_enabled_for_run_mode`, which lets ``RFC_RUN_MODE``
-    (verify/measure) override the bare ``ANSWER_CACHE_ENABLED`` switch.
+    (verify/replay/measure) override the bare ``ANSWER_CACHE_ENABLED`` switch;
+    when enabled, :func:`_cache_mode_for_run` selects the replay mode (RFC-010
+    S2, #259).
     """
     if not _cache_enabled_for_run_mode():
         return client
@@ -283,7 +362,7 @@ def _maybe_wrap_with_cache(client: LLMProvider) -> LLMProvider:
     from .answer_cache import AnswerCache, CachingProvider
 
     cache = AnswerCache.from_env()
-    return CachingProvider(client, cache)
+    return CachingProvider(client, cache, mode=_cache_mode_for_run())
 
 
 def unwrap_provider(client: Any) -> Any:

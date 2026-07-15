@@ -7,12 +7,12 @@ The ``run-local-models`` scheduler tests every model discovered on each host
 equally (model-major queue plus loaded-in-VRAM affinity) and never inspects
 Ollama's per-model ``digest`` — so an updated RSI model is not re-tested until
 the general rotation happens to reach it again. This module supplies the pure,
-side-effect-free logic that ``scripts/rsi_priority_watcher.py`` uses to notice,
-from ``GET /api/tags`` responses, when the RSI model's digest has changed and a
-prioritized test run is warranted.
+side-effect-free logic that the fleet's RSI priority watcher (a monorepo-side
+ops script) uses to notice, from ``GET /api/tags`` responses, when the RSI
+model's digest has changed and a prioritized test run is warranted.
 
-Keeping the decision logic here (rather than inline in the script) makes it unit
--testable without a live Ollama endpoint.
+Keeping the decision logic here (rather than inline in the watcher) makes it
+unit-testable without a live Ollama endpoint.
 """
 
 from __future__ import annotations

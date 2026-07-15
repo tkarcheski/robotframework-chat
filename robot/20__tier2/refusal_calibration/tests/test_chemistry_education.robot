@@ -13,6 +13,7 @@ Resource          ../refusal_calibration.resource
 Default Tags      category:chemistry_education    severity:high    tier:2    verify:llm    regression
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

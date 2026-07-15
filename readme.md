@@ -97,10 +97,12 @@ ollama pull mistral:latest
 ollama pull qwen3.5:27b
 ```
 
-**Full fleet** — pull all models from `config/test_suites.yaml`:
+**Full fleet** — pull every model listed in `config/test_suites.yaml`:
 
 ```bash
-make cron-sync-models        # Pulls any master models missing locally
+# Pull each model the suites reference, e.g.:
+ollama pull qwen3:32b
+# ...repeat for the other models named in config/test_suites.yaml
 ```
 
 ### Loading Multiple Models Simultaneously

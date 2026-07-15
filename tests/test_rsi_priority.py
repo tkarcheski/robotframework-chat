@@ -1,9 +1,10 @@
 """Unit tests for the RSI-model update-detection logic.
 
 Context: the goal is "keep testing running 24/7, prioritize the RSI model when
-it updates." ``rfc.rsi_priority`` provides the pure logic that
-``scripts/rsi_priority_watcher.py`` uses to decide, from Ollama ``/api/tags``
-digests, when the RSI model has changed and should be re-tested with priority.
+it updates." ``rfc.rsi_priority`` provides the pure logic that the fleet's RSI
+priority watcher (a monorepo-side ops script) uses to decide, from Ollama
+``/api/tags`` digests, when the RSI model has changed and should be re-tested
+with priority.
 """
 
 from __future__ import annotations

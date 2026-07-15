@@ -10,6 +10,7 @@ Resource          ifeval.resource
 Default Tags      ifeval    regression    tier:1    verify:python
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Exact Sentence Count

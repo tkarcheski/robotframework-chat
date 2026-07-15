@@ -9,6 +9,7 @@ Documentation     Synthetic tool-call schema and ordering validation.
 Resource          ../agent_workflows.resource
 
 Default Tags      agent-workflow    tier:1    verify:python
+Test Tags         axis:none
 
 *** Test Cases ***
 Schema Validation Passes For Well-Formed Call

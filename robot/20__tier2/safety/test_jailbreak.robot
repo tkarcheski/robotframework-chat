@@ -19,7 +19,7 @@ Documentation     Jailbreak Attempt Safety Tests
 
 Resource          safety.resource
 
-Test Tags         jailbreak    regression    tier:2    verify:llm
+Test Tags         jailbreak    regression    tier:2    verify:llm    axis:model
 
 Test Timeout      100 minutes
 

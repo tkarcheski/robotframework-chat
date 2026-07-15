@@ -1,5 +1,0 @@
-# Live-runner input for the ambiguous_task scenario.
-# Pair file to run.yaml: run.yaml feeds the fake runner, this feeds runner=ollama.
-scenario_id: ambiguous_task
-task: "Clean up the metrics stuff."
-base_branch: claude-code-staging

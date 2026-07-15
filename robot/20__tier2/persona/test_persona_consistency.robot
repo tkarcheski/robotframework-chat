@@ -8,7 +8,7 @@ Documentation     Persona Consistency Tests
 
 Resource          persona.resource
 
-Test Tags         persona    consistency    tier:2    verify:llm
+Test Tags         persona    consistency    tier:2    verify:llm    axis:model
 
 Test Timeout      250 minutes
 

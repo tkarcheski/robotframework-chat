@@ -9,6 +9,7 @@ Documentation     State snapshot capture per turn.
 Resource          ../agent_workflows.resource
 
 Default Tags      agent-workflow    state    tier:1    verify:python
+Test Tags         axis:none
 
 *** Test Cases ***
 State Snapshots Survive End Workflow Round Trip

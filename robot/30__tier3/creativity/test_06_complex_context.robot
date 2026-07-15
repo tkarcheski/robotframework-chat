@@ -4,6 +4,7 @@ Documentation     Complex context awareness tests with 4+ turn conversations.
 ...               and complex multi-character narrative recall.
 Resource          creativity.resource
 Test Timeout      150 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Contradiction Detection

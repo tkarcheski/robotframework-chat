@@ -213,7 +213,6 @@ make docker-logs                 # Tail service logs
 make bootstrap                   # First-time Superset setup
 
 # Layer 3: CI pipelines
-make ci-deploy                   # Deploy Superset to remote host
 make run-ci-pipeline             # Run the full CI pipeline locally
 
 # Layer 4: Release & versioning
@@ -338,11 +337,9 @@ robotframework-chat/
 │   └── skills/                 # Task-specific skill tutorials
 ├── ci/                         # CI helper scripts
 │   ├── lint.sh                 # Code quality checks
-│   ├── deploy.sh               # Superset deployment
 │   ├── release.sh              # Package build + verify
-│   ├── backup_push.sh          # Results backup
 │   └── audit_markdown.sh       # Markdown reference audit
-├── Makefile                    # Build, test, deploy, ci-* targets
+├── Makefile                    # Build, test, and ci-* targets
 ├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
 ├── .env.example                # Environment variable template
 ├── pyproject.toml              # Python dependencies + optional extras

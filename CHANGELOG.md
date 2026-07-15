@@ -17,6 +17,100 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.25.0] — Unreleased
+
+### Added
+
+- **Pre-S4/S5 comparison hardening** (#277, #278): two design follow-ups from the
+  merged #270 sign-off, tightening the harness-comparison spine before S4 (#220)
+  and a second comparison runner land.
+  - **#277 — `repeat_idx` persisted to the spine.** The paired-repeat index used
+    to live only on the in-memory `ComparisonRow`; `agentic_harnesses` now carries
+    a nullable `repeat_idx` (INTEGER) column, added through the established
+    post-#217/#242 per-statement idempotent migrations on both backends and
+    written by the comparison runner. So S4 pairs on the STORED
+    `(scenario_id, repeat_idx)` key instead of fragile row order, and a skipped
+    repeat is a visible index hole rather than a silently shifted run. The column
+    uses the int-id sentinel convention (`-1 → NULL`), so a genuine repeat `0`
+    persists as `0`. Sequenced at positional index 17, after #242's provenance set
+    (12–16), so the two never collide.
+  - **#278 — model-resolution gate pushed to the config/adapter layer + a
+    stronger Tier-A type invariant.** The load-bearing "selected model resolves to
+    a declared-local provider" check moved out of `rfc.harness_comparison` into a
+    new leaf `rfc.opencode_config` module (the config loader), and
+    `OpenCodeAdapter` — the layer that materializes `OPENCODE_CONFIG` for a run —
+    grows `verify_local_model()` plus an opt-in `require_local_comparability` that
+    gates `env_overrides()`, so any consumer of that config gets the check for
+    free rather than only when a runner remembers to call it. The gate now mints a
+    `VerifiedLocalModel` capability token, and a Tier-A `ComparisonRow` REQUIRES
+    one — so a future runner constructing
+    `ComparisonRow(tier="A", model_id="openai/gpt-4o")` directly is rejected:
+    accidental omission of the gate fails closed, and type-checked code cannot
+    skip it. Deliberate in-process forgery remains partially possible (as with
+    any Python capability token) and is defended by review + dual sign-off; the
+    #314 hardening below narrows it to two conspicuous paths. This matches the
+    docstring's "gate-verified local model" contract instead of merely checking
+    non-empty. `assert_opencode_comparable` still returns the model-id string
+    and is re-exported from `rfc.harness_comparison`, so existing callers are
+    unchanged. The #273 bypass regression suite still fails closed.
+
+### Changed
+
+- **#314 — Tier-A token forgery hardening (design-capped defense-in-depth).**
+  Of the four deliberate in-process forge paths test-design demonstrated during
+  the #313 sign-off, two are now closed:
+  - the **mint key is closure-bound**, not an importable module global — the
+    one-line, mypy-clean `rfc.opencode_config._GATE_MINT_KEY` grab is gone, and
+    no module attribute can mint a token (the only callable holding the key is
+    the gate itself, which verifies before it mints);
+  - the Tier-A `ComparisonRow` check is **`type()`-exact** — a duck-typed fake
+    (`SimpleNamespace(model_id=...)`) or a `VerifiedLocalModel` subclass that
+    overrides `__post_init__` is rejected at runtime, mypy-independent.
+
+  Two paths remain, per the #314 design ruling deliberately out of scope
+  (inherent to Python capability tokens; an in-process absolute is impossible,
+  so review + dual sign-off is the defense and each is a glaring one-liner in a
+  diff): `object.__new__` + `object.__setattr__` fabrication of a real-typed
+  token, and extracting the mint key by introspecting the gate's closure cells.
+  Both closed paths are locked by fail-closed forge tests; the two remaining
+  paths are documented by tests that pin the exact boundary of the guarantee.
+
+## [1.24.0] — Unreleased
+
+### Added
+
+- **RFC-008 A3 — runtime-provenance columns on the harness spine** (#242): every
+  runtime-bound axis of a result is now recorded on `agentic_harnesses`, so its
+  coordinate is reconstructable (the CLAUDE.md provenance rule). Five nullable
+  columns — `model_digest`, `prompt_id`, `prompt_hash`, `grader_version`, and a
+  `params_json` sampling blob (the reversible choice RFC-008 §10 settled on for
+  the MVP) — are added through the established post-#217 per-statement idempotent
+  migrations on both the sqlite3 and SQLAlchemy backends; pre-existing rows keep
+  `NULL`, existing writers are unchanged, and a half-migrated DB backfills only
+  the missing columns. The dialog-replay writer — the one `agentic_harnesses`
+  writer that runs the LLM judge — records the **resolved** grader prompt hash
+  (after any `RFC_GRADER_PROMPT` override) rather than
+  `PromptRegistry.provenance(id)`'s registered coordinate, so both arms of a
+  prompt A/B log the text that actually ran (design's bound criterion from the
+  PR #272 review); it also records the target model's digest and sampling
+  regime. The comparison runner records `model_digest` via an injectable
+  resolver. New `rfc.grader.resolved_grader_provenance()` seam and
+  `GRADER_VERSION`; the over-promising "the live hash (what actually ran)"
+  docstrings on `PromptRegistry.resolve()`/`provenance()` are corrected to
+  describe the *registered* coordinate and point to the resolved-hash spine seam.
+## [1.23.2] — Unreleased
+
+### Added
+
+- **Efficiency scoreboard — `cache_hit_rate` + `suite_runtime_ms`** (RFC-010
+  slice S1, #258): two reserved `agentic_metrics` keys, written once per
+  top-level suite/run by `AgenticHarnessListener` (cache-hit fraction from each
+  `llm_metrics` payload's `cache_hit` flag; suite wall time from Robot's
+  `result.elapsedtime`) and pivoted into the `agentic_sessions_full` scoreboard
+  view. A new `rfc harness scoreboard` command reads a session's rollup. No
+  schema change (EAV rows only); the Superset dashboard stays out of scope
+  (#221/S5). This makes every later efficiency lever's win a *measured* one.
+
 ## [1.23.1] — Unreleased
 
 ### Fixed

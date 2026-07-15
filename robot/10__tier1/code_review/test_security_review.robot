@@ -13,6 +13,7 @@ Resource          code_review.resource
 
 Default Tags      code_review    security    tier:1    verify:python
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

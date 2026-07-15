@@ -41,6 +41,7 @@ from rfc.harness_adapters import (
 )
 from rfc.harness_cli import TOOLS
 from rfc.live_agent_runner import LiveClaudeCodeRunner
+from rfc.opencode_config import ComparabilityError, VerifiedLocalModel
 
 # ---------------------------------------------------------------------------
 # Shared helpers.
@@ -328,6 +329,90 @@ class TestOpenCodeAdapter:
 
     def test_parse_empty_returns_empty(self) -> None:
         assert parse_opencode_events("") == ((), ())
+
+
+# ---------------------------------------------------------------------------
+# OpenCodeAdapter comparability gate (#278): the adapter is the durable home of
+# the selected-model-resolves-local check.
+# ---------------------------------------------------------------------------
+
+
+def _local_cfg_file(tmp_path: Path) -> Path:
+    cfg = tmp_path / "opencode.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "model": "ollama/my-model",
+                "provider": {
+                    "ollama": {
+                        "options": {"baseURL": "http://localhost:11434/v1"},
+                        "models": {"my-model": {}},
+                    }
+                },
+            }
+        )
+    )
+    return cfg
+
+
+def _remote_cfg_file(tmp_path: Path) -> Path:
+    cfg = tmp_path / "opencode.json"
+    cfg.write_text(json.dumps({"model": "openai/gpt-4o"}))
+    return cfg
+
+
+class TestOpenCodeAdapterComparability:
+    def test_verify_local_model_returns_token_for_local_default(
+        self, tmp_path: Path
+    ) -> None:
+        adapter = OpenCodeAdapter(config_path=_local_cfg_file(tmp_path))
+        token = adapter.verify_local_model()
+        assert isinstance(token, VerifiedLocalModel)
+        assert token.model_id == "ollama/my-model"
+
+    def test_verify_local_model_resolves_override_against_config(
+        self, tmp_path: Path
+    ) -> None:
+        # A --model override must itself resolve local; a declared-local one passes
+        # and the token attests the OVERRIDE, not the config default.
+        adapter = OpenCodeAdapter(
+            config_path=_local_cfg_file(tmp_path), model="ollama/my-model"
+        )
+        assert adapter.verify_local_model().model_id == "ollama/my-model"
+
+    def test_verify_local_model_rejects_remote_override(self, tmp_path: Path) -> None:
+        adapter = OpenCodeAdapter(
+            config_path=_local_cfg_file(tmp_path), model="openai/gpt-4o"
+        )
+        with pytest.raises(ComparabilityError, match="not declared"):
+            adapter.verify_local_model()
+
+    def test_verify_local_model_rejects_remote_config(self, tmp_path: Path) -> None:
+        adapter = OpenCodeAdapter(config_path=_remote_cfg_file(tmp_path))
+        with pytest.raises(ComparabilityError, match="not declared"):
+            adapter.verify_local_model()
+
+    def test_require_local_comparability_gates_env_overrides(
+        self, tmp_path: Path
+    ) -> None:
+        # Armed: any consumer materializing the env for a run gets the gate for
+        # free -- a remote config fails closed BEFORE the CLI is launched (#278).
+        armed = OpenCodeAdapter(
+            config_path=_remote_cfg_file(tmp_path), require_local_comparability=True
+        )
+        with pytest.raises(ComparabilityError, match="not declared"):
+            armed.env_overrides()
+        # A local config passes the gate and still exports OPENCODE_CONFIG.
+        local = _local_cfg_file(tmp_path)
+        ok = OpenCodeAdapter(config_path=local, require_local_comparability=True)
+        assert ok.env_overrides() == {"OPENCODE_CONFIG": str(local)}
+
+    def test_env_overrides_unarmed_does_not_gate(self, tmp_path: Path) -> None:
+        # Default (off): the general live-runner path over an arbitrary config is
+        # unchanged -- a non-local config is NOT gated at env materialization.
+        cfg = _remote_cfg_file(tmp_path)
+        adapter = OpenCodeAdapter(config_path=cfg)
+        assert adapter.env_overrides() == {"OPENCODE_CONFIG": str(cfg)}
 
 
 # ---------------------------------------------------------------------------

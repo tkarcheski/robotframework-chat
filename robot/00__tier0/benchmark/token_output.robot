@@ -14,6 +14,7 @@ Documentation     Token output benchmark: measures completion ratio and throughp
 ...               - **Architecture Analysis**: Distributed systems deep-dive
 Resource          benchmark.resource
 Suite Setup       Verify LLM Available
+Test Tags         axis:prompt
 
 *** Variables ***
 ${REFERENCE_PROMPT}    Write a comprehensive reference guide for Python's standard library. Cover modules, classes, methods, parameters, return types, exceptions, and practical examples. Start with os and sys, then continue through collections, itertools, functools, pathlib, json, re, typing, dataclasses, logging, unittest, argparse, subprocess, threading, asyncio, and as many more as space allows. For each module, provide real-world usage patterns.

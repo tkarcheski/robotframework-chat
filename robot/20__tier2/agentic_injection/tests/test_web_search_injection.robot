@@ -11,6 +11,7 @@ Suite Teardown    Cleanup Agentic Injection Suite
 Default Tags      web_search
 
 Test Timeout      100 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 

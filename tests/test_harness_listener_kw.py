@@ -66,15 +66,25 @@ class TestEndToEndMetricsCapture:
         result = runner.run_inner_suite(workspace)
         assert result["rc"] == 0, result["stderr"]
         rows = runner.get_metric_rows(workspace, session_id)
-        # 2 tests x 3 metric keys
-        assert len(rows) == 6
-        assert {r["metric_key"] for r in rows} == METRIC_KEYS_PER_TEST
+        by_key: dict[str, list] = {}
+        for r in rows:
+            by_key.setdefault(r["metric_key"], []).append(r)
+        # per-test rows: 2 tests x 3 keys
         for key in METRIC_KEYS_PER_TEST:
-            assert sum(1 for r in rows if r["metric_key"] == key) == 2
+            assert len(by_key[key]) == 2
+            for r in by_key[key]:
+                assert r["metric_value"] > 0
+        # per-suite efficiency rows: one each (RFC-010 S1, #258). A real robot
+        # run populates result.elapsedtime, so suite_runtime_ms is > 0; the
+        # cache is off in this run, so cache_hit_rate is the honest 0.0 baseline.
+        assert len(by_key["suite_runtime_ms"]) == 1
+        assert by_key["suite_runtime_ms"][0]["metric_value"] > 0
+        assert len(by_key["cache_hit_rate"]) == 1
+        assert by_key["cache_hit_rate"][0]["metric_value"] == 0.0
+        assert len(rows) == 8  # 6 per-test + 2 per-suite
         for row in rows:
             assert row["session_id"] == session_id
             assert row["recorded_at"]
-            assert row["metric_value"] > 0
 
     def test_grader_score_row_captured(self, runner, workspace):
         session_id = runner.start_harness_session(workspace)
@@ -91,7 +101,14 @@ class TestEndToEndMetricsCapture:
         result = runner.run_inner_suite(workspace)
         assert result["rc"] == 0, result["stderr"]
         rows = runner.get_metric_rows(workspace, session_id)
-        assert len(rows) == 3  # only the emitting test
+        per_test = [r for r in rows if r["metric_key"] in METRIC_KEYS_PER_TEST]
+        assert len(per_test) == 3  # only the emitting test yields per-test rows
+        # The suite itself still records its two per-suite efficiency rows (#258).
+        suite_keys = {
+            r["metric_key"] for r in rows if r["metric_key"] not in METRIC_KEYS_PER_TEST
+        }
+        assert suite_keys == {"cache_hit_rate", "suite_runtime_ms"}
+        assert len(rows) == 5
 
 
 class TestSkipAndLogTolerance:

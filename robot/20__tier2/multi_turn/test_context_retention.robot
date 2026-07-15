@@ -4,6 +4,7 @@ Documentation     Hold a 5-message conversation where a fact is established
 ...               does not contradict itself (turn-level consistency metric).
 Resource          multi_turn.resource
 Test Timeout      360 minutes
+Test Tags         axis:model
 
 *** Test Cases ***
 Birthday Fact Retention

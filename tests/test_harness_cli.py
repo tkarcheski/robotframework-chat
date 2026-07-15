@@ -341,3 +341,146 @@ class TestWorktreeIsolation:
             sessions.append(json.loads(_sidecar(root).read_text())["session_id"])
         assert _sidecar(a).exists() and _sidecar(b).exists()
         assert sessions[0] != sessions[1]
+
+
+class TestScoreboard:
+    """`rfc harness scoreboard` — the RFC-010 S1 read surface (#258)."""
+
+    def _seed(self, root: Path, session_id: str = "s-eff") -> HarnessDatabase:
+        from rfc.harness_models import AgenticHarness, AgenticMetric
+
+        db = HarnessDatabase(database_url=_db_url(root))
+        db.save_harness(
+            AgenticHarness(
+                session_id=session_id,
+                tool_name="claude-code",
+                started_at="2026-06-11T00:00:00Z",
+            )
+        )
+        db.save_metrics(
+            [
+                AgenticMetric(
+                    session_id=session_id,
+                    metric_key="cache_hit_rate",
+                    recorded_at="2026-06-11T00:00:01Z",
+                    metric_value=0.5,
+                ),
+                AgenticMetric(
+                    session_id=session_id,
+                    metric_key="cache_hit_rate",
+                    recorded_at="2026-06-11T00:00:02Z",
+                    metric_value=1.0,
+                ),
+                AgenticMetric(
+                    session_id=session_id,
+                    metric_key="suite_runtime_ms",
+                    recorded_at="2026-06-11T00:00:03Z",
+                    metric_value=1200.0,
+                ),
+            ]
+        )
+        return db
+
+    def test_prints_aggregated_metrics(self, repo, capsys):
+        self._seed(repo)
+        rc = main(
+            [
+                "harness",
+                "scoreboard",
+                "--session",
+                "s-eff",
+                "--database-url",
+                _db_url(repo),
+            ]
+        )
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "cache_hit_rate:   0.750" in out  # AVG(0.5, 1.0)
+        assert "suite_runtime_ms: 1200.0" in out
+
+    def test_defaults_to_active_sidecar_session(self, repo, capsys):
+        self._seed(repo, "s-side")
+        _sidecar(repo).write_text(json.dumps({"session_id": "s-side"}))
+        rc = main(["harness", "scoreboard", "--database-url", _db_url(repo)])
+        assert rc == 0
+        assert "session s-side" in capsys.readouterr().out
+
+    def test_reports_when_no_metrics_recorded(self, repo, capsys):
+        from rfc.harness_models import AgenticHarness
+
+        db = HarnessDatabase(database_url=_db_url(repo))
+        db.save_harness(
+            AgenticHarness(
+                session_id="empty",
+                tool_name="claude-code",
+                started_at="2026-06-11T00:00:00Z",
+            )
+        )
+        rc = main(
+            [
+                "harness",
+                "scoreboard",
+                "--session",
+                "empty",
+                "--database-url",
+                _db_url(repo),
+            ]
+        )
+        assert rc == 0
+        assert "no efficiency metrics" in capsys.readouterr().out
+
+    def test_no_session_is_an_error(self, repo, capsys):
+        rc = main(["harness", "scoreboard", "--database-url", _db_url(repo)])
+        assert rc == 1
+        assert "no session" in capsys.readouterr().err
+
+    def test_pre_s1_session_reports_no_efficiency_metrics(self, repo, capsys):
+        """Rows that predate S1 (per-test keys only) must not crash or divide.
+
+        Added during the test-design verdict on PR #298: a session whose
+        agentic_metrics rows carry only the pre-S1 keys (tokens/latency)
+        exercises the empty-aggregate path with a NON-empty metrics table.
+        """
+        from rfc.harness_models import AgenticHarness, AgenticMetric
+
+        db = HarnessDatabase(database_url=_db_url(repo))
+        db.save_harness(
+            AgenticHarness(
+                session_id="pre-s1",
+                tool_name="claude-code",
+                started_at="2026-06-11T00:00:00Z",
+            )
+        )
+        db.save_metrics(
+            [
+                AgenticMetric(
+                    session_id="pre-s1",
+                    metric_key="tokens_in",
+                    recorded_at="2026-06-11T00:00:01Z",
+                    metric_value=100.0,
+                ),
+                AgenticMetric(
+                    session_id="pre-s1",
+                    metric_key="latency_ms",
+                    recorded_at="2026-06-11T00:00:02Z",
+                    metric_value=2500.0,
+                ),
+            ]
+        )
+        rc = main(
+            [
+                "harness",
+                "scoreboard",
+                "--session",
+                "pre-s1",
+                "--database-url",
+                _db_url(repo),
+            ]
+        )
+        assert rc == 0
+        assert "no efficiency metrics" in capsys.readouterr().out
+
+    def test_no_database_is_an_error(self, repo, capsys):
+        rc = main(["harness", "scoreboard", "--session", "s-eff"])
+        assert rc == 1
+        assert "no database" in capsys.readouterr().err

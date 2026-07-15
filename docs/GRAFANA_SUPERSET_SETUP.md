@@ -864,7 +864,7 @@ Written only when at least one field is non-empty.
 
 #### `coverage_reports` — Code coverage snapshots
 
-Populated by `scripts/collect_coverage.py`; one row per module per run.
+Populated by the monorepo-side CI coverage collector; one row per module per run.
 
 ### `test_results_full` view
 
