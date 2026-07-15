@@ -20,6 +20,7 @@ Documentation     Cross-harness conformance matrix (#173): the SAME fixture task
 Library           rfc.harness_keywords.HarnessKeywords
 Library           rfc.agentic_coding_keywords.AgenticCodingKeywords
 Library           rfc.harness_comparison.HarnessComparisonKeywords
+Library           rfc.harness_significance.HarnessSignificanceKeywords
 Library           OperatingSystem
 Resource          harness_matrix.resource
 
@@ -93,6 +94,13 @@ Comparison Mode Records The Battery Per Harness
     ${report}=    Run Harness Comparison Battery    database_url=${ws}[database_url]
     ...    repeats=1    scenarios=${scenarios}
     Comparison Report Should Have Rows For    ${report}    opencode
+    # RFC-007 S4 (#220): the McNemar gate over the recorded rows. With only the
+    # one Tier-A leg available today, there is no second harness to pair, so the
+    # gate must report an HONEST insufficient-pairs non-result (never a fake p).
+    # It unlocks a real verdict the moment a second fixed-local harness records.
+    ${verdict}=    Mcnemar Verdict For Harness Pair    ${report}    opencode    codex
+    Mcnemar Verdict Should Be Insufficient    ${verdict}
+    Log    McNemar gate: reason=${verdict.reason} (needs a second Tier-A harness to pair)
     [Teardown]    Remove Directory    ${ws}[path]    recursive=True
 
 *** Keywords ***

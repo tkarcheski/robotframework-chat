@@ -6,6 +6,7 @@ from rfc.harness_models import (
     METRIC_GRADER_SCORE,
     METRIC_LATENCY_MS,
     METRIC_PROCESS_VIOLATIONS,
+    METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_SUITE_RUNTIME_MS,
     METRIC_TASK_SUCCESS,
     METRIC_TOKENS_IN,
@@ -155,7 +156,12 @@ class TestReservedMetricKeys:
         assert METRIC_CACHE_HIT_RATE == "cache_hit_rate"
         assert METRIC_SUITE_RUNTIME_MS == "suite_runtime_ms"
 
-    def test_reserved_set_is_the_nine_keys_in_order(self) -> None:
+    def test_sandbox_exec_overhead_key_has_expected_spelling(self) -> None:
+        # #235: the ContainerExecBroker writer and any scoreboard consumer must
+        # agree on the spelling of the per-code-exec-call overhead key.
+        assert METRIC_SANDBOX_EXEC_OVERHEAD_MS == "sandbox_exec_overhead_ms"
+
+    def test_reserved_set_is_the_ten_keys_in_order(self) -> None:
         assert RESERVED_METRIC_KEYS == (
             "task_success",
             "churn_ratio",
@@ -166,6 +172,7 @@ class TestReservedMetricKeys:
             "grader_score",
             "cache_hit_rate",
             "suite_runtime_ms",
+            "sandbox_exec_overhead_ms",
         )
 
     def test_reserved_keys_are_unique(self) -> None:

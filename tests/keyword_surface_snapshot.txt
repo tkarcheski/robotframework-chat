@@ -144,6 +144,9 @@ Log Consistency Metrics
 Log Quantization Delta
 Log SWEBench Result
 Log Safety Report
+Mcnemar Verdict For Harness Pair
+Mcnemar Verdict Should Be Insufficient
+Mcnemar Verdict Should Show Real Difference
 Measure Completion Ratio
 Measure Semantic Variance
 No Commit Should Occur While Tests Red

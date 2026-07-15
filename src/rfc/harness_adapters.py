@@ -54,6 +54,12 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from .agent_run import AgentCommand, AgentQuestion
+from .exec_mcp import (
+    SandboxExecRouting,
+    claude_mcp_config_json,
+    deny_settings_json,
+    opencode_mcp_config,
+)
 from .opencode_config import (
     _DEFAULT_OPENCODE_CONFIG,
     VerifiedLocalModel,
@@ -210,6 +216,15 @@ def _extract_questions(text: str) -> list[AgentQuestion]:
 # these into a full AgentRun with its own git-derived commits and changed paths.
 ParsedOutput = tuple[tuple[AgentCommand, ...], tuple[AgentQuestion, ...]]
 
+# Bash-equivalent tool_use names in a claude-code stream-json transcript. When
+# code execution is routed into the sandbox container (#235), the native ``Bash``
+# tool is denied and the model calls the rfc-exec MCP server's ``bash`` tool,
+# which surfaces as ``mcp__rfc-exec__bash`` (pattern ``mcp__<server>__<tool>``).
+# Both carry the shell string at ``input.command``, so both become AgentCommands
+# -- else every remoted command drops out of the AgentRun and the trajectory
+# looks empty.
+_BASH_TOOL_NAMES: frozenset[str] = frozenset({"Bash", "mcp__rfc-exec__bash"})
+
 
 # ---------------------------------------------------------------------------
 # Claude Code: stream-json transcript parser (unchanged behaviour).
@@ -223,9 +238,10 @@ def parse_transcript(
 ) -> ParsedOutput:
     """Parse a Claude Code stream-json transcript.
 
-    Returns ``(commands, questions)``. Every Bash ``tool_use`` block paired
-    with its ``tool_result`` becomes one :class:`AgentCommand`. Each
-    assistant text block is scanned for clarifying questions.
+    Returns ``(commands, questions)``. Every bash-equivalent ``tool_use`` block
+    (native ``Bash`` OR the container-routed ``mcp__rfc-exec__bash``, #235) paired
+    with its ``tool_result`` becomes one :class:`AgentCommand`. Each assistant
+    text block is scanned for clarifying questions.
 
     All stdout text captured into ``stdout_tail`` is passed through
     :func:`redact` with ``extra_secrets`` so .env values can't leak.
@@ -251,7 +267,7 @@ def parse_transcript(
                 if not isinstance(block, dict):
                     continue
                 btype = block.get("type")
-                if btype == "tool_use" and block.get("name") == "Bash":
+                if btype == "tool_use" and block.get("name") in _BASH_TOOL_NAMES:
                     cmd = (block.get("input") or {}).get("command")
                     if isinstance(cmd, str) and cmd:
                         pending[str(block.get("id", ""))] = cmd
@@ -345,16 +361,29 @@ def _probe_binary(binary: str, *, version_flag: str = "--version") -> bool:
 
 
 class ClaudeCodeAdapter:
-    """Drive the Claude Code CLI (``claude -p … --output-format stream-json``)."""
+    """Drive the Claude Code CLI (``claude -p … --output-format stream-json``).
+
+    When ``exec_routing`` is set (#235), the native host-executing code tools are
+    DENIED via ``--settings`` and code execution is routed into the pre-warmed
+    sandbox container through the ``rfc-exec`` MCP stdio server registered with
+    ``--mcp-config``. With ``exec_routing=None`` (the default) the argv is the
+    host-native invocation, byte-for-byte unchanged.
+    """
 
     name = "claude-code"
     branch_prefix = "claude"
 
-    def __init__(self, *, claude_bin: str = "claude") -> None:
+    def __init__(
+        self,
+        *,
+        claude_bin: str = "claude",
+        exec_routing: "SandboxExecRouting | None" = None,
+    ) -> None:
         self.claude_bin = claude_bin
+        self.exec_routing = exec_routing
 
     def build_argv(self, task: str, workspace: Path) -> list[str]:
-        return [
+        argv = [
             self.claude_bin,
             "-p",
             task,
@@ -362,6 +391,14 @@ class ClaudeCodeAdapter:
             "stream-json",
             "--verbose",
         ]
+        if self.exec_routing is not None:
+            argv += [
+                "--settings",
+                deny_settings_json(),
+                "--mcp-config",
+                claude_mcp_config_json(self.exec_routing),
+            ]
+        return argv
 
     def env_overrides(self) -> dict[str, str]:
         return {}
@@ -479,11 +516,29 @@ class OpenCodeAdapter:
         config_path: Path | None = None,
         model: str | None = None,
         require_local_comparability: bool = False,
+        exec_routing: SandboxExecRouting | None = None,
     ) -> None:
         self.opencode_bin = opencode_bin
         self.config_path = config_path
         self.model = model
         self.require_local_comparability = require_local_comparability
+        # #235: when set, code execution should route into the sandbox container
+        # via the rfc-exec MCP server. opencode speaks MCP (its ``mcp`` config
+        # key), so :meth:`exec_config_overlay` returns the block to merge into the
+        # run's opencode config. PENDING LIVE CONFORMANCE: the opencode CLI is not
+        # installed here to verify the tool-substitution behaviour, so the live
+        # driver leaves opencode on the host-native path until the binary lands
+        # (mirrors CodexAdapter). The overlay itself is pure and unit-tested.
+        self.exec_routing = exec_routing
+
+    def exec_config_overlay(self) -> dict:
+        """The opencode ``mcp`` config block routing code-exec into the container.
+
+        Empty when ``exec_routing`` is unset. PENDING LIVE CONFORMANCE (#235).
+        """
+        if self.exec_routing is None:
+            return {}
+        return opencode_mcp_config(self.exec_routing)
 
     def build_argv(self, task: str, workspace: Path) -> list[str]:
         argv = [self.opencode_bin, "run", "--format", "json"]

@@ -9,13 +9,16 @@ variants (``agents/*.sh``) that run inside the container and stay the default
 for deterministic CI. Passing ``harness=<name>`` (a :data:`rfc.harness_cli.TOOLS`
 taxonomy name) instead drives a *live* coding-agent CLI through its
 :class:`~rfc.harness_adapters.HarnessAdapter` (Issue #174). Per the owner's
-ratified egress model (decision 2), the live harness runs ON THE HOST against
-the seeded scenario repo; only the scenario's verification (churn diff +
-``test_command``) runs inside the network-isolated container, exactly as the
-scripted path does. An absent harness CLI skips the run cleanly
-(:class:`~rfc.exceptions.HarnessNotAvailableError`). Every run is normalized
-into the same :class:`~rfc.agent_run.AgentRun` the rest of the suite's verifiers
-consume.
+ratified egress model (decision 2) as sharpened by the #235 coherence ruling,
+the live harness *head* -- model I/O, reasoning, clarifying questions -- runs ON
+THE HOST, but its code-exec *hands* -- bash/write/edit -- route through the
+host-side :class:`~rfc.container_exec_broker.ContainerExecBroker` INTO a
+pre-warmed, network-isolated container whose ``/workspace`` is the single working
+tree. The churn diff + ``test_command`` then run in place against exactly what
+the agent produced (no host-side copy-back). An absent harness CLI skips the run
+cleanly (:class:`~rfc.exceptions.HarnessNotAvailableError`). Every run is
+normalized into the same :class:`~rfc.agent_run.AgentRun` the rest of the suite's
+verifiers consume.
 
 Scenario fixture layout::
 
@@ -50,7 +53,9 @@ from rfc.churn_manifest import (
     manifest_command,
     parse_manifest,
 )
+from rfc.container_exec_broker import check_overhead_budget, read_overhead_samples
 from rfc.exceptions import HarnessNotAvailableError
+from rfc.exec_mcp import SandboxExecRouting
 from rfc.harness_adapters import (
     HarnessAdapter,
     OpenCodeAdapter,
@@ -107,20 +112,55 @@ class ApprovalGate(Protocol):
     def require(self, target_action_id: str, args: Mapping[str, Any]) -> None: ...
 
 
-def sandbox_action_id(scenario_id: str, variant: str) -> str:
-    """Canonical HITL action id for one sandboxed scenario run."""
-    return f"agent-sandbox:{scenario_id}:{variant}"
+def sandbox_action_id(
+    scenario_id: str, variant: str, harness: str | None = None
+) -> str:
+    """Canonical HITL action id for one sandboxed scenario run.
+
+    ``harness=None`` is the scripted, in-container CI path; its id is left
+    byte-identical to the historical form so pre-existing scripted approvals
+    keep opening. A live harness (``harness=<name>``) drives a coding-agent CLI
+    ON THE HOST (owner egress decision 2) -- a materially higher-consequence
+    action -- so it gets a ``:live:<harness>`` discriminator.
+
+    The ``:live:<harness>`` discriminator is a human-readable **index/label,
+    not a security boundary** -- it is forgeable via any interpolated field
+    (e.g. a crafted ``variant``), which is harmless precisely because it is
+    never trusted alone. What actually stops a scripted approval from being
+    replayed onto a live harness (#360 / mirror #657) is the **args digest**:
+    ``rfc.hitl_gate`` opens the gate only on an ``id AND digest`` match, and
+    scripted args (3 keys) and live args (5 keys: +``harness``
+    +``harness_model``) have **disjoint key sets**, so a scripted approval's
+    digest can never satisfy a live action's gate.
+    """
+    base = f"agent-sandbox:{scenario_id}:{variant}"
+    if harness is None:
+        return base
+    return f"{base}:live:{harness}"
 
 
 def sandbox_action_args(
-    scenario_id: str, variant: str, agent_id: str
+    scenario_id: str,
+    variant: str,
+    agent_id: str,
+    harness: str | None = None,
+    harness_model: str = "",
 ) -> dict[str, str]:
     """Canonical HITL action args for one sandboxed scenario run.
 
     The approval-request side must digest exactly these args (via
-    ``rfc.hitl_gate.compute_args_digest``) for the gate to open.
+    ``rfc.hitl_gate.compute_args_digest``) for the gate to open. For a live
+    harness the args carry ``harness`` + ``harness_model`` so the approval binds
+    the exact CLI (and, for adapters that take one, the exact model) the human
+    signed off on -- an approval for ``harness="opencode"`` will not open a run
+    for ``harness="codex"`` or a different model. Scripted (``harness=None``)
+    args are left unchanged so historical scripted approvals still verify.
     """
-    return {"scenario_id": scenario_id, "variant": variant, "agent_id": agent_id}
+    args = {"scenario_id": scenario_id, "variant": variant, "agent_id": agent_id}
+    if harness is not None:
+        args["harness"] = harness
+        args["harness_model"] = harness_model
+    return args
 
 
 class ContainerBackend(Protocol):
@@ -228,6 +268,11 @@ class SandboxResult:
     # default False and existing 124 readers keep working.
     timed_out: bool = False
     tests_timed_out: bool = False
+    # #235: per-code-exec-call broker overhead samples (ms), one per tool call
+    # the live agent routed into the container. Empty on the scripted path and on
+    # any live path that did not route code-exec through the broker. Surfaced so
+    # the perf budget (p50 <= 120ms / p95 <= 300ms) is auditable from the result.
+    sandbox_exec_overhead_ms: tuple[float, ...] = ()
 
     @property
     def tests_passed(self) -> bool:
@@ -354,13 +399,18 @@ class AgentSandbox:
         With an ``approval_gate`` configured, execution is blocked fail-closed
         (before any container OR host agent is launched) unless an approved
         ``hitl_interactions`` row matches this exact action id + args digest
-        (#384) -- the gate fires identically for both paths.
+        (#384). The binding includes ``harness`` + ``harness_model`` (#360), so
+        the scripted and live paths are gated as *distinct digests*: a scripted
+        approval can never be replayed onto a host-side live harness the human
+        never approved.
         """
         resolved = self._resolve_scenario(scenario)
         if self._approval_gate is not None:
             self._approval_gate.require(
-                sandbox_action_id(resolved.scenario_id, variant),
-                sandbox_action_args(resolved.scenario_id, variant, agent_id),
+                sandbox_action_id(resolved.scenario_id, variant, harness),
+                sandbox_action_args(
+                    resolved.scenario_id, variant, agent_id, harness, harness_model
+                ),
             )
         if harness is not None:
             return self._run_live_scenario(
@@ -487,26 +537,28 @@ class AgentSandbox:
             return OpenCodeAdapter(model=harness_model or None, config_path=config_path)
         return get_adapter(harness)
 
-    def _sync_workspace(self, container_id: str, host_workspace: Path) -> None:
-        """Replace the container's ``/workspace`` with the host workspace tree.
+    def _wire_exec_routing(
+        self, adapter: HarnessAdapter, container_id: str, metrics_path: Path
+    ) -> None:
+        """Point the adapter's code-exec tools at the pre-warmed container (#235).
 
-        Empties ``/workspace`` first (so files the live agent *deleted* on the
-        host are reflected in the churn diff) then copies the post-agent tree
-        back in, leaving the churn manifest + test run to observe exactly what
-        the agent produced.
+        Only claude-code has a live-verified broker path today: its native code
+        tools are denied and code execution routes through the rfc-exec MCP
+        server into ``container_id``. opencode's MCP routing is PENDING LIVE
+        CONFORMANCE and codex isn't installed, so they stay host-native (their
+        code-exec does not reach the container yet). ``metrics_path`` is where
+        the broker child appends per-call overhead samples for this process to
+        collect after the run.
         """
-        cleared = self.manager.execute_command(
-            container_id,
-            "find /workspace -mindepth 1 -delete",
-            timeout=60,
-            workdir=_WORKSPACE,
+        if adapter.name != "claude-code":
+            return
+        routing = SandboxExecRouting(
+            container_id=container_id, metrics_path=str(metrics_path)
         )
-        if cleared["exit_code"] != 0:
-            raise RuntimeError(
-                f"Failed to reset workspace before sync (exit "
-                f"{cleared['exit_code']}): {_tail(cleared['stdout'])}"
-            )
-        self.manager.copy_to_container(container_id, str(host_workspace), _WORKSPACE)
+        # ClaudeCodeAdapter carries a mutable exec_routing attribute; setting it
+        # here (post container-create) is how the runtime container id reaches
+        # build_argv, which the adapter constructor can't know at build time.
+        setattr(adapter, "exec_routing", routing)
 
     def _invoke_agent_bounded(
         self,
@@ -548,12 +600,18 @@ class AgentSandbox:
         harness: str,
         harness_model: str,
     ) -> SandboxResult:
-        """Live-harness path: the agent runs on the host, the container verifies.
+        """Live-harness path: the agent's code-exec routes INTO the container.
 
-        Egress model (owner decision 2): the harness process runs ON THE HOST
-        against a throwaway copy of the seeded repo; only the scenario's
-        verification (churn manifest + ``test_command``) runs inside the
-        network-isolated container, exactly as the scripted path does.
+        Egress model (#235 coherence ruling, on top of owner decision 2): the
+        harness process (the *head* -- model I/O, reasoning, clarifying
+        questions) runs ON THE HOST, but its code-exec tool calls (the *hands* --
+        bash/write/edit) route through the host-side ContainerExecBroker into a
+        pre-warmed, network-isolated container. The container's ``/workspace`` is
+        the single working tree, seeded from the pristine repo at t0; the churn
+        manifest + ``test_command`` run in place against exactly what the agent
+        produced -- no host-side copy-back (``_sync_workspace`` is gone). Each
+        broker dispatch records ``sandbox_exec_overhead_ms``; the perf budget is
+        checked and logged.
         """
         adapter = self._build_harness_adapter(harness, harness_model)
         # Probe-gate only the production path: an injected invoker means a test
@@ -565,54 +623,68 @@ class AgentSandbox:
         config = self._container_config(resolved.scenario_id, variant)
         started = time.time()
 
-        with tempfile.TemporaryDirectory(
-            prefix=f"rfc-sandbox-live-{resolved.scenario_id}-"
-        ) as tmp:
-            agent_workspace = Path(tmp) / "workspace"
-            shutil.copytree(resolved.repo_dir, agent_workspace)
-
-            agent_argv = tuple(adapter.build_argv(resolved.task, agent_workspace))
-            agent_returncode, agent_stdout, agent_timed_out = (
-                self._invoke_agent_bounded(
-                    adapter, agent_argv, agent_workspace, wall_clock
-                )
+        # Pre-warm ONE network-isolated container and seed /workspace from the
+        # pristine repo at t0, BEFORE the agent starts -- so its container id can
+        # be handed to the broker and the agent's code-exec lands here in place.
+        container_id = self.manager.create_container(config)
+        logger.info(
+            f"Sandbox up for {resolved.scenario_id}/{variant} "
+            f"(harness={harness}, {self.limits.image}, "
+            f"mem={self.limits.memory_mb}MB, wall={wall_clock}s, "
+            f"net={self.limits.network_mode})"
+        )
+        overhead_samples: list[float] = []
+        try:
+            self.manager.copy_to_container(
+                container_id, str(resolved.repo_dir), _WORKSPACE
             )
+            baseline = self._manifest(container_id)
 
-            container_id = self.manager.create_container(config)
-            logger.info(
-                f"Sandbox verify up for {resolved.scenario_id}/{variant} "
-                f"(harness={harness}, {self.limits.image}, "
-                f"mem={self.limits.memory_mb}MB, wall={wall_clock}s, "
-                f"net={self.limits.network_mode})"
+            with tempfile.TemporaryDirectory(
+                prefix=f"rfc-sandbox-live-{resolved.scenario_id}-"
+            ) as tmp:
+                # Host CWD stub for the agent process, seeded identically at t0.
+                # The agent's native code tools are denied; it reads via broker'd
+                # ``bash cat`` so it never touches this stale stub (MVP ruling).
+                agent_workspace = Path(tmp) / "workspace"
+                shutil.copytree(resolved.repo_dir, agent_workspace)
+                metrics_path = Path(tmp) / "exec_overhead.jsonl"
+                self._wire_exec_routing(adapter, container_id, metrics_path)
+
+                agent_argv = tuple(adapter.build_argv(resolved.task, agent_workspace))
+                agent_returncode, agent_stdout, agent_timed_out = (
+                    self._invoke_agent_bounded(
+                        adapter, agent_argv, agent_workspace, wall_clock
+                    )
+                )
+                overhead_samples = read_overhead_samples(metrics_path)
+
+            # The agent mutated /workspace in place through the broker; observe
+            # it directly -- no copy-back.
+            after = self._manifest(container_id)
+            changed = diff_manifests(baseline, after)
+            unexpected = filter_unexpected(changed, resolved.allowed_paths)
+
+            test_command = (
+                f"timeout -k {_KILL_AFTER_SECONDS}s {wall_clock}s "
+                f"{resolved.test_command}"
             )
-            try:
-                # Baseline: the pristine scenario repo, manifested in-container
-                # exactly as the scripted path does.
-                self.manager.copy_to_container(
-                    container_id, str(resolved.repo_dir), _WORKSPACE
-                )
-                baseline = self._manifest(container_id)
-                # Bring the agent's host-side output into the container so the
-                # churn diff + tests run against exactly what the agent produced.
-                self._sync_workspace(container_id, agent_workspace)
-                after = self._manifest(container_id)
-                changed = diff_manifests(baseline, after)
-                unexpected = filter_unexpected(changed, resolved.allowed_paths)
-
-                test_command = (
-                    f"timeout -k {_KILL_AFTER_SECONDS}s {wall_clock}s "
-                    f"{resolved.test_command}"
-                )
-                tests_result = self.manager.execute_command(
-                    container_id,
-                    test_command,
-                    timeout=wall_clock + 30,
-                    workdir=_WORKSPACE,
-                )
-            finally:
-                self.manager.stop_container(container_id)
+            tests_result = self.manager.execute_command(
+                container_id,
+                test_command,
+                timeout=wall_clock + 30,
+                workdir=_WORKSPACE,
+            )
+        finally:
+            self.manager.stop_container(container_id)
 
         duration = time.time() - started
+        budget = check_overhead_budget(overhead_samples)
+        if overhead_samples and not budget.within_budget:
+            logger.warn(
+                f"Sandbox exec overhead OVER budget for {resolved.scenario_id}/"
+                f"{variant} (harness={harness}): {budget.summary}"
+            )
         commands, questions = adapter.parse_output(agent_stdout)
         test_row = AgentCommand(
             argv=("sh", "-c", test_command),
@@ -644,12 +716,14 @@ class AgentSandbox:
             run=run,
             timed_out=agent_timed_out,
             tests_timed_out=int(tests_result["exit_code"]) == TIMEOUT_EXIT_CODE,
+            sandbox_exec_overhead_ms=tuple(overhead_samples),
         )
         logger.info(
             f"Sandbox live run {resolved.scenario_id}/{variant} "
             f"(harness={harness}): agent_exit={result.agent_exit_code} "
             f"tests_exit={result.tests_exit_code} "
             f"changed={list(changed)} unexpected={list(unexpected)} "
+            f"exec_overhead[{budget.summary}] "
             f"({result.duration_seconds}s)"
         )
         return result
