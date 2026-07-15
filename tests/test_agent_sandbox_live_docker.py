@@ -230,7 +230,9 @@ def live_container(docker_manager):
         working_dir="/workspace",
     )
     cid = docker_manager.create_container(cfg)
-    docker_manager.execute_command(cid, "mkdir -p /workspace", timeout=30, workdir="/workspace")
+    docker_manager.execute_command(
+        cid, "mkdir -p /workspace", timeout=30, workdir="/workspace"
+    )
     try:
         yield docker_manager, cid
     finally:
