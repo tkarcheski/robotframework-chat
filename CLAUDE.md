@@ -172,6 +172,29 @@ Multiple agents may work on this repo simultaneously, so:
 
 ---
 
+## Foundation-green gate
+
+Owner-ordered 2026-07-15: **no new work dispatches while any current-foundation
+suite is red.** This is the strict form of the red-baseline rule above — fix the
+reds first; add nothing new until every suite is 100% green.
+
+- **Three surfaces, all green.** The gate spans the monorepo (core + ops suites
+  on `main`), the public robotframework-chat mirror's CI, and open-tolkein's
+  suite on its `baseline` (its default branch — it has no `main`). All three
+  must be 100% green before any new work starts.
+- **Blocked means everything but red-fixes.** While red exists on any surface,
+  the only permitted fleet work is fixing those reds (plus direct owner orders);
+  even review cycles on already-built PRs pause.
+- **A pending fix still blocks.** A red whose dual-signed fix only awaits the
+  owner's merge keeps the fleet off new work until that merge lands and green is
+  re-verified.
+- **Verify post-merge.** Verification is the post-merge health check across all
+  three surfaces; new work resumes only once it passes.
+
+The fleet contract binds this as hard rule 14 in `ai/ROLES.md`.
+
+---
+
 ## Role system
 
 This repo runs a four-role agent system defined in **`ai/ROLES.md`** — read it
