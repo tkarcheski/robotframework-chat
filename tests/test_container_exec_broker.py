@@ -233,7 +233,9 @@ class TestOverheadIncludesTransport:
 
     def test_negative_marker_falls_back(self) -> None:
         # date +%N unavailable -> wrapper emits -1 -> broker uses backend duration.
-        backend = FakeExecBackend([_ok(stdout=_with_marker("x\n", -1), duration_ms=9.0)])
+        backend = FakeExecBackend(
+            [_ok(stdout=_with_marker("x\n", -1), duration_ms=9.0)]
+        )
         broker = ContainerExecBroker(backend, "cid-1")
         result = broker.dispatch(SandboxToolCall(kind="bash", payload="true"))
         assert result.stdout == "x\n"
