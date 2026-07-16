@@ -1422,12 +1422,30 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     outcome                 TEXT,
     replay_of_recording_id  TEXT,
     -- #217 spine column the harness_scoreboard view (RFC-007 S5 / #221) groups
-    -- by. The canonical HarnessDatabase schema adds the full #217/#242/#277 set
-    -- via migration -- the bootstrap declares only what the embedded scoreboard
-    -- view references so it executes standalone (e.g. the idempotency test).
-    scenario_id             TEXT
+    -- by. The canonical HarnessDatabase schema adds the full #217/#242/#277/#350
+    -- set via migration -- the bootstrap declares only what the embedded
+    -- scoreboard view references so it executes standalone (e.g. the idempotency
+    -- test): scenario_id (grouped by) and verified_local (the #350 tier verdict).
+    scenario_id             TEXT,
+    verified_local          INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
+
+-- Upgrade path for a PRE-EXISTING lean table (Codex finding, mirror PR #660,
+-- fixed at source in #374): on an existing database the CREATE TABLE IF NOT
+-- EXISTS above is a NO-OP, so the view-referenced columns added since the table
+-- first shipped (scenario_id in #347, verified_local in #350) would be missing
+-- and the CREATE VIEW below would fail with a missing-column error. These
+-- additive ALTERs bring an old lean table up to the view's column surface
+-- before any view references it. IF NOT EXISTS makes them no-ops on a fresh
+-- table (PostgreSQL, the production _run_ddl target, supports it natively --
+-- the SQLite test executor emulates it with the try/except duplicate-column
+-- idiom the spine migrations already use). Types match _SQLITE_MIGRATIONS /
+-- _PG_MIGRATIONS in rfc.harness_db. Nullable, additive, no data rewrite --
+-- existing rows keep NULL and the scoreboard view reads NULL fail-closed to
+-- Tier B.
+ALTER TABLE agentic_harnesses ADD COLUMN IF NOT EXISTS scenario_id TEXT;
+ALTER TABLE agentic_harnesses ADD COLUMN IF NOT EXISTS verified_local INTEGER;
 
 CREATE TABLE IF NOT EXISTS agentic_plugins (
     id              TEXT PRIMARY KEY,
@@ -1557,13 +1575,18 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
          h.replay_of_recording_id;
 
 -- harness_scoreboard (RFC-007 S5 / #221): one row per comparison cell
--- (tool_name, model_id, scenario_id) over battery runs, with a name-derived
--- ``tier`` column (tool_name allowlist approximation — see #350). Tier-A vs
+-- (tool_name, model_id, scenario_id, tier) over battery runs, with ``tier``
+-- read FAIL-CLOSED from the persisted ``verified_local`` verdict (the #350 fix:
+-- the token IS the tier, not a tool_name allowlist). The tier CASE is part of
+-- the GROUP BY: PostgreSQL rejects a bare non-grouped column outright, and a
+-- cell mixing token rows with untokened/legacy-NULL rows (the canonical
+-- post-migration state) SPLITS into a pure Tier-A sub-cell and a Tier-B
+-- sub-cell, so an untokened row can never enter a Tier-A aggregate. Tier-A vs
 -- Tier-B never in the same cell (section 5 / #273). Body is a copy of
 -- rfc.harness_db.HARNESS_SCOREBOARD_VIEW_BODY -- the drift-guard test in
 -- tests/test_bootstrap_dashboards.py keeps the two in sync. The McNemar
--- significance overlay (#220) LEFT JOINs onto this view once S4 and the #350
--- persisted-tier spine column land.
+-- significance overlay (#220) LEFT JOINs onto this view -- the #350 gate on that
+-- JOIN is cleared now that verified_local unifies the row population.
 DROP VIEW IF EXISTS harness_scoreboard;
 
 CREATE VIEW harness_scoreboard AS
@@ -1571,9 +1594,9 @@ SELECT
     h.tool_name,
     h.model_id,
     h.scenario_id,
-    CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+    CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END
         AS tier,
-    '[' || CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+    '[' || CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END
         || '] ' || h.tool_name || ' @ ' || COALESCE(h.model_id, '')
         AS cell_label,
     COUNT(DISTINCT h.session_id) AS run_count,
@@ -1598,7 +1621,8 @@ SELECT
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
-GROUP BY h.tool_name, h.model_id, h.scenario_id;
+GROUP BY h.tool_name, h.model_id, h.scenario_id,
+         CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END;
 """
 
 # Physical tables / views registered as Superset datasets.
@@ -1947,18 +1971,49 @@ _AGENTIC_LAYOUT_SECTIONS: list[dict[str, Any]] = [
 # Harness Scoreboard dashboard (RFC-007 S5 / issue #221)
 # ---------------------------------------------------------------------------
 # The owner's headline product: SEEING which harness is better. Reads the
-# ``harness_scoreboard`` view (one row per (tool_name, model_id, scenario_id)
-# cell, with a name-derived ``tier`` column — tool_name allowlist approximation,
-# see #350). Charts keep Tier-A and Tier-B in
-# distinct rows via ``cell_label`` (which bakes the tier letter into the harness
-# axis) — RFC-007 section 5 / the #273 lesson.
+# ``harness_scoreboard`` view (one row per (tool_name, model_id, scenario_id,
+# tier) cell, with ``tier`` read fail-closed from the persisted
+# ``verified_local`` verdict — the token IS the tier, #350 — and part of the
+# cell grain, so a mixed token/untokened population splits into pure sub-cells
+# rather than promoting or muddying either). Charts keep Tier-A and Tier-B in
+# distinct rows via ``cell_label`` (which bakes the tier letter into the
+# harness axis) — RFC-007 section 5 / the #273 lesson.
+#
+# Comparative charts DEFAULT-FILTER tier='A' (#347 chart-convention hole / the
+# #350 consolidated scope): a bar/heatmap that plots pass-rate or economy across
+# harnesses is a head-to-head claim, which is only honest within the
+# fixed-local Tier-A population, so those charts scope to tier='A' by default (a
+# viewer can widen via the dashboard Tier filter). The raw "Harness Scoreboard"
+# TABLE is exempt — it is the honest full grid that SHOWS the tier column across
+# both tiers; filtering it would hide the very separation it exists to display.
 #
 # SEAM for #220 (McNemar gate, S4): the pass-rate heatmap shows pass-rate
 # MAGNITUDE, not peer-superiority. The "is the difference real?" overlay — which
 # renders a not-significant cell as *tied* rather than faint-green *better* —
-# is #220's per-pair p-value/delta output, LEFT JOINed onto the view once S4
-# and the #350 persisted-tier spine column land. Until then these charts are
-# honestly descriptive, never comparative.
+# is #220's per-pair p-value/delta output, LEFT JOINed onto the view. The #350
+# gate on that JOIN is cleared now that ``verified_local`` unifies the row
+# population; until the overlay lands these charts stay honestly descriptive.
+
+
+def _tier_a_adhoc_filters() -> list[dict[str, Any]]:
+    """A fresh default ``tier == 'A'`` Superset adhoc-filter list (#350/#347).
+
+    Returned by a factory (not a shared constant) so each comparative chart owns
+    an independent filter object — dashboard assembly never mutates one chart's
+    filter into another's. Fail-closed by construction: the view already renders
+    every untokened / non-local run as tier 'B', so this default shows only the
+    honestly head-to-head-comparable Tier-A cells.
+    """
+    return [
+        {
+            "expressionType": "SIMPLE",
+            "subject": "tier",
+            "operator": "==",
+            "comparator": "A",
+            "clause": "WHERE",
+        }
+    ]
+
 
 _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
     {
@@ -1976,12 +2031,16 @@ _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
             },
             "legend_type": "continuous",
             "normalize_across": "heatmap",
+            # Comparative chart -> default to the Tier-A population (#350/#347).
+            "adhoc_filters": _tier_a_adhoc_filters(),
         },
     },
     {
         # The honest raw grid — exact numbers, and the ``tier`` column consumers
         # MUST respect. Deliberately uncoloured: a "better" colour is a
-        # comparative claim that only #220's significance overlay may make.
+        # comparative claim that only #220's significance overlay may make. NOT
+        # tier-filtered: this grid exists to SHOW the tier separation across both
+        # tiers, so a default tier='A' filter would defeat its purpose (#350).
         "slice_name": "Harness Scoreboard",
         "viz_type": "table",
         "datasource_id_key": "harness_scoreboard",
@@ -2026,6 +2085,8 @@ _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
             ],
             "groupby": ["cell_label"],
             "order_desc": False,
+            # Comparative chart -> default to the Tier-A population (#350/#347).
+            "adhoc_filters": _tier_a_adhoc_filters(),
         },
     },
     {
@@ -2049,6 +2110,8 @@ _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
             ],
             "groupby": ["cell_label"],
             "order_desc": False,
+            # Comparative chart -> default to the Tier-A population (#350/#347).
+            "adhoc_filters": _tier_a_adhoc_filters(),
         },
     },
     {
@@ -2072,6 +2135,8 @@ _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
             ],
             "groupby": ["cell_label"],
             "order_desc": False,
+            # Comparative chart -> default to the Tier-A population (#350/#347).
+            "adhoc_filters": _tier_a_adhoc_filters(),
         },
     },
     {
@@ -2090,6 +2155,8 @@ _SCOREBOARD_CHART_DEFS: list[dict[str, Any]] = [
             "groupby": ["cell_label"],
             "order_desc": False,
             "y_axis_bounds": [0, 1],
+            # Comparative chart -> default to the Tier-A population (#350/#347).
+            "adhoc_filters": _tier_a_adhoc_filters(),
         },
     },
 ]
@@ -2556,14 +2623,18 @@ def _run_ddl(ddl: str) -> None:
     engine = create_engine(uri)
     with engine.begin() as conn:
         for statement in ddl.split(";"):
-            # Strip SQL comment lines so comment-only fragments are skipped.
+            # Strip SQL comment lines so comment-only fragments are skipped, and
+            # execute the STRIPPED text -- not the raw statement (Meeseeks, #350).
+            # The stripped form was already computed as the emptiness guard; sending
+            # the raw statement instead left the comment lines in the executed SQL,
+            # so the guard and the execution disagreed on what "the statement" was.
             executable = "\n".join(
                 ln
                 for ln in statement.splitlines()
                 if ln.strip() and not ln.strip().startswith("--")
             ).strip()
             if executable:
-                conn.execute(text(statement.strip()))
+                conn.execute(text(executable))
     engine.dispose()
 
 
@@ -2887,7 +2958,18 @@ def _create_agentic_datasets(db_id: int) -> None:
     from superset import db as superset_db  # type: ignore[attr-defined]
     from superset.connectors.sqla.models import SqlaTable
 
-    # Physical tables and the agentic_sessions_full view
+    # Physical tables and the agentic_sessions_full view. A pre-existing
+    # dataset is REFRESHED, not skipped (#361): the bootstrap _AGENTIC_TABLE_DDL
+    # is deliberately leaner than the canonical HarnessDatabase schema (it
+    # declares only what the embedded views reference so it runs standalone),
+    # and HarnessDatabase adds the full #217/#242/#277 spine via ADD COLUMN
+    # migrations. So a dataset first registered against a lean table -- e.g. a
+    # fresh Superset bootstrap that ran before any HarnessDatabase writer --
+    # must re-fetch its metadata once those migrations land, or the new spine
+    # coordinates (scenario_id, model_digest, prompt_id, ...) stay invisible in
+    # dashboards until the dataset is recreated by hand. fetch_metadata()
+    # reconciles the live table's columns and is idempotent, so an unchanged
+    # table re-fetches to a no-op.
     for table_name in _AGENTIC_DATASET_TABLES:
         existing = (
             superset_db.session.query(SqlaTable)
@@ -2895,7 +2977,12 @@ def _create_agentic_datasets(db_id: int) -> None:
             .first()
         )
         if existing:
-            log.info(f"Agentic dataset already exists: {table_name}")
+            try:
+                existing.fetch_metadata()
+                superset_db.session.commit()
+                log.info(f"Refreshed agentic dataset: {table_name}")
+            except Exception as e:
+                log.warning(f"fetch_metadata refresh failed for {table_name}: {e}")
             continue
 
         dataset = SqlaTable(
