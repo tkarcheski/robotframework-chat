@@ -17,7 +17,74 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [1.26.0] — Unreleased
+## [1.26.1] — Unreleased
+
+### Fixed
+
+- **#383 SECURITY — opencode routed deny was precedence-bypassable (a live
+  sandbox escape landed via #381/#382).** #381 wrote opencode's native-tool deny
+  only to `dest_dir/opencode.routed.json` and exported it via the `OPENCODE_CONFIG`
+  env var — which is opencode's **lowest explicit** config tier. Live-verified on
+  opencode 1.2.9 (`opencode debug config`), precedence is
+  `cwd opencode.json > ancestor opencode.json (walk-up) > OPENCODE_CONFIG env >
+  global > defaults`, merged **key-wise**. So any `opencode.json` in the run cwd
+  or an ancestor (the monorepo itself ships `core/opencode.json` and
+  `modules/skills/.../opencode.json`) outranked the deny, flipped `permission.bash`
+  back to `allow`, and re-enabled **native host exec** — silently reviving the #377
+  Tier-A corruption *and* opening a host escape. `OpenCodeAdapter.apply_routed_config`
+  now also writes the merged deny **as `<workspace>/opencode.json`** — opencode's
+  HIGHEST tier (cwd project config) — so no seed or ancestor config can shadow it;
+  it scrubs-then-writes over any seed-shipped `opencode.json`/`.jsonc` (deny always
+  wins) and carries **every** denied tool key explicitly (a key omitted at cwd
+  falls through to a permissive ancestor — proven by a control test). The
+  `OPENCODE_CONFIG` env-tier write is kept as defence in depth. New real-resolver
+  regression tests (`test_opencode_config_precedence.py`) plant adversarial
+  `opencode.json` (bash=allow) in the workspace **and** ancestors, drive
+  `opencode debug config`, and assert effective `permission.bash == deny` in every
+  case — the test class that would have caught the escape — plus a permanent
+  host-leak A/B in the adversarial-planted-config environment.
+
+### Added
+
+- **#381 (F5) — opencode per-tool-call exec routes LIVE into the sandbox
+  container.** Un-darkens the Tier-A comparison leg #377 correctly fenced off.
+  `OpenCodeAdapter` now materializes a run-scoped merged config (base
+  `opencode.json` + an exec overlay) that (a) registers the `rfc-exec` MCP server
+  bound to the run's pre-warmed container and (b) DENIES opencode's native code
+  tools via its own `permission` (fail-closed gate) + `tools` (registry-disable)
+  config keys — so opencode's per-tool-call bash/write/edit dispatch through the
+  broker into the container `/workspace`, not the host. Route-don't-copy holds:
+  no `_sync_workspace`, the container tree is the single tree. `opencode` joins
+  `_CONTAINER_ROUTED_HARNESSES` (claude-code + opencode) now that its live
+  conformance passes; `codex` stays out (CLI absent, probe-gated). The Tier-A
+  `ComparisonRow` now carries the broker's `sandbox_exec_overhead_ms` alongside
+  the gate-minted `VerifiedLocalModel` token, so the cost tier is populated, not
+  just task-success. Verified against the real opencode 1.2.9 CLI with a local
+  Ollama model: the agent's real edits land in the container (churn manifest sees
+  them), and — the F4 finding — opencode's `tools`-disable alone can be bypassed
+  under adversarial prompting while the `permission: deny` layer holds, so the
+  two-layer config denial IS opencode's PreToolUse-equivalent backstop (opencode
+  has no PreToolUse hook; that is claude-code-specific).
+
+### Fixed
+
+- **#377 — non-routed live harnesses no longer silently corrupt Tier-A
+  comparison data.** The #235 rewrite deleted the host→container copy-back
+  (`_sync_workspace`) on the premise that every live harness routes its
+  code-exec into the container. Only `claude-code` does; `opencode`/`codex`
+  stay host-native (the F5 / PENDING LIVE CONFORMANCE gap), so their edits
+  landed in a throwaway host workspace while the churn manifest + tests ran
+  against the *pristine* container — a red-seed fix the agent actually made
+  read as "not fixed" (task-success 0, churn 0). Because `opencode` is the only
+  Tier-A leg in `harness_comparison`, that silently poisoned the sacred
+  comparison spine. `_run_live_scenario` now **fails closed** for any harness
+  not in `_CONTAINER_ROUTED_HARNESSES`, raising
+  `rfc.exceptions.LiveHarnessNotRoutedError` (a clean skip) before any container
+  work; `HarnessComparison.run` records the leg as skipped rather than a wrong
+  row. Reviving the Tier-A leg — a scoped copy-back bridge vs. F5 routing — is a
+  design-owned follow-up (#378).
+
+## [1.26.0]
 
 ### Added
 
@@ -85,6 +152,22 @@ Provenance notes:
     non-empty. `assert_opencode_comparable` still returns the model-id string
     and is re-exported from `rfc.harness_comparison`, so existing callers are
     unchanged. The #273 bypass regression suite still fails closed.
+- **#326 — the open-tolkein seam fails closed under `local_only` (RFC-012 §3.4,
+  MS3).** The MS1 consumption seam (#324) ships a down-gateway fallback: when
+  `OPEN_TOLKEIN_BASE_URL` is set but the gateway is unreachable,
+  `select_backend` skip-and-logs back to the direct provider path. That fallback
+  is the one seam line that can egress a `local_only` prompt — a down gateway
+  plus a remote direct provider plus a cache miss would build a remote client
+  and leave the fleet boundary (the #273 lesson). `select_backend` now raises the
+  new typed `LocalOnlyEgressError` on exactly that path: a `local_only` request
+  whose down-gateway fallback provider is not localhost-class (`ollama`/`vllm`
+  are; `openai` and unknowns are not) is refused rather than downgraded to a
+  remote BYOK path. Deliberately a hard failure, not an `RFCSkipError` — a
+  locality-safety breach must fail loudly, not skip. A reachable gateway (it owns
+  the routing), the inert seam (no gateway boundary, RFC-012 §3.3), and every
+  non-`local_only` request are unchanged. Paired with the gateway-side
+  URL-derived locality guard in `tkarcheski/open-tolkein` (#2), the up-path half
+  of the same invariant.
 
 ### Changed
 

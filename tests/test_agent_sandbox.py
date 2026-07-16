@@ -16,8 +16,9 @@ from pathlib import Path
 import pytest
 
 from rfc.agent_config import SandboxLimits
-from rfc.exceptions import HarnessNotAvailableError
-from rfc.harness_adapters import ClaudeProcessResult
+from rfc.exceptions import HarnessNotAvailableError, LiveHarnessNotRoutedError
+from rfc.harness_adapters import ClaudeProcessResult, CodexAdapter, OpenCodeAdapter
+from rfc.opencode_config import _DEFAULT_OPENCODE_CONFIG
 from rfc.agent_sandbox import (
     DEFAULT_SANDBOX_SCENARIOS_ROOT,
     AgentSandbox,
@@ -421,12 +422,53 @@ def _recording_invoker(stdout: str = "", returncode: int = 0, calls=None):
     return invoker
 
 
+def _opencode_routing_invoker(samples: list[float], calls: list[dict] | None = None):
+    """An opencode invoker double that plays the rfc-exec MCP child (#381).
+
+    opencode consumes a config FILE (``OPENCODE_CONFIG``), not inline argv, so
+    this reads the merged routed config the sandbox exported, pulls the broker's
+    metrics-sink path out of its ``mcp`` block (exactly where the sandbox threaded
+    it), and writes ``samples`` there -- standing in for the broker having
+    dispatched that many code-exec calls into the container. Returns opencode's
+    JSON event stream fixing the seeded bug.
+    """
+
+    def invoker(argv, cwd, env, timeout):
+        config_path = env.get("OPENCODE_CONFIG")
+        cfg = None
+        if config_path:
+            # Capture the merged routed config NOW (it lives in the run's temp dir,
+            # torn down when the run ends), and write broker overhead samples to
+            # the metrics sink named in its mcp block.
+            cfg = json.loads(Path(config_path).read_text())
+            env_block = cfg["mcp"]["rfc-exec"]["environment"]
+            metrics_path = env_block.get("RFC_EXEC_METRICS_PATH")
+            if metrics_path:
+                Path(metrics_path).write_text("".join(f"{s}\n" for s in samples))
+        if calls is not None:
+            calls.append(
+                {"argv": tuple(argv), "cwd": Path(cwd), "env": dict(env), "config": cfg}
+            )
+        return ClaudeProcessResult(
+            returncode=0, stdout=OPENCODE_FIX_TRANSCRIPT, stderr=""
+        )
+
+    return invoker
+
+
 class TestAgentSandboxLiveHarness:
+    """The live-harness dispatch. Routed harnesses (claude-code #235, opencode
+    #381) run host-side and verify against the container their code-exec routed
+    into; a still-non-routed harness (codex -- CLI absent, exec un-routed) FAILS
+    CLOSED rather than be verified against a ``/workspace`` its edits never
+    reached (#377)."""
+
     def _verify_manager(self, after_entries: dict[str, str]) -> FakeContainerManager:
-        # exec order (#235): baseline manifest, after manifest, tests. The agent
-        # routes code-exec into /workspace via the broker, so there is no
+        # exec order (#235): baseline manifest, after manifest, tests. A ROUTED
+        # harness mutates /workspace in place via the broker, so there is no
         # host-side copy-back / workspace-clear step -- the container is manifested
-        # in place before and after the agent runs.
+        # in place before and after the agent runs. Scripting ``after`` is only
+        # honest for a routed harness (whose edits actually reach the container).
         return FakeContainerManager(
             exec_results=[
                 _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
@@ -435,13 +477,22 @@ class TestAgentSandboxLiveHarness:
             ]
         )
 
-    def test_live_harness_happy_path(self) -> None:
+    # -- opencode: the #377 fail-closed test, FLIPPED to a routed happy path (#381)
+
+    def test_routed_opencode_writes_correct_result_into_container(self) -> None:
+        # #381 flips the exact test that caught #377. opencode now ROUTES its
+        # per-tool-call code-exec into /workspace via the rfc-exec broker, so it
+        # is honestly container-verified in place (the inverse of the fail-closed
+        # this test used to assert). A container IS created and verified; the fix
+        # reads as fixed; per-call broker overhead is carried on the result; and
+        # the exported routed config denies opencode's native code tools and binds
+        # the rfc-exec server to THIS run's container.
         calls: list[dict] = []
         fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, calls=calls),
+            invoker=_opencode_routing_invoker([12.0, 19.0], calls=calls),
         )
         result = sandbox.run_scenario(
             BUG_FIX_DIR,
@@ -449,27 +500,91 @@ class TestAgentSandboxLiveHarness:
             agent_id="opencode",
             harness="opencode",
         )
-        assert result.agent_exit_code == 0
+        # A container WAS created and verified in place (no fail-closed skip): the
+        # three exec calls are baseline manifest, after manifest, and tests.
+        assert len(fake.created) == 1
+        assert len(fake.exec_calls) == 3
         assert result.tests_passed
         assert result.changed_paths == ("calculator.py",)
-        assert result.unexpected_paths == ()
         assert not result.has_unexpected_churn
+        # Per-call broker overhead surfaced -- the Tier-A cost tier is populated,
+        # not just task-success.
+        assert result.sandbox_exec_overhead_ms == (12.0, 19.0)
+        # Config-level conformance: the merged routed config the sandbox exported
+        # denies opencode's native code tools (permission + tools layers) and
+        # registers the rfc-exec server bound to this run's container id. Captured
+        # by the invoker while the run's temp config still existed.
+        cfg = calls[0]["config"]
+        assert cfg["permission"]["bash"] == "deny"
+        assert cfg["permission"]["write"] == "deny"
+        assert cfg["tools"]["bash"] is False
+        assert (
+            cfg["mcp"]["rfc-exec"]["environment"]["RFC_EXEC_CONTAINER_ID"]
+            == "cid-1234567890"
+        )
+        # The pinned local model survived the overlay merge (Tier-A comparability).
+        assert cfg["model"]
 
-    def test_live_harness_runs_agent_on_host_not_in_container(self) -> None:
+    def test_nonrouted_codex_fails_closed_even_with_cli_present(self) -> None:
+        # An injected invoker disarms the probe gate (as if codex were installed),
+        # so this isolates the ROUTING check from mere CLI availability: a present
+        # but un-routed harness must still fail closed.
+        fake = FakeContainerManager()
+        sandbox = AgentSandbox(
+            limits=_limits(), manager=fake, invoker=_recording_invoker()
+        )
+        with pytest.raises(LiveHarnessNotRoutedError):
+            sandbox.run_scenario(
+                BUG_FIX_DIR, variant="codex", agent_id="codex", harness="codex"
+            )
+        assert fake.created == []
+
+    def test_wire_exec_routing_arms_opencode(self, tmp_path: Path) -> None:
+        # #381: opencode is now a routed harness, so _wire_exec_routing arms its
+        # exec_routing AND materializes a merged routed config (base opencode.json
+        # + deny overlay + rfc-exec server) that env_overrides exports as
+        # OPENCODE_CONFIG -- the mechanism that actually substitutes its native
+        # code tools for the broker'd ones.
+        sandbox = AgentSandbox(limits=_limits(), manager=FakeContainerManager())
+        adapter = OpenCodeAdapter(config_path=_DEFAULT_OPENCODE_CONFIG)
+        sandbox._wire_exec_routing(adapter, "cid-1", tmp_path / "overhead.jsonl")
+        assert adapter.exec_routing is not None
+        assert adapter.exec_routing.container_id == "cid-1"
+        env = adapter.env_overrides()
+        cfg = json.loads(Path(env["OPENCODE_CONFIG"]).read_text())
+        assert cfg["permission"]["bash"] == "deny"
+        assert cfg["mcp"]["rfc-exec"]["environment"]["RFC_EXEC_CONTAINER_ID"] == "cid-1"
+
+    def test_wire_exec_routing_leaves_codex_host_native(self) -> None:
+        # codex is NOT in the routed set (CLI absent, exec un-routed), so
+        # _wire_exec_routing is a no-op for it -- and the live run fails it closed
+        # before any container exists rather than verifying against a pristine
+        # /workspace its edits never reached. The guard stays as defence in depth.
+        sandbox = AgentSandbox(limits=_limits(), manager=FakeContainerManager())
+        adapter = CodexAdapter()
+        sandbox._wire_exec_routing(adapter, "cid-1", Path("/tmp/overhead.jsonl"))
+        assert getattr(adapter, "exec_routing", None) is None
+
+    # -- routed happy-path + harness-agnostic live mechanics (claude-code) ------
+
+    def test_live_routed_harness_runs_head_on_host_not_in_container(self) -> None:
         calls: list[dict] = []
         fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, calls=calls),
+            invoker=_recording_invoker(stdout=CLAUDE_MCP_FIX_TRANSCRIPT, calls=calls),
         )
         sandbox.run_scenario(
-            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
         )
-        # The agent CLI ran exactly once, host-side, via the injected invoker,
-        # in a throwaway host CWD stub (not inside the container).
+        # The agent CLI (the head) ran exactly once, host-side, via the injected
+        # invoker, in a throwaway host CWD stub (not inside the container).
         assert len(calls) == 1
-        assert calls[0]["argv"][0] == "opencode"
+        assert calls[0]["argv"][0] == "claude"
         assert calls[0]["cwd"].name == "workspace"
         assert calls[0]["timeout"] == _limits().wall_clock_seconds
         # The container is seeded ONCE from the pristine repo (#235: no host-side
@@ -479,17 +594,20 @@ class TestAgentSandboxLiveHarness:
         assert len(fake.copy_calls) == 1
         assert len(fake.exec_calls) == 3
 
-    def test_live_harness_captures_trajectory_and_test_row(self) -> None:
+    def test_live_routed_harness_captures_trajectory_and_test_row(self) -> None:
         fake = self._verify_manager({"calculator.py": "new", "test_calculator.py": "t"})
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT),
+            invoker=_recording_invoker(stdout=CLAUDE_MCP_FIX_TRANSCRIPT),
         )
         run = sandbox.run_scenario(
-            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
         ).run
-        assert run.agent_id == "opencode"
+        assert run.agent_id == "claude-code"
         assert run.scenario_id == "tier4_bug_fix"
         # parsed agent trajectory + the verification test row.
         assert len(run.commands) == 2
@@ -501,17 +619,20 @@ class TestAgentSandboxLiveHarness:
         assert run.commands[-1].argv[:2] == ("sh", "-c")
         assert run.commands[-1].changed_paths_after == ("calculator.py",)
 
-    def test_live_harness_unexpected_churn_is_flagged(self) -> None:
+    def test_live_routed_harness_unexpected_churn_is_flagged(self) -> None:
         fake = self._verify_manager(
             {"calculator.py": "new", "test_calculator.py": "t", "debug.log": "junk"}
         )
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT),
+            invoker=_recording_invoker(stdout=CLAUDE_MCP_FIX_TRANSCRIPT),
         )
         result = sandbox.run_scenario(
-            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
         )
         assert result.unexpected_paths == ("debug.log",)
         assert result.has_unexpected_churn
@@ -529,7 +650,7 @@ class TestAgentSandboxLiveHarness:
         assert fake.created == []
         assert fake.exec_calls == []
 
-    def test_live_harness_wall_clock_timeout_yields_bounded_result(self) -> None:
+    def test_live_routed_harness_wall_clock_timeout_yields_bounded_result(self) -> None:
         # A live agent that overruns the cap must degrade to exit 124 + a
         # verified (red) result, not crash the harness. The container still
         # verifies whatever partial state the agent left behind.
@@ -548,7 +669,10 @@ class TestAgentSandboxLiveHarness:
             limits=_limits(), manager=fake, invoker=timing_out_invoker
         )
         result = sandbox.run_scenario(
-            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
         )
         assert result.agent_exit_code == 124
         assert result.timed_out is True
@@ -569,10 +693,15 @@ class TestAgentSandboxLiveHarness:
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(stdout=OPENCODE_FIX_TRANSCRIPT, returncode=124),
+            invoker=_recording_invoker(
+                stdout=CLAUDE_MCP_FIX_TRANSCRIPT, returncode=124
+            ),
         )
         result = sandbox.run_scenario(
-            BUG_FIX_DIR, variant="opencode", agent_id="opencode", harness="opencode"
+            BUG_FIX_DIR,
+            variant="claude-code",
+            agent_id="claude-code",
+            harness="claude-code",
         )
         assert result.agent_exit_code == 124
         assert result.timed_out is False
