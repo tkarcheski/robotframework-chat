@@ -25,6 +25,7 @@ import yaml
 from rfc.agent_config import AgentConfig
 from rfc.live_agent_runner import (
     ClaudeProcessResult,
+    HarnessRunError,
     LiveClaudeCodeRunner,
     make_branch_name,
     parse_transcript,
@@ -458,6 +459,73 @@ class TestLiveClaudeCodeRunner:
         run = runner.run("alpha")
         assert "hunter2" not in run.commands[0].stdout_tail
         assert "[REDACTED]" in run.commands[0].stdout_tail
+
+    def test_run_fails_when_agent_exits_nonzero_before_events(
+        self, tmp_path: Path
+    ) -> None:
+        """#385 regression: a nonzero harness exit is a FAILED run, not a pass.
+
+        A broken harness (e.g. an auth / model-startup failure) exits nonzero
+        with an empty transcript, so ``parse_output`` yields no commands and the
+        driver would otherwise return a well-formed but EMPTY ``AgentRun`` that
+        every conformance assertion passes vacuously. The runner must raise
+        instead. BEFORE the fix this test fails (``run`` returns silently).
+        """
+        scenarios_root = tmp_path / "scenarios"
+        _write_task(scenarios_root, "alpha")
+        invoker = StubInvoker(
+            canned={
+                "claude -p": ClaudeProcessResult(
+                    returncode=1,
+                    stdout="",
+                    stderr="Error: model startup failed (auth)",
+                ),
+            }
+        )
+        runner = LiveClaudeCodeRunner(
+            config=_config(),
+            scenarios_root=scenarios_root,
+            invoker=invoker,
+            workspace_root=tmp_path / "ws",
+            repo_root=tmp_path / "repo",
+        )
+        with pytest.raises(HarnessRunError, match="exited 1"):
+            runner.run("alpha")
+
+    def test_run_succeeds_when_agent_exits_zero_with_events(
+        self, tmp_path: Path
+    ) -> None:
+        """#385 guardrail: the legitimate rc==0-with-N-events path stays a PASS.
+
+        The failure guard must not touch a healthy run: a zero exit that emitted
+        real tool events normalizes to a populated ``AgentRun`` as before.
+        """
+        scenarios_root = tmp_path / "scenarios"
+        _write_task(scenarios_root, "alpha")
+        invoker = StubInvoker(
+            canned={
+                "claude -p": ClaudeProcessResult(
+                    returncode=0,
+                    stdout=_stream_json(
+                        [
+                            _bash_tool_use("t1", "uv run pytest"),
+                            _tool_result("t1", "5 passed"),
+                        ]
+                    ),
+                    stderr="",
+                ),
+            }
+        )
+        runner = LiveClaudeCodeRunner(
+            config=_config(),
+            scenarios_root=scenarios_root,
+            invoker=invoker,
+            workspace_root=tmp_path / "ws",
+            repo_root=tmp_path / "repo",
+        )
+        run = runner.run("alpha")
+        assert len(run.commands) == 1
+        assert run.commands[0].argv == ("bash", "-lc", "uv run pytest")
 
     def test_unknown_scenario_raises_keyerror(self, tmp_path: Path) -> None:
         scenarios_root = tmp_path / "scenarios"

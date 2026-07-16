@@ -2887,7 +2887,18 @@ def _create_agentic_datasets(db_id: int) -> None:
     from superset import db as superset_db  # type: ignore[attr-defined]
     from superset.connectors.sqla.models import SqlaTable
 
-    # Physical tables and the agentic_sessions_full view
+    # Physical tables and the agentic_sessions_full view. A pre-existing
+    # dataset is REFRESHED, not skipped (#361): the bootstrap _AGENTIC_TABLE_DDL
+    # is deliberately leaner than the canonical HarnessDatabase schema (it
+    # declares only what the embedded views reference so it runs standalone),
+    # and HarnessDatabase adds the full #217/#242/#277 spine via ADD COLUMN
+    # migrations. So a dataset first registered against a lean table -- e.g. a
+    # fresh Superset bootstrap that ran before any HarnessDatabase writer --
+    # must re-fetch its metadata once those migrations land, or the new spine
+    # coordinates (scenario_id, model_digest, prompt_id, ...) stay invisible in
+    # dashboards until the dataset is recreated by hand. fetch_metadata()
+    # reconciles the live table's columns and is idempotent, so an unchanged
+    # table re-fetches to a no-op.
     for table_name in _AGENTIC_DATASET_TABLES:
         existing = (
             superset_db.session.query(SqlaTable)
@@ -2895,7 +2906,12 @@ def _create_agentic_datasets(db_id: int) -> None:
             .first()
         )
         if existing:
-            log.info(f"Agentic dataset already exists: {table_name}")
+            try:
+                existing.fetch_metadata()
+                superset_db.session.commit()
+                log.info(f"Refreshed agentic dataset: {table_name}")
+            except Exception as e:
+                log.warning(f"fetch_metadata refresh failed for {table_name}: {e}")
             continue
 
         dataset = SqlaTable(

@@ -136,6 +136,34 @@ class HarnessNotAvailableError(RFCSkipError):
         )
 
 
+class LiveHarnessNotRoutedError(RFCSkipError):
+    """Raised when a live harness would be container-verified but its code-exec
+    is still host-native (the F5 / PENDING LIVE CONFORMANCE gap, #235/#377).
+
+    ``_run_live_scenario`` verifies the scenario's churn + tests against the
+    sandbox container's ``/workspace``. That is only honest when the harness's
+    per-tool-call code execution actually *routes into* that container. Today
+    only ``claude-code`` does (via the ``rfc-exec`` MCP broker); ``opencode``
+    and ``codex`` stay host-native, so their edits land in a throwaway host
+    workspace that is never observed. Container-verifying such a run would
+    silently record a wrong result (the agent's real fix is invisible, so a
+    red-seed scenario always reads as "not fixed") -- a lie the sacred Tier-A
+    comparison spine must never carry. The live path therefore FAILS CLOSED:
+    it refuses the run (a clean skip) rather than compare against a pristine
+    tree. Reviving the leg is design-owned (#378): a scoped copy-back bridge,
+    or F5 wiring the harness's exec into the container.
+    """
+
+    def __init__(self, harness: str) -> None:
+        self.harness = harness
+        super().__init__(
+            f"Live harness {harness!r} has no container exec-routing yet "
+            f"(F5 / PENDING LIVE CONFORMANCE, #235/#377): refusing to "
+            f"container-verify a host-native run rather than silently ignore "
+            f"the agent's edits. Skipping the leg."
+        )
+
+
 # ── Environment / configuration ──────────────────────────────────────
 
 

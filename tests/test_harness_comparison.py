@@ -43,6 +43,7 @@ from rfc.harness_models import (
     METRIC_CHURN_RATIO,
     METRIC_LATENCY_MS,
     METRIC_PROCESS_VIOLATIONS,
+    METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_TASK_SUCCESS,
 )
 from rfc.opencode_config import VerifiedLocalModel, assert_model_resolves_local
@@ -477,6 +478,45 @@ OPENCODE_FIX_TRANSCRIPT = (
     + "\n"
 )
 
+# claude-code stream-json: one container-routed mcp__rfc-exec__bash tool call
+# fixing the subtract bug, paired with its tool_result. claude-code is the only
+# harness whose code-exec routes into the container today, so it is the one that
+# can be honestly verified end-to-end through the real AgentSandbox live path.
+CLAUDE_MCP_FIX_TRANSCRIPT = (
+    json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tu1",
+                        "name": "mcp__rfc-exec__bash",
+                        "input": {"command": "sed -i 's/a + b/a - b/' calculator.py"},
+                    }
+                ]
+            },
+        }
+    )
+    + "\n"
+    + json.dumps(
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tu1",
+                        "content": [{"type": "text", "text": "done"}],
+                        "is_error": False,
+                    }
+                ]
+            },
+        }
+    )
+    + "\n"
+)
+
 
 def _manifest(entries: dict[str, str]) -> dict:
     # Faithfully replay the in-container ``manifest_command`` wire format: records
@@ -533,6 +573,31 @@ def _recording_invoker(stdout: str):
     return invoker
 
 
+def _opencode_routing_invoker(samples: list[float]):
+    """An opencode invoker double that plays the rfc-exec MCP child (#381).
+
+    Reads the merged routed config the sandbox exported via ``OPENCODE_CONFIG``,
+    pulls the broker's metrics-sink path from its ``mcp`` block, and writes
+    ``samples`` there -- standing in for the broker dispatching that many
+    code-exec calls into the container. Returns opencode's bug-fix event stream.
+    """
+
+    def invoker(argv, cwd, env, timeout) -> ClaudeProcessResult:
+        config_path = env.get("OPENCODE_CONFIG")
+        if config_path:
+            cfg = json.loads(Path(config_path).read_text())
+            metrics_path = cfg["mcp"]["rfc-exec"]["environment"].get(
+                "RFC_EXEC_METRICS_PATH"
+            )
+            if metrics_path:
+                Path(metrics_path).write_text("".join(f"{s}\n" for s in samples))
+        return ClaudeProcessResult(
+            returncode=0, stdout=OPENCODE_FIX_TRANSCRIPT, stderr=""
+        )
+
+    return invoker
+
+
 def _limits() -> SandboxLimits:
     return SandboxLimits(
         image="python:3.11-slim",
@@ -544,10 +609,13 @@ def _limits() -> SandboxLimits:
 
 
 class TestRealSandboxPath:
-    def test_live_opencode_leg_writes_success_row(self, tmp_path: Path) -> None:
-        # Live path exec order (#235: code-exec routes into /workspace via the
-        # broker, so no host-side copy-back / workspace-clear): baseline manifest,
-        # after manifest, tests -- the opencode transcript fixes calculator.py.
+    def test_live_opencode_leg_writes_correct_tier_a_row(self, tmp_path: Path) -> None:
+        # #381 flips the exact #377 skip test. opencode's code-exec now ROUTES
+        # into the container via the rfc-exec broker, so the real AgentSandbox
+        # verifies its fix in place and the battery writes a CORRECT Tier-A row --
+        # NOT a skip, and NOT a fabricated success against a pristine container.
+        # The row is honest end-to-end: it carries the gate-minted
+        # VerifiedLocalModel token AND the broker's per-call overhead.
         fake = _FakeContainerManager(
             exec_results=[
                 _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
@@ -558,12 +626,58 @@ class TestRealSandboxPath:
         sandbox = AgentSandbox(
             limits=_limits(),
             manager=fake,
-            invoker=_recording_invoker(OPENCODE_FIX_TRANSCRIPT),
+            invoker=_opencode_routing_invoker([14.0, 21.0]),
         )
         db = _db(tmp_path)
         runner = _runner(sandbox, db, repeats=1)
         report = runner.run(
             ["tier4_bug_fix"], [HarnessLeg("opencode")], battery_run_id="batt-live"
+        )
+        # One Tier-A row written, nothing skipped.
+        assert report.skipped == ()
+        assert len(report.rows) == 1
+        row = report.rows[0]
+        assert row.harness == "opencode"
+        assert row.tier == TIER_A_FIXED_LOCAL
+        assert row.outcome == "success"
+        assert row.metrics[METRIC_TASK_SUCCESS] == 1.0
+        # Honest end-to-end: the gate-minted local-model token backs the Tier-A
+        # cell, and the broker's per-call overhead populates the cost tier.
+        assert isinstance(row.verified_model, VerifiedLocalModel)
+        assert row.verified_model.model_id == row.model_id
+        assert row.sandbox_exec_overhead_ms == (14.0, 21.0)
+        assert row.metrics[METRIC_SANDBOX_EXEC_OVERHEAD_MS] == 17.5
+        # Persisted to the spine -- proven at the PERSISTENCE layer, not via
+        # report.rows: exactly one honest row lands in agentic_harnesses.
+        stored = db.get_harness(row.session_id)
+        assert stored is not None and stored.scenario_id == "tier4_bug_fix"
+        assert db.get_table_row_count("agentic_harnesses") == 1
+
+    def test_live_claude_code_leg_writes_row_through_real_sandbox(
+        self, tmp_path: Path
+    ) -> None:
+        # The routed harness (claude-code, Tier-B descriptive) IS honestly
+        # verifiable end-to-end: its code-exec routes into /workspace, so a
+        # container-verified success row is real. Keeps faithful e2e coverage of
+        # the real AgentSandbox live path with the harness that actually routes.
+        fake = _FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
+                _manifest({"calculator.py": "new", "test_calculator.py": "t"}),
+                {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
+            ]
+        )
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_recording_invoker(CLAUDE_MCP_FIX_TRANSCRIPT),
+        )
+        db = _db(tmp_path)
+        runner = _runner(sandbox, db, repeats=1)
+        report = runner.run(
+            ["tier4_bug_fix"],
+            [HarnessLeg("claude-code", tier=TIER_B_NATIVE)],
+            battery_run_id="batt-claude",
         )
         assert len(report.rows) == 1
         row = report.rows[0]
@@ -577,7 +691,8 @@ class TestRealSandboxPath:
         # No invoker injected -> the probe gate is armed; codex is never
         # installed, so the leg skips through the real production path.
         sandbox = AgentSandbox(limits=_limits(), manager=_FakeContainerManager([]))
-        runner = _runner(sandbox, _db(tmp_path), repeats=2)
+        db = _db(tmp_path)
+        runner = _runner(sandbox, db, repeats=2)
         report = runner.run(
             ["tier4_bug_fix"],
             [HarnessLeg("codex", tier=TIER_A_FIXED_LOCAL)],
@@ -585,6 +700,16 @@ class TestRealSandboxPath:
         )
         assert report.rows == ()
         assert report.skipped == (("codex", "codex CLI not available"),)
+        # #377/#383 corruption class, re-homed at the PERSISTENCE layer to the
+        # SURVIVING skip path. f65d48d pinned "a skipped Tier-A leg writes ZERO
+        # spine rows" on the opencode skip; #381 routed opencode (its skip test
+        # flipped to test_live_opencode_leg_writes_correct_tier_a_row's `== 1`),
+        # leaving codex as the only skip leg -- but only report.rows (in-memory)
+        # was pinned here, silently dropping the DB-level guarantee f65d48d added.
+        # Re-pin it: query the sacred agentic_harnesses spine directly so a future
+        # refactor that decoupled row-return from save_harness can never persist a
+        # fabricated skipped-leg row without turning this red (Mr. Meeseeks, #391).
+        assert db.get_table_row_count("agentic_harnesses") == 0
 
 
 class TestCli:
