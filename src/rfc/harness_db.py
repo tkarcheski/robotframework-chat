@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     prompt_hash             TEXT,
     grader_version          TEXT,
     params_json             TEXT,
-    repeat_idx              INTEGER
+    repeat_idx              INTEGER,
+    verified_local          INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
 
@@ -181,7 +182,8 @@ CREATE INDEX IF NOT EXISTS idx_hitl_action  ON hitl_interactions(target_action_i
 # writers keep working unchanged. Per-statement + independently idempotent, so a
 # half-migrated DB (some columns already present) backfills only the missing ones.
 # #217 added scenario_id/battery_run_id; #242 (RFC-008 A3) added the provenance set;
-# #277 added repeat_idx (INTEGER, the one non-text column) for S4 pairing.
+# #277 added repeat_idx (INTEGER, the one non-text column) for S4 pairing; #350
+# added verified_local (INTEGER, the persisted local-resolution tier verdict).
 _SQLITE_MIGRATIONS: list[str] = [
     "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id TEXT",
@@ -191,6 +193,7 @@ _SQLITE_MIGRATIONS: list[str] = [
     "ALTER TABLE agentic_harnesses ADD COLUMN grader_version TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN params_json TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN repeat_idx INTEGER",
+    "ALTER TABLE agentic_harnesses ADD COLUMN verified_local INTEGER",
 ]
 
 # Canonical body of the ``agentic_sessions_full`` view (issue #353).
@@ -239,9 +242,9 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
 # Canonical body of the ``harness_scoreboard`` view (RFC-007 S5 / issue #221).
 #
 # The owner's headline product: SEEING which harness is better. One row per
-# comparison cell ``(tool_name, model_id, scenario_id)`` over the battery runs on
-# the spine — sibling to ``AGENTIC_SESSIONS_FULL_VIEW_BODY``, same portable
-# SQLite/Postgres subset, same drift-guard pattern (a copy is embedded in
+# comparison cell ``(tool_name, model_id, scenario_id, tier)`` over the battery
+# runs on the spine — sibling to ``AGENTIC_SESSIONS_FULL_VIEW_BODY``, same
+# portable SQLite/Postgres subset, same drift-guard pattern (a copy is embedded in
 # superset/bootstrap_dashboards.py::_AGENTIC_TABLE_DDL and kept in sync by a test
 # in tests/test_bootstrap_dashboards.py).
 #
@@ -257,38 +260,61 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
 # HONEST TIER SEPARATION (RFC-007 section 5, the #273 lesson). Tier-A ("fixed
 # local model", head-to-head comparable) and Tier-B ("native model", descriptive
 # only) numbers must NEVER share a comparison cell. The view carries a ``tier``
-# column consumers MUST respect. It is a **name approximation, not a
-# verification**: the spine persists no tier, so the view derives it from a
-# tool_name allowlist (opencode/codex -> A; every other name, incl.
-# claude-code's native frontier model, -> B). The unknown-name default is
-# fail-closed, but the allowlist **fails open on a name** — a misconfigured
-# opencode/codex run that did not actually resolve to the pinned local model
-# would still be labelled Tier A here (#350). The genuine invariant ("did the
-# model resolve local?") is enforced only at write time by the
-# VerifiedLocalModel gate in ComparisonRow.__post_init__ and is NOT mirrored by
-# this CASE. Per the #350 ruling, the fix is a persisted tier/verified_local
-# spine column this view reads fail-closed; the #220 significance-overlay JOIN
-# is gated on that column landing. ``cell_label`` bakes the tier letter into the
-# harness axis label so a Tier-B cell is structurally distinct on the heatmap
-# and can never overlay a Tier-A one.
+# column consumers MUST respect. It is a **verification, not a name
+# approximation** (#350): the view reads the persisted ``verified_local`` spine
+# column — the durable local-resolution verdict written at write time from the
+# gate-minted VerifiedLocalModel token (ComparisonRow.verified_local) — and
+# derives ``tier`` FAIL-CLOSED from it: ``verified_local = 1`` (the token minted,
+# the model provably resolved to a declared-local provider) -> 'A'; everything
+# else (0 = no token / native / unverified, and NULL = legacy row or any
+# non-comparison writer) -> 'B'. This asks the SAME predicate the write-time
+# invariant asks — "did this run actually resolve local?" — so the view's tier
+# matches the gate's tier BY CONSTRUCTION, not by a tool_name coincidence. A
+# misconfigured remote 'opencode'/'codex' run that did not mint a token now lands
+# Tier B here (the exact #350 lie, killed): the name no longer promotes it.
+# ``cell_label`` bakes the tier letter into the harness axis label so a Tier-B
+# cell is structurally distinct on the heatmap and can never overlay a Tier-A one.
+#
+# THE VERDICT IS PART OF THE CELL GRAIN (Meeseeks' PR #374 finding). The tier
+# CASE is in the GROUP BY, for two load-bearing reasons:
+#   1. VALIDITY — ``verified_local`` is not otherwise grouped, so a bare read is
+#      a GroupingError on PostgreSQL (the production backend; SQLite merely picks
+#      an arbitrary row's value, which is worse: silent order-dependent
+#      promotion).
+#   2. HONESTY — a cell mixing token rows with untokened/legacy-NULL rows at the
+#      same (tool_name, model_id, scenario_id) — the CANONICAL post-migration
+#      state, since the #350 migration backfills pre-existing rows as NULL —
+#      SPLITS into a pure Tier-A sub-cell (token rows only) and a Tier-B
+#      sub-cell (everything else). Fail-closed happens at the ROW level, before
+#      grouping, so an untokened row can never enter a Tier-A aggregate and a
+#      Tier-A ``pass_rate`` is computed over token-verified rows ONLY. This is
+#      section 5 taken literally: Tier-A and Tier-B numbers never share a cell —
+#      not even a demoted one. (The alternative, demoting a mixed cell wholesale
+#      to B, would still aggregate both populations into one number and would
+#      blank the entire scoreboard post-migration, when every legacy cell mixes
+#      NULL with new 1s.) ``cell_label`` embeds the tier letter, so split
+#      sub-cells stay distinct on every chart axis.
 #
 # Scoped to battery/comparison runs only (``scenario_id`` present) — ad-hoc
 # harness sessions (no scenario) are not a scoreboard cell.
 #
-# SEAM for #220 (RFC-007 S4, McNemar gate, feat/220-mcnemar-gate): this view
-# deliberately computes NO significance. The "is the difference real?" overlay —
-# per-pair p-value + delta, so a not-significant cell renders *tied* and never a
-# faint-green *better* — is #220's output; the dashboard LEFT JOINs it onto this
-# view once that lands AND the #350 persisted-tier column unifies the row
-# population (see above). Statistics live in harness_comparison.py, not here.
+# SEAM for #220 (RFC-007 S4, McNemar gate): this view deliberately computes NO
+# significance. The "is the difference real?" overlay — per-pair p-value + delta,
+# so a not-significant cell renders *tied* and never a faint-green *better* — is
+# #220's output, LEFT JOINed onto this view. The #350 gate on that JOIN is now
+# CLEARED: with ``verified_local`` persisted and read fail-closed here, both the
+# cell's ``pass_rate`` and the overlay's ``p_value`` range over the SAME
+# token-verified Tier-A population, so the join can no longer marry a name-tier
+# pass-rate to a token-tier p-value. Landing the overlay JOIN itself is #220's
+# slice, not this one; statistics live in harness_comparison.py, not here.
 HARNESS_SCOREBOARD_VIEW_BODY: str = """\
 SELECT
     h.tool_name,
     h.model_id,
     h.scenario_id,
-    CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+    CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END
         AS tier,
-    '[' || CASE WHEN h.tool_name IN ('opencode', 'codex') THEN 'A' ELSE 'B' END
+    '[' || CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END
         || '] ' || h.tool_name || ' @ ' || COALESCE(h.model_id, '')
         AS cell_label,
     COUNT(DISTINCT h.session_id) AS run_count,
@@ -313,7 +339,8 @@ SELECT
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
-GROUP BY h.tool_name, h.model_id, h.scenario_id"""
+GROUP BY h.tool_name, h.model_id, h.scenario_id,
+         CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END"""
 
 
 # Row marshallers: map a positional row to its dataclass. Positional indexing
@@ -344,6 +371,11 @@ def _harness_from_row(row: Sequence[Any]) -> AgenticHarness:
         # NOT the "" text one. A stored 0 must round-trip as 0, so this is an
         # explicit is-None check, never `row[17] or -1` (which would map 0 -> -1).
         repeat_idx=int(row[17]) if row[17] is not None else -1,
+        # #350: INTEGER local-resolution verdict, same int-id sentinel convention
+        # as repeat_idx. A stored 0 (Tier B / no token) must round-trip as 0, so
+        # this is an explicit is-None check: NULL (legacy / non-comparison writer)
+        # -> -1, which the scoreboard view reads fail-closed to Tier B.
+        verified_local=int(row[18]) if row[18] is not None else -1,
     )
 
 
@@ -574,8 +606,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 (session_id, tool_name, tool_version, model_id, rfc_version,
                  branch, started_at, ended_at, outcome, replay_of_recording_id,
                  scenario_id, battery_run_id, model_digest, prompt_id, prompt_hash,
-                 grader_version, params_json, repeat_idx)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 grader_version, params_json, repeat_idx, verified_local)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     harness.session_id,
@@ -597,6 +629,9 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                     harness.params_json or None,
                     # #277: is->=0 guard, not `or None` -- repeat 0 must persist as 0.
                     harness.repeat_idx if harness.repeat_idx >= 0 else None,
+                    # #350: same >=0 guard -- Tier B (0) must persist as 0, never
+                    # collapse to NULL; only the -1 legacy sentinel maps to NULL.
+                    harness.verified_local if harness.verified_local >= 0 else None,
                 ),
             )
         return harness.session_id
@@ -617,7 +652,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 SELECT session_id, tool_name, tool_version, model_id, rfc_version,
                        branch, started_at, ended_at, outcome, replay_of_recording_id,
                        scenario_id, battery_run_id, model_digest, prompt_id,
-                       prompt_hash, grader_version, params_json, repeat_idx
+                       prompt_hash, grader_version, params_json, repeat_idx,
+                       verified_local
                 FROM agentic_harnesses WHERE session_id = ?
                 """,
                 (session_id,),
@@ -997,6 +1033,9 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         "ALTER TABLE agentic_harnesses ADD COLUMN params_json VARCHAR",
         # #277: INTEGER, matching the SQLite migration and the Table column below.
         "ALTER TABLE agentic_harnesses ADD COLUMN repeat_idx INTEGER",
+        # #350: persisted local-resolution tier verdict; INTEGER, matching the
+        # SQLite migration and the Table column below.
+        "ALTER TABLE agentic_harnesses ADD COLUMN verified_local INTEGER",
     ]
 
     def __init__(self, database_url: str) -> None:
@@ -1057,6 +1096,12 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             # one Integer column. Sequenced after #242's columns so both sets
             # coexist and the SQLite SELECT / _harness_from_row indices agree.
             Column("repeat_idx", Integer),
+            # #350: verified_local at positional index 18 (after repeat_idx), the
+            # persisted local-resolution tier verdict. Sequenced last so the
+            # SQLite SELECT / _harness_from_row index (18) agrees across backends;
+            # .select() returns table order, so this is index-stable regardless of
+            # a migrated DB's physical column order.
+            Column("verified_local", Integer),
         )
         self._plugins = Table(
             "agentic_plugins",
@@ -1245,6 +1290,11 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                     # #277: is->=0 guard, not `or None` -- repeat 0 must persist as 0.
                     "repeat_idx": harness.repeat_idx
                     if harness.repeat_idx >= 0
+                    else None,
+                    # #350: same >=0 guard -- Tier B (0) must persist as 0, never
+                    # collapse to NULL; only the -1 legacy sentinel maps to NULL.
+                    "verified_local": harness.verified_local
+                    if harness.verified_local >= 0
                     else None,
                 },
             )

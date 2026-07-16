@@ -17,7 +17,161 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [1.26.0] — Unreleased
+## [1.27.0] — Unreleased
+
+### Added
+
+- **#350 — persist the tier / local-resolution verdict to the spine.** The
+  harness comparison scoreboard's tier separation now derives from a durable
+  column instead of a tool_name allowlist, closing the seam where a misconfigured
+  remote `opencode`/`codex` run could be promoted to a green Tier-A cell by its
+  NAME (the #273 lie). This is the capstone gate over the #347 scoreboard view
+  and the #348 McNemar gate.
+  - **`agentic_harnesses.verified_local`** (INTEGER, nullable) — the durable
+    local-resolution verdict, written AT WRITE TIME from the presence of the
+    gate-minted `VerifiedLocalModel` token (`ComparisonRow.verified_local`, the
+    exact-type token predicate). 1 = fixed-local (Tier A), 0 = no token (Tier B),
+    NULL = legacy / non-comparison writer. Added by an additive migration
+    (`_SQLITE_MIGRATIONS` / `_PG_MIGRATIONS`) per the RFC-008 A3 precedent — no
+    data rewrite; existing rows keep NULL.
+  - **`harness_scoreboard` view** now derives `tier` FAIL-CLOSED from
+    `verified_local` (`CASE WHEN h.verified_local = 1 THEN 'A' ELSE 'B' END`)
+    instead of `tool_name IN ('opencode','codex')`, so the view's tier matches the
+    write-time comparability invariant by construction. The false-comfort docstring
+    claiming the tool_name allowlist "mirrors the write-time invariant" is
+    corrected. The #220 significance-overlay JOIN gate is thereby cleared (both
+    `pass_rate` and `p_value` now range over the same token-verified population);
+    landing the JOIN itself remains #220's slice.
+  - **The verdict is part of the cell grain** (test-design's PR #374 finding):
+    the tier CASE sits in the view's GROUP BY, so the cell is
+    `(tool_name, model_id, scenario_id, tier)`. A bare non-grouped
+    `verified_local` was a `GroupingError` on PostgreSQL (the production
+    backend) and an arbitrary-row pick on SQLite — silent order-dependent
+    Tier-A promotion of mixed cells. Under the grain fix a cell mixing token
+    rows with untokened/legacy-NULL rows (the canonical post-migration state)
+    splits into a pure Tier-A sub-cell and a Tier-B sub-cell: an untokened row
+    can never enter a Tier-A aggregate, and Tier-A `pass_rate` is computed over
+    token-verified rows only. A live-PostgreSQL validity guard (scratch schema
+    on the compose database, dropped after) pins the view against the real
+    backend so SQLite's permissiveness can't hide an invalid body again.
+  - **Bootstrap upgrade path for pre-existing lean tables** (Codex finding on
+    mirror PR #660, fixed at source): on an existing database the bootstrap's
+    `CREATE TABLE IF NOT EXISTS agentic_harnesses` is a no-op, so the
+    view-referenced columns added since (`scenario_id` #347, `verified_local`
+    #350) stayed missing and the `CREATE VIEW` crashed. The DDL now applies
+    additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for both before any
+    view references them — no-op on fresh tables, in-place upgrade on old ones,
+    no data rewrite.
+  - **Comparative scoreboard charts** default-filter `tier='A'` (the raw grid is
+    exempt), so a head-to-head bar/heatmap defaults to the honestly-comparable
+    fixed-local population.
+  - **`bootstrap_dashboards._run_ddl`** now executes the comment-stripped
+    statement it already computes as its emptiness guard, instead of re-sending
+    the raw statement.
+
+## [1.26.2] — Unreleased
+
+### Fixed
+
+- **#385 — `Run Agent Task` no longer passes vacuously on a broken harness.**
+  `LiveClaudeCodeRunner.run` now scores a nonzero harness process exit as a
+  FAILED run (raising `HarnessRunError`) instead of returning an empty-but-
+  well-formed `AgentRun` that every `harness_matrix.robot` conformance assertion
+  passed trivially. A harness that dies before emitting tool events (auth /
+  model-startup failure) is now a real failure, not a silent green. The
+  legitimate `returncode == 0`-with-events path is unchanged.
+- **#386 — harness sidecar resolves correctly under a git worktree.**
+  `HarnessKeywords.start_harness_session` now reads the session sidecar via
+  `git -C <workspace> rev-parse --absolute-git-dir` (matching the writer in
+  `rfc harness start`) instead of assuming `<workspace>/.git` is a directory, so
+  a git WORKTREE workspace — where `.git` is a gitdir-pointer file — resolves to
+  the real `<main>/.git/worktrees/<name>/` sidecar.
+
+## [1.26.1] — Unreleased
+
+### Fixed
+
+- **#383 SECURITY — opencode routed deny was precedence-bypassable (a live
+  sandbox escape landed via #381/#382).** #381 wrote opencode's native-tool deny
+  only to `dest_dir/opencode.routed.json` and exported it via the `OPENCODE_CONFIG`
+  env var — which is opencode's **lowest explicit** config tier. Live-verified on
+  opencode 1.2.9 (`opencode debug config`), precedence is
+  `cwd opencode.json > ancestor opencode.json (walk-up) > OPENCODE_CONFIG env >
+  global > defaults`, merged **key-wise**. So any `opencode.json` in the run cwd
+  or an ancestor (the monorepo itself ships `core/opencode.json` and
+  `modules/skills/.../opencode.json`) outranked the deny, flipped `permission.bash`
+  back to `allow`, and re-enabled **native host exec** — silently reviving the #377
+  Tier-A corruption *and* opening a host escape. `OpenCodeAdapter.apply_routed_config`
+  now also writes the merged deny **as `<workspace>/opencode.json`** — opencode's
+  HIGHEST tier (cwd project config) — so no seed or ancestor config can shadow it;
+  it scrubs-then-writes over any seed-shipped `opencode.json`/`.jsonc` (deny always
+  wins) and carries **every** denied tool key explicitly (a key omitted at cwd
+  falls through to a permissive ancestor — proven by a control test). The
+  `OPENCODE_CONFIG` env-tier write is kept as defence in depth. New real-resolver
+  regression tests (`test_opencode_config_precedence.py`) plant adversarial
+  `opencode.json` (bash=allow) in the workspace **and** ancestors, drive
+  `opencode debug config`, and assert effective `permission.bash == deny` in every
+  case — the test class that would have caught the escape — plus a permanent
+  host-leak A/B in the adversarial-planted-config environment.
+
+### Added
+
+- **#381 (F5) — opencode per-tool-call exec routes LIVE into the sandbox
+  container.** Un-darkens the Tier-A comparison leg #377 correctly fenced off.
+  `OpenCodeAdapter` now materializes a run-scoped merged config (base
+  `opencode.json` + an exec overlay) that (a) registers the `rfc-exec` MCP server
+  bound to the run's pre-warmed container and (b) DENIES opencode's native code
+  tools via its own `permission` (fail-closed gate) + `tools` (registry-disable)
+  config keys — so opencode's per-tool-call bash/write/edit dispatch through the
+  broker into the container `/workspace`, not the host. Route-don't-copy holds:
+  no `_sync_workspace`, the container tree is the single tree. `opencode` joins
+  `_CONTAINER_ROUTED_HARNESSES` (claude-code + opencode) now that its live
+  conformance passes; `codex` stays out (CLI absent, probe-gated). The Tier-A
+  `ComparisonRow` now carries the broker's `sandbox_exec_overhead_ms` alongside
+  the gate-minted `VerifiedLocalModel` token, so the cost tier is populated, not
+  just task-success. Verified against the real opencode 1.2.9 CLI with a local
+  Ollama model: the agent's real edits land in the container (churn manifest sees
+  them), and — the F4 finding — opencode's `tools`-disable alone can be bypassed
+  under adversarial prompting while the `permission: deny` layer holds, so the
+  two-layer config denial IS opencode's PreToolUse-equivalent backstop (opencode
+  has no PreToolUse hook; that is claude-code-specific).
+
+### Fixed
+
+- **#384 — tier-renumbering left dialog E2E + agentic fake-runner fixture path
+  constants stale.** The migration (`robot/dialog/…` → `robot/10__tier1/dialog/…`,
+  `robot/agentic_coding/…` → `robot/40__tier4/agentic_coding/…`) moved the fixture
+  trees but left two runtime constants pointing at the deleted pre-migration
+  locations. `dialog_e2e_keywords.FIXTURE_SUITE` spawned the child robot on a
+  nonexistent suite (dialog E2E child run exited nonzero); and
+  `fake_agent_runner.DEFAULT_FIXTURES_ROOT` resolved every prerecorded scenario
+  under a deleted directory (agentic-coding scenarios failed as unknown). Both
+  constants now point at the tier-numbered locations, verified present. Added
+  regression guards that assert each constant resolves to a real path *and* that
+  the dependent fixture actually loads — the dialog fixture suite parses to its
+  expected test, and a default `FakeAgentRunner` lists (not merely `exists()`)
+  its real scenarios — so a future move turns red immediately instead of at
+  child-run time. A bare existence check is deliberately avoided: a stale
+  `__pycache__`-only directory can linger at the old path and would satisfy it
+  while yielding zero scenarios.
+
+- **#377 — non-routed live harnesses no longer silently corrupt Tier-A
+  comparison data.** The #235 rewrite deleted the host→container copy-back
+  (`_sync_workspace`) on the premise that every live harness routes its
+  code-exec into the container. Only `claude-code` does; `opencode`/`codex`
+  stay host-native (the F5 / PENDING LIVE CONFORMANCE gap), so their edits
+  landed in a throwaway host workspace while the churn manifest + tests ran
+  against the *pristine* container — a red-seed fix the agent actually made
+  read as "not fixed" (task-success 0, churn 0). Because `opencode` is the only
+  Tier-A leg in `harness_comparison`, that silently poisoned the sacred
+  comparison spine. `_run_live_scenario` now **fails closed** for any harness
+  not in `_CONTAINER_ROUTED_HARNESSES`, raising
+  `rfc.exceptions.LiveHarnessNotRoutedError` (a clean skip) before any container
+  work; `HarnessComparison.run` records the leg as skipped rather than a wrong
+  row. Reviving the Tier-A leg — a scoped copy-back bridge vs. F5 routing — is a
+  design-owned follow-up (#378).
+
+## [1.26.0]
 
 ### Added
 
@@ -85,6 +239,22 @@ Provenance notes:
     non-empty. `assert_opencode_comparable` still returns the model-id string
     and is re-exported from `rfc.harness_comparison`, so existing callers are
     unchanged. The #273 bypass regression suite still fails closed.
+- **#326 — the open-tolkein seam fails closed under `local_only` (RFC-012 §3.4,
+  MS3).** The MS1 consumption seam (#324) ships a down-gateway fallback: when
+  `OPEN_TOLKEIN_BASE_URL` is set but the gateway is unreachable,
+  `select_backend` skip-and-logs back to the direct provider path. That fallback
+  is the one seam line that can egress a `local_only` prompt — a down gateway
+  plus a remote direct provider plus a cache miss would build a remote client
+  and leave the fleet boundary (the #273 lesson). `select_backend` now raises the
+  new typed `LocalOnlyEgressError` on exactly that path: a `local_only` request
+  whose down-gateway fallback provider is not localhost-class (`ollama`/`vllm`
+  are; `openai` and unknowns are not) is refused rather than downgraded to a
+  remote BYOK path. Deliberately a hard failure, not an `RFCSkipError` — a
+  locality-safety breach must fail loudly, not skip. A reachable gateway (it owns
+  the routing), the inert seam (no gateway boundary, RFC-012 §3.3), and every
+  non-`local_only` request are unchanged. Paired with the gateway-side
+  URL-derived locality guard in `tkarcheski/open-tolkein` (#2), the up-path half
+  of the same invariant.
 
 ### Changed
 

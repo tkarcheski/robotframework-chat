@@ -58,6 +58,7 @@ from .exec_mcp import (
     SandboxExecRouting,
     claude_mcp_config_json,
     deny_settings_json,
+    opencode_deny_config,
     opencode_mcp_config,
 )
 from .opencode_config import (
@@ -417,6 +418,42 @@ class ClaudeCodeAdapter:
 # ---------------------------------------------------------------------------
 
 
+def _opencode_exit_code(state: dict[str, Any], *, default: int) -> int:
+    """Return the shell exit code recorded in an opencode bash tool ``state``.
+
+    opencode 1.2.9 reports a command that ran to completion but exited
+    **nonzero** with ``state.status == "completed"`` and the real shell exit in
+    ``state.metadata.exit`` (live-captured in #390: ``sh -c 'echo boom; exit 3'``
+    → ``status="completed"``, ``metadata.exit=3``). Reading the status alone
+    (``completed → 0``) records a failed ``pytest`` as green and bypasses
+    ``assert_no_commit_while_tests_red``, so the recorded ``returncode`` must be
+    derived from ``metadata.exit`` whenever it is present.
+
+    ``default`` is used only when ``metadata.exit`` is *genuinely absent* (or an
+    unparseable non-int) — for ``completed`` that is ``0``, for ``error`` ``1`` —
+    preserving the status-derived behavior for older / metadata-less events.
+    """
+    metadata = state.get("metadata")
+    if isinstance(metadata, dict) and "exit" in metadata:
+        exit_val = metadata.get("exit")
+        # A JSON bool is an int subclass; it is never a real exit code, so treat
+        # it as absent rather than coercing True/False to 1/0.
+        if isinstance(exit_val, bool):
+            return default
+        if isinstance(exit_val, int):
+            return exit_val
+        # A stringified exit ("3") is a plausible shape for a failed command; a
+        # numeric string must NOT silently normalize to green (that is the #390
+        # defect). Honor a parseable int string; fall back to ``default`` only
+        # when the value cannot be interpreted at all.
+        if isinstance(exit_val, str):
+            try:
+                return int(exit_val.strip())
+            except ValueError:
+                return default
+    return default
+
+
 def parse_opencode_events(
     raw: str,
     *,
@@ -429,11 +466,17 @@ def parse_opencode_events(
 
       * bash tool calls — ``part.type == "tool"`` with ``part.tool == "bash"``.
         The terminal ``part.state`` holds ``input.command`` (the shell string),
-        a ``status`` of ``completed`` / ``error``, and the captured ``output``
-        (or ``error`` text). Each becomes one :class:`AgentCommand` wrapped as
-        ``("bash", "-lc", <command>)`` so the tier:1 shell verifiers apply
-        identically to the Claude Code path. A non-terminal state (``running``,
-        ``pending``) is skipped — the run is captured after it finishes.
+        a ``status`` of ``completed`` / ``error``, the captured ``output`` (or
+        ``error`` text), and — for a command that actually executed — the real
+        shell exit in ``state.metadata.exit``. The recorded ``returncode`` is
+        taken from ``metadata.exit`` when present (so a ``completed`` command
+        that exited nonzero is recorded RED, not green — #390); the ``status``
+        supplies the fallback only when no ``metadata.exit`` is reported
+        (``completed → 0``, ``error → 1``). Each becomes one
+        :class:`AgentCommand` wrapped as ``("bash", "-lc", <command>)`` so the
+        tier:1 shell verifiers apply identically to the Claude Code path. A
+        non-terminal state (``running``, ``pending``) is skipped — the run is
+        captured after it finishes.
       * assistant text — ``part.type == "text"`` — scanned for clarifying
         questions.
     """
@@ -464,10 +507,15 @@ def parse_opencode_events(
             if not isinstance(command, str) or not command:
                 continue
             if status == "completed":
-                returncode = 0
+                # A completed command may still have exited nonzero; the real
+                # exit lives in metadata.exit (#390). Default to 0 only when it
+                # is genuinely absent.
+                returncode = _opencode_exit_code(state, default=0)
                 output = str(state.get("output") or "")
             elif status == "error":
-                returncode = 1
+                # error (e.g. a schema-rejected call that never ran) defaults to
+                # 1, but honor metadata.exit here too when opencode reports it.
+                returncode = _opencode_exit_code(state, default=1)
                 output = str(state.get("error") or state.get("output") or "")
             else:
                 # running / pending — not a terminal result; skip.
@@ -486,6 +534,25 @@ def parse_opencode_events(
                 questions.extend(_extract_questions(text))
 
     return tuple(commands), tuple(questions)
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge ``overlay`` onto a copy of ``base`` (overlay wins).
+
+    Nested dicts merge key-by-key; any non-dict overlay value replaces the base
+    value. Used to layer the exec-routing overlay (``mcp`` + ``permission`` +
+    ``tools`` denials) onto the pinned local ``opencode.json`` without disturbing
+    its ``model`` / ``provider`` (the Tier-A local pin the comparability gate
+    checks).
+    """
+    merged = dict(base)
+    for key, value in overlay.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(existing, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 class OpenCodeAdapter:
@@ -522,23 +589,87 @@ class OpenCodeAdapter:
         self.config_path = config_path
         self.model = model
         self.require_local_comparability = require_local_comparability
-        # #235: when set, code execution should route into the sandbox container
+        # #235/#381: when set, code execution routes into the sandbox container
         # via the rfc-exec MCP server. opencode speaks MCP (its ``mcp`` config
-        # key), so :meth:`exec_config_overlay` returns the block to merge into the
-        # run's opencode config. PENDING LIVE CONFORMANCE: the opencode CLI is not
-        # installed here to verify the tool-substitution behaviour, so the live
-        # driver leaves opencode on the host-native path until the binary lands
-        # (mirrors CodexAdapter). The overlay itself is pure and unit-tested.
+        # key) and denies its native code tools via its ``permission`` + ``tools``
+        # config keys, so :meth:`exec_config_overlay` returns the block to merge
+        # into the run's opencode config. LIVE-CONFORMED (#381): verified against
+        # the real opencode 1.2.9 CLI -- with the overlay merged, opencode's
+        # per-tool-call bash/write/edit dispatch through the broker into the
+        # container ``/workspace``, not the host.
         self.exec_routing = exec_routing
+        # Path to the run-scoped merged config (base opencode.json + exec overlay)
+        # that :meth:`apply_routed_config` materializes; ``None`` on the
+        # host-native path. When set, :meth:`env_overrides` points OPENCODE_CONFIG
+        # at it so the denials + rfc-exec server actually take effect.
+        self._routed_config_path: Path | None = None
 
     def exec_config_overlay(self) -> dict:
-        """The opencode ``mcp`` config block routing code-exec into the container.
+        """The opencode config overlay routing code-exec into the container (#381).
 
-        Empty when ``exec_routing`` is unset. PENDING LIVE CONFORMANCE (#235).
+        Empty when ``exec_routing`` is unset. Otherwise the ``mcp`` block that
+        registers the rfc-exec server PLUS the ``permission`` + ``tools`` denials
+        that strip opencode's native host-executing code tools -- so the model's
+        only path to bash/write/edit is the broker'd MCP tools. LIVE-CONFORMED
+        against the real opencode 1.2.9 CLI (#381).
         """
         if self.exec_routing is None:
             return {}
-        return opencode_mcp_config(self.exec_routing)
+        overlay = opencode_mcp_config(self.exec_routing)
+        overlay.update(opencode_deny_config())
+        return overlay
+
+    def apply_routed_config(
+        self, dest_dir: Path, workspace: Path | None = None
+    ) -> Path | None:
+        """Materialize the run-scoped merged opencode config for exec routing (#381).
+
+        Deep-merges :meth:`exec_config_overlay` onto the pinned ``opencode.json``
+        (preserving its ``model`` / ``provider`` local pin) and writes it at TWO
+        tiers of opencode's config precedence (live-verified on 1.2.9; highest
+        wins): ``cwd opencode.json > ancestor opencode.json (walk-up) >
+        OPENCODE_CONFIG env > global > defaults``.
+
+        1. ``<workspace>/opencode.json`` -- the cwd project config, the HIGHEST
+           tier. This is the load-bearing write (PR #382 test-design verdict): an
+           ``OPENCODE_CONFIG``-only deny is silently outranked by any project or
+           ancestor ``opencode.json`` (the monorepo itself ships several), which
+           would flip native host exec back ON and revive the #377 corruption
+           PLUS a host escape. Writing the deny AT the cwd tier means no seed or
+           ancestor config can shadow it. Scrub-then-write: any config the
+           scenario seed shipped at the workspace root (``opencode.json``
+           overwritten, ``opencode.jsonc`` removed) is replaced -- the deny
+           always wins. Only the throwaway host CWD stub is touched; the
+           container's seeded ``/workspace`` copy (the verified tree) keeps the
+           original bytes. The merged config always carries EVERY denied tool key
+           explicitly, so a key omitted at cwd can never fall through to a
+           permissive ancestor.
+        2. ``dest_dir/opencode.routed.json``, exported as ``OPENCODE_CONFIG`` by
+           :meth:`env_overrides` -- belt-and-braces at the env tier, and the
+           carrier for callers that route without a workspace.
+
+        No-op (returns ``None``) when routing is unset. Unlike claude-code --
+        which takes the deny-settings + mcp-config inline on argv -- opencode
+        consumes config FILES, so the overlay must be materialized per run; both
+        files live in run-scoped dirs torn down with the run.
+        """
+        if self.exec_routing is None:
+            return None
+        base: dict = {}
+        if self.config_path is not None:
+            base = load_opencode_config(self.config_path)
+        merged = _deep_merge(base, self.exec_config_overlay())
+        payload = json.dumps(merged, indent=2)
+        dest = Path(dest_dir) / "opencode.routed.json"
+        dest.write_text(payload)
+        self._routed_config_path = dest
+        if workspace is not None:
+            # Scrub seed-shipped config variants at the cwd tier, then claim it.
+            jsonc = Path(workspace) / "opencode.jsonc"
+            if jsonc.exists():
+                jsonc.unlink()
+            (Path(workspace) / "opencode.json").write_text(payload)
+        return dest
 
     def build_argv(self, task: str, workspace: Path) -> list[str]:
         argv = [self.opencode_bin, "run", "--format", "json"]
@@ -575,8 +706,13 @@ class OpenCodeAdapter:
         # unchanged.
         if self.require_local_comparability:
             self.verify_local_model()
-        if self.config_path is not None:
-            return {"OPENCODE_CONFIG": str(self.config_path)}
+        # #381: when exec routing is wired, export the merged routed config (with
+        # the rfc-exec server + native-tool denials) instead of the bare base, so
+        # the container routing + fail-closed denials actually take effect. Falls
+        # back to the base config on the host-native path.
+        config = self._routed_config_path or self.config_path
+        if config is not None:
+            return {"OPENCODE_CONFIG": str(config)}
         return {}
 
     def parse_output(
@@ -600,11 +736,25 @@ def parse_codex_events(
 ) -> ParsedOutput:
     """Parse a ``codex exec --json`` event stream (JSONL).
 
-    PENDING LIVE CONFORMANCE: written against codex's documented experimental
-    ``exec --json`` format, not yet verified against a real binary (the CLI is
-    not installed on this box). Each line is a JSON object; the events read are
-    a ``msg`` envelope (``{"id": …, "msg": {"type": …}}``) — codex's shape —
-    falling back to a flat top-level object:
+    PENDING LIVE CONFORMANCE: written against codex's documented ``exec --json``
+    format, not yet verified against a real binary (the CLI is not installed on
+    this box). Each line is a JSON object; two schema generations are handled:
+
+    Current thread-item schema (``codex exec --json``, top-level events):
+
+      * ``item.completed`` with ``item.type == "command_execution"`` — a
+        finished command, carrying ``item.command`` (the command line; a string
+        such as ``"bash -lc 'uv run pytest'"``, or defensively an argv array),
+        ``item.aggregated_output`` (combined stdout+stderr), and
+        ``item.exit_code`` (int). Yields one :class:`AgentCommand`; the
+        ``exit_code`` becomes the recorded ``returncode`` so a failed command is
+        recorded RED (#387 — without this branch a real codex run produced an
+        empty-transcript ``AgentRun`` that defeats the conformance verifiers).
+      * ``item.completed`` with ``item.type == "agent_message"`` — assistant
+        text (``item.text``), scanned for clarifying questions.
+
+    Legacy exec-event schema (``msg`` envelope ``{"id": …, "msg": {"type": …}}``,
+    tolerating a flat top-level object):
 
       * ``exec_command_begin`` — ``command`` (an argv array) keyed by
         ``call_id``.
@@ -612,6 +762,11 @@ def parse_codex_events(
         back to its begin by ``call_id``, yielding one :class:`AgentCommand`.
       * ``agent_message`` — assistant text (``message``/``text``), scanned for
         clarifying questions.
+
+    ASSUMPTION (#387): the ``item.completed`` / ``command_execution`` field names
+    (``command`` as a string, ``aggregated_output``, ``exit_code``) follow the
+    documented ``codex exec --json`` item shape; they could not be observed live
+    here (codex CLI absent). See the issue for the live-conformance follow-up.
     """
     commands: list[AgentCommand] = []
     questions: list[AgentQuestion] = []
@@ -663,6 +818,46 @@ def parse_codex_events(
                 text = msg.get("text")
             if isinstance(text, str) and text:
                 questions.extend(_extract_questions(text))
+        elif mtype == "item.completed":
+            # Current codex exec --json schema: command results arrive as a
+            # top-level item.completed with item.type == "command_execution"
+            # (#387). Without this branch a real codex run parses to an empty
+            # AgentRun that silently defeats the conformance verifiers.
+            item = msg.get("item")
+            if not isinstance(item, dict):
+                continue
+            itype = item.get("type")
+            if itype == "command_execution":
+                command = item.get("command")
+                if isinstance(command, list) and command:
+                    argv = tuple(str(part) for part in command)
+                elif isinstance(command, str) and command:
+                    argv = ("bash", "-lc", command)
+                else:
+                    continue
+                exit_code = item.get("exit_code")
+                # int (not bool) is the documented shape; anything else is not a
+                # trustworthy exit code, so record 0 (success) only for a real 0.
+                returncode = (
+                    int(exit_code)
+                    if isinstance(exit_code, int) and not isinstance(exit_code, bool)
+                    else 0
+                )
+                output = str(item.get("aggregated_output") or item.get("output") or "")
+                commands.append(
+                    AgentCommand(
+                        argv=argv,
+                        returncode=returncode,
+                        stdout_tail=redact(_tail(output), extra_secrets=extra_secrets),
+                        stderr_tail="",
+                    )
+                )
+            elif itype in ("agent_message", "assistant_message"):
+                text = item.get("text")
+                if not isinstance(text, str):
+                    text = item.get("message")
+                if isinstance(text, str) and text:
+                    questions.extend(_extract_questions(text))
 
     return tuple(commands), tuple(questions)
 
