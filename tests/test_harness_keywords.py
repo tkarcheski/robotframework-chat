@@ -21,6 +21,8 @@ harness-session subprocess is real and hermetic (its own sqlite file).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,7 @@ from rfc.harness_adapters import (
 from rfc.harness_db import HarnessDatabase
 from rfc.harness_models import AgenticHarness
 from rfc.harness_keywords import HarnessKeywords
+from rfc.live_agent_runner import HarnessRunError
 
 # ---------------------------------------------------------------------------
 # Stub invoker (matches the shape used by the live-runner + adapter tests).
@@ -361,6 +364,88 @@ class TestSessionBracket:
 
 
 # ---------------------------------------------------------------------------
+# Sidecar resolution across a git worktree workspace (#386).
+#
+# `rfc harness start` writes the sidecar via `git rev-parse --absolute-git-dir`;
+# in a git WORKTREE `.git` is a pointer FILE and the real sidecar lives under
+# `<main>/.git/worktrees/<name>/`. Assuming `<workspace>/.git` is a directory
+# breaks the read the moment the workspace is a worktree.
+# ---------------------------------------------------------------------------
+
+
+def _worktree_workspace(tmp_path: Path) -> tuple[Path, str]:
+    """A real git WORKTREE as the workspace (``.git`` is a FILE, not a dir).
+
+    Returns ``(worktree_path, database_url)``. Mirrors what a caller passing a
+    worktree workspace to `Start Harness Session` would look like — the case the
+    only current consumer (``harness_matrix.robot``) does not yet exercise, so
+    the divergence is latent until someone hands the keyword a worktree.
+    """
+    git_env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "harness",
+        "GIT_AUTHOR_EMAIL": "harness@agents.rfc",
+        "GIT_COMMITTER_NAME": "harness",
+        "GIT_COMMITTER_EMAIL": "harness@agents.rfc",
+    }
+    main = tmp_path / "main"
+    main.mkdir()
+    subprocess.run(["git", "init", "-q", str(main)], check=True, timeout=60)
+    subprocess.run(
+        ["git", "-C", str(main), "commit", "-q", "--allow-empty", "-m", "root"],
+        check=True,
+        timeout=60,
+        env=git_env,
+    )
+    worktree = tmp_path / "wt"
+    subprocess.run(
+        ["git", "-C", str(main), "worktree", "add", "-q", "-b", "wt", str(worktree)],
+        check=True,
+        timeout=60,
+        env=git_env,
+    )
+    return worktree, f"sqlite:///{tmp_path / 'harness.db'}"
+
+
+class TestSidecarResolutionOnWorktree:
+    def test_start_session_resolves_sidecar_in_worktree(self, tmp_path: Path) -> None:
+        """#386 regression: Start reads the sidecar the CLI wrote in a worktree.
+
+        The writer resolves the git dir with ``--absolute-git-dir``; the reader
+        must too. BEFORE the fix, `start_harness_session` reads
+        ``<workspace>/.git/rfc-harness-session.json`` — but in a worktree
+        ``<workspace>/.git`` is a FILE, so that path does not exist and the read
+        raises even though `rfc harness start` created the row + sidecar. This
+        test fails on the pre-#386 reader and passes on the fixed one.
+        """
+        worktree, db_url = _worktree_workspace(tmp_path)
+        # Sanity: this really is a worktree — .git is a pointer FILE, not a dir.
+        assert (worktree / ".git").is_file()
+
+        kw = HarnessKeywords(invoker=StubInvoker())
+        session = kw.start_harness_session(
+            tool="opencode", workspace=str(worktree), database_url=db_url
+        )
+
+        # A session_id came back, so the reader found the sidecar the CLI wrote
+        # under the REAL git dir — not the nonexistent <worktree>/.git/ path the
+        # pre-#386 code assumed.
+        assert session["session_id"]
+        resolved = HarnessKeywords._sidecar_path(worktree)
+        assert "worktrees" in str(resolved), resolved
+        assert resolved.exists()
+        assert json.loads(resolved.read_text())["session_id"] == session["session_id"]
+
+    def test_sidecar_path_matches_a_plain_repo_git_dir(self, tmp_path: Path) -> None:
+        """Guardrail: on a normal (non-worktree) repo the resolved dir is <root>/.git."""
+        root = tmp_path / "plain"
+        root.mkdir()
+        subprocess.run(["git", "init", "-q", str(root)], check=True, timeout=60)
+        resolved = HarnessKeywords._sidecar_path(root)
+        assert resolved.parent == root / ".git"
+
+
+# ---------------------------------------------------------------------------
 # Transcript capture + error guards.
 # ---------------------------------------------------------------------------
 
@@ -526,6 +611,34 @@ class TestFailureEnvelope:
 
         kw.end_harness_session("failed")
         assert _row(workspace["database_url"], sid).ended_at != ""
+
+    def test_run_agent_task_fails_when_harness_exits_nonzero(
+        self, tmp_path: Path
+    ) -> None:
+        """#385 regression at the keyword: `Run Agent Task` FAILS on a broken leg.
+
+        A harness that exits nonzero before emitting events (empty transcript)
+        must surface as a failed keyword call, not a vacuously-conformant
+        AgentRun. BEFORE the fix, `run_agent_task` returns an empty-but-valid run
+        and every conformance assertion passes. The session bracket stays
+        closeable afterwards, so no open row is orphaned.
+        """
+        agent_needle, _prefix, _builder = _HARNESSES["opencode"]
+        canned = _shared_git_canned(agent_needle, "")
+        canned[agent_needle] = ClaudeProcessResult(
+            returncode=1, stdout="", stderr="opencode: model startup failed"
+        )
+        inv = StubInvoker(canned=canned)
+        kw, workspace, sid = _started(tmp_path, "opencode", inv)
+
+        with pytest.raises(HarnessRunError, match="exited 1"):
+            kw.run_agent_task(task="do a thing", base_branch="main")
+
+        # The caller's teardown can still close the session -> no dangling row.
+        kw.end_harness_session("failed")
+        closed = _row(workspace["database_url"], sid)
+        assert closed.ended_at != ""
+        assert closed.outcome == "failed"
 
     def test_double_start_is_rejected_without_clobbering_first(
         self, tmp_path: Path
