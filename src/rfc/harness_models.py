@@ -58,6 +58,16 @@ class AgenticHarness:
     # settled on a blob for the MVP: one migration, reversible — promote a hot
     # param to its own column later if the scoreboard needs to GROUP BY it.
     params_json: str = ""
+    # #350: the durable local-resolution verdict — "did this run actually resolve
+    # to a declared-local provider?" — persisted at WRITE TIME from the presence of
+    # the gate-minted VerifiedLocalModel token (ComparisonRow.verified_local). The
+    # token IS the tier: 1 == token minted (fixed-local, Tier A), 0 == no token
+    # (Tier B / native / unverified). The int-id sentinel convention (NOT the ""
+    # text one): -1 -> NULL for legacy rows and every non-comparison writer, which
+    # the harness_scoreboard view reads FAIL-CLOSED to Tier B. This carries the
+    # write-time comparability invariant to read time so the view's tier matches the
+    # gate's tier by construction, not by a tool_name name-coincidence (#273/#350).
+    verified_local: int = -1
 
 
 @dataclass
