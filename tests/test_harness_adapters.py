@@ -10,6 +10,11 @@ opencode run normalizes to the same contract the Claude Code path does.
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,8 +24,9 @@ import yaml
 
 from rfc.agent_config import AgentConfig
 from rfc.agent_contract import AgentContract
-from rfc.agent_run import AgentRun
+from rfc.agent_run import AgentCommand, AgentRun
 from rfc.agent_verifiers import (
+    VerificationFailure,
     assert_all_commits_match_convention,
     assert_branch_matches_contract,
     assert_commands_appear_in_order,
@@ -95,7 +101,12 @@ def _oc_stream(events: list[dict[str, Any]]) -> str:
 
 
 def _oc_bash(
-    call_id: str, command: str, output: str, *, status: str = "completed"
+    call_id: str,
+    command: str,
+    output: str,
+    *,
+    status: str = "completed",
+    exit_code: int | str | None = None,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {
         "status": status,
@@ -106,6 +117,15 @@ def _oc_bash(
         state["error"] = output
     else:
         state["output"] = output
+    if exit_code is not None:
+        # opencode 1.2.9 records the real shell exit in state.metadata.exit even
+        # when status == "completed" (#390 live capture).
+        state["metadata"] = {
+            "output": output,
+            "exit": exit_code,
+            "description": "run",
+            "truncated": False,
+        }
     return {
         "type": "tool_use",
         "part": {"type": "tool", "tool": "bash", "callID": call_id, "state": state},
@@ -330,6 +350,231 @@ class TestOpenCodeAdapter:
     def test_parse_empty_returns_empty(self) -> None:
         assert parse_opencode_events("") == ((), ())
 
+    # -- #390: a completed-but-nonzero command must be recorded RED. ----------
+
+    def test_completed_with_nonzero_metadata_exit_is_recorded_red(self) -> None:
+        # Meeseeks' LIVE capture from opencode 1.2.9: `sh -c 'echo boom; exit 3'`
+        # runs to completion (status == "completed") with the real shell exit in
+        # state.metadata.exit. The parser must NOT map this to returncode 0.
+        captured_event = {
+            "part": {
+                "type": "tool",
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {
+                        "command": "sh -c 'echo boom; exit 3'",
+                        "description": "probe exit code",
+                    },
+                    "output": "boom\n",
+                    "metadata": {
+                        "output": "boom\n",
+                        "exit": 3,
+                        "description": "probe exit code",
+                        "truncated": False,
+                    },
+                    "time": {"start": 1784125695262, "end": 1784125695350},
+                },
+            }
+        }
+        raw = json.dumps(captured_event) + "\n"
+        commands, _ = parse_opencode_events(raw)
+        assert len(commands) == 1
+        assert commands[0].argv == ("bash", "-lc", "sh -c 'echo boom; exit 3'")
+        assert commands[0].returncode == 3  # was 0 before #390
+        assert "boom" in commands[0].stdout_tail
+
+    def test_completed_without_metadata_defaults_to_zero(self) -> None:
+        # A completed event with no metadata.exit keeps the status-derived
+        # default (0) — no regression for metadata-less / older events.
+        raw = _oc_stream([_oc_bash("c1", "uv run pytest", "5 passed")])
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 0
+
+    def test_completed_with_zero_metadata_exit_stays_green(self) -> None:
+        raw = _oc_stream([_oc_bash("c1", "uv run pytest", "5 passed", exit_code=0)])
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 0
+
+    def test_error_status_honors_metadata_exit_when_present(self) -> None:
+        raw = _oc_stream(
+            [_oc_bash("c1", "pytest", "boom", status="error", exit_code=2)]
+        )
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 2
+
+    def test_error_status_without_metadata_defaults_to_one(self) -> None:
+        raw = _oc_stream([_oc_bash("c1", "pytest", "boom", status="error")])
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 1
+
+    def test_stringified_metadata_exit_is_honored_not_swallowed(self) -> None:
+        # A numeric-string exit must not silently normalize to green (#390).
+        raw = _oc_stream([_oc_bash("c1", "pytest", "1 failed", exit_code="4")])
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 4
+
+    def test_bool_metadata_exit_is_treated_as_absent(self) -> None:
+        # A JSON bool is an int subclass; it is never a real exit code, so the
+        # status default (0 for completed) applies rather than coercing to 0/1.
+        raw = _oc_stream([_oc_bash("c1", "true", "", exit_code=True)])  # type: ignore[arg-type]
+        commands, _ = parse_opencode_events(raw)
+        assert commands[0].returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# #390 verifier bypass: a nonzero-exit test recorded green would let
+# assert_no_commit_while_tests_red approve a commit made after red tests. Drive
+# the parser -> AgentRun -> verifier spine end to end.
+# ---------------------------------------------------------------------------
+
+
+class TestOpenCodeReturncodeVerifierBypass390:
+    def _run(self, commands: tuple[AgentCommand, ...]) -> AgentRun:
+        return AgentRun(
+            agent_id="opencode",
+            scenario_id="s1",
+            task="t",
+            base_branch="main",
+            branch_name="opencode/x-abcde",
+            commands=commands,
+        )
+
+    def test_nonzero_pytest_then_commit_is_flagged_red(self) -> None:
+        # Two separate commands, exactly the corrupting sequence from #390:
+        # pytest completes NONZERO, then a commit is made. The verifier must
+        # fire now that the completed-nonzero test is recorded red.
+        raw = _oc_stream(
+            [
+                _oc_bash("c1", "uv run pytest", "1 failed", exit_code=1),
+                _oc_bash("c2", "git commit -m wip", "", exit_code=0),
+            ]
+        )
+        commands, _ = parse_opencode_events(raw)
+        assert [c.returncode for c in commands] == [1, 0]
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(self._run(commands))
+
+    def test_green_pytest_then_commit_passes(self) -> None:
+        # The inverse: a genuinely green test followed by a commit is allowed —
+        # the fix does not over-fire on real successes.
+        raw = _oc_stream(
+            [
+                _oc_bash("c1", "uv run pytest", "5 passed", exit_code=0),
+                _oc_bash("c2", "git commit -m done", "", exit_code=0),
+            ]
+        )
+        commands, _ = parse_opencode_events(raw)
+        assert_no_commit_while_tests_red(self._run(commands))  # no raise
+
+
+# ---------------------------------------------------------------------------
+# #390 live leg (a): drive the REAL opencode 1.2.9 CLI + local ollama and
+# confirm the parser reads the true shell exit from a completed-but-nonzero
+# command. Probe-gated: SKIPS (never fails) when the CLI / model is down or the
+# small model does not comply under load. The deterministic guarantee lives in
+# the fixture + verifier tests above; this leg proves the fix against real
+# opencode output when the box can run it.
+# ---------------------------------------------------------------------------
+
+_CORE_ROOT = Path(__file__).resolve().parents[1]
+_OPENCODE_CONFIG = _CORE_ROOT / "opencode.json"
+
+
+def _ollama_up() -> bool:
+    try:
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/tags", timeout=3
+        ) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _opencode_live_available() -> bool:
+    # Opt-out escape hatch: driving the real 3b model can take minutes, so a box
+    # that has opencode+ollama but does not want the per-run tax can export
+    # RFC_SKIP_LIVE_OPENCODE=1 and the leg skips (the deterministic fixture +
+    # verifier coverage still runs).
+    if os.environ.get("RFC_SKIP_LIVE_OPENCODE"):
+        return False
+    return (
+        shutil.which("opencode") is not None
+        and _OPENCODE_CONFIG.is_file()
+        and _ollama_up()
+    )
+
+
+def _raw_has_completed_nonzero_bash(raw: str) -> bool:
+    """True if the raw stream carries a completed bash part with exit != 0.
+
+    Independent of :func:`parse_opencode_events` so the live test can decide
+    whether the model actually ran a failing command (assert) or never did
+    (skip), without trusting the code under test to make that call.
+    """
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        part = event.get("part") if isinstance(event, dict) else None
+        if not isinstance(part, dict) or part.get("tool") != "bash":
+            continue
+        state = part.get("state")
+        if not isinstance(state, dict) or state.get("status") != "completed":
+            continue
+        meta = state.get("metadata")
+        if isinstance(meta, dict) and meta.get("exit") not in (0, None):
+            return True
+    return False
+
+
+class TestLiveOpenCodeReturncode390:
+    def test_live_completed_nonzero_bash_parses_nonzero(self, tmp_path: Path) -> None:
+        if not _opencode_live_available():
+            pytest.skip("opencode CLI + local ollama model not available")
+        adapter = OpenCodeAdapter(config_path=_OPENCODE_CONFIG)
+        task = (
+            "Use the bash tool to run exactly this one shell command and then "
+            "stop without doing anything else: sh -c 'echo boom; exit 3'"
+        )
+        argv = adapter.build_argv(task, tmp_path)
+        env = os.environ.copy()
+        env.update(adapter.env_overrides())
+        # Bounded so a slow model skips (never fails) without a runaway tax;
+        # override with RFC_LIVE_OPENCODE_TIMEOUT for a faster/idle box.
+        timeout = int(os.environ.get("RFC_LIVE_OPENCODE_TIMEOUT", "180"))
+        try:
+            proc = subprocess.run(
+                argv,
+                cwd=str(tmp_path),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            pytest.skip(f"live opencode run unavailable under load: {exc!r}")
+        raw = proc.stdout or ""
+        if not _raw_has_completed_nonzero_bash(raw):
+            pytest.skip(
+                "opencode/model did not emit a completed nonzero-exit bash "
+                "command (small model noncompliant under load)"
+            )
+        commands, _ = parse_opencode_events(raw)
+        nonzero = [c for c in commands if c.returncode != 0]
+        assert nonzero, (
+            "parser recorded a real completed nonzero-exit command as green "
+            "— the #390 defect"
+        )
+        probe = [c for c in commands if "exit 3" in c.argv[-1]]
+        if probe:
+            assert probe[0].returncode == 3
+
 
 # ---------------------------------------------------------------------------
 # OpenCodeAdapter comparability gate (#278): the adapter is the durable home of
@@ -541,6 +786,152 @@ class TestCodexAdapter:
 
     def test_parse_empty_returns_empty(self) -> None:
         assert parse_codex_events("") == ((), ())
+
+    # -- #387: current codex exec --json item.completed / command_execution. --
+    # FIXTURE-BASED (probe: codex CLI absent here, so no live leg). Shapes follow
+    # the documented codex exec --json thread-item schema; see parse_codex_events
+    # ASSUMPTION note + issue #387 for the live-conformance follow-up.
+
+    def test_parse_item_completed_command_execution(self) -> None:
+        raw = _codex_stream(
+            [
+                {"type": "thread.started", "thread_id": "t1"},
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_0",
+                        "type": "command_execution",
+                        "command": "bash -lc 'uv run pytest'",
+                        "aggregated_output": "5 passed in 0.1s",
+                        "exit_code": 0,
+                        "status": "completed",
+                    },
+                },
+            ]
+        )
+        commands, questions = parse_codex_events(raw)
+        assert len(commands) == 1
+        assert commands[0].argv == ("bash", "-lc", "bash -lc 'uv run pytest'")
+        assert commands[0].returncode == 0
+        assert "5 passed" in commands[0].stdout_tail
+        assert questions == ()
+
+    def test_parse_item_completed_nonzero_exit_is_red(self) -> None:
+        raw = _codex_stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_1",
+                        "type": "command_execution",
+                        "command": "bash -lc 'uv run pytest'",
+                        "aggregated_output": "1 failed, 4 passed",
+                        "exit_code": 1,
+                        "status": "failed",
+                    },
+                }
+            ]
+        )
+        commands, _ = parse_codex_events(raw)
+        assert commands[0].returncode == 1
+        assert "1 failed" in commands[0].stdout_tail
+
+    def test_parse_item_completed_command_as_argv_list(self) -> None:
+        # Defensive: some builds may carry command as an argv array.
+        raw = _codex_stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": ["ls", "-la"],
+                        "aggregated_output": "file",
+                        "exit_code": 0,
+                    },
+                }
+            ]
+        )
+        commands, _ = parse_codex_events(raw)
+        assert commands[0].argv == ("ls", "-la")
+
+    def test_parse_item_completed_redacts_secrets(self) -> None:
+        raw = _codex_stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "env",
+                        "aggregated_output": "TOKEN=topsecret42",
+                        "exit_code": 0,
+                    },
+                }
+            ]
+        )
+        commands, _ = parse_codex_events(raw, extra_secrets=("topsecret42",))
+        assert "topsecret42" not in commands[0].stdout_tail
+
+    def test_parse_item_completed_agent_message_question(self) -> None:
+        raw = _codex_stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "agent_message",
+                        "text": "Which approach?\n- A\n- B\n",
+                    },
+                }
+            ]
+        )
+        _, questions = parse_codex_events(raw)
+        assert len(questions) == 1
+        assert questions[0].is_multiple_choice
+
+    def test_parse_item_completed_non_command_item_is_skipped(self) -> None:
+        # A non-command, non-message item (e.g. reasoning) yields nothing.
+        raw = _codex_stream(
+            [{"type": "item.completed", "item": {"type": "reasoning", "text": "..."}}]
+        )
+        assert parse_codex_events(raw) == ((), ())
+
+    def test_item_completed_nonzero_test_then_commit_is_flagged_red(self) -> None:
+        # #387 + verifier spine: a failed test followed by a commit must fire
+        # assert_no_commit_while_tests_red once codex results carry the real
+        # exit code (previously the whole run parsed to an empty transcript).
+        raw = _codex_stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "uv run pytest",
+                        "aggregated_output": "1 failed",
+                        "exit_code": 1,
+                    },
+                },
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "git commit -m wip",
+                        "aggregated_output": "",
+                        "exit_code": 0,
+                    },
+                },
+            ]
+        )
+        commands, _ = parse_codex_events(raw)
+        assert [c.returncode for c in commands] == [1, 0]
+        run = AgentRun(
+            agent_id="codex",
+            scenario_id="s1",
+            task="t",
+            base_branch="main",
+            branch_name="codex/x-abcde",
+            commands=commands,
+        )
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(run)
 
 
 # ---------------------------------------------------------------------------

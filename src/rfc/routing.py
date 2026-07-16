@@ -15,10 +15,16 @@ Three invariants this seam holds (RFC-012 §7.2):
   catalog. The gateway client is built with a constant, non-secret placeholder
   token (:data:`GATEWAY_PLACEHOLDER_TOKEN`) — the same shape the ``vllm`` path
   already uses. The public mirror inherits a seam that is inert and key-free.
-* **Skip-and-log if unreachable.** A down gateway must never fail a cached or
-  local test run: :func:`select_backend` probes the gateway and, when it cannot
-  be reached, logs a route note and falls back to the direct provider path so
-  the local answer-cache replay tape can still serve the run.
+* **Skip-and-log if unreachable — except a ``local_only`` egress.** A down
+  gateway must never fail a cached or local test run: :func:`select_backend`
+  probes the gateway and, when it cannot be reached, logs a route note and falls
+  back to the direct provider path so the local answer-cache replay tape can
+  still serve the run. The one exception is fail-closed: if the request is
+  ``local_only`` and the direct fallback provider would egress (``openai`` —
+  anything not localhost-class), the fallback is the single seam line that can
+  leak the prompt off the fleet on a cache miss, so it raises
+  :class:`LocalOnlyEgressError` rather than downgrading a no-egress request to a
+  remote BYOK path (RFC-012 §3.4; the #273 lesson).
 * **Honest route provenance.** :class:`_GatewayProvenanceProvider` threads the
   route note (served-via, gateway ``base_url``, pinned contract version) into
   the existing ``last_metrics`` metadata path the spine already records. Per-hop
@@ -28,8 +34,12 @@ Three invariants this seam holds (RFC-012 §7.2):
 
 ``RoutePolicy`` (the three §3.3 knobs — ``locality`` · ``cache_mode`` ·
 ``cost_ceiling``) is defined here and seeded from the environment; MS1 records it
-on the decision. Transmitting it over the wire and enforcing locality
-(``local_only`` must not egress) is MS3/MS4 (#326/#327).
+on the decision. MS3 (#326) closes the seam's own down-gateway egress: a
+``local_only`` request whose gateway is down never falls back to a remote direct
+provider (see :class:`LocalOnlyEgressError`). Transmitting the policy over the
+wire and the gateway-internal locality routing live in the standalone
+``open-tolkein`` gateway (RFC-012); the URL-derived gateway guard is the paired
+open-tolkein #2 change. Enforcement over the wire beyond this seam is MS4 (#327).
 """
 
 from __future__ import annotations
@@ -69,6 +79,35 @@ GATEWAY_PLACEHOLDER_TOKEN = "open-tolkein"
 #: Default reachability-probe timeout (seconds). Short so a down gateway is
 #: detected fast and the run falls back to the direct path without stalling.
 _DEFAULT_PROBE_TIMEOUT = 3.0
+
+#: Direct-path providers that stay on the fleet boundary (RFC-012 §3.2 tiers
+#: 2-3). ``ollama`` and ``vllm`` are localhost-class; any other direct provider
+#: name (``openai``, or an unknown) egresses. This is a coarse, fail-closed
+#: classification *by provider class*: a local_only request never falls back to
+#: a provider that is not proven localhost-class. Deep per-URL classification
+#: (e.g. a ``VLLM_BASE_URL`` pointed off-box) is the gateway's job — the paired
+#: open-tolkein #2 URL-derived guard — not the seam's.
+_LOCAL_CLASS_DIRECT_PROVIDERS = frozenset({"ollama", "vllm"})
+
+
+class LocalOnlyEgressError(RuntimeError):
+    """A ``local_only`` request would egress to a remote backend — refused.
+
+    Fail-closed at the seam (RFC-012 §3.4; the #273 lesson): when the
+    open-tolkein gateway is configured but unreachable, :func:`select_backend`
+    would otherwise skip-and-log back to the direct provider path. If the request
+    is ``local_only`` and that direct fallback provider egresses (``openai`` —
+    anything not localhost-class), the fallback is the one seam line that can
+    leave the fleet boundary on a cache miss. Rather than downgrade a no-egress
+    request to a remote BYOK path, the seam raises this — a loud, typed refusal,
+    à la the gateway's own locality guard.
+
+    Deliberately **not** an :class:`~rfc.exceptions.RFCSkipError`: a
+    locality-safety breach must FAIL loudly, never silently skip. This is the
+    justified exception to the repo's skip-and-log default (that default is for
+    an *unavailable optional dependency*; here the requested operation cannot
+    proceed without violating a hard safety invariant).
+    """
 
 
 class Locality(str, Enum):
@@ -200,7 +239,10 @@ def select_backend(
 
     Args:
         provider: The direct provider name this call would otherwise build
-            (``"ollama"`` / ``"openai"`` / ``"vllm"``) — used only for log text.
+            (``"ollama"`` / ``"openai"`` / ``"vllm"``). Load-bearing for the
+            ``local_only`` fail-closed guard on the down-gateway fallback: a
+            non-localhost-class provider (``openai``, or an unknown) is refused
+            under ``local_only`` rather than egressed to.
         policy: The :class:`RoutePolicy` to record; defaults to
             :meth:`RoutePolicy.from_env`.
         env: Environment mapping (defaults to ``os.environ``) — injectable for
@@ -213,6 +255,12 @@ def select_backend(
         ``OPEN_TOLKEIN_BASE_URL`` is set *and* the gateway is reachable;
         otherwise the direct provider path is used (inert seam, or skip-and-log
         fallback on a down gateway).
+
+    Raises:
+        LocalOnlyEgressError: The gateway is configured but unreachable, the
+            policy is ``local_only``, and the direct fallback provider would
+            egress — fail closed rather than leak the prompt off the fleet
+            (RFC-012 §3.4).
     """
     env = os.environ if env is None else env
     policy = policy or RoutePolicy.from_env(env)
@@ -247,6 +295,23 @@ def select_backend(
             policy=policy,
             reason="gateway-selected",
             note=note,
+        )
+
+    # Fail-closed exception to skip-and-log: a local_only request must never fall
+    # back to a direct provider that egresses. That down-gateway fallback is the
+    # one seam line that can leak the prompt off the fleet on a cache miss
+    # (RFC-012 §3.4; the #273 lesson; Tusk's #326 blocking note). Refuse loudly
+    # instead of downgrading a no-egress request to a remote BYOK path.
+    if (
+        policy.locality is Locality.LOCAL_ONLY
+        and provider.strip().lower() not in _LOCAL_CLASS_DIRECT_PROVIDERS
+    ):
+        raise LocalOnlyEgressError(
+            f"open-tolkein gateway at {base_url} is unreachable and this request "
+            f"is locality=local_only, but the direct fallback provider {label} "
+            f"egresses to a remote backend. Refusing to leave the fleet boundary: "
+            f"a local_only request fails closed here rather than downgrading to a "
+            f"remote BYOK path (RFC-012 §3.4)."
         )
 
     note = (
@@ -340,6 +405,7 @@ __all__ = [
     "GATEWAY_CONTRACT_ENV",
     "GATEWAY_PLACEHOLDER_TOKEN",
     "Locality",
+    "LocalOnlyEgressError",
     "RouteDecision",
     "RoutePolicy",
     "build_gateway_client",

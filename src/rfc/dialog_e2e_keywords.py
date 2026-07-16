@@ -24,10 +24,13 @@ from .dialog_recorder import RECORDING_ENV_VAR
 from .harness_db import HarnessDatabase
 from .rfc_data import emit_rfc_data
 
-# Path of the inner suite the child robot process executes.
+# Path of the inner suite the child robot process executes. The fixture lives
+# under the tier-1 tree (``robot/10__tier1/...``) after the tier-renumbering
+# migration; test_dialog_e2e_keywords guards this constant against future moves.
 FIXTURE_SUITE = (
     Path(__file__).resolve().parents[2]
     / "robot"
+    / "10__tier1"
     / "dialog"
     / "fixtures"
     / "record_dialog_fixture.robot"

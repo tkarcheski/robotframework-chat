@@ -388,6 +388,46 @@ def _build_robot_command(
     return cmd
 
 
+def _build_robot_env(
+    *,
+    model: str,
+    endpoint: str,
+    node_name: str,
+    verify: bool = False,
+) -> dict[str, str]:
+    """Build the subprocess env for one local ``(node, model, suite)`` robot run.
+
+    Single source of truth for the model-routing env every local run needs, so
+    the main runner and the prioritized RSI-model watcher lane cannot drift
+    (#388):
+
+    * ``DEFAULT_MODEL`` / ``OLLAMA_ENDPOINT`` — ``LLMKeywords.__init__`` builds
+      its ``OllamaClient`` from ``os.environ`` at library-init time
+      (``rfc.ollama`` reads ``os.getenv``). The ``--variable`` overrides in
+      :func:`_build_robot_command` populate Robot variables, *not*
+      ``os.environ``, so a subprocess launched without this env constructs the
+      client with an empty/stale model and endpoint.
+    * ``RFC_HOSTNAME`` — attribute results to the TARGET Ollama node: DbListener
+      stamps it (falling back to ``platform.node()`` — the controller), so
+      without it every host panel collapses onto one machine.
+    * ``RFC_RUN_MODE=verify`` (when ``verify``) — enables the answer cache for
+      re-run speedups (#522), forced on in ``rfc.llm_client`` even if
+      ``ANSWER_CACHE_ENABLED`` is unset in the child env.
+
+    Returns:
+        A copy of ``os.environ`` overlaid with the routing variables above.
+    """
+    env: dict[str, str] = {
+        **os.environ,
+        "DEFAULT_MODEL": model,
+        "OLLAMA_ENDPOINT": endpoint,
+        "RFC_HOSTNAME": node_name,
+    }
+    if verify:
+        env["RFC_RUN_MODE"] = "verify"
+    return env
+
+
 # ---------------------------------------------------------------------------
 # Preflight probe (issue #426)
 # ---------------------------------------------------------------------------
@@ -581,20 +621,12 @@ def run_model_suites(
             )
             print(f"  > {' '.join(cmd)}\n")
 
-        env = {
-            **os.environ,
-            "DEFAULT_MODEL": job.model,
-            "OLLAMA_ENDPOINT": endpoint,
-            # Attribute results to the TARGET Ollama node: DbListener stamps
-            # RFC_HOSTNAME (falling back to platform.node() — the controller),
-            # so without this every host panel collapses onto one machine.
-            "RFC_HOSTNAME": node_name,
-        }
-        if verify:
-            # verify runs enable the answer cache for re-run speedups (#522):
-            # RFC_RUN_MODE=verify forces it on in rfc.llm_client even if
-            # ANSWER_CACHE_ENABLED is unset in the child env.
-            env["RFC_RUN_MODE"] = "verify"
+        env = _build_robot_env(
+            model=job.model,
+            endpoint=endpoint,
+            node_name=node_name,
+            verify=verify,
+        )
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
         return RunResult(

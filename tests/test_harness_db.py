@@ -113,6 +113,32 @@ CREATE TABLE agentic_harnesses (
 );
 """
 
+# Pre-#350 agentic_harnesses DDL: the full #217 + #242 + #277 column set, but not
+# yet verified_local — to exercise the #350 backfill (the persisted tier verdict)
+# on a DB created after #277 but before #350.
+_PRE_350_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT,
+    model_digest            TEXT,
+    prompt_id               TEXT,
+    prompt_hash             TEXT,
+    grader_version          TEXT,
+    params_json             TEXT,
+    repeat_idx              INTEGER
+);
+"""
+
 NOW = "2026-05-09T00:00:00Z"
 
 
@@ -331,6 +357,53 @@ class TestHarnessLifecycle:
         fetched = harness_db.get_harness("s-rep-null")
         assert fetched is not None
         assert fetched.repeat_idx == -1
+
+    def test_save_and_get_with_verified_local(self, harness_db):
+        # #350: the persisted local-resolution verdict (1 == Tier A) round-trips
+        # on the spine so the scoreboard view reads the token's verdict at read
+        # time, not a tool_name name-coincidence.
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-vl",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-7",
+                verified_local=1,
+            )
+        )
+        fetched = harness_db.get_harness("s-vl")
+        assert fetched is not None
+        assert fetched.verified_local == 1
+
+    def test_verified_local_zero_persists_as_zero(self, harness_db):
+        # The falsy-zero guard: 0 is a real verdict (Tier B / no token), NOT
+        # "unset". It must round-trip as 0 (a `harness.verified_local or None`
+        # write would corrupt it to NULL -> -1, and a NULL reads fail-closed to
+        # Tier B in the view anyway — but the stored 0 is the AFFIRMATIVE Tier-B
+        # verdict, distinct from an unclassified legacy row).
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-vl0",
+                tool_name="claude-code",
+                started_at=NOW,
+                verified_local=0,
+            )
+        )
+        fetched = harness_db.get_harness("s-vl0")
+        assert fetched is not None
+        assert fetched.verified_local == 0
+
+    def test_verified_local_defaults_to_sentinel(self, harness_db):
+        # A non-comparison writer that never sets verified_local: NULL -> -1
+        # sentinel, distinguishable from an affirmative Tier-B 0, and read
+        # fail-closed to Tier B by the scoreboard view.
+        harness_db.save_harness(
+            AgenticHarness(session_id="s-vl-null", tool_name="replay", started_at=NOW)
+        )
+        fetched = harness_db.get_harness("s-vl-null")
+        assert fetched is not None
+        assert fetched.verified_local == -1
 
 
 class TestSnapshots:
@@ -1011,3 +1084,113 @@ class TestRepeatIdxColumnMigration:
         assert new.model_digest == "DG_SENTINEL"
         assert new.prompt_id == "PID_SENTINEL"
         assert new.params_json == "PJ_SENTINEL"
+
+
+class TestVerifiedLocalColumnMigration:
+    """#350: verified_local backfilled onto a pre-#350 DB (has #217+#242+#277).
+
+    Mirrors TestSpineColumnMigration (#217) / TestProvenanceColumnMigration (#242)
+    / TestRepeatIdxColumnMigration (#277): the established additive backfill across
+    a fresh, a migrated, and an idempotent re-open on both backends. Sequenced
+    AFTER repeat_idx so the positional index (18) never collides. No data rewrite:
+    existing rows keep NULL (read fail-closed to Tier B).
+    """
+
+    def _seed_pre_350_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_PRE_350_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at, scenario_id, repeat_idx) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("pre-350-row", "opencode", NOW, "tier4_bug_fix", 0),
+            )
+
+    def test_column_absent_before_migration(self, tmp_path):
+        # Guard: the fixture really models a pre-#350 schema (#277 present, not #350).
+        db_file = tmp_path / "pre350.db"
+        self._seed_pre_350_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "repeat_idx" in cols  # #277 present
+        assert "verified_local" not in cols  # #350 absent
+
+    def test_sqlite_native_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre350.db"
+        self._seed_pre_350_db(db_file)
+        db = HarnessDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "verified_local" in cols
+        # Pre-existing row intact and NEVER rewritten: reads the -1 sentinel (NULL),
+        # which the scoreboard view treats fail-closed as Tier B.
+        old = db.get_harness("pre-350-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.verified_local == -1
+        # A new row round-trips the verdict on the upgraded DB, incl. the 0 (Tier B).
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-350-a",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_regression_guard",
+                battery_run_id="battery-9",
+                verified_local=1,
+            )
+        )
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-350-b",
+                tool_name="claude-code",
+                started_at=NOW,
+                scenario_id="tier4_regression_guard",
+                battery_run_id="battery-9",
+                verified_local=0,
+            )
+        )
+        assert db.get_harness("new-350-a").verified_local == 1
+        assert db.get_harness("new-350-b").verified_local == 0
+
+    def test_sqlite_native_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre350.db"
+        self._seed_pre_350_db(db_file)
+        HarnessDatabase(db_path=str(db_file))
+        HarnessDatabase(db_path=str(db_file))  # second open must not raise
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre350.db"
+        self._seed_pre_350_db(db_file)
+        # create_all leaves the existing pre-#350 table alone, so _run_migrations
+        # must ALTER-add verified_local.
+        db = HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        old = db.get_harness("pre-350-row")
+        assert old is not None
+        assert old.verified_local == -1
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-350",
+                tool_name="opencode",
+                started_at=NOW,
+                scenario_id="tier4_bug_fix",
+                battery_run_id="battery-1",
+                verified_local=1,
+            )
+        )
+        new = db.get_harness("new-350")
+        assert new is not None
+        assert new.verified_local == 1
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre350.db"
+        self._seed_pre_350_db(db_file)
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise
