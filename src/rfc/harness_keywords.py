@@ -50,6 +50,7 @@ from robot.api.deco import keyword  # type: ignore[import-untyped]
 
 from .agent_config import AgentConfig
 from .agent_run import AgentRun
+from .git_metadata import _git_command
 from .harness_adapters import (
     ADAPTERS,
     HarnessAdapter,
@@ -218,7 +219,7 @@ class HarnessKeywords:
                 f"`rfc harness start` failed (rc={result.returncode}): "
                 f"{result.stderr.strip()}"
             )
-        sidecar = workspace_path / ".git" / _SIDECAR_NAME
+        sidecar = self._sidecar_path(workspace_path)
         session_id = str(json.loads(sidecar.read_text())["session_id"])
         self._session = {
             "session_id": session_id,
@@ -348,6 +349,24 @@ class HarnessKeywords:
             )
             return OpenCodeAdapter(model=model or None, config_path=config_path)
         return get_adapter(tool)
+
+    @staticmethod
+    def _sidecar_path(workspace: Path) -> Path:
+        """Resolve the harness sidecar inside ``workspace``'s real git dir (#386).
+
+        ``rfc harness start`` writes the sidecar via
+        ``git rev-parse --absolute-git-dir`` (:func:`rfc.harness_cli._sidecar_path`),
+        so the reader must resolve it the SAME way instead of assuming
+        ``<workspace>/.git`` is a directory. In a git WORKTREE workspace ``.git``
+        is a gitdir-*pointer file*, not a directory, and the real sidecar lives
+        under ``<main-checkout>/.git/worktrees/<name>/`` — reading
+        ``<workspace>/.git/…`` there breaks the two halves of one contract apart
+        (``start`` writes the row + sidecar, then the keyword can never read it).
+        """
+        git_dir = _git_command("-C", str(workspace), "rev-parse", "--absolute-git-dir")
+        if not git_dir:
+            raise AssertionError(f"{workspace} is not inside a git repository")
+        return Path(git_dir) / _SIDECAR_NAME
 
     def _require_session(self) -> dict:
         if self._session is None:

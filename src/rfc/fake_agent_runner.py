@@ -19,9 +19,13 @@ from pathlib import Path
 
 from rfc.agent_run import AgentRun, load_agent_run
 
+# The agentic-coding fixtures live under the tier-4 tree
+# (``robot/40__tier4/...``) after the tier-renumbering migration;
+# test_fake_agent_runner guards this constant against future moves.
 DEFAULT_FIXTURES_ROOT = (
     Path(__file__).resolve().parent.parent.parent
     / "robot"
+    / "40__tier4"
     / "agentic_coding"
     / "fixtures"
 )

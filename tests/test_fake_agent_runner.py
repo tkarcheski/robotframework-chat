@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from rfc.fake_agent_runner import FakeAgentRunner, run_scenario
+from rfc.fake_agent_runner import (
+    DEFAULT_FIXTURES_ROOT,
+    FakeAgentRunner,
+    run_scenario,
+)
 
 
 @pytest.fixture
@@ -80,3 +84,42 @@ class TestFakeAgentRunner:
         assert runner.list_scenarios() == ["startup_contract"]
         with pytest.raises(KeyError, match="not available for agent"):
             runner.run("another_scenario")
+
+
+class TestDefaultFixturesRoot:
+    """Regression guard for #384.
+
+    The tier-renumbering migration (``robot/agentic_coding/...`` →
+    ``robot/40__tier4/agentic_coding/...``) left ``DEFAULT_FIXTURES_ROOT``
+    pointing at the deleted pre-migration path, so a default
+    :class:`FakeAgentRunner` resolved every prerecorded scenario under a
+    nonexistent directory and the agentic-coding suite failed with unknown
+    scenarios. These assertions fail fast the next time the fixtures move
+    without the constant being updated.
+
+    Note: asserting the runner actually *lists scenarios* (not merely that the
+    directory ``exists()``) is deliberate — a stale ``__pycache__``-only
+    directory can linger at the old path and would satisfy a bare existence
+    check while yielding zero scenarios, exactly the failure #384 describes.
+    """
+
+    def test_default_fixtures_root_is_a_directory(self) -> None:
+        assert DEFAULT_FIXTURES_ROOT.is_dir(), (
+            f"DEFAULT_FIXTURES_ROOT points at a nonexistent directory: "
+            f"{DEFAULT_FIXTURES_ROOT}. Repoint it at the current tier-numbered "
+            "fixtures location (see #384)."
+        )
+
+    def test_default_runner_lists_real_scenarios(self) -> None:
+        scenarios = FakeAgentRunner().list_scenarios()
+        assert scenarios, (
+            "FakeAgentRunner() found no scenarios under DEFAULT_FIXTURES_ROOT "
+            f"({DEFAULT_FIXTURES_ROOT}); the constant likely points at a stale "
+            "or empty path (see #384)."
+        )
+
+    def test_default_runner_loads_a_scenario(self) -> None:
+        runner = FakeAgentRunner()
+        scenario_id = runner.list_scenarios()[0]
+        run = runner.run(scenario_id)
+        assert run.scenario_id == scenario_id

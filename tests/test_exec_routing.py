@@ -13,13 +13,21 @@ Covers the two load-bearing claims of the design note's item 2/3:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from rfc.exec_mcp import CONTAINER_ID_ENV, SERVER_NAME, SandboxExecRouting
+from rfc.exec_mcp import (
+    CONTAINER_ID_ENV,
+    OPENCODE_DENY_TOOLS,
+    SERVER_NAME,
+    SandboxExecRouting,
+    opencode_deny_config,
+)
 from rfc.harness_adapters import (
     ClaudeCodeAdapter,
     OpenCodeAdapter,
     parse_transcript,
 )
+from rfc.opencode_config import _DEFAULT_OPENCODE_CONFIG as _LOCAL_CFG_PATH
 
 
 def _assistant_bash(tool_name: str, tool_id: str, command: str) -> str:
@@ -141,3 +149,90 @@ class TestOpenCodeAdapterRouting:
         server = overlay["mcp"][SERVER_NAME]
         assert server["type"] == "local"
         assert server["environment"][CONTAINER_ID_ENV] == "cid-oc"
+
+    def test_overlay_denies_native_code_tools(self) -> None:
+        # #381 F4/config-level proof (the opencode parallel to #352's claude-code
+        # deny-settings assertion): the routing overlay must STRIP opencode's
+        # native host-executing code tools, so the model's only path to
+        # bash/write/edit is the broker'd rfc-exec tools. Two layers -- the
+        # ``tools`` registry disable AND the ``permission`` deny gate (the
+        # load-bearing, fail-closed layer verified live against opencode 1.2.9).
+        routing = SandboxExecRouting(container_id="cid-oc")
+        overlay = OpenCodeAdapter(exec_routing=routing).exec_config_overlay()
+        # Every native code tool is denied by opencode's permission engine ...
+        for tool in ("bash", "write", "edit", "read", "patch"):
+            assert overlay["permission"][tool] == "deny", tool
+            # ... AND disabled in the tool registry (defence in depth).
+            assert overlay["tools"][tool] is False, tool
+        # The MCP server is still registered -- denying NATIVE bash does not gate
+        # the namespaced rfc-exec_bash tool (verified live #381).
+        assert SERVER_NAME in overlay["mcp"]
+
+    def test_apply_routed_config_writes_deny_at_cwd_tier(self, tmp_path: Path) -> None:
+        # #383 SECURITY: the deny MUST land at opencode's HIGHEST precedence tier
+        # -- the cwd project config <workspace>/opencode.json -- not only the
+        # env-tier OPENCODE_CONFIG (which any ancestor opencode.json outranks,
+        # re-enabling native host exec). apply_routed_config writes BOTH; this pins
+        # the load-bearing cwd-tier write carries the full deny with every native
+        # code tool key explicit (so no omitted key falls through to an ancestor).
+        routing = SandboxExecRouting(container_id="cid-oc")
+        adapter = OpenCodeAdapter(config_path=_LOCAL_CFG_PATH, exec_routing=routing)
+        dest_dir = tmp_path / "run"
+        dest_dir.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        adapter.apply_routed_config(dest_dir, workspace)
+
+        cwd_cfg = json.loads((workspace / "opencode.json").read_text())
+        for tool in ("bash", "write", "edit", "read", "patch"):
+            assert cwd_cfg["permission"][tool] == "deny", tool
+            assert cwd_cfg["tools"][tool] is False, tool
+        assert SERVER_NAME in cwd_cfg["mcp"]
+        # The env-tier copy is written too (defence in depth) and exported.
+        env_cfg = json.loads((dest_dir / "opencode.routed.json").read_text())
+        assert env_cfg["permission"]["bash"] == "deny"
+        assert adapter.env_overrides()["OPENCODE_CONFIG"] == str(
+            dest_dir / "opencode.routed.json"
+        )
+
+    def test_apply_routed_config_scrubs_seed_shipped_config(
+        self, tmp_path: Path
+    ) -> None:
+        # #383: a scenario seed that ships its OWN <workspace>/opencode.json (or
+        # .jsonc) sits at the SAME cwd tier as our deny -- a collision. Scrub-then-
+        # write: the seed's opencode.json is overwritten and opencode.jsonc removed,
+        # so the deny ALWAYS wins and a seed-shipped allow can never survive.
+        routing = SandboxExecRouting(container_id="cid-oc")
+        adapter = OpenCodeAdapter(config_path=_LOCAL_CFG_PATH, exec_routing=routing)
+        dest_dir = tmp_path / "run"
+        dest_dir.mkdir()
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        # Adversarial seed configs at the workspace root, both granting bash.
+        (workspace / "opencode.json").write_text(
+            json.dumps({"permission": {"bash": "allow"}, "tools": {"bash": True}})
+        )
+        (workspace / "opencode.jsonc").write_text('{"permission":{"bash":"allow"}}')
+
+        adapter.apply_routed_config(dest_dir, workspace)
+
+        # The seed opencode.json is replaced by our deny ...
+        cwd_cfg = json.loads((workspace / "opencode.json").read_text())
+        assert cwd_cfg["permission"]["bash"] == "deny"
+        assert cwd_cfg["tools"]["bash"] is False
+        # ... and the .jsonc variant (same tier) is scrubbed entirely.
+        assert not (workspace / "opencode.jsonc").exists()
+
+
+class TestOpenCodeDenyConfig:
+    def test_deny_config_covers_every_deny_tool(self) -> None:
+        # opencode_deny_config is the opencode-name parallel to claude-code's
+        # deny_settings: it must deny (permission) AND disable (tools) exactly the
+        # OPENCODE_DENY_TOOLS set -- no native code tool left un-stripped.
+        cfg = opencode_deny_config()
+        assert set(cfg["permission"]) == set(OPENCODE_DENY_TOOLS)
+        assert set(cfg["tools"]) == set(OPENCODE_DENY_TOOLS)
+        assert all(action == "deny" for action in cfg["permission"].values())
+        assert all(enabled is False for enabled in cfg["tools"].values())
+        # bash/write/edit/read -- the code-exec + coherence surface -- are covered.
+        assert {"bash", "write", "edit", "read"} <= set(OPENCODE_DENY_TOOLS)

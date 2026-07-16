@@ -51,6 +51,7 @@ from .harness_adapters import (
     OpenCodeAdapter,
     ProcessInvoker,
     _default_invoker,
+    _tail,
     make_branch_name,
     parse_transcript,
     redact,
@@ -64,6 +65,7 @@ __all__ = [
     "ClaudeProcessResult",
     "CodexAdapter",
     "HarnessAdapter",
+    "HarnessRunError",
     "LiveClaudeCodeRunner",
     "OpenCodeAdapter",
     "ProcessInvoker",
@@ -73,6 +75,20 @@ __all__ = [
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+class HarnessRunError(RuntimeError):
+    """A harness process failed its run and must be scored as FAILED (#385).
+
+    A coding-agent CLI that exits nonzero — e.g. an auth or model-startup
+    failure that dies *before* emitting any tool events — is a broken run, not a
+    pass. Without this, the driver would return an empty-but-well-formed
+    :class:`~rfc.agent_run.AgentRun` (valid ``agent_id`` / ``branch_name``, no
+    commands, no commits) that every conformance assertion in
+    ``harness_matrix.robot`` then passes vacuously, silently green-lighting an
+    installed-but-broken harness leg. Raising here turns that false-pass into a
+    real failure the ``Run Agent Task`` keyword surfaces.
+    """
 
 
 def _read_env_values(env_file: Path) -> tuple[str, ...]:
@@ -183,6 +199,19 @@ class LiveClaudeCodeRunner:
             commands, questions = self._adapter.parse_output(
                 result.stdout, extra_secrets=secrets
             )
+            # #385: a nonzero harness process exit is a FAILED run, never a pass.
+            # A broken harness (auth/model-startup failure) typically dies before
+            # emitting any tool events, yielding empty commands/commits that every
+            # conformance assertion passes vacuously; refuse to normalize that into
+            # a well-formed AgentRun. The legitimate "succeeded with N events" path
+            # (returncode == 0) is untouched.
+            if result.returncode != 0:
+                raise HarnessRunError(
+                    f"harness {self.config.id!r} exited {result.returncode} after "
+                    f"emitting {len(commands)} tool command(s); scoring the run as "
+                    "FAILED (a nonzero harness exit is never a pass). stderr tail: "
+                    f"{redact(_tail(result.stderr), extra_secrets=secrets)}"
+                )
             commits = self._collect_commits(workspace, task.base_branch, secrets)
             changed = self._final_changed_paths(workspace)
             commands = _attach_changed_paths(commands, changed)

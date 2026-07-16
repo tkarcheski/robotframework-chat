@@ -27,6 +27,7 @@ from rfc.openai_client import OpenAIClient
 from rfc.routing import (
     GATEWAY_PLACEHOLDER_TOKEN,
     Locality,
+    LocalOnlyEgressError,
     RouteDecision,
     RoutePolicy,
     build_gateway_client,
@@ -512,3 +513,232 @@ class TestDownGatewayNeverFailsCachedRun:
         # The cached run serves from the tape — the down gateway never fails it,
         # and the booby-trapped live backend is never called.
         assert client.generate(prompt) == "replayed: Tom Bombadil"
+
+
+# --- §3.4: a down-gateway fallback must FAIL CLOSED under local_only ----------
+# (Tusk's #326 blocking note: the MS1 seam ships a down-gateway fallback that,
+# for locality=local_only + a remote direct provider + a cache miss, builds a
+# remote client and leaves the fleet boundary — the one seam line that can egress
+# a local_only prompt. MS3 closes it: the fallback refuses loudly rather than
+# downgrading a no-egress request to a remote BYOK path. These tests pin exactly
+# that path — the down-gateway fallback, not the up-path passthrough — alongside
+# the allowed local-class fallbacks and the untouched non-local_only path.)
+
+
+_LOCAL_ONLY = RoutePolicy(locality=Locality.LOCAL_ONLY)
+
+
+class TestDownGatewayLocalOnlyFailsClosed:
+    def test_local_only_remote_direct_fallback_refuses(self) -> None:
+        """gateway down + local_only + remote direct config ⇒ typed refusal.
+
+        The adversarial path Tusk pinned: never a silent egress on the fallback.
+        """
+        with pytest.raises(LocalOnlyEgressError, match="fleet boundary"):
+            select_backend(
+                "openai",
+                policy=_LOCAL_ONLY,
+                env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+                probe=lambda url, timeout: False,
+            )
+
+    def test_local_only_unknown_provider_refuses(self) -> None:
+        """Fail closed on the unknown: only proven localhost-class falls back."""
+        with pytest.raises(LocalOnlyEgressError):
+            select_backend(
+                "some-remote-thing",
+                policy=_LOCAL_ONLY,
+                env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+                probe=lambda url, timeout: False,
+            )
+
+    def test_local_only_ollama_direct_fallback_allowed(self) -> None:
+        """gateway down + local_only + ollama (localhost-class) ⇒ allowed fall."""
+        decision = select_backend(
+            "ollama",
+            policy=_LOCAL_ONLY,
+            env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+            probe=lambda url, timeout: False,
+        )
+        assert decision.via_gateway is False
+        assert decision.reason == "gateway-unreachable-fallback"
+
+    def test_local_only_vllm_direct_fallback_allowed(self) -> None:
+        """vllm is a local tier (RFC-012 §3.2) — its fallback is allowed too."""
+        decision = select_backend(
+            "vllm",
+            policy=_LOCAL_ONLY,
+            env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+            probe=lambda url, timeout: False,
+        )
+        assert decision.via_gateway is False
+        assert decision.reason == "gateway-unreachable-fallback"
+
+    def test_non_local_only_remote_direct_fallback_unchanged(self) -> None:
+        """prefer_local (default) + remote direct + down gateway ⇒ still falls
+        back exactly as before — the guard is scoped to local_only only."""
+        decision = select_backend(
+            "openai",
+            policy=RoutePolicy(locality=Locality.PREFER_LOCAL),
+            env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+            probe=lambda url, timeout: False,
+        )
+        assert decision.via_gateway is False
+        assert decision.reason == "gateway-unreachable-fallback"
+
+    def test_local_only_reachable_gateway_not_refused(self) -> None:
+        """A REACHABLE gateway routes local_only through itself (it owns the
+        locality routing); the seam guard is only for the down-gateway fallback."""
+        decision = select_backend(
+            "openai",
+            policy=_LOCAL_ONLY,
+            env={routing.GATEWAY_BASE_URL_ENV: "http://gw.local/v1"},
+            probe=lambda url, timeout: True,
+        )
+        assert decision.via_gateway is True
+        assert decision.reason == "gateway-selected"
+
+    def test_local_only_inert_seam_not_refused(self) -> None:
+        """No gateway configured ⇒ the inert legacy direct path is unchanged.
+
+        RoutePolicy is a gateway-boundary concept (RFC-012 §3.3): with no
+        boundary, the pre-seam path runs byte-for-byte as before. Deliberately
+        scoped — the fail-closed guard binds the down-gateway *fallback*, not the
+        inert seam.
+        """
+        decision = select_backend(
+            "openai",
+            policy=_LOCAL_ONLY,
+            env={},  # OPEN_TOLKEIN_BASE_URL unset
+            probe=lambda url, timeout: False,
+        )
+        assert decision.via_gateway is False
+        assert decision.reason == "gateway-not-configured"
+
+    def test_create_provider_local_only_remote_direct_down_gateway_refuses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end at the factory: a local_only run with a remote direct
+        config and a down gateway refuses rather than building a remote client."""
+        monkeypatch.setenv(routing.GATEWAY_BASE_URL_ENV, "http://gw.local/v1")
+        monkeypatch.setenv(routing.GATEWAY_LOCALITY_ENV, "local_only")
+        monkeypatch.setattr(routing, "probe_gateway", lambda url, timeout: False)
+        with pytest.raises(LocalOnlyEgressError):
+            create_provider(provider="openai", model="m")
+
+    def test_create_provider_local_only_ollama_down_gateway_falls_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The local-class fallback still serves a local_only run (no egress)."""
+        monkeypatch.setenv(routing.GATEWAY_BASE_URL_ENV, "http://gw.local/v1")
+        monkeypatch.setenv(routing.GATEWAY_LOCALITY_ENV, "local_only")
+        monkeypatch.setattr(routing, "probe_gateway", lambda url, timeout: False)
+        client = create_provider(provider="ollama", model="m")
+        assert isinstance(unwrap_provider(client), OllamaClient)
+
+
+# --- test-design (Mr. Meeseeks) adversarial layer on the fail-closed seam -----
+# Meaner variants: prove the refusal is STRUCTURAL (never a silent skip) and
+# happens BEFORE any client/network object is constructed; and pin the one
+# cross-half hole the seam does not close.
+
+
+class TestSeamRefusalIsStructural:
+    def test_local_only_egress_error_is_not_a_skip_error(self) -> None:
+        """The refusal must FAIL loudly, never silently skip. LocalOnlyEgressError
+        is a hard RuntimeError and deliberately NOT an RFCSkipError — so the
+        repo's skip-and-log default (for an unavailable optional dependency)
+        can never swallow a locality-safety breach."""
+        from rfc.exceptions import RFCSkipError
+
+        assert issubclass(LocalOnlyEgressError, RuntimeError)
+        assert not issubclass(LocalOnlyEgressError, RFCSkipError)
+        # And an instance is not caught by an ``except RFCSkipError`` handler.
+        with pytest.raises(LocalOnlyEgressError):
+            try:
+                raise LocalOnlyEgressError("breach")
+            except RFCSkipError:  # pragma: no cover - must NOT catch
+                pytest.fail("a locality breach was swallowed as a skip")
+
+    def test_local_only_openai_refuses_before_any_client_is_built(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Spy: on the refused path NO provider/network client is constructed —
+        the raise happens in select_backend, before _create_direct_provider ever
+        touches OpenAIClient/OllamaClient."""
+        built: list[str] = []
+
+        def _spy_openai(*_a: Any, **_k: Any) -> Any:
+            built.append("openai")
+            raise AssertionError("OpenAIClient must never be constructed")
+
+        def _spy_ollama(*_a: Any, **_k: Any) -> Any:
+            built.append("ollama")
+            raise AssertionError("OllamaClient must never be constructed")
+
+        # _create_direct_provider imports OpenAIClient locally from this module.
+        monkeypatch.setattr("rfc.openai_client.OpenAIClient", _spy_openai)
+        monkeypatch.setattr("rfc.llm_client.OllamaClient", _spy_ollama)
+        monkeypatch.setenv(routing.GATEWAY_BASE_URL_ENV, "http://gw.local/v1")
+        monkeypatch.setenv(routing.GATEWAY_LOCALITY_ENV, "local_only")
+        monkeypatch.setattr(routing, "probe_gateway", lambda url, timeout: False)
+
+        with pytest.raises(LocalOnlyEgressError):
+            create_provider(provider="openai", model="m")
+        assert built == []  # nothing was constructed — refused before the build
+
+
+class TestCrossHalfSeamGapOllamaOffbox:
+    """The one hole this seam does NOT close, pinned so it can never go silent.
+
+    The seam classifies the down-gateway fallback by provider *class name*
+    (``ollama``/``vllm`` = localhost-class), NOT by the resolved ``base_url``.
+    But that URL is operator-configurable (``OLLAMA_ENDPOINT`` / ``VLLM_BASE_URL``
+    / a ``base_url`` kwarg). So a local_only run + a down gateway + an ``ollama``
+    endpoint pointed at a PUBLIC url egresses, unguarded — the same #2 label-trust
+    the gateway half kills, but on the path where the gateway (which owns
+    URL-derivation) is down and cannot help.
+
+    This is a disclosed, medium-severity residual (needs a public-URL misconfig;
+    the normal LAN-private fleet config is safe) tracked by monorepo #368. The
+    test below encodes the DESIRED fail-closed behavior as xfail(strict): the
+    suite stays green now and goes RED the moment #368 lands, forcing the fix to
+    un-xfail it — so the boundary is explicit, never a silent composition lie.
+    """
+
+    def test_local_only_ollama_pointed_offbox_egresses_unguarded_TODAY(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Factual pin of the CURRENT boundary: the seam builds an ollama client
+        aimed at a public URL under local_only (no refusal) — the disclosed gap
+        (monorepo #368). Documents reality without blessing it as correct."""
+        monkeypatch.setenv(routing.GATEWAY_BASE_URL_ENV, "http://gw.local/v1")
+        monkeypatch.setenv(routing.GATEWAY_LOCALITY_ENV, "local_only")
+        monkeypatch.setenv("OLLAMA_ENDPOINT", "http://api.evil.com")
+        monkeypatch.setattr(routing, "probe_gateway", lambda url, timeout: False)
+
+        # select_backend sees only the NAME "ollama" and allows the fallback.
+        decision = select_backend("ollama", policy=_LOCAL_ONLY)
+        assert decision.reason == "gateway-unreachable-fallback"
+        # …and the built client is aimed off-box: a local_only prompt would leave.
+        client = unwrap_provider(create_provider(provider="ollama", model="m"))
+        assert isinstance(client, OllamaClient)
+        assert client.base_url == "http://api.evil.com"  # the unguarded egress
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="monorepo #368: seam trusts provider class name, not the resolved "
+        "ollama/vllm base_url; a local_only + down-gateway + off-box OLLAMA_ENDPOINT "
+        "still egresses. Closing #368 (URL-derived seam check) makes this xpass.",
+    )
+    def test_local_only_ollama_pointed_offbox_SHOULD_fail_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The desired end-state (#368): a local_only run whose ollama endpoint
+        resolves off the fleet must fail closed at the seam, not egress."""
+        monkeypatch.setenv(routing.GATEWAY_BASE_URL_ENV, "http://gw.local/v1")
+        monkeypatch.setenv(routing.GATEWAY_LOCALITY_ENV, "local_only")
+        monkeypatch.setenv("OLLAMA_ENDPOINT", "http://api.evil.com")
+        monkeypatch.setattr(routing, "probe_gateway", lambda url, timeout: False)
+        with pytest.raises(LocalOnlyEgressError):
+            create_provider(provider="ollama", model="m")

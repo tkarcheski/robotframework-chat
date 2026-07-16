@@ -14,13 +14,42 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rfc.dialog_e2e_keywords import DialogE2EKeywords
+# Aliased so pytest does not try to collect the imported ``TestSuiteBuilder``
+# class as a test (its name starts with ``Test`` and it has an ``__init__``).
+from robot.api import TestSuiteBuilder as SuiteBuilder
+
+from rfc.dialog_e2e_keywords import FIXTURE_SUITE, DialogE2EKeywords
 from rfc.dialog_recorder import RECORDING_ENV_VAR
 from rfc.harness_db import HarnessDatabase
 from rfc.harness_models import DialogRecording, DialogTurn
 
 T0 = "2026-06-12T00:00:00Z"
 T1 = "2026-06-12T00:01:00Z"
+
+
+class TestFixtureSuitePath:
+    """Regression guard for #384.
+
+    The tier-renumbering migration (``robot/dialog/...`` →
+    ``robot/10__tier1/dialog/...``) left ``FIXTURE_SUITE`` pointing at the
+    deleted pre-migration path, so ``Run Dialog Fixture Suite`` spawned a child
+    robot on a nonexistent file and the dialog E2E suite failed at child-run
+    time instead of exercising the listener. These assertions fail fast the next
+    time the fixture moves without ``FIXTURE_SUITE`` being updated.
+    """
+
+    def test_fixture_suite_constant_resolves_to_existing_file(self) -> None:
+        assert FIXTURE_SUITE.is_file(), (
+            f"FIXTURE_SUITE points at a nonexistent file: {FIXTURE_SUITE}. "
+            "Repoint it at the current tier-numbered fixture location "
+            "(see #384)."
+        )
+
+    def test_fixture_suite_loads_the_expected_test(self) -> None:
+        # Building the suite proves the child robot run can actually parse and
+        # load the fixture (not just that some file exists at the path).
+        suite = SuiteBuilder().build(str(FIXTURE_SUITE))
+        assert [t.name for t in suite.tests] == ["Record A Minimal Dialog"]
 
 
 @pytest.fixture()

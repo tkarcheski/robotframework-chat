@@ -39,7 +39,9 @@ NOW = "2026-07-13T00:00:00Z"
 # The one canonical column order the three A3 representations must all agree on:
 # the SQLite CREATE TABLE / SELECT, the SQLAlchemy Table, and _harness_from_row's
 # positional indices. The provenance set occupies indices 12-16; #277's repeat_idx
-# is appended at index 17, after the provenance set, so it never collides with it.
+# is appended at index 17, after the provenance set, so it never collides with it;
+# #350's verified_local is appended at index 18, after repeat_idx, for the same
+# reason.
 _CANONICAL_HARNESS_COLUMNS = [
     "session_id",
     "tool_name",
@@ -59,6 +61,7 @@ _CANONICAL_HARNESS_COLUMNS = [
     "grader_version",
     "params_json",
     "repeat_idx",
+    "verified_local",
 ]
 _PROVENANCE_COLUMNS = _CANONICAL_HARNESS_COLUMNS[12:17]
 
