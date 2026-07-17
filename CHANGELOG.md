@@ -17,6 +17,34 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.27.1] — Unreleased
+
+### Added
+
+- **#394 — a live-enforcement leg must never silently skip forever.** Two
+  real-proof live legs certify opencode's routed permission enforcement against
+  the REAL CLI + local model on top of the deterministic fixture/resolver proofs:
+  the host-leak A/B (`TestOpenCodeHostLeakABDirtyEnv`) and the #390 returncode
+  live leg (`TestLiveOpenCodeReturncode390`). Each skips cleanly per run under
+  model/compute contention — acceptable once, but a config regression could then
+  leave a leg perpetually skipped with no live proof on record.
+  - **`rfc.live_leg_ledger`** — a JSON skip-streak ledger (under `~/.rfc/`,
+    override `RFC_LIVE_LEG_LEDGER`) that records each leg's per-run outcome
+    (executed vs skipped) only from a box already found CAPABLE of running it, so
+    a box that merely lacks opencode never pollutes the streak. Both legs are
+    folded into one gate per the owner ruling — the requirement is visibility,
+    not blocking: individual skips are tolerated; a consecutive-skip streak that
+    reaches the threshold (default 10, override `RFC_LIVE_LEG_MAX_SKIP_STREAK`) is
+    surfaced.
+  - **`python -m rfc.live_leg_ledger check`** (`make live-leg-gate`) — exits
+    non-zero when any leg has skipped for N consecutive runs, naming the leg and
+    directing it back to an uncontended/serialized gate.
+  - **`RFC_HOSTLEAK_AB_TIMEOUT`** — makes the host-leak A/B's wall-clock cap
+    env-tunable (default 180s), so a serialized/uncontended gate can grant the
+    larger budget needed to conclude the A/B non-skipped (mirrors the returncode
+    leg's existing `RFC_LIVE_OPENCODE_TIMEOUT`). Verified: the A/B executes green
+    (not skipped) at a 420s budget on an uncontended box.
+
 ## [1.27.0] — Unreleased
 
 ### Added
@@ -86,6 +114,18 @@ Provenance notes:
   `rfc harness start`) instead of assuming `<workspace>/.git` is a directory, so
   a git WORKTREE workspace — where `.git` is a gitdir-pointer file — resolves to
   the real `<main>/.git/worktrees/<name>/` sidecar.
+- **#399 — `Harness Run Should Conform` no longer passes a do-nothing harness.**
+  Follow-up to #385: that fix caught the nonzero-exit vacuous pass at the RUNNER
+  layer, but a residual vacuous pass remained one layer up — a harness that
+  exits 0 having done nothing (zero commits, zero changed paths) still satisfied
+  the matrix conformance keyword, whose agent-id / branch / transcript-equality /
+  no-commit-while-red assertions are all trivially true of an empty run. A new
+  `assert_run_did_positive_work` verifier (surfaced as the **`Run Should Do
+  Positive Work`** keyword) now requires ≥1 commit OR ≥1 changed path, and
+  `Harness Run Should Conform` asserts it. The rc=0-with-zero-events case stays
+  deliberately un-failed at the runner layer (a clarifying-question reply
+  legitimately emits zero commands and exits 0); the check is scope-limited to
+  work-producing scenarios at the conformance layer.
 
 ## [1.26.1] — Unreleased
 
