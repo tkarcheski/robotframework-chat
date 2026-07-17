@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -19,7 +20,7 @@ from rfc.agent_run import AgentCommand, AgentQuestion, AgentRun
 from rfc.agent_sandbox import AgentSandbox, SandboxResult
 from rfc.churn_manifest import parse_manifest
 from rfc.exceptions import HarnessNotAvailableError
-from rfc.harness_adapters import ClaudeProcessResult
+from rfc.harness_adapters import ClaudeProcessResult, CodexAdapter
 from rfc.harness_comparison import (
     TIER_A_FIXED_LOCAL,
     TIER_B_NATIVE,
@@ -688,16 +689,20 @@ class TestRealSandboxPath:
         assert stored is not None and stored.scenario_id == "tier4_bug_fix"
 
     def test_real_sandbox_skips_absent_codex(self, tmp_path: Path) -> None:
-        # No invoker injected -> the probe gate is armed; codex is never
-        # installed, so the leg skips through the real production path.
+        # The probe gate is armed (no invoker). Pin the codex probe to "absent"
+        # so this exercises the CLI-not-available skip deterministically: fleet
+        # boxes wiring codex (#378) have it on PATH, where the leg would instead
+        # skip via the not-routed guard ("exec-routing not wired"), masking the
+        # CLI-absent skip contract asserted below.
         sandbox = AgentSandbox(limits=_limits(), manager=_FakeContainerManager([]))
         db = _db(tmp_path)
         runner = _runner(sandbox, db, repeats=2)
-        report = runner.run(
-            ["tier4_bug_fix"],
-            [HarnessLeg("codex", tier=TIER_A_FIXED_LOCAL)],
-            battery_run_id="batt-codex",
-        )
+        with patch.object(CodexAdapter, "probe", return_value=False):
+            report = runner.run(
+                ["tier4_bug_fix"],
+                [HarnessLeg("codex", tier=TIER_A_FIXED_LOCAL)],
+                battery_run_id="batt-codex",
+            )
         assert report.rows == ()
         assert report.skipped == (("codex", "codex CLI not available"),)
         # #377/#383 corruption class, re-homed at the PERSISTENCE layer to the

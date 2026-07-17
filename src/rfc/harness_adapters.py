@@ -228,8 +228,42 @@ _BASH_TOOL_NAMES: frozenset[str] = frozenset({"Bash", "mcp__rfc-exec__bash"})
 
 
 # ---------------------------------------------------------------------------
-# Claude Code: stream-json transcript parser (unchanged behaviour).
+# Claude Code: stream-json transcript parser.
 # ---------------------------------------------------------------------------
+
+
+def _claude_bash_returncode(block: dict[str, Any]) -> int:
+    """Derive an :class:`AgentCommand` ``returncode`` from a bash ``tool_result``.
+
+    ``returncode`` is the red/green signal every tier:1 verifier consumes, so it
+    must reflect a *verified* exit, never an assumed one. A claude-code bash
+    ``tool_result`` carries a single exit signal, the boolean ``is_error`` the
+    harness stamps on it:
+
+      * container-routed ``mcp__rfc-exec__bash`` -- set **in-repo** by our
+        rfc-exec server (``exec_mcp.py``: ``is_error = result.exit_code != 0``,
+        test-locked); faithful, we own it.
+      * host-native ``Bash`` -- set by the external Claude Code CLI, whose
+        documented contract is exit 0 -> ``is_error`` false, nonzero -> true.
+
+    #402: the prior ``bool(block.get("is_error", False))`` **fabricated GREEN**
+    (returncode 0) whenever ``is_error`` was *absent* -- the same
+    unverified-assumption bypass #390 hit on opencode, where a failed command
+    silently recorded as passing. Mirroring #396's rule (*honor a real exit
+    signal; never fabricate 0 from an absent one*):
+
+      * ``is_error`` present as a genuine bool -> ``1 if True else 0`` (verified).
+      * ``is_error`` absent / null / non-bool -> ``1`` -- the exit is UNVERIFIED,
+        so fail **closed** (loud red) rather than silently green. A bash
+        ``tool_result`` with no ``is_error`` is schema drift; current Claude Code
+        always stamps it, so this tripwire stays dormant and only fires if the
+        CLI ever stops reporting the flag -- converting a silent false-green into
+        a loud red a human will investigate.
+    """
+    is_error = block.get("is_error")
+    if isinstance(is_error, bool):
+        return 1 if is_error else 0
+    return 1
 
 
 def parse_transcript(
@@ -283,11 +317,11 @@ def parse_transcript(
                 if cmd is None:
                     continue
                 result_text = _extract_tool_result_text(block.get("content"))
-                is_error = bool(block.get("is_error", False))
+                returncode = _claude_bash_returncode(block)
                 commands.append(
                     AgentCommand(
                         argv=("bash", "-lc", cmd),
-                        returncode=1 if is_error else 0,
+                        returncode=returncode,
                         stdout_tail=redact(
                             _tail(result_text), extra_secrets=extra_secrets
                         ),
