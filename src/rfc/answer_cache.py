@@ -426,7 +426,14 @@ class CachingProvider:
         key = self._cache.make_key(client, prompt)
 
         cached = self._cache.get(key)
-        if cached is not None:
+        # Symmetric read-side twin of the write guard below (#319). A blank /
+        # whitespace-only stored value is never a valid answer, so serving it as
+        # a confident ``cache_hit=True`` would be the residual silent pass the
+        # ``cache_only`` honesty contract exists to close (RFC-010 §3). Treat it
+        # as a miss: a reachable-but-blank entry flows into the miss handling
+        # below — a LOUD ``cache-miss`` under ``cache_only``, a regenerate under
+        # the live-on-miss modes (the blank never sticks for the TTL).
+        if cached is not None and cached.strip():
             self._record_hit(client)
             return cached
 
