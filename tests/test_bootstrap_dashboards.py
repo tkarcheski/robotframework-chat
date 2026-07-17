@@ -13,13 +13,12 @@ Full TDD coverage of:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
-
-from rfc.harness_db import HarnessDatabase
 
 # ---------------------------------------------------------------------------
 # Import from bootstrap_dashboards (lives outside src/rfc/)
@@ -729,6 +728,43 @@ AGENTIC_CHART_NAMES = {
 }
 
 
+def _exec_agentic_ddl_sqlite(conn: "object", ddl: str) -> None:
+    """Execute the bootstrap DDL on a SQLite connection, per _run_ddl semantics.
+
+    Mirrors ``bootstrap_dashboards._run_ddl``: split on ';', strip comment lines,
+    skip empty fragments. One SQLite-only translation: PostgreSQL (the production
+    ``_run_ddl`` target) supports ``ADD COLUMN IF NOT EXISTS`` natively, SQLite
+    does not — so those upgrade-path ALTERs (#660) are rewritten without the
+    clause and a duplicate-column error is treated as the idempotent no-op, the
+    same idiom the spine migrations use (rfc.harness_db._SQLITE_MIGRATIONS).
+    """
+    import re
+    import sqlite3
+
+    for statement in ddl.split(";"):
+        executable = "\n".join(
+            ln
+            for ln in statement.splitlines()
+            if ln.strip() and not ln.strip().startswith("--")
+        ).strip()
+        if not executable:
+            continue
+        add_col = re.match(
+            r"ALTER TABLE\s+\S+\s+ADD COLUMN IF NOT EXISTS\b",
+            executable,
+            re.IGNORECASE,
+        )
+        if add_col:
+            try:
+                conn.execute(  # type: ignore[attr-defined]
+                    executable.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN")
+                )
+            except sqlite3.OperationalError:
+                pass  # idempotent: column already present
+        else:
+            conn.execute(executable)  # type: ignore[attr-defined]
+
+
 @pytest.fixture()
 def agentic_db(tmp_path: Path) -> str:
     """SQLite database with the canonical agentic stack schema applied."""
@@ -798,7 +834,9 @@ class TestAgenticTableDDL:
 
         The DDL is written in the portable subset shared by PostgreSQL and
         SQLite (IF NOT EXISTS tables/indexes, DROP VIEW IF EXISTS + CREATE
-        VIEW), so executing it twice against SQLite proves idempotency of
+        VIEW) with ONE PostgreSQL-only construct — the #660 upgrade ALTERs'
+        ``ADD COLUMN IF NOT EXISTS``, which ``_exec_agentic_ddl_sqlite``
+        emulates — so executing it twice against SQLite proves idempotency of
         the table-creation step of the bootstrap.
         """
         import sqlite3
@@ -806,14 +844,7 @@ class TestAgenticTableDDL:
         db_path = tmp_path / "idempotent.db"
         with sqlite3.connect(db_path) as conn:
             for _ in range(2):
-                for statement in _AGENTIC_TABLE_DDL.split(";"):
-                    executable = "\n".join(
-                        ln
-                        for ln in statement.splitlines()
-                        if ln.strip() and not ln.strip().startswith("--")
-                    ).strip()
-                    if executable:
-                        conn.execute(executable)
+                _exec_agentic_ddl_sqlite(conn, _AGENTIC_TABLE_DDL)
             tables = {
                 row[0]
                 for row in conn.execute(
@@ -828,6 +859,59 @@ class TestAgenticTableDDL:
             }
         assert self.EXPECTED_TABLES <= tables
         assert "agentic_sessions_full" in views
+
+    def test_ddl_upgrades_pre_existing_lean_table(self, tmp_path: Path) -> None:
+        """The bootstrap DDL upgrades an OLD-shape agentic_harnesses in place.
+
+        Codex finding (mirror PR #660, fixed at source in #374): on an existing
+        database ``CREATE TABLE IF NOT EXISTS`` is a no-op, so the columns the
+        scoreboard view references but the original lean table never had
+        (``scenario_id`` #347, ``verified_local`` #350) stayed missing and the
+        ``CREATE VIEW`` crashed with a missing-column error. The DDL's additive
+        ALTERs must bring the old table up to the view's surface — and running
+        the DDL again must stay idempotent.
+        """
+        import sqlite3
+
+        db_path = tmp_path / "upgrade.db"
+        with sqlite3.connect(db_path) as conn:
+            # The ORIGINAL lean bootstrap shape: no scenario_id, no verified_local.
+            conn.execute(
+                """
+                CREATE TABLE agentic_harnesses (
+                    session_id              TEXT PRIMARY KEY,
+                    tool_name               TEXT NOT NULL,
+                    tool_version            TEXT,
+                    model_id                TEXT,
+                    rfc_version             TEXT,
+                    branch                  TEXT,
+                    started_at              TEXT NOT NULL,
+                    ended_at                TEXT,
+                    outcome                 TEXT,
+                    replay_of_recording_id  TEXT
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO agentic_harnesses (session_id, tool_name, started_at) "
+                "VALUES ('old-row', 'opencode', '2026-07-14T00:00:00')"
+            )
+            for _ in range(2):  # upgrade + idempotent re-run
+                _exec_agentic_ddl_sqlite(conn, _AGENTIC_TABLE_DDL)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+            views = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='view'"
+                )
+            }
+            # Pre-existing row survived the additive upgrade, no data rewrite.
+            survivors = conn.execute(
+                "SELECT session_id, scenario_id, verified_local FROM agentic_harnesses"
+            ).fetchall()
+        assert {"scenario_id", "verified_local"} <= cols
+        assert "harness_scoreboard" in views  # the view creates cleanly post-upgrade
+        assert survivors == [("old-row", None, None)]  # NULL, fail-closed Tier B
 
 
 class TestAgenticSessionsFullView:
@@ -868,6 +952,8 @@ class TestAgenticSessionsFullView:
             "tokens_out",
             "avg_latency_ms",
             "avg_grader_score",
+            "cache_hit_rate",
+            "suite_runtime_ms",
         }
         assert expected <= set(cols), f"missing: {expected - set(cols)}"
 
@@ -892,6 +978,11 @@ class TestAgenticSessionsFullView:
                 ("m4", "s1", "latency_ms", 200.0),
                 ("m5", "s1", "latency_ms", 400.0),
                 ("m6", "s1", "grader_score", 0.5),
+                # RFC-010 S1 (#258): cache_hit_rate AVG'd, suite_runtime_ms SUM'd
+                ("m7", "s1", "cache_hit_rate", 0.5),
+                ("m8", "s1", "cache_hit_rate", 1.0),
+                ("m9", "s1", "suite_runtime_ms", 1000.0),
+                ("m10", "s1", "suite_runtime_ms", 500.0),
             ]
             conn.executemany(
                 "INSERT INTO agentic_metrics "
@@ -910,6 +1001,8 @@ class TestAgenticSessionsFullView:
         assert record["tokens_out"] == 30.0
         assert record["avg_latency_ms"] == 300.0
         assert record["avg_grader_score"] == 0.5
+        assert record["cache_hit_rate"] == 0.75  # AVG(0.5, 1.0)
+        assert record["suite_runtime_ms"] == 1500.0  # SUM(1000, 500)
 
 
 class TestAgenticVirtualDatasets:
@@ -1265,478 +1358,1091 @@ class TestPluginDriftPartitionsByTool:
 
 
 # ---------------------------------------------------------------------------
-# Graph data contract: the charts must return real rows when fed a session
-# through the production write path (HarnessDatabase API), not raw SQL.
-# These guard the "no data in Superset" failure mode: the chart/SQL defs are
-# fine, but nothing proves the datasets light up given a genuine session.
+# Harness Scoreboard view + dashboard (RFC-007 S5 / issue #221)
 # ---------------------------------------------------------------------------
 
+from bootstrap_dashboards import (  # noqa: E402
+    _SCOREBOARD_CHART_DEFS,
+    _SCOREBOARD_FILTER_CONFIGS,
+    _SCOREBOARD_LAYOUT_SECTIONS,
+    _build_scoreboard_position_json,
+)
 
-def _query(db_url: str, sql: str) -> list[dict[str, object]]:
-    """Run ``sql`` against the SQLite file behind ``db_url`` -> list of dicts."""
-    import sqlite3
+SCOREBOARD_CHART_NAMES = {
+    "Harness Pass Rate",
+    "Harness Scoreboard",
+    "Harness Economy",
+    "Harness Token Efficiency",
+    "Harness Runtime & Latency",
+    "Harness Cache Hit Rate",
+}
 
-    db_path = db_url.removeprefix("sqlite:///")
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.execute(sql)
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+# Column order matches the HARNESS_SCOREBOARD_VIEW_BODY SELECT list.
+SCOREBOARD_COLUMNS = {
+    "tool_name",
+    "model_id",
+    "scenario_id",
+    "tier",
+    "cell_label",
+    "run_count",
+    "pass_count",
+    "pass_rate",
+    "avg_churn_ratio",
+    "avg_process_violations",
+    "avg_tokens_in",
+    "avg_tokens_out",
+    "avg_latency_ms",
+    "avg_cache_hit_rate",
+    "avg_suite_runtime_ms",
+}
 
 
-def _make_harness_db(db_url: str, *, backend: str = "db_path") -> HarnessDatabase:
-    """Return a ``HarnessDatabase`` using the requested backend convention.
-
-    ``backend="db_path"``      → native sqlite3 path via ``_SQLiteHarnessBackend``.
-    ``backend="database_url"`` → SQLAlchemy path via ``_SQLAlchemyHarnessBackend``,
-                                  exercising the same code that production callers use
-                                  when ``database_url`` is set (issue #604).
-    """
-    if backend == "database_url":
-        return HarnessDatabase(database_url=db_url)
-    return HarnessDatabase(db_path=db_url.removeprefix("sqlite:///"))
-
-
-def _seed_full_session(
-    db_url: str,
+def _insert_run(
+    conn: "object",
     *,
-    session_id: str = "sess-1",
-    tool_name: str = "claude-code",
-    model_id: str = "qwen3:32b",
-    rfc_version: str = "1.16.10",
-    started_at: str = "2026-06-12T00:00:00",
-    outcome: str = "success",
-    backend: str = "db_path",
+    session_id: str,
+    tool_name: str,
+    model_id: str,
+    scenario_id: str | None,
+    metrics: dict[str, float],
+    verified_local: int | None = None,
 ) -> None:
-    """Seed one complete session via the production ``HarnessDatabase`` API.
+    """Seed one harness run + its EAV metric rows on an agentic SQLite DB.
 
-    Writes a harness row, plugin + skill snapshots, the four pivoted metrics
-    (tokens_in/out, latency_ms, grader_score), and a heal decision with its
-    paired ``mutation_quality`` / ``heal_passed`` metrics whose IDs match the
-    healing-candidates join (``<decision_id>`` and ``<decision_id>-heal``).
+    ``verified_local`` is the #350 persisted local-resolution verdict the
+    scoreboard view derives ``tier`` from: 1 -> Tier A, 0/NULL -> Tier B. It
+    defaults to NULL (fail-closed to Tier B) so a run only ever reaches Tier A by
+    explicitly carrying the verdict a minted token would have written.
     """
-    from rfc.harness_models import (
-        AgenticDecision,
-        AgenticHarness,
-        AgenticMetric,
-        AgenticPlugin,
-        AgenticSkill,
+    conn.execute(  # type: ignore[attr-defined]
+        "INSERT INTO agentic_harnesses "
+        "(session_id, tool_name, model_id, scenario_id, verified_local, started_at) "
+        "VALUES (?, ?, ?, ?, ?, '2026-07-14T00:00:00')",
+        (session_id, tool_name, model_id, scenario_id, verified_local),
     )
-
-    db = _make_harness_db(db_url, backend=backend)
-    db.save_harness(
-        AgenticHarness(
-            session_id=session_id,
-            tool_name=tool_name,
-            model_id=model_id,
-            rfc_version=rfc_version,
-            started_at=started_at,
-        )
-    )
-    db.save_plugins(
+    conn.executemany(  # type: ignore[attr-defined]
+        "INSERT INTO agentic_metrics "
+        "(id, session_id, metric_key, metric_value, recorded_at) "
+        "VALUES (?, ?, ?, ?, '2026-07-14T00:00:01')",
         [
-            AgenticPlugin(
-                session_id=session_id,
-                plugin_name="anthropic",
-                semver="1.0.0",
-                source="pip",
-                recorded_at=started_at,
-            )
-        ]
+            (f"{session_id}-{key}", session_id, key, value)
+            for key, value in metrics.items()
+        ],
     )
-    db.save_skills(
-        [
-            AgenticSkill(
-                session_id=session_id,
-                skill_path="robot/math/math.resource",
-                git_sha="abc123",
-                skill_name="math",
-                recorded_at=started_at,
-            )
-        ]
-    )
-    db.save_metrics(
-        [
-            AgenticMetric(
-                session_id=session_id,
-                metric_key=key,
-                metric_value=value,
-                recorded_at=started_at,
-            )
-            for key, value in (
-                ("tokens_in", 1200.0),
-                ("tokens_out", 340.0),
-                ("latency_ms", 850.0),
-                ("grader_score", 0.9),
-            )
-        ]
-    )
-    decision_id = f"{session_id}-dec"
-    db.save_decision(
-        AgenticDecision(
-            id=decision_id,
-            session_id=session_id,
-            hook_event="on_failure",
-            prompt_model=model_id,
-            prompt_text="heal the failing assertion",
-            response_text="rewrite expected value",
-            proposed_action="heal",
-            recorded_at=started_at,
+
+
+class TestHarnessScoreboardDDL:
+    """The scoreboard view is embedded in the bootstrap and drift-guarded."""
+
+    def test_bootstrap_ddl_creates_scoreboard_view(self) -> None:
+        assert "DROP VIEW IF EXISTS harness_scoreboard" in _AGENTIC_TABLE_DDL
+        assert "CREATE VIEW harness_scoreboard" in _AGENTIC_TABLE_DDL
+
+    def test_bootstrap_view_matches_canonical_body(self) -> None:
+        """The embedded copy must not drift from the canonical view body."""
+        import re
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        def normalize(sql: str) -> str:
+            return re.sub(r"\s+", " ", sql).strip().lower()
+
+        assert normalize(HARNESS_SCOREBOARD_VIEW_BODY) in normalize(
+            _AGENTIC_TABLE_DDL
+        ), (
+            "superset/bootstrap_dashboards.py::_AGENTIC_TABLE_DDL has drifted "
+            "from rfc.harness_db.HARNESS_SCOREBOARD_VIEW_BODY — update both."
         )
-    )
-    db.save_metrics(
-        [
-            AgenticMetric(
-                id=decision_id,
-                session_id=session_id,
-                metric_key="mutation_quality",
-                metric_value=0.8,
-                recorded_at=started_at,
-            ),
-            AgenticMetric(
-                id=f"{decision_id}-heal",
-                session_id=session_id,
-                metric_key="heal_passed",
-                metric_value=1.0,
-                recorded_at=started_at,
-            ),
-        ]
-    )
-    if outcome:
-        db.end_harness(session_id, outcome, "2026-06-12T00:05:00")
 
+    def test_full_ddl_creates_view_on_sqlite(self, tmp_path: Path) -> None:
+        """The whole _AGENTIC_TABLE_DDL (lean base table + view) runs on SQLite.
 
-class TestAgenticGraphDataContract:
-    """The dashboard datasets must return correct rows for a real session.
+        Proves the scoreboard view's grouping column (``scenario_id``) is present
+        in the bootstrap's own base table, so the embedded view is executable
+        standalone (not only against the migrated canonical schema).
+        """
+        import sqlite3
 
-    Unlike the structural tests above (column probes, SQL-string checks),
-    these seed data through the production ``HarnessDatabase`` write path and
-    assert each chart's backing dataset actually lights up — the regression
-    guard for the empty Superset dashboard.
-    """
-
-    def test_sessions_full_aggregates_real_session(
-        self, agentic_db_with_view: str
-    ) -> None:
-        _seed_full_session(agentic_db_with_view, session_id="s1")
-        rows = _query(
-            agentic_db_with_view,
-            "SELECT * FROM agentic_sessions_full WHERE session_id = 's1'",
-        )
-        assert len(rows) == 1
-        row = rows[0]
-        assert row["tool_name"] == "claude-code"
-        assert row["model_id"] == "qwen3:32b"
-        assert row["outcome"] == "success"
-        assert row["tokens_in"] == 1200.0
-        assert row["tokens_out"] == 340.0
-        assert row["avg_latency_ms"] == 850.0
-        assert row["avg_grader_score"] == 0.9
-
-    def test_sessions_full_includes_session_without_metrics(
-        self, agentic_db_with_view: str
-    ) -> None:
-        """A started-but-unmeasured session still appears (metric cols NULL)."""
-        from rfc.harness_db import HarnessDatabase
-        from rfc.harness_models import AgenticHarness
-
-        db = HarnessDatabase(db_path=agentic_db_with_view.removeprefix("sqlite:///"))
-        db.save_harness(
-            AgenticHarness(
-                session_id="bare",
-                tool_name="codex",
-                started_at="2026-06-12T01:00:00",
-            )
-        )
-        rows = _query(
-            agentic_db_with_view,
-            "SELECT * FROM agentic_sessions_full WHERE session_id = 'bare'",
-        )
-        assert len(rows) == 1
-        assert rows[0]["tokens_in"] is None
-        assert rows[0]["avg_grader_score"] is None
-
-    def test_outcome_funnel_counts_running_and_ended(self, agentic_db: str) -> None:
-        """Running sessions (NULL outcome) bucket as 'running'; ended by outcome."""
-        from rfc.harness_db import HarnessDatabase
-        from rfc.harness_models import AgenticHarness
-
-        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
-        db.save_harness(
-            AgenticHarness(
-                session_id="run1",
-                tool_name="claude-code",
-                started_at="2026-06-12T00:00:00",
-            )
-        )
-        db.save_harness(
-            AgenticHarness(
-                session_id="done1",
-                tool_name="claude-code",
-                started_at="2026-06-12T00:01:00",
-            )
-        )
-        db.end_harness("done1", "success", "2026-06-12T00:06:00")
-
-        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_outcome_funnel"])
-        by_outcome = {r["outcome"]: r["session_count"] for r in rows}
-        assert by_outcome.get("running") == 1
-        assert by_outcome.get("success") == 1
-
-    def test_plugin_drift_flags_real_upgrade(self, agentic_db: str) -> None:
-        """A genuine semver bump across sessions is flagged version_changed=1."""
-        from rfc.harness_db import HarnessDatabase
-        from rfc.harness_models import AgenticHarness, AgenticPlugin
-
-        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
-        for sid, ts in (("a", "2026-06-10T00:00:00"), ("b", "2026-06-11T00:00:00")):
-            db.save_harness(
-                AgenticHarness(session_id=sid, tool_name="claude-code", started_at=ts)
-            )
-        db.save_plugins(
-            [
-                AgenticPlugin(
-                    session_id="a",
-                    plugin_name="anthropic",
-                    semver="1.0.0",
-                    recorded_at="2026-06-10T00:00:01",
+        db_path = tmp_path / "scoreboard_ddl.db"
+        with sqlite3.connect(db_path) as conn:
+            _exec_agentic_ddl_sqlite(conn, _AGENTIC_TABLE_DDL)
+            views = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='view'"
                 )
-            ]
-        )
-        db.save_plugins(
-            [
-                AgenticPlugin(
-                    session_id="b",
-                    plugin_name="anthropic",
-                    semver="1.1.0",
-                    recorded_at="2026-06-11T00:00:01",
-                )
-            ]
-        )
-        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"])
-        changed = [r for r in rows if r["version_changed"] == 1]
-        assert len(changed) == 1
-        assert changed[0]["semver"] == "1.1.0"
-        assert changed[0]["prev_semver"] == "1.0.0"
+            }
+        assert "harness_scoreboard" in views
 
-    def test_skill_outcomes_counts_sessions(self, agentic_db: str) -> None:
-        _seed_full_session(agentic_db, session_id="s1")
-        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_skill_outcomes"])
-        math_rows = [r for r in rows if r["skill_name"] == "math"]
-        assert math_rows, "seeded skill 'math' missing from skill_outcomes"
-        assert math_rows[0]["outcome"] == "success"
-        assert math_rows[0]["session_count"] == 1
 
-    def test_healing_candidates_filters_by_quality_and_pass(
+class TestHarnessScoreboardView:
+    """Aggregate math + tier-separation honesty of the scoreboard view."""
+
+    def test_view_columns(self, agentic_db: str) -> None:
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+        assert SCOREBOARD_COLUMNS <= set(cols), (
+            f"missing: {SCOREBOARD_COLUMNS - set(cols)}"
+        )
+
+    def test_cell_math_known_answer(self, agentic_db: str) -> None:
+        """Per-cell aggregates over seeded runs match hand-computed values."""
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            # opencode (Tier A) — two runs at the same scenario, one pass one fail.
+            # verified_local=1: both minted the local-resolution token (#350).
+            _insert_run(
+                conn,
+                session_id="o1",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=1,
+                metrics={
+                    "task_success": 1.0,
+                    "churn_ratio": 1.0,
+                    "process_violations": 0.0,
+                    "tokens_in": 100.0,
+                    "tokens_out": 50.0,
+                    "latency_ms": 200.0,
+                    "cache_hit_rate": 0.5,
+                    "suite_runtime_ms": 1000.0,
+                },
+            )
+            _insert_run(
+                conn,
+                session_id="o2",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=1,
+                metrics={
+                    "task_success": 0.0,
+                    "churn_ratio": 3.0,
+                    "process_violations": 2.0,
+                    "tokens_in": 200.0,
+                    "tokens_out": 150.0,
+                    "latency_ms": 400.0,
+                    "cache_hit_rate": 1.0,
+                    "suite_runtime_ms": 2000.0,
+                },
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        records = {
+            (r["tool_name"], r["scenario_id"]): r
+            for r in (dict(zip(cols, row, strict=True)) for row in rows)
+        }
+        cell = records[("opencode", "s_bugfix")]
+        assert cell["tier"] == "A"
+        assert cell["cell_label"] == "[A] opencode @ qwen-local"
+        assert cell["run_count"] == 2
+        assert cell["pass_count"] == 1.0
+        assert cell["pass_rate"] == 0.5
+        assert cell["avg_churn_ratio"] == 2.0
+        assert cell["avg_process_violations"] == 1.0
+        assert cell["avg_tokens_in"] == 150.0
+        assert cell["avg_tokens_out"] == 100.0
+        assert cell["avg_latency_ms"] == 300.0
+        assert cell["avg_cache_hit_rate"] == 0.75
+        assert cell["avg_suite_runtime_ms"] == 1500.0
+
+    def test_tier_separation_never_shares_a_cell(self, agentic_db: str) -> None:
+        """A Tier-B native run never lands in a Tier-A cell (RFC-007 s5 / #273).
+
+        Same scenario, one opencode (Tier A) pass and one claude-code (Tier B)
+        pass. The two MUST be separate rows with distinct tiers/labels, and the
+        Tier-A cell's pass_rate must be untouched by the Tier-B result.
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            _insert_run(
+                conn,
+                session_id="a1",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_shared",
+                verified_local=1,  # minted the local-resolution token -> Tier A
+                metrics={"task_success": 0.0},  # Tier-A FAILED
+            )
+            _insert_run(
+                conn,
+                session_id="b1",
+                tool_name="claude-code",
+                model_id="claude-fable-5",
+                scenario_id="s_shared",
+                verified_local=0,  # native, no token -> Tier B
+                metrics={"task_success": 1.0},  # Tier-B PASSED
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        records = [dict(zip(cols, row, strict=True)) for row in rows]
+        by_tool = {r["tool_name"]: r for r in records}
+        # Two distinct cells for the one scenario — never merged.
+        assert len(records) == 2
+        assert by_tool["opencode"]["tier"] == "A"
+        assert by_tool["claude-code"]["tier"] == "B"
+        # The Tier-A cell is a clean 0.0 — the Tier-B pass never leaks in.
+        assert by_tool["opencode"]["pass_rate"] == 0.0
+        assert by_tool["claude-code"]["pass_rate"] == 1.0
+        # Labels are structurally distinct, so a heatmap can never overlay them.
+        assert by_tool["opencode"]["cell_label"].startswith("[A] ")
+        assert by_tool["claude-code"]["cell_label"].startswith("[B] ")
+
+    def test_tier_is_the_persisted_token_not_the_tool_name(
         self, agentic_db: str
     ) -> None:
-        """Only heal decisions with quality >= 0.7 AND heal_passed pass through."""
-        from rfc.harness_db import HarnessDatabase
-        from rfc.harness_models import (
-            AgenticDecision,
-            AgenticHarness,
-            AgenticMetric,
-        )
+        """The view's tier follows the persisted ``verified_local`` verdict, not the
+        tool_name allowlist — the #350 fix, with the exact lie it documents killed.
 
-        db = HarnessDatabase(db_path=agentic_db.removeprefix("sqlite:///"))
-        db.save_harness(
-            AgenticHarness(
-                session_id="s1",
-                tool_name="claude-code",
-                started_at="2026-06-12T00:00:00",
+        Pre-#350 the view read ``CASE WHEN tool_name IN ('opencode','codex')``, so a
+        misconfigured remote run under one of those NAMES was promoted to a green
+        Tier-A cell even though it never resolved local (the #273 lie). Now the tier
+        is derived FAIL-CLOSED from the token verdict the write path persisted:
+
+          * the SAME tool_name 'opencode' lands Tier A when it minted the token
+            (verified_local=1) and Tier B when it did not (a remote-pointed run) —
+            proving the name is no longer what promotes;
+          * an allowlist name ('codex') without the token is Tier B, not Tier A;
+          * an unknown harness with no verdict (NULL) fails closed to Tier B.
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            # opencode that actually pinned local -> token minted -> Tier A.
+            _insert_run(
+                conn,
+                session_id="o_local",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=1,
+                metrics={"task_success": 1.0},
             )
-        )
-
-        def _heal(dec_id: str, quality: float, passed: float) -> None:
-            db.save_decision(
-                AgenticDecision(
-                    id=dec_id,
-                    session_id="s1",
-                    hook_event="on_failure",
-                    prompt_model="qwen3:32b",
-                    prompt_text="heal",
-                    proposed_action="heal",
-                    recorded_at="2026-06-12T00:00:01",
-                )
+            # opencode misconfigured at a REMOTE provider -> no token -> Tier B.
+            # THIS is the #350 lie: pre-fix the 'opencode' name alone made it A.
+            _insert_run(
+                conn,
+                session_id="o_remote",
+                tool_name="opencode",
+                model_id="remote-gpt",
+                scenario_id="s_bugfix",
+                verified_local=0,
+                metrics={"task_success": 1.0},
             )
-            db.save_metrics(
-                [
-                    AgenticMetric(
-                        id=dec_id,
-                        session_id="s1",
-                        metric_key="mutation_quality",
-                        metric_value=quality,
-                        recorded_at="2026-06-12T00:00:02",
-                    ),
-                    AgenticMetric(
-                        id=f"{dec_id}-heal",
-                        session_id="s1",
-                        metric_key="heal_passed",
-                        metric_value=passed,
-                        recorded_at="2026-06-12T00:00:02",
-                    ),
-                ]
+            # codex WITH the token -> Tier A (affirmatively fixed-local).
+            _insert_run(
+                conn,
+                session_id="x_local",
+                tool_name="codex",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=1,
+                metrics={"task_success": 1.0},
             )
+            # codex WITHOUT the token -> Tier B (the allowlist name no longer saves it).
+            _insert_run(
+                conn,
+                session_id="x_remote",
+                tool_name="codex",
+                model_id="remote-gpt",
+                scenario_id="s_bugfix",
+                verified_local=0,
+                metrics={"task_success": 1.0},
+            )
+            # An unknown harness with no verdict (NULL) fails closed to Tier B.
+            _insert_run(
+                conn,
+                session_id="m1",
+                tool_name="mystery-agent",
+                model_id="who-knows",
+                scenario_id="s_bugfix",
+                verified_local=None,
+                metrics={"task_success": 1.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
 
-        _heal("good", quality=0.9, passed=1.0)  # qualifies
-        _heal("lowq", quality=0.4, passed=1.0)  # below quality threshold
-        _heal("failed", quality=0.9, passed=0.0)  # heal did not pass
+        by_cell = {
+            (r["tool_name"], r["model_id"]): r
+            for r in (dict(zip(cols, row, strict=True)) for row in rows)
+        }
+        # Same 'opencode' name, opposite tiers — the token decides, not the name.
+        assert by_cell[("opencode", "qwen-local")]["tier"] == "A"
+        assert by_cell[("opencode", "remote-gpt")]["tier"] == "B"  # the lie, killed
+        # An allowlist name without the token is Tier B; with it, Tier A.
+        assert by_cell[("codex", "qwen-local")]["tier"] == "A"
+        assert by_cell[("codex", "remote-gpt")]["tier"] == "B"
+        # Unknown harness, no verdict -> fail-closed Tier B.
+        assert by_cell[("mystery-agent", "who-knows")]["tier"] == "B"
+        # Labels stay structurally tier-distinct so a heatmap can never overlay them.
+        assert by_cell[("opencode", "qwen-local")]["cell_label"].startswith("[A] ")
+        assert by_cell[("opencode", "remote-gpt")]["cell_label"].startswith("[B] ")
 
-        rows = _query(
-            agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_healing_candidates"]
-        )
-        sessions = {(r["session_id"], r["mutation_quality"]) for r in rows}
-        assert sessions == {("s1", 0.9)}
+    def test_excludes_non_battery_sessions(self, agentic_db: str) -> None:
+        """Ad-hoc sessions with no scenario_id are not scoreboard cells."""
+        import sqlite3
 
-    def test_full_session_populates_every_chart_dataset(
-        self, agentic_db_with_view: str
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            _insert_run(
+                conn,
+                session_id="adhoc",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id=None,  # not a battery run
+                metrics={"task_success": 1.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        records = [dict(zip(cols, row, strict=True)) for row in rows]
+        assert records == []
+
+    def test_empty_string_scenario_id_excluded(self, agentic_db: str) -> None:
+        """A '' scenario_id is not a cell either (the WHERE ... <> '' clause).
+
+        ``save_harness`` maps an empty scenario_id to SQL NULL, but the view
+        guards ``<> ''`` too so a directly-written blank string can never form a
+        phantom cell. Regression-pins that second half of the WHERE — the
+        IS NOT NULL half alone would let '' through.
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            _insert_run(
+                conn,
+                session_id="blank",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="",  # empty string, not NULL
+                metrics={"task_success": 1.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        records = [dict(zip(cols, row, strict=True)) for row in rows]
+        assert records == []
+
+    def test_mixed_verdict_cell_never_promotes_untokened_rows(
+        self, agentic_db: str
     ) -> None:
-        """One complete session must light up every dashboard dataset (>=1 row)."""
-        _seed_full_session(agentic_db_with_view, session_id="s1")
-        assert _query(agentic_db_with_view, "SELECT * FROM agentic_sessions_full"), (
-            "agentic_sessions_full (Harness Comparison / Token Burn / Bubble) empty"
-        )
-        for key in (
-            "agentic_plugin_drift",
-            "agentic_skill_outcomes",
-            "agentic_outcome_funnel",
-            "agentic_healing_candidates",
-        ):
-            assert _query(agentic_db_with_view, _AGENTIC_VIRTUAL_DATASETS[key]), (
-                f"virtual dataset {key} returned no rows for a full session"
+        """One cell mixing a token row and a legacy(NULL)/untokened row must never
+        read Tier A over the untokened row -- the canonical post-migration state.
+
+        Handed by test-design in the PR #374 FAIL verdict (red at that HEAD): the
+        tier CASE read ``verified_local`` as a bare non-grouped column, so SQLite
+        picked the tier from an ARBITRARY row of the group — with the token row
+        first, the whole mixed cell (run_count=2, pass_rate over BOTH rows) was
+        stamped Tier A. Green under the grain fix: the mixed population splits,
+        and any Tier-A cell aggregates token rows only.
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            # SAME (tool_name, model_id, scenario_id) -> one cell. Token row first.
+            _insert_run(
+                conn,
+                session_id="mix_tok",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=1,
+                metrics={"task_success": 1.0},
             )
+            _insert_run(
+                conn,
+                session_id="mix_legacy",
+                tool_name="opencode",
+                model_id="qwen-local",
+                scenario_id="s_bugfix",
+                verified_local=None,
+                metrics={"task_success": 1.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = [
+                dict(zip(cols, r, strict=True))
+                for r in conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+            ]
+        a_cells = [r for r in rows if r["tier"] == "A"]
+        # No Tier-A cell may aggregate the untokened row. Under "split": an A cell
+        # exists with run_count==1 (token only). Under "fail-closed": no A cell.
+        # Under the pre-fix HEAD: one A cell with run_count==2 -> this fails.
+        assert all(r["run_count"] == 1 for r in a_cells), (
+            f"a Tier-A cell aggregated an untokened row: {a_cells!r}"
+        )
+        assert sum(r["run_count"] for r in a_cells) <= 1
+
+    def test_mixed_cell_split_truth_table(self, agentic_db: str) -> None:
+        """The chosen grain fix, pinned exactly: mixed cells SPLIT by verdict.
+
+        Truth table over one (tool_name, model_id) at three scenarios:
+          [1, NULL] -> A(run_count=1) + B(run_count=1)   the post-migration state
+          [1, 0]    -> A(run_count=1) + B(run_count=1)   affirmative Tier-B kept out
+          [1, 1]    -> A(run_count=2), no B cell         pure cells stay whole
+        And population purity: each sub-cell's pass_rate is computed over ONLY its
+        own rows — a Tier-A number is never contaminated by an untokened run, and
+        an untokened run's result never vanishes (it lands in the B cell).
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            # s_mix: token row PASSED, legacy NULL row FAILED -> purity visible.
+            _insert_run(
+                conn,
+                session_id="t1",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_mix",
+                verified_local=1,
+                metrics={"task_success": 1.0},
+            )
+            _insert_run(
+                conn,
+                session_id="l1",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_mix",
+                verified_local=None,
+                metrics={"task_success": 0.0},
+            )
+            # s_10: token row + affirmative Tier-B row.
+            _insert_run(
+                conn,
+                session_id="t2",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_10",
+                verified_local=1,
+                metrics={"task_success": 1.0},
+            )
+            _insert_run(
+                conn,
+                session_id="b2",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_10",
+                verified_local=0,
+                metrics={"task_success": 1.0},
+            )
+            # s_11: two token rows, one pass one fail -> one pure A cell.
+            _insert_run(
+                conn,
+                session_id="t3",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_11",
+                verified_local=1,
+                metrics={"task_success": 1.0},
+            )
+            _insert_run(
+                conn,
+                session_id="t4",
+                tool_name="opencode",
+                model_id="m",
+                scenario_id="s_11",
+                verified_local=1,
+                metrics={"task_success": 0.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = [
+                dict(zip(cols, r, strict=True))
+                for r in conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+            ]
+
+        cells = {(r["scenario_id"], r["tier"]): r for r in rows}
+        assert len(rows) == len(cells)  # (scenario, tier) is the cell grain
+        # [1, NULL] -> split; the A cell's pass_rate is over the token row ONLY.
+        assert cells[("s_mix", "A")]["run_count"] == 1
+        assert cells[("s_mix", "A")]["pass_rate"] == 1.0  # not dragged to 0.5
+        assert cells[("s_mix", "B")]["run_count"] == 1
+        assert cells[("s_mix", "B")]["pass_rate"] == 0.0  # legacy row not hidden
+        # [1, 0] -> split identically.
+        assert cells[("s_10", "A")]["run_count"] == 1
+        assert cells[("s_10", "B")]["run_count"] == 1
+        # [1, 1] -> one pure Tier-A cell, aggregated normally.
+        assert cells[("s_11", "A")]["run_count"] == 2
+        assert cells[("s_11", "A")]["pass_rate"] == 0.5
+        assert ("s_11", "B") not in cells
+        # Split sub-cells share the label prefix convention: tier baked in, so
+        # they remain structurally distinct on every cell_label chart axis.
+        assert cells[("s_mix", "A")]["cell_label"] == "[A] opencode @ m"
+        assert cells[("s_mix", "B")]["cell_label"] == "[B] opencode @ m"
+
+    def test_tier_derivation_pinned_to_persisted_verdict(self, agentic_db: str) -> None:
+        """The view derives tier from the persisted ``verified_local`` verdict for
+        EVERY name in the taxonomy — never from the tool_name (#350; #273 lesson).
+
+        Pre-#350 the view read a bare ``tool_name IN ('opencode','codex')`` literal
+        with no shared source of truth the comparison writer also read, so the two
+        could diverge silently — an unpinned opencode/codex run was promoted to
+        Tier A by its NAME. Now both sides ask the SAME question ("did this run
+        resolve local?"), carried on one durable column: tier is a pure function of
+        ``verified_local`` and INDEPENDENT of the name. This pins that
+        name-independence across the whole canonical taxonomy
+        (``rfc.harness_cli.TOOLS``) and the fail-closed NULL default — so a harness
+        added to the taxonomy is automatically token-governed (fail-closed to Tier
+        B until it mints the local-resolution token), never name-leaked either way.
+        """
+        import sqlite3
+
+        from rfc.harness_cli import TOOLS
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        # For EVERY taxonomy name, seed three runs at distinct cells: one that
+        # minted the token (verified_local=1), one that did not (0), and one legacy
+        # row with no verdict (NULL). The name is constant across all three; only
+        # the persisted verdict differs, so any name-based promotion would show up.
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            for i, tool in enumerate(TOOLS):
+                _insert_run(
+                    conn,
+                    session_id=f"tax{i}-yes",
+                    tool_name=tool,
+                    model_id=f"local-{tool}",
+                    scenario_id="s_yes",
+                    verified_local=1,
+                    metrics={"task_success": 1.0},
+                )
+                _insert_run(
+                    conn,
+                    session_id=f"tax{i}-no",
+                    tool_name=tool,
+                    model_id=f"remote-{tool}",
+                    scenario_id="s_no",
+                    verified_local=0,
+                    metrics={"task_success": 1.0},
+                )
+                _insert_run(
+                    conn,
+                    session_id=f"tax{i}-legacy",
+                    tool_name=tool,
+                    model_id=f"legacy-{tool}",
+                    scenario_id="s_legacy",
+                    verified_local=None,
+                    metrics={"task_success": 1.0},
+                )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        by_cell = {
+            (r["tool_name"], r["scenario_id"]): r
+            for r in (dict(zip(cols, row, strict=True)) for row in rows)
+        }
+        for tool in TOOLS:
+            # The token minted -> Tier A, whatever the name.
+            assert by_cell[(tool, "s_yes")]["tier"] == "A", (
+                f"{tool!r} with a minted token must be Tier A"
+            )
+            # No token -> Tier B, even for an allowlist name (the #350 fix).
+            assert by_cell[(tool, "s_no")]["tier"] == "B", (
+                f"{tool!r} without a token must be Tier B, not promoted by name"
+            )
+            # No verdict at all (legacy NULL) -> fail-closed Tier B.
+            assert by_cell[(tool, "s_legacy")]["tier"] == "B", (
+                f"{tool!r} with a NULL verdict must fail closed to Tier B"
+            )
+        # The ONLY Tier-A cells are the token-bearing ones — no name leaks in.
+        tier_a_scenarios = {
+            r["scenario_id"] for r in by_cell.values() if r["tier"] == "A"
+        }
+        assert tier_a_scenarios == {"s_yes"}
+
+    def test_pass_rate_denominator_excludes_missing_task_success(
+        self, agentic_db: str
+    ) -> None:
+        """NULL-skip semantics: run_count and pass_rate can have DIFFERENT Ns.
+
+        ``pass_rate = AVG(task_success)`` skips runs with no task_success row,
+        while ``run_count = COUNT(DISTINCT session_id)`` counts every run. So a
+        run that produced no task_success verdict is EXCLUDED from the rate (not
+        counted as a failure) yet still inflates run_count. Real battery runs
+        always emit task_success (``compute_metrics``), so this never bites live
+        data — but the divergence is pinned here so any future change to it is
+        loud, and so a reader knows pass_rate's denominator is
+        task_success-present runs, not run_count.
+        """
+        import sqlite3
+
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
+
+        db_path = agentic_db.removeprefix("sqlite:///")
+        with sqlite3.connect(db_path) as conn:
+            # Two adjudicated runs (1 pass, 1 fail) + one with NO task_success.
+            _insert_run(
+                conn,
+                session_id="p1",
+                tool_name="opencode",
+                model_id="qwen",
+                scenario_id="s_mix",
+                metrics={"task_success": 1.0},
+            )
+            _insert_run(
+                conn,
+                session_id="p2",
+                tool_name="opencode",
+                model_id="qwen",
+                scenario_id="s_mix",
+                metrics={"task_success": 0.0},
+            )
+            _insert_run(
+                conn,
+                session_id="p3",
+                tool_name="opencode",
+                model_id="qwen",
+                scenario_id="s_mix",
+                metrics={"latency_ms": 500.0},  # no task_success verdict
+            )
+            # A cell with runs but ZERO task_success anywhere -> NULL pass, not 0.
+            _insert_run(
+                conn,
+                session_id="q1",
+                tool_name="opencode",
+                model_id="qwen",
+                scenario_id="s_none",
+                metrics={"latency_ms": 100.0},
+            )
+            cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
+            rows = conn.execute(HARNESS_SCOREBOARD_VIEW_BODY).fetchall()
+
+        by_scenario = {
+            r["scenario_id"]: r
+            for r in (dict(zip(cols, row, strict=True)) for row in rows)
+        }
+        mix = by_scenario["s_mix"]
+        assert mix["run_count"] == 3  # all three runs counted
+        assert mix["pass_count"] == 1.0  # SUM over the two verdicts
+        assert mix["pass_rate"] == 0.5  # AVG over {1.0, 0.0} — p3 EXCLUDED, not a fail
+        none = by_scenario["s_none"]
+        assert none["run_count"] == 1
+        assert none["pass_count"] is None  # SUM of no rows is NULL, never 0
+        assert none["pass_rate"] is None  # AVG of no rows is NULL, never 0
 
 
-# ---------------------------------------------------------------------------
-# SQLAlchemy backend coverage — mirrors TestAgenticGraphDataContract but
-# exercises _SQLAlchemyHarnessBackend (the production write path) instead of
-# _SQLiteHarnessBackend.  Issue #604: the graph data-contract tests previously
-# only exercised the db_path= (native sqlite3) path.
-# ---------------------------------------------------------------------------
+class TestScoreboardChartDefs:
+    """Structural validity of the Harness Scoreboard dashboard-as-code."""
+
+    def test_all_expected_charts_present(self) -> None:
+        names = {c["slice_name"] for c in _SCOREBOARD_CHART_DEFS}
+        assert SCOREBOARD_CHART_NAMES == names
+
+    def test_no_duplicate_chart_names(self) -> None:
+        names = [c["slice_name"] for c in _SCOREBOARD_CHART_DEFS]
+        assert len(names) == len(set(names))
+
+    def test_every_chart_has_required_fields(self) -> None:
+        for c in _SCOREBOARD_CHART_DEFS:
+            assert c.get("slice_name")
+            assert c.get("viz_type")
+            assert c.get("datasource_id_key")
+            assert c.get("params")
+
+    def test_charts_reference_registered_scoreboard_dataset(self) -> None:
+        for c in _SCOREBOARD_CHART_DEFS:
+            assert c["datasource_id_key"] == "harness_scoreboard"
+        assert "harness_scoreboard" in _AGENTIC_DATASET_TABLES
+
+    def test_chart_params_are_json_serializable(self) -> None:
+        for c in _SCOREBOARD_CHART_DEFS:
+            json.dumps(c["params"])
+
+    def test_pass_rate_chart_is_heatmap(self) -> None:
+        by_name = {c["slice_name"]: c for c in _SCOREBOARD_CHART_DEFS}
+        assert by_name["Harness Pass Rate"]["viz_type"] == "heatmap_v2"
+
+    def test_scoreboard_table_exposes_tier_column(self) -> None:
+        by_name = {c["slice_name"]: c for c in _SCOREBOARD_CHART_DEFS}
+        cols = by_name["Harness Scoreboard"]["params"]["columns"]
+        assert "tier" in cols  # the column consumers must respect
+
+    def test_comparative_charts_default_filter_tier_a(self) -> None:
+        """Comparative charts default-filter tier='A'; the raw grid does not (#350/#347).
+
+        A bar/heatmap that plots pass-rate or economy across harnesses is a
+        head-to-head claim, honest only within the fixed-local Tier-A population,
+        so each defaults to a tier == 'A' adhoc filter. The raw "Harness
+        Scoreboard" TABLE is exempt — it exists to SHOW the tier separation across
+        both tiers.
+        """
+        by_name = {c["slice_name"]: c for c in _SCOREBOARD_CHART_DEFS}
+
+        def _tier_a_filters(params: dict) -> list:
+            return [
+                f
+                for f in params.get("adhoc_filters", [])
+                if f.get("subject") == "tier"
+                and f.get("operator") == "=="
+                and f.get("comparator") == "A"
+            ]
+
+        comparative = SCOREBOARD_CHART_NAMES - {"Harness Scoreboard"}
+        for name in comparative:
+            filters = _tier_a_filters(by_name[name]["params"])
+            assert len(filters) == 1, (
+                f"comparative chart {name!r} must default-filter tier='A' (#350)"
+            )
+            assert filters[0]["clause"] == "WHERE"
+
+        # The honest raw grid must NOT be tier-filtered — it shows both tiers.
+        assert _tier_a_filters(by_name["Harness Scoreboard"]["params"]) == []
 
 
-class TestAgenticGraphDataContractSQLAlchemy:
-    """Graph data-contract assertions through the SQLAlchemy backend (issue #604).
+class TestScoreboardLayoutAndFilters:
+    """Layout wires every chart in; filters target the scoreboard dataset."""
 
-    Uses ``backend="database_url"`` so every ``HarnessDatabase`` write goes
-    through ``_SQLAlchemyHarnessBackend`` — the same code path as production
-    Postgres callers.  The fixture wires a throwaway SQLite-via-SQLAlchemy URL
-    so CI needs no live Postgres instance.
+    def test_layout_covers_all_charts(self) -> None:
+        layout_names = {
+            spec["name"]
+            for section in _SCOREBOARD_LAYOUT_SECTIONS
+            for spec in section["charts"]
+        }
+        assert SCOREBOARD_CHART_NAMES == layout_names
+
+    def test_position_json_structure(self) -> None:
+        chart_id_map = {
+            name: i + 1 for i, name in enumerate(sorted(SCOREBOARD_CHART_NAMES))
+        }
+        layout = _build_scoreboard_position_json(chart_id_map)
+        assert layout["ROOT_ID"]["type"] == "ROOT"
+        assert layout["HEADER_ID"]["meta"]["text"] == "Harness Scoreboard"
+        chart_keys = [k for k in layout if k.startswith("CHART-")]
+        assert len(chart_keys) == len(SCOREBOARD_CHART_NAMES)
+
+    def test_layout_is_json_serializable(self) -> None:
+        chart_id_map = {
+            name: i + 1 for i, name in enumerate(sorted(SCOREBOARD_CHART_NAMES))
+        }
+        json.dumps(_build_scoreboard_position_json(chart_id_map))
+
+    def test_filter_names(self) -> None:
+        names = {f["name"] for f in _SCOREBOARD_FILTER_CONFIGS}
+        assert {"Tier", "Harness", "Scenario"} <= names
+
+    def test_every_filter_targets_scoreboard(self) -> None:
+        for f in _SCOREBOARD_FILTER_CONFIGS:
+            assert f.get("id")
+            assert f.get("targets")
+            for target in f["targets"]:
+                assert target["datasetId"] == "__SCOREBOARD_ID__"
+
+    def test_filters_are_json_serializable(self) -> None:
+        json.dumps(_SCOREBOARD_FILTER_CONFIGS)
+
+
+class TestAgenticPhysicalDatasetRefresh:
+    """#361: an existing PHYSICAL agentic dataset must be REFRESHED, not
+    skipped. The bootstrap DDL is leaner than the canonical HarnessDatabase
+    schema (by design), so a dataset first registered against a lean table has
+    to re-fetch its metadata once HarnessDatabase's ADD COLUMN migrations land
+    the spine columns -- otherwise the new coordinates stay invisible in
+    dashboards until the dataset is recreated by hand.
+
+    ``_create_agentic_datasets`` needs a live Superset app (``superset.db``),
+    which the ops unit suite has no context for, so we inject a fake superset
+    module and observe whether ``fetch_metadata()`` is (re)run on an existing
+    dataset vs. a skip.
     """
 
-    def test_sessions_full_aggregates_real_session(
-        self, agentic_db_with_view: str
+    @staticmethod
+    def _install_fake_superset(monkeypatch, existing_names):
+        import types
+
+        recorder: dict[str, list[str]] = {"refreshed": [], "created": []}
+
+        class FakeSqlaTable:
+            def __init__(
+                self, table_name=None, database_id=None, schema=None, sql=None
+            ):
+                self.table_name = table_name
+                self.database_id = database_id
+                self.id = 999
+                self.columns: list = []
+
+            def fetch_metadata(self):
+                recorder["created"].append(self.table_name)
+
+        class FakeExisting:
+            def __init__(self, table_name):
+                self.table_name = table_name
+                self.columns: list = []
+                self.sql = None
+                self.id = 1
+
+            def fetch_metadata(self):
+                recorder["refreshed"].append(self.table_name)
+
+        existing_objs = {name: FakeExisting(name) for name in existing_names}
+
+        class FakeQuery:
+            def __init__(self):
+                self._name = None
+
+            def filter_by(self, table_name=None, database_id=None):
+                self._name = table_name
+                return self
+
+            def first(self):
+                return existing_objs.get(self._name)
+
+        class FakeSession:
+            def query(self, _model):
+                return FakeQuery()
+
+            def add(self, _obj):
+                pass
+
+            def commit(self):
+                pass
+
+        fake_superset = types.ModuleType("superset")
+        fake_superset.db = types.SimpleNamespace(session=FakeSession())
+        fake_connectors = types.ModuleType("superset.connectors")
+        fake_sqla = types.ModuleType("superset.connectors.sqla")
+        fake_models = types.ModuleType("superset.connectors.sqla.models")
+        fake_models.SqlaTable = FakeSqlaTable
+        monkeypatch.setitem(sys.modules, "superset", fake_superset)
+        monkeypatch.setitem(sys.modules, "superset.connectors", fake_connectors)
+        monkeypatch.setitem(sys.modules, "superset.connectors.sqla", fake_sqla)
+        monkeypatch.setitem(sys.modules, "superset.connectors.sqla.models", fake_models)
+        return recorder
+
+    def _isolate_physical_loop(self, monkeypatch):
+        import bootstrap_dashboards as bd
+
+        # Only the physical loop under test; no virtual datasets, dummy uri.
+        monkeypatch.setattr(bd, "_AGENTIC_VIRTUAL_DATASETS", {})
+        monkeypatch.setattr(bd, "_AGENTIC_DATASET_TABLES", ["agentic_harnesses"])
+        monkeypatch.setattr(bd, "_get_database_uri", lambda: "sqlite://")
+        return bd
+
+    def test_existing_physical_dataset_is_refreshed_not_skipped(self, monkeypatch):
+        bd = self._isolate_physical_loop(monkeypatch)
+        recorder = self._install_fake_superset(
+            monkeypatch, existing_names=["agentic_harnesses"]
+        )
+
+        bd._create_agentic_datasets(db_id=7)
+
+        # The pre-existing dataset re-fetched its metadata (picks up migrated
+        # spine columns) instead of the old blunt `continue`.
+        assert recorder["refreshed"] == ["agentic_harnesses"]
+        assert recorder["created"] == []
+
+    def test_absent_physical_dataset_is_still_created(self, monkeypatch):
+        bd = self._isolate_physical_loop(monkeypatch)
+        recorder = self._install_fake_superset(monkeypatch, existing_names=[])
+
+        bd._create_agentic_datasets(db_id=7)
+
+        assert recorder["created"] == ["agentic_harnesses"]
+        assert recorder["refreshed"] == []
+
+
+# ---------------------------------------------------------------------------
+# Live-PostgreSQL validity guard (test-design's PR #374 handoff)
+# ---------------------------------------------------------------------------
+# Every scoreboard test above executes the view via sqlite3, and SQLite is
+# PERMISSIVE about bare non-grouped columns — it silently picks an arbitrary
+# row's value where PostgreSQL raises GroupingError. That backend blindness hid
+# a view body that was invalid SQL on the production backend (PR #374 FAIL).
+# This guard runs the real DDL against a live PostgreSQL in a scratch schema
+# (dropped afterwards, never touching production tables), and skips-and-logs
+# when no live PostgreSQL is reachable (the CLAUDE.md optional-dep posture).
+
+
+def _live_postgres_engine():
+    """Engine for the live RFC PostgreSQL, or None when unreachable.
+
+    Resolution order: RFC_TEST_POSTGRES_URI env override, then POSTGRES_* env
+    (compose conventions), then the compose host-port candidates on localhost.
+    """
+    import sqlalchemy as sa
+
+    user = os.getenv("POSTGRES_USER", "rfc")
+    password = os.getenv("POSTGRES_PASSWORD", "changeme")
+    db = os.getenv("POSTGRES_DB", "rfc")
+    candidates = []
+    if os.getenv("RFC_TEST_POSTGRES_URI"):
+        candidates.append(os.environ["RFC_TEST_POSTGRES_URI"])
+    env_port = os.getenv("POSTGRES_PORT")
+    ports = [env_port] if env_port else ["5434", "5433"]
+    candidates += [f"postgresql://{user}:{password}@localhost:{p}/{db}" for p in ports]
+    for uri in candidates:
+        try:
+            engine = sa.create_engine(uri, connect_args={"connect_timeout": 3})
+            with engine.connect() as conn:
+                conn.execute(sa.text("SELECT 1"))
+            return engine
+        except Exception:  # unreachable candidate -- try the next
+            continue
+    return None
+
+
+@pytest.fixture(scope="module")
+def pg_engine():
+    engine = _live_postgres_engine()
+    if engine is None:
+        pytest.skip("no live PostgreSQL reachable (start core/docker-compose.yml)")
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture()
+def pg_scratch_schema(pg_engine):
+    """A throwaway schema on the live PostgreSQL, dropped afterwards."""
+    import uuid
+
+    import sqlalchemy as sa
+
+    schema = f"rfc_350_guard_{uuid.uuid4().hex[:12]}"
+    with pg_engine.begin() as conn:
+        conn.execute(sa.text(f"CREATE SCHEMA {schema}"))
+    try:
+        yield schema
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(sa.text(f"DROP SCHEMA {schema} CASCADE"))
+
+
+def _exec_agentic_ddl_pg(pg_engine, schema: str, ddl: str) -> None:
+    """Execute the bootstrap DDL on PostgreSQL with _run_ddl's exact semantics
+    (split on ';', strip comment lines, run the stripped statement, one
+    transaction) -- scoped to the scratch schema via search_path."""
+    import sqlalchemy as sa
+
+    with pg_engine.begin() as conn:
+        conn.execute(sa.text(f"SET search_path TO {schema}"))
+        for statement in ddl.split(";"):
+            executable = "\n".join(
+                ln
+                for ln in statement.splitlines()
+                if ln.strip() and not ln.strip().startswith("--")
+            ).strip()
+            if executable:
+                conn.execute(sa.text(executable))
+
+
+class TestScoreboardPostgresValidity:
+    """The scoreboard DDL and canonical view body are valid on PostgreSQL."""
+
+    def test_bootstrap_ddl_runs_and_view_selects_on_postgres(
+        self, pg_engine, pg_scratch_schema
     ) -> None:
-        _seed_full_session(
-            agentic_db_with_view, session_id="s1", backend="database_url"
-        )
-        rows = _query(
-            agentic_db_with_view,
-            "SELECT * FROM agentic_sessions_full WHERE session_id = 's1'",
-        )
-        assert len(rows) == 1
-        row = rows[0]
-        assert row["tool_name"] == "claude-code"
-        assert row["model_id"] == "qwen3:32b"
-        assert row["outcome"] == "success"
-        assert row["tokens_in"] == 1200.0
-        assert row["tokens_out"] == 340.0
-        assert row["avg_latency_ms"] == 850.0
-        assert row["avg_grader_score"] == 0.9
+        """The full _AGENTIC_TABLE_DDL executes on live PostgreSQL (twice --
+        idempotent) and harness_scoreboard SELECTs cleanly. Red at the PR #374
+        FAIL HEAD: CREATE VIEW raised GroupingError on the bare verified_local."""
+        import sqlalchemy as sa
 
-    def test_sessions_full_includes_session_without_metrics(
-        self, agentic_db_with_view: str
+        for _ in range(2):
+            _exec_agentic_ddl_pg(pg_engine, pg_scratch_schema, _AGENTIC_TABLE_DDL)
+        with pg_engine.begin() as conn:
+            conn.execute(sa.text(f"SET search_path TO {pg_scratch_schema}"))
+            rows = conn.execute(sa.text("SELECT * FROM harness_scoreboard"))
+            assert {"tier", "cell_label", "pass_rate"} <= set(rows.keys())
+
+    def test_canonical_view_body_creates_and_selects_on_postgres(
+        self, pg_engine, pg_scratch_schema
     ) -> None:
-        from rfc.harness_models import AgenticHarness
+        """The canonical rfc.harness_db.HARNESS_SCOREBOARD_VIEW_BODY itself --
+        not just the bootstrap copy -- is PostgreSQL-valid as CREATE VIEW and
+        SELECT, over the canonical (migrated) table surface."""
+        import sqlalchemy as sa
 
-        db = _make_harness_db(agentic_db_with_view, backend="database_url")
-        db.save_harness(
-            AgenticHarness(
-                session_id="bare",
-                tool_name="codex",
-                started_at="2026-06-12T01:00:00",
-            )
-        )
-        rows = _query(
-            agentic_db_with_view,
-            "SELECT * FROM agentic_sessions_full WHERE session_id = 'bare'",
-        )
-        assert len(rows) == 1
-        assert rows[0]["tokens_in"] is None
-        assert rows[0]["avg_grader_score"] is None
+        from rfc.harness_db import HARNESS_SCOREBOARD_VIEW_BODY
 
-    def test_outcome_funnel_counts_running_and_ended(self, agentic_db: str) -> None:
-        from rfc.harness_models import AgenticHarness
-
-        db = _make_harness_db(agentic_db, backend="database_url")
-        db.save_harness(
-            AgenticHarness(
-                session_id="run1",
-                tool_name="claude-code",
-                started_at="2026-06-12T00:00:00",
-            )
-        )
-        db.save_harness(
-            AgenticHarness(
-                session_id="done1",
-                tool_name="claude-code",
-                started_at="2026-06-12T00:01:00",
-            )
-        )
-        db.end_harness("done1", "success", "2026-06-12T00:06:00")
-        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_outcome_funnel"])
-        by_outcome = {r["outcome"]: r["session_count"] for r in rows}
-        assert by_outcome.get("running") == 1
-        assert by_outcome.get("success") == 1
-
-    def test_plugin_drift_flags_real_upgrade(self, agentic_db: str) -> None:
-        from rfc.harness_models import AgenticHarness, AgenticPlugin
-
-        db = _make_harness_db(agentic_db, backend="database_url")
-        for sid, ts in (("a", "2026-06-10T00:00:00"), ("b", "2026-06-11T00:00:00")):
-            db.save_harness(
-                AgenticHarness(session_id=sid, tool_name="claude-code", started_at=ts)
-            )
-        db.save_plugins(
-            [
-                AgenticPlugin(
-                    session_id="a",
-                    plugin_name="anthropic",
-                    semver="1.0.0",
-                    recorded_at="2026-06-10T00:00:01",
+        _exec_agentic_ddl_pg(pg_engine, pg_scratch_schema, _AGENTIC_TABLE_DDL)
+        with pg_engine.begin() as conn:
+            conn.execute(sa.text(f"SET search_path TO {pg_scratch_schema}"))
+            conn.execute(
+                sa.text(
+                    "CREATE VIEW canonical_scoreboard AS\n"
+                    + HARNESS_SCOREBOARD_VIEW_BODY
                 )
-            ]
-        )
-        db.save_plugins(
-            [
-                AgenticPlugin(
-                    session_id="b",
-                    plugin_name="anthropic",
-                    semver="1.1.0",
-                    recorded_at="2026-06-11T00:00:01",
-                )
-            ]
-        )
-        rows = _query(agentic_db, _AGENTIC_VIRTUAL_DATASETS["agentic_plugin_drift"])
-        changed = [r for r in rows if r["version_changed"] == 1]
-        assert len(changed) == 1
-        assert changed[0]["semver"] == "1.1.0"
-        assert changed[0]["prev_semver"] == "1.0.0"
-
-    def test_full_session_populates_every_chart_dataset(
-        self, agentic_db_with_view: str
-    ) -> None:
-        _seed_full_session(
-            agentic_db_with_view, session_id="s1", backend="database_url"
-        )
-        assert _query(agentic_db_with_view, "SELECT * FROM agentic_sessions_full"), (
-            "agentic_sessions_full empty (SQLAlchemy backend)"
-        )
-        for key in (
-            "agentic_plugin_drift",
-            "agentic_skill_outcomes",
-            "agentic_outcome_funnel",
-            "agentic_healing_candidates",
-        ):
-            assert _query(agentic_db_with_view, _AGENTIC_VIRTUAL_DATASETS[key]), (
-                f"virtual dataset {key} returned no rows (SQLAlchemy backend)"
             )
+            conn.execute(sa.text("SELECT * FROM canonical_scoreboard")).fetchall()
+
+    def test_upgrade_path_and_mixed_cell_split_on_postgres(
+        self, pg_engine, pg_scratch_schema
+    ) -> None:
+        """The #660 upgrade path + the #374 mixed-cell semantics, on the REAL
+        backend: an OLD-shape lean table (no scenario_id, no verified_local) is
+        upgraded in place by the DDL's additive ALTERs, the view creates
+        cleanly, and a mixed token/legacy cell SPLITS -- Tier A aggregates the
+        token row only."""
+        import sqlalchemy as sa
+
+        with pg_engine.begin() as conn:
+            conn.execute(sa.text(f"SET search_path TO {pg_scratch_schema}"))
+            conn.execute(
+                sa.text(
+                    """
+                    CREATE TABLE agentic_harnesses (
+                        session_id              TEXT PRIMARY KEY,
+                        tool_name               TEXT NOT NULL,
+                        tool_version            TEXT,
+                        model_id                TEXT,
+                        rfc_version             TEXT,
+                        branch                  TEXT,
+                        started_at              TEXT NOT NULL,
+                        ended_at                TEXT,
+                        outcome                 TEXT,
+                        replay_of_recording_id  TEXT
+                    )
+                    """
+                )
+            )
+        _exec_agentic_ddl_pg(pg_engine, pg_scratch_schema, _AGENTIC_TABLE_DDL)
+        with pg_engine.begin() as conn:
+            conn.execute(sa.text(f"SET search_path TO {pg_scratch_schema}"))
+            conn.execute(
+                sa.text(
+                    "INSERT INTO agentic_harnesses "
+                    "(session_id, tool_name, model_id, scenario_id, "
+                    " verified_local, started_at) VALUES "
+                    "('tok', 'opencode', 'm', 's_mix', 1,    '2026-07-14T00:00:00'),"
+                    "('leg', 'opencode', 'm', 's_mix', NULL, '2026-07-14T00:00:00')"
+                )
+            )
+            conn.execute(
+                sa.text(
+                    "INSERT INTO agentic_metrics "
+                    "(id, session_id, metric_key, metric_value, recorded_at) VALUES "
+                    "('m1', 'tok', 'task_success', 1.0, 't'),"
+                    "('m2', 'leg', 'task_success', 1.0, 't')"
+                )
+            )
+            cells = {
+                (r.tier, r.run_count)
+                for r in conn.execute(
+                    sa.text("SELECT tier, run_count FROM harness_scoreboard")
+                )
+            }
+        # Split semantics on the production backend: the mixed cell becomes a
+        # pure Tier-A sub-cell (token row only) and a Tier-B sub-cell.
+        assert cells == {("A", 1), ("B", 1)}
