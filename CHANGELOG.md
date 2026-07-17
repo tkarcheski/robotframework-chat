@@ -86,6 +86,18 @@ Provenance notes:
   `rfc harness start`) instead of assuming `<workspace>/.git` is a directory, so
   a git WORKTREE workspace — where `.git` is a gitdir-pointer file — resolves to
   the real `<main>/.git/worktrees/<name>/` sidecar.
+- **#399 — `Harness Run Should Conform` no longer passes a do-nothing harness.**
+  Follow-up to #385: that fix caught the nonzero-exit vacuous pass at the RUNNER
+  layer, but a residual vacuous pass remained one layer up — a harness that
+  exits 0 having done nothing (zero commits, zero changed paths) still satisfied
+  the matrix conformance keyword, whose agent-id / branch / transcript-equality /
+  no-commit-while-red assertions are all trivially true of an empty run. A new
+  `assert_run_did_positive_work` verifier (surfaced as the **`Run Should Do
+  Positive Work`** keyword) now requires ≥1 commit OR ≥1 changed path, and
+  `Harness Run Should Conform` asserts it. The rc=0-with-zero-events case stays
+  deliberately un-failed at the runner layer (a clarifying-question reply
+  legitimately emits zero commands and exits 0); the check is scope-limited to
+  work-producing scenarios at the conformance layer.
 
 ## [1.26.1] — Unreleased
 

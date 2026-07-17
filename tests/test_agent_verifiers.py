@@ -18,6 +18,7 @@ from rfc.agent_verifiers import (
     assert_pr_body_includes_sections,
     assert_questions_are_multiple_choice,
     assert_rebase_resolved_without_dropping_changes,
+    assert_run_did_positive_work,
 )
 
 
@@ -258,6 +259,37 @@ class TestAssertFirstChangeUnder:
         )
         with pytest.raises(VerificationFailure, match=r"(?i)first"):
             assert_first_change_under(run, "tests/")
+
+
+class TestAssertRunDidPositiveWork:
+    def test_commit_counts_as_work(self) -> None:
+        run = _minimal_run(
+            commits=(AgentCommit(sha="abc123", subject="feat: add greet"),)
+        )
+        assert_run_did_positive_work(run)
+
+    def test_changed_path_counts_as_work(self) -> None:
+        run = _minimal_run(
+            commands=(
+                AgentCommand(
+                    argv=("sh", "-c", "write"),
+                    changed_paths_after=("src/rfc/example.py",),
+                ),
+            )
+        )
+        assert_run_did_positive_work(run)
+
+    def test_noop_run_fails(self) -> None:
+        run = _minimal_run(commands=(), commits=())
+        with pytest.raises(VerificationFailure, match="positive work"):
+            assert_run_did_positive_work(run)
+
+    def test_commands_without_changes_or_commits_fails(self) -> None:
+        run = _minimal_run(
+            commands=(AgentCommand(argv=("uv", "run", "pytest")),), commits=()
+        )
+        with pytest.raises(VerificationFailure, match="positive work"):
+            assert_run_did_positive_work(run)
 
 
 class TestAssertPrBodyIncludesSections:
