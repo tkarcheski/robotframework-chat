@@ -44,9 +44,11 @@ from rfc.harness_adapters import (
     make_branch_name,
     parse_codex_events,
     parse_opencode_events,
+    parse_transcript,
 )
 from rfc.harness_cli import TOOLS
 from rfc.live_agent_runner import LiveClaudeCodeRunner
+from rfc.live_leg_ledger import safe_record_outcome
 from rfc.opencode_config import ComparabilityError, VerifiedLocalModel
 
 # ---------------------------------------------------------------------------
@@ -253,6 +255,155 @@ class TestClaudeCodeAdapter:
 
     def test_env_overrides_empty(self) -> None:
         assert ClaudeCodeAdapter().env_overrides() == {}
+
+
+# ---------------------------------------------------------------------------
+# #402: claude-code parse_transcript must derive returncode from a VERIFIED
+# exit, never a fabricated one. The host-native Bash leg's only exit signal is
+# the boolean ``is_error``; the prior ``bool(block.get("is_error", False))``
+# silently mapped an ABSENT is_error to returncode 0 (green) -- the same
+# unverified-assumption bypass as #390. These tests pin faithfulness: an
+# is_error=True bash result is RED, and a bash result with NO is_error is NOT
+# silently mapped to 0. Every transcript is hand-serialized stream-json (no CLI,
+# no network) so the guard is deterministic and CI-safe.
+# ---------------------------------------------------------------------------
+
+
+def _cc_stream(events: list[dict[str, Any]]) -> str:
+    return "\n".join(json.dumps(e) for e in events) + "\n"
+
+
+def _cc_bash(tool_id: str, command: str) -> dict[str, Any]:
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": tool_id,
+                    "name": "Bash",
+                    "input": {"command": command},
+                }
+            ]
+        },
+    }
+
+
+def _cc_result(tool_id: str, text: str, **result_fields: Any) -> dict[str, Any]:
+    """A claude-code ``tool_result`` user event.
+
+    ``result_fields`` are spliced into the tool_result block verbatim, so a test
+    can set ``is_error=True`` / ``is_error=False``, pass ``is_error=None``, or
+    OMIT ``is_error`` entirely (the #402 unverified case) to exercise each
+    branch of :func:`_claude_bash_returncode`.
+    """
+    result_block: dict[str, Any] = {
+        "type": "tool_result",
+        "tool_use_id": tool_id,
+        "content": [{"type": "text", "text": text}],
+    }
+    result_block.update(result_fields)
+    return {"type": "user", "message": {"content": [result_block]}}
+
+
+class TestClaudeCodeReturncodeVerifierBypass402:
+    def _run(self, commands: tuple[AgentCommand, ...]) -> AgentRun:
+        return AgentRun(
+            agent_id="claude-code",
+            scenario_id="s1",
+            task="t",
+            base_branch="main",
+            branch_name="claude/x-abcde",
+            commands=commands,
+        )
+
+    def test_is_error_true_records_red(self) -> None:
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "uv run pytest"),
+                _cc_result("t1", "1 failed", is_error=True),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert commands[0].returncode == 1
+
+    def test_is_error_false_stays_green(self) -> None:
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "uv run pytest"),
+                _cc_result("t1", "5 passed", is_error=False),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert commands[0].returncode == 0
+
+    def test_absent_is_error_is_not_silently_green(self) -> None:
+        # THE #402 defect: a bash tool_result with NO ``is_error`` key. The prior
+        # ``.get("is_error", False)`` fabricated returncode 0 (green) from an exit
+        # signal the harness never captured; a deliberately failing command
+        # (``exit 3``) must record NONZERO, not be silently mapped to 0.
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "sh -c 'echo boom; exit 3'"),
+                _cc_result("t1", "boom"),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert commands[0].returncode != 0
+
+    def test_null_is_error_is_not_silently_green(self) -> None:
+        # A present-but-null ``is_error`` is not a verified success either.
+        raw = _cc_stream([_cc_bash("t1", "false"), _cc_result("t1", "", is_error=None)])
+        commands, _ = parse_transcript(raw)
+        assert commands[0].returncode != 0
+
+    def test_nonzero_test_then_commit_is_flagged_red(self) -> None:
+        # The corrupting sequence: pytest fails (is_error=True), then a commit.
+        # The verifier spine must fire now that the failed test is recorded red.
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "uv run pytest"),
+                _cc_result("t1", "1 failed", is_error=True),
+                _cc_bash("t2", "git commit -m wip"),
+                _cc_result("t2", "", is_error=False),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert [c.returncode for c in commands] == [1, 0]
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(self._run(commands))
+
+    def test_absent_signal_test_then_commit_is_flagged_red(self) -> None:
+        # Same sequence, but the failing test's ``is_error`` is ABSENT. Pre-#402
+        # the test recorded green and the commit slipped past the gate; now the
+        # unverified test is red and the verifier fires -- the end-to-end proof
+        # the bypass is closed on the spine, not just at the parser boundary.
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "uv run pytest"),
+                _cc_result("t1", "boom"),  # no is_error -> unverified -> red
+                _cc_bash("t2", "git commit -m wip"),
+                _cc_result("t2", "", is_error=False),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert commands[0].returncode != 0
+        with pytest.raises(VerificationFailure):
+            assert_no_commit_while_tests_red(self._run(commands))
+
+    def test_green_test_then_commit_passes(self) -> None:
+        # Inverse: a genuinely green test (is_error=False) then a commit is
+        # allowed -- the fix does not over-fire on real successes.
+        raw = _cc_stream(
+            [
+                _cc_bash("t1", "uv run pytest"),
+                _cc_result("t1", "5 passed", is_error=False),
+                _cc_bash("t2", "git commit -m done"),
+                _cc_result("t2", "", is_error=False),
+            ]
+        )
+        commands, _ = parse_transcript(raw)
+        assert_no_commit_while_tests_red(self._run(commands))  # no raise
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +631,9 @@ class TestOpenCodeReturncodeVerifierBypass390:
 _CORE_ROOT = Path(__file__).resolve().parents[1]
 _OPENCODE_CONFIG = _CORE_ROOT / "opencode.json"
 
+# Skip-streak ledger id for the #394 gate (must match rfc.live_leg_ledger).
+_RETURNCODE_LEG = "opencode_returncode_390"
+
 
 def _ollama_up() -> bool:
     try:
@@ -558,13 +712,18 @@ class TestLiveOpenCodeReturncode390:
                 check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            # Reached only on a capable box; record the skip so the #394 gate can
+            # surface a leg that has gone silent for N consecutive runs.
+            safe_record_outcome(_RETURNCODE_LEG, executed=False)
             pytest.skip(f"live opencode run unavailable under load: {exc!r}")
         raw = proc.stdout or ""
         if not _raw_has_completed_nonzero_bash(raw):
+            safe_record_outcome(_RETURNCODE_LEG, executed=False)
             pytest.skip(
                 "opencode/model did not emit a completed nonzero-exit bash "
                 "command (small model noncompliant under load)"
             )
+        safe_record_outcome(_RETURNCODE_LEG, executed=True)
         commands, _ = parse_opencode_events(raw)
         nonzero = [c for c in commands if c.returncode != 0]
         assert nonzero, (
