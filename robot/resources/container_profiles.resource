@@ -34,7 +34,7 @@ ${LONG_TIMEOUT}         300
 *** Keywords ***
 Create Container From Profile
     [Documentation]    Create a Docker container using a predefined profile
-    [Arguments]    ${profile_name}    ${container_name}=None    ${custom_volumes}=None
+    [Arguments]    ${profile_name}    ${container_name}=None
     ${profile}=    Set Variable    ${${profile_name}}
     ${container_id}=    Docker.Create Configurable Container    ${profile}    ${container_name}
     RETURN    ${container_id}
