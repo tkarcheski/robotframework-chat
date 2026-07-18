@@ -189,6 +189,7 @@ Run Prompt N Times
 Run Quantization Comparison
 Run ReAct Loop
 Run Sandboxed Coding Scenario
+Run Should Do Positive Work
 Run Should Not Contain Forbidden Commands
 Run Skill Test Case
 Sandbox Agent Command Should Succeed

@@ -34,6 +34,9 @@ ${BASE_BRANCH}    main
 # Model override for the opencode leg. Empty uses the repo opencode.json default
 # (local Ollama). Set to e.g. ollama/qwen3-coder:30b-a3b-q4_K_M to pin a model.
 ${OPENCODE_MODEL}    ${EMPTY}
+# Council #675 variation 1: paired repeats for the within-harness reliability
+# sample (variance-aware). Bounded so the live smoke stays cheap.
+${MATRIX_REPEATS}    3
 
 *** Test Cases ***
 Opencode Honors The Harness Contract
@@ -103,6 +106,54 @@ Comparison Mode Records The Battery Per Harness
     Log    McNemar gate: reason=${verdict.reason} (needs a second Tier-A harness to pair)
     [Teardown]    Remove Directory    ${ws}[path]    recursive=True
 
+Repeats Yield A Complete Within-Harness Reliability Sample
+    [Documentation]    Council #675 variation (checklist item 1): run the same
+    ...                fixture scenario under ONE harness for N paired repeats and
+    ...                assert the spine records every repeat. The within-harness
+    ...                reliability sample -- the substrate any variance / stability
+    ...                estimate is computed over -- is honest only when complete: a
+    ...                repeat that crashes or loses provenance leaves a hole, so a
+    ...                leg that records fewer than N rows fails here. Varies exactly
+    ...                the repeat index (model + harness held constant). Extends the
+    ...                comparison smoke above (N=1) to a variance-bearing N; the
+    ...                deterministic twin is ``tests/test_harness_comparison.py``.
+    [Tags]    comparison    harness:opencode
+    Skip Unless Harness Available    opencode
+    ${ws}=    New Matrix Workspace
+    ${scenarios}=    Create List    tier4_bug_fix
+    ${report}=    Run Harness Comparison Battery    database_url=${ws}[database_url]
+    ...    repeats=${MATRIX_REPEATS}    scenarios=${scenarios}
+    Comparison Report Should Have Rows For    ${report}    opencode
+    Length Should Be    ${report.rows}    ${MATRIX_REPEATS}
+    ...    the within-harness reliability sample must record all ${MATRIX_REPEATS} repeats -- a dropped repeat is lost variance signal, not a pass
+    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+
+Absent Optional Harness Skips Its Leg Without Failing
+    [Documentation]    Council #675 variation (checklist item 6): an optional
+    ...                harness that is not installed must be skip-and-logged, never
+    ...                a hard failure (CLAUDE.md's skip-over-fail rule for optional
+    ...                dependencies). This exercises the ABSENT path directly: it
+    ...                runs only when ``claude-code`` is NOT installed, adds its leg
+    ...                to the battery, and asserts the battery still records the
+    ...                available ``opencode`` leg while reporting ``claude-code`` as
+    ...                a skipped leg -- no exception, no failure row. A runner that
+    ...                aborted the whole battery on the absent leg would fail here.
+    ...                Restricting to the absent path also keeps this leg token-free.
+    [Tags]    comparison    harness:claude-code
+    Skip Unless Harness Available    opencode
+    ${claude_available}=    Harness Is Available    claude-code
+    Skip If    ${claude_available}
+    ...    claude-code is installed; this case exercises the ABSENT-harness skip path (and avoids billing tokens)
+    ${ws}=    New Matrix Workspace
+    ${scenarios}=    Create List    tier4_bug_fix
+    ${report}=    Run Harness Comparison Battery    database_url=${ws}[database_url]
+    ...    repeats=1    scenarios=${scenarios}    include_claude=${True}
+    Comparison Report Should Have Rows For    ${report}    opencode
+    ${skipped_harnesses}=    Evaluate    [harness for harness, _reason in $report.skipped]
+    Should Contain    ${skipped_harnesses}    claude-code
+    ...    an absent optional harness must appear as a skipped leg, not a hard failure
+    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+
 *** Keywords ***
 Require Live Matrix
     [Documentation]    Gate the whole suite: it drives real agents and git.
@@ -125,10 +176,14 @@ Harness Run Should Conform
     [Documentation]    The identical contract outcomes every harness must honor:
     ...                the run is attributed to its harness, lands on the harness's
     ...                branch namespace, is retrievable as the session transcript,
-    ...                and never commits while tests are red.
+    ...                did actual work (not a vacuous exit-0 no-op, #399), and
+    ...                never commits while tests are red. The fixture ``${TASK}``
+    ...                is work-producing, so the positive-work assertion is in
+    ...                scope for every leg that uses this keyword.
     [Arguments]    ${run}    ${tool}    ${prefix}
     Should Be Equal    ${run.agent_id}    ${tool}
     Should Start With    ${run.branch_name}    ${prefix}/
     ${transcript}=    Get Agent Transcript
     Should Be Equal    ${transcript}    ${run}
+    Run Should Do Positive Work    ${run}
     No Commit Should Occur While Tests Red    ${run}

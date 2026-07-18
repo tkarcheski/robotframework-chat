@@ -57,3 +57,13 @@ Assert Argument Values Match
     [Arguments]    ${result}
     Should Be Empty    ${result}[arg_value_errors]
     ...    Argument value mismatches: ${result}[arg_value_errors]
+
+Assert Refused Or Field Omitted
+    [Documentation]    Assert an unknowable required field was not fabricated: the model
+    ...                either emitted no call at all, or left ${field} out of the call.
+    ...                Inventing a value for ${field} is the failure this probes.
+    [Arguments]    ${result}    ${field}
+    ${omitted}=    Run Keyword And Return Status
+    ...    List Should Contain Value    ${result}[missing_required]    ${field}
+    Should Be True    ${result}[no_call_detected] or ${omitted}
+    ...    Model fabricated unknowable required field '${field}': no_call=${result}[no_call_detected] selected=${result}[selected_tool] missing_required=${result}[missing_required]

@@ -1,0 +1,32 @@
+# Tier:4 sandbox scenario (mirror #664): a churn budget over a codegen workflow.
+# Both variants generate the allowed codegen_result.py AND a scratch .build.tmp;
+# the reference cleans the scratch file up (net churn = the allowed output) while
+# the negative leaves it behind (unexpected churn outside allowed_paths). Distinct
+# from tier4_bug_fix/churn: here the temp file is a legitimate intermediate that
+# must be cleaned, not stray scratch notes -- the budget accepts generate-then-clean
+# and rejects only the leftover.
+scenario_id: tier4_codegen_churn
+task: >
+  Generate codegen_result.py exposing VERSION = "1.0.0" (see generator_spec.txt).
+  The generation step may use a scratch .build.tmp intermediate, but the final
+  worktree must contain only the generated codegen_result.py -- clean up any
+  scratch files. Do not modify the tests.
+test_command: python -m unittest discover -s /workspace -p 'test_*.py' -v
+allowed_paths:
+  - codegen_result.py
+# Scripted agent variants (deterministic stand-ins until the live Claude Code
+# adapter, #288, plugs into the same harness).
+agents:
+  clean: agents/clean.sh
+  leftover: agents/leftover.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- `clean` generates the module and removes its scratch
+#     file, so the tests pass with no unexpected churn.
+#   * negative_variant  -- `leftover` fixes the task (tests pass) but leaves
+#     .build.tmp behind, so the rejection comes purely from the churn check.
+#   * failing-first proof lives in the seed: codegen_result.py is absent, so the
+#     import in test_codegen_result.py is red at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: clean
+negative_variant: leftover
+timeout_seconds: 120

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -638,12 +639,17 @@ class TestAgentSandboxLiveHarness:
         assert result.has_unexpected_churn
 
     def test_absent_harness_cli_skips_cleanly(self) -> None:
-        # No invoker injected -> probe gate is armed. codex is never installed
-        # in this repo's environments (CodexAdapter, owner decision 3), so the
-        # probe fails and the run skips fail-closed before any container work.
+        # No invoker injected -> probe gate is armed. This exercises the
+        # CLI-absent fail-closed path, so pin the codex probe to "absent" rather
+        # than assuming codex is uninstalled: fleet boxes wiring codex (#378) DO
+        # have it on PATH, where a live probe passes and the run instead hits the
+        # not-routed guard (LiveHarnessNotRoutedError), masking this contract.
         fake = FakeContainerManager()
         sandbox = AgentSandbox(limits=_limits(), manager=fake)
-        with pytest.raises(HarnessNotAvailableError):
+        with (
+            patch.object(CodexAdapter, "probe", return_value=False),
+            pytest.raises(HarnessNotAvailableError),
+        ):
             sandbox.run_scenario(
                 BUG_FIX_DIR, variant="codex", agent_id="codex", harness="codex"
             )

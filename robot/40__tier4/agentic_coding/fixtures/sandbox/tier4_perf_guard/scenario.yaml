@@ -1,0 +1,32 @@
+# Tier:4 sandbox scenario (mirror #664): a refactor must preserve a performance
+# benchmark. all_present has a behavioural bug; fixing it is not enough -- a
+# hidden perf contract counts equality comparisons (a deterministic proxy for
+# wall-clock, so it never flakes) and rejects a correct-but-quadratic list scan.
+# Only a linear (set-based) fix stays within the comparison budget.
+scenario_id: tier4_perf_guard
+task: >
+  all_present in membership.py returns True when ANY needle is present; it should
+  return True only when EVERY needle is present. Fix the behaviour while keeping
+  the check efficient -- do not scan the haystack as a list for every needle. Do
+  not modify the tests.
+test_command: python -m unittest discover -s /workspace -p 'test_*.py' -v
+allowed_paths:
+  - membership.py
+# Scripted agent variants (deterministic stand-ins until the live Claude Code
+# adapter, #288, plugs into the same harness).
+agents:
+  efficient: agents/efficient.sh
+  quadratic: agents/quadratic.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- `efficient` fixes the behaviour with a single set
+#     lookup, so the visible tests AND the hidden linear-comparison budget pass
+#     with no churn.
+#   * negative_variant  -- `quadratic` returns correct answers (visible tests
+#     pass) but keeps the list scan, so the rejection comes from the hidden perf
+#     contract exceeding the comparison budget.
+#   * failing-first proof lives in the seed: test_missing_needle_is_false is red
+#     at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: efficient
+negative_variant: quadratic
+timeout_seconds: 120

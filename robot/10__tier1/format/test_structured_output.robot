@@ -31,6 +31,15 @@ JSON Address Object
     ${scenario}=    Set Variable    ${JSON_SCENARIOS}[2]
     Ask And Validate JSON    ${scenario}[prompt]    ${scenario}[expected_keys]    min_score=0.5
 
+JSON Adversarial Prose Resistance
+    [Documentation]    Prompt embeds adversarial conversational pressure while
+    ...    requiring raw JSON only. Probes whether the model resists prepending
+    ...    explanation and emits programmatically parseable JSON. Prose before
+    ...    unfenced JSON fails json.loads and scores 0.
+    [Tags]    json    score:partial
+    ${scenario}=    Set Variable    ${JSON_SCENARIOS}[3]
+    Ask And Validate JSON    ${scenario}[prompt]    ${scenario}[expected_keys]    min_score=0.5
+
 # ---------- YAML ----------
 
 YAML Server Config
@@ -43,6 +52,15 @@ YAML Database Config
     [Documentation]    Ask for YAML with engine, host, port, name, user keys.
     [Tags]    yaml    score:partial
     ${scenario}=    Set Variable    ${YAML_SCENARIOS}[1]
+    Ask And Validate YAML    ${scenario}[prompt]    ${scenario}[expected_keys]    min_score=0.5
+
+YAML Special Character String Values
+    [Documentation]    Require string values carrying YAML-special sequences
+    ...    (a colon followed by a space, and a leading '#') that force quoting
+    ...    or block scalars. Naive inline emission produces invalid YAML, which
+    ...    fails to parse and scores 0.
+    [Tags]    yaml    score:partial
+    ${scenario}=    Set Variable    ${YAML_SCENARIOS}[2]
     Ask And Validate YAML    ${scenario}[prompt]    ${scenario}[expected_keys]    min_score=0.5
 
 # ---------- CSV ----------
@@ -66,6 +84,19 @@ CSV Inventory Table
     ...    ${scenario}[expected_columns]
     ...    ${scenario}[min_rows]
     ...    min_score=0.5
+
+CSV Escaping And Quoting Rules
+    [Documentation]    Require data fields containing commas, which must be
+    ...    quoted per RFC 4180. Unquoted fields split into extra columns and
+    ...    fail the strict column-count check; graded at min_score=1.0 so a
+    ...    quoting failure is a hard fail, not partial credit.
+    [Tags]    csv    score:partial
+    ${scenario}=    Set Variable    ${CSV_SCENARIOS}[2]
+    Ask And Validate CSV
+    ...    ${scenario}[prompt]
+    ...    ${scenario}[expected_columns]
+    ...    ${scenario}[min_rows]
+    ...    min_score=1.0
 
 # ---------- Batch ----------
 

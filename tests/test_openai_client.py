@@ -12,6 +12,11 @@ from rfc.openai_client import OpenAIClient, _extract_metrics
 class TestOpenAIClientInit:
     @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"})
     def test_defaults(self):
+        # Isolate from any ambient .env (dev boxes load one via the autouse
+        # conftest fixture) so these assertions exercise the built-in defaults
+        # rather than a developer's local OPENAI_BASE_URL / OPENAI_TIMEOUT.
+        os.environ.pop("OPENAI_BASE_URL", None)
+        os.environ.pop("OPENAI_TIMEOUT", None)
         client = OpenAIClient()
         assert client.base_url == "https://api.openai.com/v1"
         assert client.api_key == "sk-test"
