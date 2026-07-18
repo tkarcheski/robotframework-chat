@@ -25,6 +25,7 @@ Test Tags         hitl    tier:1    verify:python    axis:none
 
 *** Variables ***
 ${ACTION_ID}          deploy:production:rollout
+${SECOND_ACTION_ID}   rollback:staging:release
 ${WAIT_TIMEOUT}       5
 ${SHORT_EXPIRY}       0.4
 ${EXPIRY_MARGIN}      0.7s
@@ -131,6 +132,100 @@ Unanswered Input Expires Fail Closed On Timeout
     Should Be Equal    ${persisted}[status]    expired
     Run Keyword And Expect Error    HitlApprovalError: *
     ...    Hitl.Resolve Interaction    ${iid}    approved    response=too late
+
+Denied Approval Halts Execution
+    [Documentation]    Council #676 variation — the human denial path. A denial
+    ...    is the fail-closed counterpart to the approval path: resolving the
+    ...    approval ``denied`` leaves the row terminal but never opens the gate,
+    ...    so the gated tool call is halted rather than executed.
+    ${sid}=    New Session Id
+    &{args}=    Create Dictionary    target=prod    replicas=3
+    ${aid}=    Hitl.Request Human Approval    ${sid}    Roll out to production?    ${ACTION_ID}    ${args}
+    ${resolved}=    Hitl.Resolve Interaction    ${aid}    denied    response=not this rollout
+    Should Be Equal    ${resolved}[status]    denied    msg=the denial must persist as the terminal status
+    ${allowed}=    Hitl.Is Action Approved    ${sid}    ${ACTION_ID}    ${args}
+    Should Not Be True    ${allowed}    msg=a denied approval must never authorize execution
+    Run Keyword And Expect Error    HitlApprovalError: *not granted*
+    ...    Hitl.Ensure Action Approved    ${sid}    ${ACTION_ID}    ${args}
+
+One Approval Cannot Be Resolved Twice
+    [Documentation]    Council #676 variation — double-spend of one approval. A
+    ...    single approval row resolves exactly once: after the first resolution
+    ...    wins, a second resolution — the concurrent-writer / replay case —
+    ...    fails closed and can neither flip nor re-grant the row, so one human
+    ...    decision authorizes one action.
+    ${sid}=    New Session Id
+    &{args}=    Create Dictionary    target=prod    replicas=3
+    ${aid}=    Hitl.Request Human Approval    ${sid}    Roll out to production?    ${ACTION_ID}    ${args}
+    Hitl.Resolve Interaction    ${aid}    approved    response=go ahead
+    Run Keyword And Expect Error    HitlApprovalError: *already approved*
+    ...    Hitl.Resolve Interaction    ${aid}    denied    response=changed my mind
+    ${row}=    Hitl.Get Interaction    ${aid}
+    Should Be Equal    ${row}[status]      approved    msg=the losing resolution must not overwrite the winner
+    Should Be Equal    ${row}[response]    go ahead
+
+Approval Does Not Cross Session Boundaries
+    [Documentation]    Council #676 variation — tampered/stolen-approval replay
+    ...    across sessions. An approval granted in one session authorizes only
+    ...    that session; replaying the exact action id and args under a different
+    ...    session id finds no referencing approval and fails closed.
+    ${granting_sid}=    New Session Id
+    ${other_sid}=    New Session Id
+    &{args}=    Create Dictionary    target=prod    replicas=3
+    ${aid}=    Hitl.Request Human Approval    ${granting_sid}    Roll out to production?    ${ACTION_ID}    ${args}
+    Hitl.Resolve Interaction    ${aid}    approved    response=go ahead
+    ${granted}=    Hitl.Is Action Approved    ${granting_sid}    ${ACTION_ID}    ${args}
+    Should Be True    ${granted}    msg=the granting session must be authorized
+    ${leaked}=    Hitl.Is Action Approved    ${other_sid}    ${ACTION_ID}    ${args}
+    Should Not Be True    ${leaked}    msg=an approval must not authorize a different session
+    Run Keyword And Expect Error    HitlApprovalError: *never requested*
+    ...    Hitl.Ensure Action Approved    ${other_sid}    ${ACTION_ID}    ${args}
+
+Mutated Arguments Cannot Replay A Prior Approval
+    [Documentation]    Council #676 variation — approval replay after argument
+    ...    mutation. An approval binds the exact args the human saw and stays
+    ...    re-checkable for those args, but a mutation — here an added privilege
+    ...    field the approver never saw — voids it, so a prior legitimate check
+    ...    cannot be replayed onto the escalated arguments.
+    ${sid}=    New Session Id
+    &{approved_args}=    Create Dictionary    target=prod    replicas=3
+    &{escalated_args}=    Create Dictionary    target=prod    replicas=3    force=true
+    ${aid}=    Hitl.Request Human Approval    ${sid}    Roll out to production?    ${ACTION_ID}    ${approved_args}
+    Hitl.Resolve Interaction    ${aid}    approved    response=go ahead
+    ${first}=    Hitl.Is Action Approved    ${sid}    ${ACTION_ID}    ${approved_args}
+    Should Be True    ${first}    msg=the exact approved args must authorize
+    ${replay}=    Hitl.Is Action Approved    ${sid}    ${ACTION_ID}    ${approved_args}
+    Should Be True    ${replay}    msg=re-checking the identical approved args is idempotent
+    ${escalated}=    Hitl.Is Action Approved    ${sid}    ${ACTION_ID}    ${escalated_args}
+    Should Not Be True    ${escalated}    msg=an added argument must void the approval
+    Run Keyword And Expect Error    HitlApprovalError: *digest*
+    ...    Hitl.Ensure Action Approved    ${sid}    ${ACTION_ID}    ${escalated_args}
+
+Concurrent Clarifications For Separate Actions Never Authorize
+    [Documentation]    Council #676 variation — concurrent clarifications for
+    ...    separate actions. Two clarifications for two different actions are
+    ...    pending at once, resolve independently, and each resumes its own
+    ...    reasoning — yet neither authorizes any action, since a clarification
+    ...    never grants authority regardless of the action it references.
+    ${sid}=    New Session Id
+    &{args_a}=    Create Dictionary    target=prod    replicas=3
+    &{args_b}=    Create Dictionary    target=staging    replicas=1
+    ${cid_a}=    Hitl.Request Clarification    ${sid}    Which region for the production rollout?
+    ...    target_action_id=${ACTION_ID}    args=${args_a}
+    ${cid_b}=    Hitl.Request Clarification    ${sid}    Confirm the staging rollback window?
+    ...    target_action_id=${SECOND_ACTION_ID}    args=${args_b}
+    ${resumed_a}=    Hitl.Resolve Interaction    ${cid_a}    approved    response=us-east-1 only
+    ${resumed_b}=    Hitl.Resolve Interaction    ${cid_b}    approved    response=00:00 UTC
+    Should Be Equal    ${resumed_a}[status]    approved    msg=each clarification must still resume its session
+    Should Be Equal    ${resumed_b}[status]    approved
+    ${allowed_a}=    Hitl.Is Action Approved    ${sid}    ${ACTION_ID}    ${args_a}
+    ${allowed_b}=    Hitl.Is Action Approved    ${sid}    ${SECOND_ACTION_ID}    ${args_b}
+    Should Not Be True    ${allowed_a}    msg=a clarification must not authorize its referenced action
+    Should Not Be True    ${allowed_b}    msg=a clarification must not authorize its referenced action
+    Run Keyword And Expect Error    HitlApprovalError: *never authorizes execution*
+    ...    Hitl.Ensure Action Approved    ${sid}    ${ACTION_ID}    ${args_a}
+    Run Keyword And Expect Error    HitlApprovalError: *never authorizes execution*
+    ...    Hitl.Ensure Action Approved    ${sid}    ${SECOND_ACTION_ID}    ${args_b}
 
 *** Keywords ***
 Create Hitl Suite Database

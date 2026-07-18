@@ -490,7 +490,7 @@ ci:
 
   github-review:
     label: "GitHub Repo Review"
-    path: "robot/20__tier2/github/tests/repo_review.robot"
+    path: "robot/20__tier2/github/repo_review.robot"
     description: "Browser-based GitHub repo and issue evaluation with LLM feedback"
     extra_deps: ["playwright"]
 
