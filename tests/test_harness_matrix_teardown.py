@@ -15,11 +15,14 @@ one layer up: the robot resource keyword ``End Session And Cleanup`` (in
 That derivation reads Robot's automatic ``${TEST STATUS}`` variable, which only
 exists inside a real teardown — so it cannot be unit-tested from Python. Instead
 this runs a tiny, hermetic Robot suite in-process (``robot.run``) that imports
-the *real* resource keyword: one passing leg and one deliberately-failing leg,
-each opening a real ``rfc harness`` session bracket against its own throwaway
-sqlite spine (no agent, no models, no tokens — only ``Run Agent Task`` spends
-anything, and neither leg calls it). After the run each spine row is inspected:
-the passing leg must close ``success`` and the failing leg must close ``failed``.
+the *real* resource keyword: one passing leg, one deliberately-failing leg, and
+one leg that skips *after* opening its session bracket, each opening a real
+``rfc harness`` session bracket against its own throwaway sqlite spine (no agent,
+no models, no tokens — only ``Run Agent Task`` spends anything, and none of the
+legs call it). After the run each spine row is inspected: the passing leg must
+close ``success``, the failing leg must close ``failed``, and the skipped leg
+must close ``partial`` — never a false ``success`` (#254, the SKIP branch of the
+#213 outcome-honesty class).
 """
 
 from __future__ import annotations
@@ -58,6 +61,11 @@ Failing Leg Closes The Spine As Failed
     Fail    forced red body: a live leg's assertions blew up
     [Teardown]    End Session And Cleanup    ${WS}
 
+Skipping Leg After Session Open Closes The Spine As Partial
+    Open Hermetic Leg    @@SKIP_DB@@
+    Skip    post-open skip: a mid-body probe bailed after the session bracket opened
+    [Teardown]    End Session And Cleanup    ${WS}
+
 *** Keywords ***
 Open Hermetic Leg
     [Documentation]    Throwaway git repo + a session bracket on an external
@@ -80,37 +88,70 @@ def _spine_row(db_path: Path) -> tuple[str, str]:
     return rows[0][0], rows[0][1]
 
 
-def test_teardown_records_true_outcome_per_test_status(tmp_path: Path) -> None:
-    """A failing leg closes its spine row ``failed``; a passing leg ``success``.
+def _run_twin_suite(tmp_path: Path) -> tuple[int, dict[str, Path]]:
+    """Write the hermetic twin suite into ``tmp_path``, run it in-process, and
+    return ``(failed_count, {leg: spine_db_path})`` for the pass/fail/skip legs.
 
-    This is the #213 regression: before the fix the teardown hardcoded
-    ``outcome=success``, so the failing leg below would have closed ``success``.
+    ``robot.run`` returns the count of *failed* tests; a skipped leg is neither
+    a pass nor a failure, so only the one deliberately-failing leg counts.
     """
-    pass_db = tmp_path / "pass_spine.db"
-    fail_db = tmp_path / "fail_spine.db"
+    dbs = {
+        "pass": tmp_path / "pass_spine.db",
+        "fail": tmp_path / "fail_spine.db",
+        "skip": tmp_path / "skip_spine.db",
+    }
     suite = tmp_path / "harness_matrix_teardown_twin.robot"
     suite.write_text(
         _SUITE_TEMPLATE.replace("@@RESOURCE@@", str(_RESOURCE))
-        .replace("@@PASS_DB@@", f"sqlite:///{pass_db}")
-        .replace("@@FAIL_DB@@", f"sqlite:///{fail_db}")
+        .replace("@@PASS_DB@@", f"sqlite:///{dbs['pass']}")
+        .replace("@@FAIL_DB@@", f"sqlite:///{dbs['fail']}")
+        .replace("@@SKIP_DB@@", f"sqlite:///{dbs['skip']}")
     )
-
-    # robot.run returns the count of failed tests; exactly the one deliberately
-    # failing leg must fail (proving its teardown truly saw TEST STATUS == FAIL).
     failed = robot_run(
         str(suite),
         outputdir=str(tmp_path),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
+    return failed, dbs
+
+
+def test_teardown_records_true_outcome_per_test_status(tmp_path: Path) -> None:
+    """A failing leg closes its spine row ``failed``; a passing leg ``success``.
+
+    This is the #213 regression: before the fix the teardown hardcoded
+    ``outcome=success``, so the failing leg below would have closed ``success``.
+    """
+    failed, dbs = _run_twin_suite(tmp_path)
     assert failed == 1, "expected exactly the one deliberately-failing leg to fail"
 
-    pass_outcome, pass_ended = _spine_row(pass_db)
+    pass_outcome, pass_ended = _spine_row(dbs["pass"])
     assert pass_outcome == "success"
     assert pass_ended != ""  # row was actually closed, not left dangling
 
-    fail_outcome, fail_ended = _spine_row(fail_db)
+    fail_outcome, fail_ended = _spine_row(dbs["fail"])
     assert fail_outcome == "failed", (
         "failed leg must close its spine row as 'failed', not a false 'success' (#213)"
     )
     assert fail_ended != ""
+
+
+def test_teardown_maps_post_open_skip_to_partial_not_success(tmp_path: Path) -> None:
+    """A leg skipped *after* opening its session closes ``partial``, not ``success``.
+
+    This pins #254: the binary ``FAIL`` -> ``failed`` / else -> ``success``
+    derivation folded ``SKIP`` into ``success``, so a leg that skipped after its
+    session bracket opened closed a non-successful run as a false ``success`` —
+    the #213 outcome-honesty class via the skip branch. The three-way derivation
+    maps ``SKIP`` -> ``partial`` explicitly.
+    """
+    failed, dbs = _run_twin_suite(tmp_path)
+    # The skip is not a failure: robot's failed count stays at the one red leg.
+    assert failed == 1, "a post-open skip must not register as a failed test"
+
+    skip_outcome, skip_ended = _spine_row(dbs["skip"])
+    assert skip_outcome == "partial", (
+        "a leg skipped after its session bracket opened must close 'partial', "
+        "not a false 'success' (#254)"
+    )
+    assert skip_ended != ""  # row was actually closed, not left dangling
