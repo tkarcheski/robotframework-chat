@@ -52,7 +52,7 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         rebot-merge rebot-merge-all \
         discover-local-nodes discover-local-models run-local-models run-all-external \
         code-quality-lint code-quality-format code-quality-typecheck \
-        code-quality-check code-quality-coverage code-quality-audit \
+        code-quality-check code-quality-coverage code-quality-audit live-leg-gate \
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
         model-cards \
@@ -229,6 +229,9 @@ code-quality-coverage: ## Run pytest with coverage report
 
 code-quality-audit: ## Audit dependencies for known vulnerabilities
 	uv run pip-audit
+
+live-leg-gate: ## Fail if a live opencode enforcement leg (#394) has skipped for N consecutive runs
+	uv run python -m rfc.live_leg_ledger check
 
 # ── Layer 2: Docker Services ─────────────────────────────────────────
 

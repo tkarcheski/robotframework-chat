@@ -117,6 +117,14 @@ class AgenticCodingKeywords:
     def first_changed_path_should_be_under(self, run: AgentRun, prefix: str) -> None:
         verifiers.assert_first_change_under(run, prefix)
 
+    def run_should_do_positive_work(self, run: AgentRun) -> None:
+        """Run must produce work (>=1 commit or >=1 changed path), not exit 0 idle.
+
+        The conformance-layer guard against a no-op harness: use it only for
+        work-producing scenarios (see ``assert_run_did_positive_work``, #399).
+        """
+        verifiers.assert_run_did_positive_work(run)
+
     def all_commits_should_match_convention(self, run: AgentRun) -> None:
         verifiers.assert_all_commits_match_convention(run, self._contract(run.agent_id))
 

@@ -551,3 +551,138 @@ RUST_CODE_CHALLENGES:
     expected_exit_code: 0
     iq: 120
     timeout: 30
+
+  # === Council #667 variations (25-28) — tkarcheski/robotframework-chat#667 ===
+  # Deterministic, execution-grounded probes that extend the suite's grading
+  # style: rustc must accept the code (exit 0) AND the program must emit the
+  # exact expected lines. Each varies one axis (the model) and can FAIL a model
+  # that lacks the capability — a borrow-checker violation or a lifetime error
+  # yields a non-zero exit; a wrong algorithm yields the wrong stdout.
+
+  # V1: Borrow-checker discipline. The naive form (iterate under an immutable
+  # borrow while pushing) is rejected by the borrow checker; a passing solution
+  # must both compile clean and be correct.
+  - name: "Borrow Checker Disjoint Growth"
+    prompt: |
+      Write a Rust program that starts with the vector vec![1, 2, 3, 4] and, for
+      each element currently in the vector, appends that element's square to the
+      same vector, producing [1, 2, 3, 4, 1, 4, 9, 16]. Note that the naive
+      approach of iterating over the vector with an immutable borrow while
+      pushing to it in the loop body will NOT compile, because Rust forbids
+      holding an immutable borrow and a mutable borrow of the same vector at the
+      same time. Structure the code so it compiles cleanly (for example, collect
+      the squares into a temporary vector first, or iterate by index over the
+      original length). Print the original vector, then the result, using {:?}
+      formatting. The output should be exactly:
+      original: [1, 2, 3, 4]
+      result: [1, 2, 3, 4, 1, 4, 9, 16]
+    language: rust
+    source_file: "borrow_checker.rs"
+    compile_command: "rustc -o borrow_checker borrow_checker.rs"
+    run_command: "./borrow_checker"
+    expected_output: "result: [1, 2, 3, 4, 1, 4, 9, 16]"
+    expected_outputs:
+      - "original: [1, 2, 3, 4]"
+      - "result: [1, 2, 3, 4, 1, 4, 9, 16]"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # V2: Custom data structure with complex lifetime bounds. The returned slice
+  # must outlive the struct, so the method signature must thread the field's
+  # lifetime ('a); a '-> &str' elided to the &self borrow fails to compile once
+  # the struct is dropped before the slice is used.
+  - name: "Lifetime Bounded Struct"
+    prompt: |
+      Write a Rust program that defines a struct Sentence<'a> with a single field
+      text: &'a str (a borrowed string slice). Implement a method
+      longest_word(&self) -> &'a str that returns the longest whitespace-separated
+      word in the text (return the first word on a length tie). The returned slice
+      must borrow from the original text (lifetime 'a), NOT from &self.
+      In main, handle two sentences. For each: store the backing text in a String,
+      then in an inner scope create a Sentence borrowing that String, call
+      longest_word, and bind the result to a variable declared OUTSIDE the inner
+      scope. Let the Sentence go out of scope, and only AFTER that print the word.
+      This forces the returned slice to be tied to the original text rather than
+      to the Sentence. Use the text "the cat sat quietly" for the first sentence
+      and "a bb ccc dd" for the second. The output should be exactly:
+      longest: quietly
+      longest: ccc
+    language: rust
+    source_file: "lifetime_struct.rs"
+    compile_command: "rustc -o lifetime_struct lifetime_struct.rs"
+    run_command: "./lifetime_struct"
+    expected_output: "longest: quietly"
+    expected_outputs:
+      - "longest: quietly"
+      - "longest: ccc"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30
+
+  # V3: Refactor pointer-based C into safe, idiomatic Rust (slices + iterators,
+  # no raw pointers, no unsafe, no manually passed length). Graded on
+  # compilation plus exact output.
+  - name: "Refactor C To Safe Rust"
+    prompt: |
+      The following C function sums and counts the positive integers in an array
+      using a raw pointer and an explicit length:
+
+          int sum_positive(int *arr, int n) {
+              int total = 0, count = 0;
+              for (int i = 0; i < n; i++) {
+                  if (arr[i] > 0) { total += arr[i]; count++; }
+              }
+              printf("sum: %d\ncount: %d\n", total, count);
+              return total;
+          }
+          // called as: int data[] = {-2, 5, -1, 10, 3}; sum_positive(data, 5);
+
+      Rewrite this as a safe, idiomatic Rust program: take the data as a slice
+      &[i32] (no raw pointers, no unsafe, no manually passed length), sum the
+      positive values and count them using iterator methods, and print the same
+      two lines. Use the input [-2, 5, -1, 10, 3]. The output should be exactly:
+      sum: 18
+      count: 3
+    language: rust
+    source_file: "c_to_rust.rs"
+    compile_command: "rustc -o c_to_rust c_to_rust.rs"
+    run_command: "./c_to_rust"
+    expected_output: "sum: 18"
+    expected_outputs:
+      - "sum: 18"
+      - "count: 3"
+    expected_exit_code: 0
+    iq: 130
+    timeout: 30
+
+  # V4: Multi-threaded shared state via Arc/Mutex — the deterministic core of the
+  # "concurrent server" item. Workers drain a shared job queue and accumulate
+  # into shared state; the invariant is every job processed exactly once.
+  - name: "Concurrent Shared Job Queue"
+    prompt: |
+      Write a Rust program that simulates a concurrent request processor using
+      only the standard library (std::sync::{Arc, Mutex},
+      std::collections::VecDeque, std::thread). Create a shared job queue
+      Arc<Mutex<VecDeque<i32>>> preloaded with the integers 1 through 10. Create
+      a shared processed-count Arc<Mutex<i32>> starting at 0 and a shared
+      sum-of-squares accumulator Arc<Mutex<i32>> starting at 0. Spawn 4 worker
+      threads. Each worker loops: lock the queue, pop one job from the front, and
+      release the lock; if the queue was empty, the worker stops; otherwise it
+      adds the square of the job value to the accumulator and increments the
+      processed count (each under its own lock). Join all 4 workers. Every job
+      must be processed exactly once. Print 'processed: 10' and
+      'sum of squares: 385'. The output should be exactly:
+      processed: 10
+      sum of squares: 385
+    language: rust
+    source_file: "concurrent_queue.rs"
+    compile_command: "rustc -o concurrent_queue concurrent_queue.rs"
+    run_command: "./concurrent_queue"
+    expected_output: "processed: 10"
+    expected_outputs:
+      - "processed: 10"
+      - "sum of squares: 385"
+    expected_exit_code: 0
+    iq: 140
+    timeout: 30

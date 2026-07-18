@@ -136,6 +136,35 @@ LLM Generates Rust Memory Safety Guarantees (IQ:120)
     [Tags]    IQ:120    memory-safety    vec    option    tier:4    verify:robot
     Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[24]
 
+# === Council #667 variations (V1-V4) ===
+# Additive, execution-grounded probes (tkarcheski/robotframework-chat#667). Each
+# fails a model that lacks the probed capability: a borrow-checker or lifetime
+# error yields a non-zero rustc exit; a wrong algorithm yields the wrong stdout.
+
+LLM Generates Rust Borrow-Checker Disjoint Growth (IQ:130)
+    [Documentation]    V1: Can the LLM satisfy the borrow checker in a scenario whose
+    ...    naive form is rejected, while still producing the correct grown vector?
+    [Tags]    IQ:130    borrow-checker    borrowing    tier:4    verify:robot
+    Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[25]
+
+LLM Generates Rust Lifetime-Bounded Data Structure (IQ:140)
+    [Documentation]    V2: Can the LLM build a struct whose method returns a slice
+    ...    bound to the input lifetime, still valid after the struct is dropped?
+    [Tags]    IQ:140    lifetimes    custom-data-structure    advanced    tier:4    verify:robot
+    Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[26]
+
+LLM Refactors C To Safe Rust (IQ:130)
+    [Documentation]    V3: Can the LLM translate pointer-based C into safe, idiomatic
+    ...    Rust (slices/iterators) that compiles and matches the reference output?
+    [Tags]    IQ:130    refactoring    c-to-rust    memory-safety    tier:4    verify:robot
+    Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[27]
+
+LLM Generates Rust Concurrent Shared Job Queue (IQ:140)
+    [Documentation]    V4: Can the LLM coordinate worker threads over a shared
+    ...    Arc<Mutex> job queue and accumulator, processing each job exactly once?
+    [Tags]    IQ:140    concurrency    arc    mutex    work-queue    tier:4    verify:robot
+    Run Compiled Challenge    ${RUST_CODE_CHALLENGES}[28]
+
 *** Keywords ***
 Run Compiled Challenge
     [Documentation]    Run a YAML-defined compiled code challenge.

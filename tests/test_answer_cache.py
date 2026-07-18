@@ -771,8 +771,9 @@ def test_answer_cache_available_reflects_outage_latch():
 # Added by test-design (Mr. Meeseeks) attacking the honesty contract on angles
 # the engineering suite did not already pin: a MID-run Redis drop (vs. an outage
 # present from the start), digest-keying stability across the record→replay
-# seam, a model re-pull changing the digest, and the read-side blank-value gap
-# (characterized here, tracked as from:testing #319).
+# seam, a model re-pull changing the digest, and the read-side blank-value guard
+# (#319: a blank stored value is a miss, not a confident hit — the symmetric
+# read-side twin of the write guard).
 
 
 class _FlakyRedis:
@@ -870,25 +871,48 @@ def test_cache_only_model_repull_new_digest_is_loud_miss():
 
 
 @pytest.mark.parametrize("blank", ["", "   "])
-def test_cache_only_serves_blank_stored_value_as_hit_characterization(blank):
-    """CHARACTERIZATION of a known read-side gap (from:testing #319).
+def test_cache_only_blank_stored_value_is_loud_miss(blank):
+    """A blank stored value is a LOUD miss under cache_only, not a hit (#319).
 
-    The write side never memoizes a blank answer, but the read side serves any
-    ``cached is not None`` value — so a blank entry written out-of-band / by
-    legacy data is replayed as a confident cache_hit under cache_only rather
-    than a loud miss. The zero-token guarantee is intact (no upstream call);
-    this pins the CURRENT behaviour so a future read-side blank guard (#319) is
-    a deliberate, tested change.
+    The write side never memoizes a blank answer, and the read side now refuses
+    to serve one either (the symmetric guard). A blank entry written out-of-band
+    / by legacy data must fail as a ``cache-miss`` with zero upstream calls,
+    closing the residual silent pass RFC-010 §3 exists to prevent — rather than
+    replaying "" as a confident cache_hit.
     """
     redis = fakeredis.FakeStrictRedis()
     key = AnswerCache(redis_client=redis).make_key(FakeProvider(), "q")
-    redis.set(key, blank)  # out-of-band blank; current code never writes this
+    redis.set(key, blank)  # out-of-band blank; the write guard never writes this
 
     inner = FakeProvider(answer="SHOULD_NOT_RUN")
     wrapped = CachingProvider(
         inner, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
     )
-    assert wrapped.generate("q") == blank  # served blank as a "hit"
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
     assert inner.calls == []  # zero upstream — the guarantee still holds
-    assert wrapped.last_metrics is not None
-    assert wrapped.last_metrics.get("cache_hit") is True
+    # A reachable-but-blank entry is a genuine key-miss, not an outage.
+    assert excinfo.value.reason == "cache-miss"
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_live_mode_blank_stored_value_relives(blank):
+    """Under a live-on-miss mode a blank stored value is regenerated (#319).
+
+    The read-side blank guard falls through to the miss path, so the provider
+    is re-hit and the fresh answer replaces the blank — the blank never sticks
+    for the TTL, and a genuine hit follows once real content is stored.
+    """
+    redis = fakeredis.FakeStrictRedis()
+    key = AnswerCache(redis_client=redis).make_key(FakeProvider(), "q")
+    redis.set(key, blank)  # out-of-band blank; the write guard never writes this
+
+    inner = FakeProvider(answer="fresh")
+    # record_and_replay (default) may go live on the blank-induced miss.
+    wrapped = CachingProvider(inner, AnswerCache(redis_client=redis))
+    assert wrapped.generate("q") == "fresh"  # relived, not the blank
+    assert inner.calls == ["q"]  # provider was re-hit
+    assert not (wrapped.last_metrics or {}).get("cache_hit")  # a real miss
+    # The fresh answer replaced the blank, so the next call is a genuine hit.
+    assert wrapped.generate("q") == "fresh"
+    assert inner.calls == ["q"]  # second call served from cache
