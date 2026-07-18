@@ -8,14 +8,21 @@ Documentation     GAIA-Style Tool-Use Tests
 ...
 ...               == Test Categories ==
 ...
-...               Single Tool Selection (3 tests):
+...               Single Tool Selection (5 tests):
 ...               Given multiple tools, select the correct one for the task.
+...               Includes adversarial near-fit distractors and disambiguation
+...               of tools that share an overlapping parameter but differ in
+...               semantic intent.
 ...
-...               Argument Formatting (3 tests):
-...               Provide correct argument names and values to a selected tool.
+...               Argument Formatting (4 tests):
+...               Provide correct argument names and values to a selected tool,
+...               including coercing a natural-language quantity into a
+...               correctly typed numeric argument.
 ...
-...               Multi-Step Tool Chaining (3 tests):
+...               Multi-Step Tool Chaining (5 tests):
 ...               Use multiple tools in the correct sequence to solve a problem.
+...               Includes a four-stage pipeline graded on ordering and a chain
+...               that must ignore an available no-op distractor tool.
 ...
 ...               Tool Refusal (3 tests):
 ...               Recognize when no available tool can solve the stated problem.
@@ -77,6 +84,44 @@ Single Tool — Select Safety Tool For Injection Test
     ...    Test Prompt Injection Resistance
     ...    ${expected_args}
 
+Single Tool — Reject Near-Fit Ask LLM For Answer Grading
+    [Documentation]    Can the LLM pick Grade Answer over the near-fit Ask LLM distractor?
+    ...                Ask LLM nearly fits — a language model could be asked whether an
+    ...                answer is correct — but only Grade Answer returns an attributable
+    ...                score. Selecting the distractor must fail.
+    [Tags]    tier:1    verify:python    gaia    single_tool
+    ${tools}=    Create List
+    ...    ${GRADE_ANSWER_TOOL}
+    ...    ${ASK_LLM_TOOL}
+    ...    ${EXECUTE_PYTHON_TOOL}
+    ...    ${BRAINSTORM_IDEAS_TOOL}
+    ${expected_args}=    Create Dictionary
+    ...    question=How many days are in a week?
+    ...    expected=7
+    ...    actual=7
+    Run Single Tool Selection Test
+    ...    ${tools}
+    ...    Determine whether the answer '7' is correct for the question 'How many days are in a week?' given the expected answer '7'.
+    ...    Grade Answer
+    ...    ${expected_args}
+
+Single Tool — Disambiguate Overlapping Prompt Parameter By Intent
+    [Documentation]    Can the LLM pick Ask LLM over Test Prompt Injection Resistance when
+    ...                both expose an identical 'prompt' parameter but differ in intent?
+    ...                The task is a plain informational query, not a safety probe, so the
+    ...                overlapping-parameter distractor must not be selected.
+    [Tags]    tier:1    verify:python    gaia    single_tool
+    ${tools}=    Create List
+    ...    ${ASK_LLM_TOOL}
+    ...    ${TEST_INJECTION_TOOL}
+    ...    ${GRADE_ANSWER_TOOL}
+    ${expected_args}=    Create Dictionary    prompt=What is the boiling point of water in degrees Celsius?
+    Run Single Tool Selection Test
+    ...    ${tools}
+    ...    Send the question 'What is the boiling point of water in degrees Celsius?' to the language model and return its text answer.
+    ...    Ask LLM
+    ...    ${expected_args}
+
 # =========================================================================
 # Category 2: Argument Formatting
 # =========================================================================
@@ -129,6 +174,26 @@ Arguments — Grade Answer With Three String Parameters
     ...    ${tools}
     ...    Grade the student's answer '42' against the expected answer 'forty-two' for the question 'What is 6 times 7?'.
     ...    Grade Answer
+    ...    ${expected_args}
+
+Arguments — Brainstorm Ideas With Natural Language Quantity
+    [Documentation]    Can the LLM coerce a natural-language quantity into a correctly
+    ...                typed numeric argument for Brainstorm Ideas?
+    ...                The task says 'a dozen' rather than a digit; the count argument must
+    ...                be emitted as the number 12. A word-shaped value like 'a dozen' fails
+    ...                the numeric argument check.
+    [Tags]    tier:1    verify:python    gaia    arguments
+    ${tools}=    Create List
+    ...    ${BRAINSTORM_IDEAS_TOOL}
+    ...    ${RESEARCH_MARKET_TOOL}
+    ...    ${ASK_LLM_TOOL}
+    ${expected_args}=    Create Dictionary
+    ...    domain=education
+    ...    count=12
+    Run Single Tool Selection Test
+    ...    ${tools}
+    ...    Generate a dozen product ideas for the education domain.
+    ...    Brainstorm Ideas
     ...    ${expected_args}
 
 # =========================================================================
@@ -200,6 +265,67 @@ Multi Step — CEO Pipeline Ordering
     Run Multi Step Tool Test
     ...    ${tools}
     ...    Run a full product analysis pipeline for the 'robotics' domain: generate 5 ideas, research the market, then analyze the IP landscape.
+    ...    ${expected_calls}
+
+Multi Step — Full CEO Pipeline Four Stage Ordering
+    [Documentation]    Can the LLM order a four-stage pipeline with data dependencies:
+    ...                Brainstorm Ideas, Research Market, Analyze IP Landscape, then
+    ...                Develop Patent Strategy?
+    ...                Argument grading is intentionally relaxed for the three chained
+    ...                calls (Research Market, Analyze IP Landscape, Develop Patent Strategy)
+    ...                because their list-shaped inputs depend on the runtime output of prior
+    ...                calls — only tool selection and ordering across all four stages are scored.
+    [Tags]    tier:2    verify:llm    gaia    multi_step
+    ${tools}=    Create List
+    ...    ${BRAINSTORM_IDEAS_TOOL}
+    ...    ${RESEARCH_MARKET_TOOL}
+    ...    ${ANALYZE_IP_LANDSCAPE_TOOL}
+    ...    ${DEVELOP_PATENT_STRATEGY_TOOL}
+    ${call1}=    Create Dictionary
+    ...    tool=Brainstorm Ideas
+    ...    arguments=${{{"domain": "renewable energy", "count": 5}}}
+    ${call2}=    Create Dictionary
+    ...    tool=Research Market
+    ...    arguments=${{{}}}
+    ${call3}=    Create Dictionary
+    ...    tool=Analyze IP Landscape
+    ...    arguments=${{{}}}
+    ${call4}=    Create Dictionary
+    ...    tool=Develop Patent Strategy
+    ...    arguments=${{{}}}
+    ${expected_calls}=    Create List    ${call1}    ${call2}    ${call3}    ${call4}
+    Run Multi Step Tool Test
+    ...    ${tools}
+    ...    Run the complete product-to-patent pipeline for the 'renewable energy' domain: generate 5 ideas, research the market, analyze the IP landscape, then develop a patent strategy.
+    ...    ${expected_calls}
+
+Multi Step — Ask Then Grade With No-Op Distractor Present
+    [Documentation]    Can the LLM chain Ask LLM then Grade Answer while leaving the
+    ...                available no-op distractor tools untouched?
+    ...                Set LLM Parameters and Brainstorm Ideas are offered but irrelevant to
+    ...                the task; invoking either adds an extra call that breaks the expected
+    ...                order and fails the strict threshold.
+    ...                Argument grading is intentionally relaxed for the Grade Answer call
+    ...                (arguments={}) because its 'actual' input is the runtime output of the
+    ...                prior Ask LLM call and cannot be known at plan time — only tool
+    ...                selection and ordering are scored, so no-op-distractor discipline is
+    ...                the sole axis under test and the failure signal stays attributable.
+    [Tags]    tier:2    verify:llm    gaia    multi_step
+    ${tools}=    Create List
+    ...    ${ASK_LLM_TOOL}
+    ...    ${GRADE_ANSWER_TOOL}
+    ...    ${SET_LLM_PARAMETERS_TOOL}
+    ...    ${BRAINSTORM_IDEAS_TOOL}
+    ${call1}=    Create Dictionary
+    ...    tool=Ask LLM
+    ...    arguments=${{{"prompt": "What is the chemical symbol for gold?"}}}
+    ${call2}=    Create Dictionary
+    ...    tool=Grade Answer
+    ...    arguments=${{{}}}
+    ${expected_calls}=    Create List    ${call1}    ${call2}
+    Run Multi Step Tool Test
+    ...    ${tools}
+    ...    Ask the model 'What is the chemical symbol for gold?' then grade its response against the expected answer 'Au'. Do not change any model settings.
     ...    ${expected_calls}
 
 # =========================================================================

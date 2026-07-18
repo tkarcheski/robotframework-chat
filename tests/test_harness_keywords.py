@@ -32,10 +32,12 @@ import pytest
 from rfc.agent_contract import AgentContract
 from rfc.agent_run import AgentRun
 from rfc.agent_verifiers import (
+    VerificationFailure,
     assert_all_commits_match_convention,
     assert_branch_matches_contract,
     assert_commands_appear_in_order,
     assert_no_commit_while_tests_red,
+    assert_run_did_positive_work,
 )
 from rfc.harness_adapters import (
     ClaudeProcessResult,
@@ -508,6 +510,61 @@ class TestCrossHarnessConformance:
         # command streams must be identical across harnesses.
         values = list(streams.values())
         assert all(stream == values[0] for stream in values), streams
+
+
+# ---------------------------------------------------------------------------
+# Positive-work conformance (#399): a no-op harness must FAIL the matrix.
+#
+# `Harness Run Should Conform` asserts agent-id / branch / transcript /
+# no-commit-while-red — every one of which an EMPTY run satisfies vacuously.
+# rc=0-with-zero-events is deliberately NOT failed at the runner layer (#385:
+# a clarifying-question reply legitimately exits 0 with no commands), so a
+# work-producing scenario must fail a do-nothing harness at the CONFORMANCE
+# layer via the positive-work assertion. This is the deterministic twin of the
+# assertion `Harness Run Should Conform` now runs in `harness_matrix.robot`.
+# ---------------------------------------------------------------------------
+
+
+def _noop_git_canned(agent_needle: str) -> dict[str, ClaudeProcessResult]:
+    """Canned invoker replies for a harness that exits 0 having done nothing.
+
+    The agent emits an empty transcript (zero commands) and the driver's git
+    reads report no commits and no changed paths — the rc=0-with-zero-events
+    case the runner layer deliberately does not fail (#385/#399).
+    """
+    empty = ClaudeProcessResult(returncode=0, stdout="", stderr="")
+    return {agent_needle: empty, "git log": empty, "status --porcelain": empty}
+
+
+class TestPositiveWorkConformance:
+    def test_noop_harness_fails_positive_work(self, tmp_path: Path) -> None:
+        """A harness that exits 0 doing nothing conforms vacuously EXCEPT for the
+        positive-work assertion, which fails it (#399)."""
+        agent_needle, _prefix, _builder = _HARNESSES["opencode"]
+        inv = StubInvoker(canned=_noop_git_canned(agent_needle))
+        kw, workspace, sid = _started(tmp_path, "opencode", inv)
+
+        run = kw.run_agent_task(task="Add a greet helper.", base_branch="main")
+
+        # This really is the vacuous no-op: zero commits, zero changed paths.
+        assert run.commits == ()
+        assert all(cmd.changed_paths_after == () for cmd in run.commands)
+        # The pre-#399 conformance checks all still pass on the empty run ...
+        assert_no_commit_while_tests_red(run)
+        # ... but the positive-work assertion catches the do-nothing harness.
+        with pytest.raises(VerificationFailure, match="positive work"):
+            assert_run_did_positive_work(run)
+
+        kw.end_harness_session("failed")
+        assert _row(workspace["database_url"], sid).ended_at != ""
+
+    @pytest.mark.parametrize("tool", list(_HARNESSES))
+    def test_work_producing_fixture_passes_positive_work(
+        self, tmp_path: Path, tool: str
+    ) -> None:
+        """The real fixture (a commit + a changed path) satisfies positive work."""
+        _kw, _ws, run, _sid, _prefix = _bracketed_run(tmp_path, tool)
+        assert_run_did_positive_work(run)
 
 
 # ---------------------------------------------------------------------------

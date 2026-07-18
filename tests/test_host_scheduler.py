@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -94,6 +95,61 @@ class TestLoadHostConfig:
         p.write_text('[[hosts]]\nname = "h"\n')
         with pytest.raises(ValueError, match="endpoint"):
             load_host_config(p)
+
+
+# ---------------------------------------------------------------------------
+# HostSpec.skips_model — the single per-host skip predicate (#401)
+# ---------------------------------------------------------------------------
+
+
+class TestHostSpecSkipsModel:
+    """The one home for the skip rule, shared by scheduler + RSI watcher (#401)."""
+
+    def test_true_when_model_listed(self) -> None:
+        spec = HostSpec(name="h", endpoint="http://h:11434", skip_models=["a", "b"])
+        assert spec.skips_model("a") is True
+
+    def test_false_when_model_absent(self) -> None:
+        spec = HostSpec(name="h", endpoint="http://h:11434", skip_models=["a"])
+        assert spec.skips_model("b") is False
+
+    def test_false_when_skip_list_empty(self) -> None:
+        spec = HostSpec(name="h", endpoint="http://h:11434")
+        assert spec.skips_model("a") is False
+
+    def test_host_state_eligible_routes_through_predicate(self) -> None:
+        """HostState.eligible defers its skip clause to HostSpec.skips_model —
+        the same predicate the watcher calls — so the two lanes share one rule
+        and cannot re-drift (#401).
+
+        Spied with ``autospec=True, side_effect=original`` (mirroring
+        ``test_watch_skip_decision_routed_through_shared_predicate`` on the
+        watcher lane) so the proof is non-vacuous: re-inlining the skip check
+        to ``job.model not in self.spec.skip_models`` leaves the predicate
+        uncalled and trips this test. Behaviour is preserved because
+        ``side_effect`` delegates to the real method.
+        """
+        host = HostState(
+            spec=HostSpec(name="h", endpoint="http://h:11434", skip_models=["a"]),
+            models=["a", "b"],
+        )
+        original = HostSpec.skips_model
+        with patch.object(
+            HostSpec, "skips_model", autospec=True, side_effect=original
+        ) as spy:
+            assert host.eligible(Job(model="a", suite={})) is False  # skipped
+            assert host.eligible(Job(model="b", suite={})) is True  # available
+            # eligible still requires availability, independent of the skip
+            # clause; an unavailable model short-circuits before the predicate.
+            assert host.eligible(Job(model="c", suite={})) is False
+
+        # Routing proof: the skip decision for every available model went
+        # through the shared predicate. A re-inlined check would leave
+        # call_args_list empty and fail here. "c" short-circuits on
+        # availability, so the predicate is consulted only for "a" and "b".
+        assert spy.call_args_list  # eligible actually routed through skips_model
+        assert {call.args[1] for call in spy.call_args_list} == {"a", "b"}
+        assert spy.call_args_list[0].args[1] == "a"  # skipped model tested first
 
 
 # ---------------------------------------------------------------------------

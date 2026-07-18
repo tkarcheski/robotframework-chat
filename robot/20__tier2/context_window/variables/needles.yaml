@@ -31,3 +31,82 @@ NEEDLE_POSITIONS:
   - start
   - middle
   - end
+
+# --- Council-nominated variations (mirror issue #674) ---------------------
+#
+# The groups below layer a second axis on top of raw retrieval: each case
+# holds the retrieval condition easy (run at the floor level of 25% fill,
+# end position) and instead probes a distinct reasoning capability. A model
+# that can retrieve but lacks the probed capability fails the case, so the
+# failure is attributable to the varied axis rather than to context stress.
+# Facts are all distinct from NEEDLE_CASES above — no duplication.
+
+# Conflicting dates: two dates sit in the same block, but only the later,
+# superseding date is correct. Probes recency / supersession resolution — a
+# model that returns the earlier (superseded) date fails.
+CONFLICTING_NEEDLE_CASES:
+  - name: "Superseding Launch Date"
+    needle_fact: "The product launch was initially scheduled for March 10, 2026. Following a supply delay, the launch was formally rescheduled and now takes place on September 22, 2026. The September date supersedes every earlier plan."
+    question: "What is the current, superseding product launch date? Give the month, day, and year."
+    expected_answer: "September 22, 2026"
+
+  - name: "Superseding Contract Deadline"
+    needle_fact: "An early draft listed the contract signing deadline as June 1, 2026. The final agreement moved that deadline; the binding signing deadline is now October 30, 2026, which overrides the draft."
+    question: "What is the binding contract signing deadline? Give the month, day, and year."
+    expected_answer: "October 30, 2026"
+
+# Decoy near-needle: a second fact with near-identical wording differs only by
+# entity. Probes entity disambiguation — a model that pattern-matches the shape
+# and returns the decoy entity's value fails.
+DECOY_NEEDLE_CASES:
+  - name: "Primary vs Archive Vault Retention"
+    needle_fact: "The PRIMARY backup vault SEC-VAULT-11 retains snapshots for 45 days. The ARCHIVE backup vault SEC-VAULT-12 retains snapshots for 365 days."
+    question: "For how many days does the PRIMARY backup vault SEC-VAULT-11 retain snapshots?"
+    expected_answer: "45 days"
+
+  - name: "Staging vs Production Cache TTL"
+    needle_fact: "The STAGING cache cluster CACHE-EAST-1 uses a TTL of 30 seconds. The PRODUCTION cache cluster CACHE-EAST-2 uses a TTL of 300 seconds."
+    question: "What TTL does the PRODUCTION cache cluster CACHE-EAST-2 use?"
+    expected_answer: "300 seconds"
+
+# Retrieval plus transformation: the needle holds inputs, but the answer must
+# be derived (arithmetic), not echoed. Probes retrieve-and-compute — a model
+# that echoes an input value without transforming it fails.
+TRANSFORM_NEEDLE_CASES:
+  - name: "Servers Per Rack"
+    needle_fact: "The data center houses 240 servers distributed evenly across 8 identical racks."
+    question: "How many servers are installed in each rack? Give only the number."
+    expected_answer: "30"
+
+  - name: "Monthly License Installment"
+    needle_fact: "The annual software license costs 1,200 dollars, billed in 12 equal monthly installments."
+    question: "How many dollars is each monthly installment? Give only the number."
+    expected_answer: "100"
+
+# Contradictory distractor: a rescinded/withdrawn fact contradicts the current,
+# authoritative one. Probes authority / validity resolution — a model that
+# returns the rescinded value fails.
+CONTRADICTION_NEEDLE_CASES:
+  - name: "Current vs Rescinded Escalation SLA"
+    needle_fact: "Current policy, effective 2026, sets the incident escalation SLA at 15 minutes. A now-rescinded 2024 memo had stated the SLA was 60 minutes; that memo no longer applies."
+    question: "Under current policy, what is the incident escalation SLA?"
+    expected_answer: "15 minutes"
+
+  - name: "Approved vs Retracted Uptime SLA"
+    needle_fact: "The approved service uptime SLA is 99.9 percent. A superseded draft had promised 99.99 percent, but that higher figure was retracted and is not in force."
+    question: "What is the approved service uptime SLA percentage? Give only the number."
+    expected_answer: "99.9"
+
+# Multi-hop reasoning: the answer requires chaining two linked facts, neither of
+# which states it directly. Probes multi-hop retrieval — a model that grabs the
+# first matching entity without following the chain fails.
+MULTIHOP_NEEDLE_CASES:
+  - name: "Service to Cost Center"
+    needle_fact: "Service ORION runs exclusively in the Dublin region. Every service in the Dublin region is billed under cost center CC-EU-07."
+    question: "Under which cost center is service ORION billed?"
+    expected_answer: "CC-EU-07"
+
+  - name: "Token to Datacenter"
+    needle_fact: "The token TKN-88 is issued by the auth service AUTH-CORE. The auth service AUTH-CORE runs out of the Singapore datacenter."
+    question: "In which datacenter does the service that issues token TKN-88 run?"
+    expected_answer: "Singapore"
