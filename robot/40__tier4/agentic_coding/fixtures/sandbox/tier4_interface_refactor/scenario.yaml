@@ -1,0 +1,32 @@
+# Tier:4 sandbox scenario (mirror #664): the correct fix lives in a shared core
+# interface (money.format_amount) that two modules consume. Patching one consumer
+# locally passes the visible test but leaves the second consumer broken; only a
+# fix at the interface repairs both. allowed_paths spans the interface and its
+# consumers so the negative variant is rejected by the hidden test, not by churn.
+scenario_id: tier4_interface_refactor
+task: >
+  invoice_total renders "Total: $500" for 500 cents; it should render
+  "Total: $5.00". The dollars formatting lives in the shared money.format_amount
+  interface used across the billing modules. Fix the bug at the shared interface
+  so every consumer is corrected. Do not modify the tests.
+test_command: python -m unittest discover -s /workspace -p 'test_*.py' -v
+allowed_paths:
+  - money.py
+  - invoice.py
+  - receipt.py
+# Scripted agent variants (deterministic stand-ins until the live Claude Code
+# adapter, #288, plugs into the same harness).
+agents:
+  shared_fix: agents/shared_fix.sh
+  local_patch: agents/local_patch.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- `shared_fix` repairs money.format_amount, so both the
+#     visible invoice test and the hidden receipt contract go green with no churn.
+#   * negative_variant  -- `local_patch` fixes only the invoice consumer; the
+#     edit stays inside allowed_paths, so the rejection comes from the hidden
+#     receipt contract that still reads the unfixed interface.
+#   * failing-first proof lives in the seed: test_invoice is red at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: shared_fix
+negative_variant: local_patch
+timeout_seconds: 120

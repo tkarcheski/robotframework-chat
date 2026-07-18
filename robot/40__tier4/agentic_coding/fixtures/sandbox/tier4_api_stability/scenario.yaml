@@ -1,0 +1,29 @@
+# Tier:4 sandbox scenario (mirror #664): fix a behavioural bug WITHOUT changing
+# the module's public API. A hidden contract pins get_setting's published
+# signature (config, key); a fix that widens it is rejected even though the
+# visible behaviour tests pass.
+scenario_id: tier4_api_stability
+task: >
+  get_setting in settings_store.py raises KeyError for an absent key; it should
+  return "default" instead. Fix the bug without changing the public API of
+  get_setting -- its call signature must stay the same. Do not modify the tests.
+test_command: python -m unittest discover -s /workspace -p 'test_*.py' -v
+allowed_paths:
+  - settings_store.py
+# Scripted agent variants (deterministic stand-ins until the live Claude Code
+# adapter, #288, plugs into the same harness).
+agents:
+  preserve: agents/preserve.sh
+  widen: agents/widen.sh
+# RFC-007 quality bar (#219), enforced by check_battery_scenarios.py:
+#   * reference_variant -- `preserve` fixes the behaviour and keeps the (config,
+#     key) signature, so the whole suite (visible + hidden API contract) goes
+#     green with no file churn.
+#   * negative_variant  -- `widen` fixes the behaviour but adds a parameter; the
+#     visible tests pass, so the rejection comes from the hidden API contract.
+#   * failing-first proof lives in the seed: test_absent_key_falls_back_to_default
+#     is red at t=0.
+#   * timeout_seconds -- bounded runtime within the harness wall-clock cap (300s).
+reference_variant: preserve
+negative_variant: widen
+timeout_seconds: 120

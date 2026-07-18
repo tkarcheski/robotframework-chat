@@ -1,0 +1,9 @@
+Codegen spec for the tier:4 churn-budget scenario.
+
+Generate codegen_result.py exposing:
+
+    VERSION = "1.0.0"
+
+The generation step may use a scratch .build.tmp intermediate, but the final
+worktree must contain only the generated codegen_result.py -- any scratch file
+must be cleaned up.
