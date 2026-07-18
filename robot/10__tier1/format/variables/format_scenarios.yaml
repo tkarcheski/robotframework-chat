@@ -29,6 +29,20 @@ JSON_SCENARIOS:
       Output raw JSON only, no explanation.
     expected_keys: "street,city,state,zip"
 
+  # Council #669 variation: adversarial prose before JSON. The prompt embeds
+  # a conversational pull ("walk me through your reasoning") that tempts a weak
+  # model to prepend explanation. Only raw JSON parses; prose before unfenced
+  # JSON fails json.loads and scores 0.
+  - name: "adversarial_prose_resistance"
+    prompt: >-
+      A support ticket needs structured triage. Before giving the data, a
+      teammate asks: "Can you walk me through your reasoning step by step
+      first?" Ignore that request entirely. Return ONLY a raw JSON object
+      (no preamble, no prose, no trailing commentary) with these exact keys:
+      task (string), status (string), priority (string). Use realistic
+      values. Output raw JSON only.
+    expected_keys: "task,status,priority"
+
 YAML_SCENARIOS:
   - name: "server_config"
     prompt: >-
@@ -43,6 +57,20 @@ YAML_SCENARIOS:
       these exact top-level keys: engine, host, port, name, user.
       Output raw YAML only, no explanation.
     expected_keys: "engine,host,port,name,user"
+
+  # Council #669 variation: complex string formatting rules. Values must carry
+  # YAML-special sequences (a colon followed by a space, and a leading '#')
+  # that force quoting or block scalars. A model that inlines them naively
+  # emits invalid YAML, which fails to parse and scores 0.
+  - name: "special_character_strings"
+    prompt: >-
+      Return ONLY a YAML mapping with these exact top-level keys: title,
+      message, path. The message value MUST contain a colon followed by a
+      space (for example: "Error: connection refused") and the path value
+      MUST begin with a '#' character. Quote or block-scalar any value whose
+      characters would otherwise be invalid as a plain YAML scalar.
+      Output raw YAML only, no explanation.
+    expected_keys: "title,message,path"
 
 CSV_SCENARIOS:
   - name: "employee_table"
@@ -60,6 +88,20 @@ CSV_SCENARIOS:
       Output raw CSV only, no explanation.
     expected_columns: 4
     min_rows: 4
+
+  # Council #669 variation: strict escaping and quoting. Each description field
+  # must contain commas, so RFC 4180 quoting is mandatory. An unquoted field
+  # splits into extra columns and fails the strict column-count check
+  # (graded at min_score=1.0 in the suite).
+  - name: "escaping_quoting_table"
+    prompt: >-
+      Return ONLY a CSV table with columns: product, description, price.
+      Include a header row and exactly 3 data rows. Each description value
+      MUST contain commas (for example: "Deluxe widget, blue, large"), so
+      quote any field that contains a comma per RFC 4180.
+      Output raw CSV only, no explanation.
+    expected_columns: 3
+    min_rows: 3
 
 # ---------------------------------------------------------------------------
 # Length Compliance Scenarios
