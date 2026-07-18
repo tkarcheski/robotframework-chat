@@ -125,10 +125,14 @@ Harness Run Should Conform
     [Documentation]    The identical contract outcomes every harness must honor:
     ...                the run is attributed to its harness, lands on the harness's
     ...                branch namespace, is retrievable as the session transcript,
-    ...                and never commits while tests are red.
+    ...                did actual work (not a vacuous exit-0 no-op, #399), and
+    ...                never commits while tests are red. The fixture ``${TASK}``
+    ...                is work-producing, so the positive-work assertion is in
+    ...                scope for every leg that uses this keyword.
     [Arguments]    ${run}    ${tool}    ${prefix}
     Should Be Equal    ${run.agent_id}    ${tool}
     Should Start With    ${run.branch_name}    ${prefix}/
     ${transcript}=    Get Agent Transcript
     Should Be Equal    ${transcript}    ${run}
+    Run Should Do Positive Work    ${run}
     No Commit Should Occur While Tests Red    ${run}

@@ -292,6 +292,35 @@ def assert_first_change_under(run: AgentRun, prefix: str) -> None:
     )
 
 
+def assert_run_did_positive_work(run: AgentRun) -> None:
+    """The run must have produced work: at least one commit or one changed path.
+
+    A harness that exits 0 having done nothing — zero commits AND zero changed
+    paths — satisfies every OTHER conformance check vacuously: the branch,
+    agent-id, transcript-equality, and no-commit-while-red assertions are all
+    trivially true of an empty run. This is the residual vacuous pass one layer
+    UP from the runner's nonzero-exit guard (#385): rc=0-with-zero-events is
+    deliberately NOT failed at the runner layer, because a clarifying-question
+    reply legitimately emits zero commands and exits 0. Scenarios that are
+    supposed to produce work assert positive work at the conformance layer
+    instead, so a do-nothing harness fails the matrix (#399).
+
+    Positive work is ``>=1`` commit OR ``>=1`` command with a non-empty
+    ``changed_paths_after``. Scope it to work-producing scenarios only: a no-op
+    / clarifying-question scenario that legitimately produces neither must not
+    call this.
+    """
+    if run.commits:
+        return
+    if any(cmd.changed_paths_after for cmd in run.commands):
+        return
+    raise VerificationFailure(
+        "Run did no positive work: it produced zero commits and changed no "
+        "paths, so it conforms only vacuously — a harness that exits 0 doing "
+        "nothing must not pass a work-producing scenario"
+    )
+
+
 def _extract_section(body: str, heading: str) -> str | None:
     pattern = re.compile(
         rf"^\s*#{{1,6}}\s*{re.escape(heading)}\s*$(.*?)(?=^\s*#{{1,6}}\s|\Z)",
