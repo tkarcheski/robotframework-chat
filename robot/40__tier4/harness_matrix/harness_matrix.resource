@@ -13,11 +13,18 @@ Library           OperatingSystem
 *** Keywords ***
 End Session And Cleanup
     [Documentation]    Close the session row with the run's real outcome and
-    ...                remove the throwaway workspace. The outcome tracks
-    ...                ``${TEST STATUS}`` (``FAIL`` -> ``failed``, else
-    ...                ``success``) so a failed live leg is never mislabeled a
-    ...                success in the ``agentic_harnesses`` spine (#213).
+    ...                remove the throwaway workspace. The outcome maps every
+    ...                teardown-visible ``${TEST STATUS}`` explicitly —
+    ...                ``FAIL`` -> ``failed``, ``SKIP`` -> ``partial``,
+    ...                ``PASS`` -> ``success`` — so neither a failed (#213) nor a
+    ...                skipped-after-open (#254) live leg is mislabeled a success
+    ...                in the ``agentic_harnesses`` spine. A bare else -> success
+    ...                folds ``SKIP`` into ``success``, the #213 trap via the
+    ...                skip branch.
     [Arguments]    ${ws}
-    ${outcome}=    Set Variable If    "${TEST STATUS}" == "FAIL"    failed    success
+    ${outcome}=    Set Variable If
+    ...    "${TEST STATUS}" == "FAIL"    failed
+    ...    "${TEST STATUS}" == "SKIP"    partial
+    ...    success
     Run Keyword And Ignore Error    End Harness Session    outcome=${outcome}
     Remove Directory    ${ws}[path]    recursive=True

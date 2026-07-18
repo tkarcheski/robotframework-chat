@@ -11,6 +11,7 @@ code path without requiring real API keys or network access.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import patch
@@ -228,7 +229,13 @@ class TestCEOProviderSelection:
 
     def test_client_passes_max_tokens(self) -> None:
         """The client property must forward CEO_MAX_TOKENS (default 4096)."""
-        with patch("rfc.ceo_keywords.create_provider") as mock_create:
+        with (
+            patch.dict("os.environ", {}),
+            patch("rfc.ceo_keywords.create_provider") as mock_create,
+        ):
+            # Clear any ambient CEO_MAX_TOKENS (dev .env) so this exercises the
+            # default; patch.dict restores os.environ on exit.
+            os.environ.pop("CEO_MAX_TOKENS", None)
             mock_create.return_value = object()
             kw = CEOKeywords()
             _ = kw.client
@@ -292,6 +299,9 @@ class TestCEOProviderSelection:
             patch.dict("os.environ", env),
             patch("rfc.ceo_keywords.create_provider") as mock_create,
         ):
+            # Clear any ambient CEO_MAX_TOKENS (dev .env) so this exercises the
+            # default; patch.dict restores os.environ on exit.
+            os.environ.pop("CEO_MAX_TOKENS", None)
             mock_create.return_value = object()
             kw = CEOKeywords()
             kw._get_multi_grader()

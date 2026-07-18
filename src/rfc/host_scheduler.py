@@ -45,6 +45,16 @@ class HostSpec:
     max_parallel: int = 1
     skip_models: list[str] = field(default_factory=list)
 
+    def skips_model(self, model: str) -> bool:
+        """Whether operators marked *model* ineligible to run on this host.
+
+        The single home for the per-host skip rule. Both the scheduler
+        (:meth:`HostState.eligible`) and the RSI priority watcher route their
+        skip decision through this predicate so the two lanes cannot re-drift
+        (#401).
+        """
+        return model in self.skip_models
+
 
 @dataclass
 class SchedulerDefaults:
@@ -146,7 +156,7 @@ class HostState:
 
     def eligible(self, job: Job) -> bool:
         """Whether this host can run *job* at all."""
-        return job.model in self.models and job.model not in self.spec.skip_models
+        return job.model in self.models and not self.spec.skips_model(job.model)
 
     def can_start(self, job: Job) -> bool:
         """Whether *job* may be dispatched here right now.

@@ -93,3 +93,62 @@ Needle Position Effect — 75% Fill, End Position
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    75    end    ${CONTEXT_WINDOW}
     END
+
+Conflicting-Needle Retrieval — Superseding Date Wins, 25% Fill, End Position
+    [Documentation]    Two conflicting dates share the block; only the later,
+    ...                superseding date is correct. Held at the floor retrieval
+    ...                condition (25% fill, end) so a failure is attributable to
+    ...                conflict resolution, not context stress. Fails on a model
+    ...                that returns the earlier, superseded date.
+    [Tags]    tier:2    verify:llm    conflict
+    FOR    ${case}    IN    @{CONFLICTING_NEEDLE_CASES}
+        ${result}=    Probe Needle At Fill Level    ${case}    25    end    ${CONTEXT_WINDOW}
+        Assert Needle Recalled    ${result}
+    END
+
+Decoy-Needle Retrieval — Similar-Wording Disambiguation, 25% Fill, End Position
+    [Documentation]    A near-identical decoy fact differs only by entity. Held
+    ...                at the floor retrieval condition so a failure is
+    ...                attributable to entity disambiguation, not context stress.
+    ...                Fails on a model that pattern-matches the shape and
+    ...                returns the decoy entity's value.
+    [Tags]    tier:2    verify:llm    decoy
+    FOR    ${case}    IN    @{DECOY_NEEDLE_CASES}
+        ${result}=    Probe Needle At Fill Level    ${case}    25    end    ${CONTEXT_WINDOW}
+        Assert Needle Recalled    ${result}
+    END
+
+Transform-Needle Retrieval — Retrieve And Compute, 25% Fill, End Position
+    [Documentation]    The answer must be derived from the needle's inputs, not
+    ...                echoed. Held at the floor retrieval condition so a failure
+    ...                is attributable to the transformation, not context stress.
+    ...                Fails on a model that echoes an input value without
+    ...                computing the derived answer.
+    [Tags]    tier:2    verify:llm    transform
+    FOR    ${case}    IN    @{TRANSFORM_NEEDLE_CASES}
+        ${result}=    Probe Needle At Fill Level    ${case}    25    end    ${CONTEXT_WINDOW}
+        Assert Needle Recalled    ${result}
+    END
+
+Contradiction-Needle Retrieval — Rescinded Distractor, 25% Fill, End Position
+    [Documentation]    A rescinded fact contradicts the current, authoritative
+    ...                one. Held at the floor retrieval condition so a failure is
+    ...                attributable to authority resolution, not context stress.
+    ...                Fails on a model that returns the rescinded value.
+    [Tags]    tier:2    verify:llm    contradiction
+    FOR    ${case}    IN    @{CONTRADICTION_NEEDLE_CASES}
+        ${result}=    Probe Needle At Fill Level    ${case}    25    end    ${CONTEXT_WINDOW}
+        Assert Needle Recalled    ${result}
+    END
+
+Multi-Hop Needle Retrieval — Chained Facts, 25% Fill, End Position
+    [Documentation]    The answer requires chaining two linked facts, neither of
+    ...                which states it directly. Held at the floor retrieval
+    ...                condition so a failure is attributable to multi-hop
+    ...                reasoning, not context stress. Fails on a model that grabs
+    ...                the first matching entity without following the chain.
+    [Tags]    tier:2    verify:llm    multihop
+    FOR    ${case}    IN    @{MULTIHOP_NEEDLE_CASES}
+        ${result}=    Probe Needle At Fill Level    ${case}    25    end    ${CONTEXT_WINDOW}
+        Assert Needle Recalled    ${result}
+    END
