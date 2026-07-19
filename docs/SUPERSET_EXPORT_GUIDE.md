@@ -5,7 +5,7 @@ dashboards in the robotframework-chat project. Covers the browser UI, REST API,
 CLI, and automated backup approaches.
 
 For initial stack setup and dashboard configuration, see
-[GRAFANA_SUPERSET_SETUP.md](GRAFANA_SUPERSET_SETUP.md).
+[SUPERSET_SETUP.md](SUPERSET_SETUP.md).
 
 ---
 
@@ -360,4 +360,4 @@ backup-superset:
 
 For general Superset issues (container startup, database connectivity),
 see the Troubleshooting section in
-[GRAFANA_SUPERSET_SETUP.md](GRAFANA_SUPERSET_SETUP.md).
+[SUPERSET_SETUP.md](SUPERSET_SETUP.md).

@@ -1,8 +1,9 @@
 # CI Agent Inventory
 
-> **Note:** The canonical documentation for CI/CD lives in `ai/pipelines.md`
-> and `docs/requirements.md`. This file contains CI-specific script details that
-> supplement those documents.
+> **Note:** CI behavior is defined by `.github/workflows/*.yml` (triggers and
+> jobs) and the Makefile targets they call (all executable logic). This file
+> documents the CI helper scripts. Roadmap items live in the issue tracker
+> (see robotframework-chat #687).
 
 Scripts and automation used by the GitHub Actions pipeline
 (`.github/workflows/`) and the local `make run-ci-pipeline` flow. GitLab CI

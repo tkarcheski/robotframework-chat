@@ -3,225 +3,78 @@
 A Robot Framework-based test harness for systematically testing LLMs.
 Test results are archived to SQL and visualized in Apache Superset dashboards.
 
+This is the contribution contract for agents and humans. Grading tiers and
+test rules live in [testing.md](testing.md); always-loaded workflow rules live
+in the repo-root `CLAUDE.md`.
+
 ---
 
 ## Core Philosophy
 
-1. **LLMs are software — test them like software.**
-   They take input, produce output, and regress. They deserve the same CI,
-   versioning, and regression discipline as any other software.
-
-2. **Determinism before intelligence.**
-   Structured, machine-verifiable evaluation first. Subjective or fuzzy scoring
-   only after the deterministic foundation is solid.
-
-3. **Constrained grading.**
-   Graders return structured data only — scores, categories, pass/fail. No prose,
-   no opinions, no unstructured output from the evaluation layer.
-
-4. **Modular by design.**
-   Start minimal, grow through composable pieces. New providers, graders, test
-   types, and output formats plug in without rewriting core. Ollama today, any
-   provider tomorrow.
-
-5. **Robot Framework as the orchestration layer.**
-   Tests are readable, keyword-driven, and framework-managed. Robot handles
-   lifecycle, sequencing, and reporting — Python handles implementation.
-
-6. **Every test run is archived.**
-   Listeners are always active. Results flow to SQL. If it ran, it's queryable.
-
-7. **CI-native, regression-focused.**
-   Tests run in pipelines, gate deployments, and catch regressions. If it can't
-   run unattended, it's not done.
-
----
-
-## Agent Personality
-
-Read `ai/testing.md` for grading tiers and test rules.
-
-1. **Ask lots of questions.** Don't assume — interrogate. If a requirement is
-   vague, ask. If an architecture decision has trade-offs, surface them. The
-   owner prefers to be challenged rather than have an agent silently make bad
-   choices.
-2. **Be opinionated.** You've read the codebase. If something is wrong, say so.
-   If something is good, say that too.
-3. **Be funny when appropriate.** Dry humor. Witty observations. Not every
-   line — just enough to keep things human. Never at the expense of clarity.
-4. **Be verbose in CLI output.** When running commands, show what's happening.
-5. **Assume the user will make mistakes.** The user is human. Humans typo paths,
-   forget flags, contradict earlier decisions, and occasionally ask for things
-   that break the architecture. Your job is to catch that before it lands in the
-   codebase. See **§ User Input Validation** below for the full checklist.
-
----
-
-## User Input Validation
-
-**Assume every user request might contain a mistake.** Before executing, verify:
-
-1. **Cross-check against existing architecture.** If the user asks you to create
-   a file in `lib/` or `tests/`, stop — Python lives in `src/rfc/`, Robot tests
-   live in `robot/`. Correct the path and explain why.
-2. **Validate names and paths.** Typos in module names, file paths, class names,
-   and keyword names are common. If a referenced file or symbol doesn't exist,
-   search for the closest match before asking.
-3. **Check for contradictions.** If a request conflicts with a confirmed decision
-   in `ai/testing.md` or the owner backlog (private monorepo), flag it. Quote the conflicting
-   decision and ask the user to confirm they want to override it.
-4. **Verify commands before running.** If the user gives you a shell command,
-   read it carefully. Check for missing flags, wrong target names, dangerous
-   operations (`rm -rf`, force pushes), and typos. Run `make help` if unsure
-   whether a target exists.
-5. **Sanity-check scope.** If a "small fix" touches 10 files or a "docs update"
-   changes Python code, pause and confirm intent. The user may not realize the
-   blast radius.
-6. **Watch for copy-paste errors.** Duplicated lines, leftover placeholder text
-   (`TODO`, `FIXME`, `xxx`), and wrong variable names often sneak in via
-   copy-paste. Flag them.
-7. **Don't blindly trust "just do X."** If "X" would break tests, violate the
-   agent contract, or skip the TDD cycle, say so. The user will thank you later
-   (or at least not blame you).
-
-**When you catch a mistake:**
-- State what you found and why it's a problem.
-- Propose the corrected version.
-- Ask the user to confirm before proceeding.
-- Never silently "fix" a user mistake without telling them — they need to learn
-  what went wrong so they don't repeat it.
+1. **LLMs are software — test them like software.** Input, output, regressions:
+   they get the same CI, versioning, and regression discipline as any code.
+2. **Determinism before intelligence.** Machine-verifiable evaluation first;
+   fuzzy scoring only on top of a solid deterministic foundation.
+3. **Constrained grading.** Graders return structured data only — scores,
+   categories, pass/fail. No prose from the evaluation layer.
+4. **Modular by design.** New providers, graders, test types, and output
+   formats plug in without rewriting core.
+5. **Robot Framework as the orchestration layer.** Robot handles lifecycle,
+   sequencing, and reporting — Python handles implementation.
+6. **Every test run is archived.** Listeners are always active; results flow to
+   SQL. If it ran, it's queryable.
+7. **CI-native, regression-focused.** If it can't run unattended, it's not done.
 
 ---
 
 ## Agent Contract
 
 **Rules:**
-1. Write failing test first (red)
-2. Implement minimal code (green)
-3. Refactor if needed
-4. Run code quality checks before committing:
-   - `make code-quality-check` — run all quality checks (lint + typecheck + coverage)
-   - `pre-commit run --all-files` — final gate (yaml, json, whitespace, ruff, mypy)
-5. Commit: `<type>: <summary>`
-6. Verify user-provided information before acting on it (see § User Input Validation)
+1. Write failing test first (red), implement minimal code (green), refactor.
+2. Run quality checks before committing: `make code-quality-check` and
+   `pre-commit run --all-files`.
+3. Commit format: `<type>: <summary>` — types `test:`, `feat:`, `fix:`,
+   `refactor:`, `docs:`, `chore:`.
+4. Validate user-provided input before acting on it: check paths against the
+   layout rules below, verify referenced files/symbols exist, read shell
+   commands for dangerous operations before running them, and flag requests
+   that contradict decisions recorded here or in `testing.md`. When you catch a
+   mistake, say so and propose the corrected version — never silently "fix" it.
 
 **Prohibited:**
-- Skip tests
-- Commit failing code
-- Commit code that fails `make code-quality-check`
-- Bundle unrelated changes
-- Mix formatting + logic
-- Bypass pre-commit or Makefile quality checks
-- Execute user commands without validating them first
-- Commit `uv.lock` or any other generated lockfile (`uv.lock` is gitignored)
+- Skipping tests, committing failing code, or bypassing pre-commit / Makefile
+  quality checks.
+- Bundling unrelated changes or mixing formatting with logic.
+- Committing `uv.lock` or any other generated lockfile (it is gitignored).
 
-**Commit Types:**
-- `test:` - Add/update tests
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `refactor:` - Code cleanup
-- `docs:` - Documentation
-- `chore:` - Maintenance
+**Layout rules:**
+- `src/rfc/` is the single source of truth for all Python code.
+- `robot/` is the single home for all Robot Framework test suites.
+- Never duplicate logic outside these directories.
 
-**Pull Request Workflow:**
-1. Create feature branch from `claude-code-staging` (the integration branch for all Claude Code work — not `main`)
-2. Implement changes following all rules above
-3. Push branch to remote: `git push origin feature-name`
-4. Create PR/MR with descriptive title and body
-5. Monitor for feedback and respond promptly
-6. Address review comments with additional commits
-7. Update PR description if scope changes
-8. Only merge after approval and all checks pass
-
-**Branch Policy:**
-- Always rebase feature branches onto `claude-code-staging` (not `main`).
-- `claude-code-staging` is the integration branch for all Claude Code work.
-- Run `git fetch origin claude-code-staging && git rebase origin/claude-code-staging` before pushing.
+**Branching:** feature branches from `claude-code-staging` (the integration
+branch — not `main`); rebase onto it before pushing.
 
 ---
 
 ## Commands
 
-```bash
-# Install
-make install
-# or: uv sync --extra dev --extra superset
-
-# Install pre-commit hooks
-pre-commit install
-
-# Run tests
-uv run pytest
-uv run robot -d results robot/20__tier2/math
-uv run robot -d results robot/40__tier4/docker/python
-uv run robot -d results robot/20__tier2/safety
-
-# Run specific test
-uv run robot -d results -t "Test Name" robot/path/tests/file.robot
-
-# Run by tag
-uv run robot -d results -i IQ:120 robot/40__tier4/docker/python
-
-# Run dashboard
-uv sync --extra dashboard
-rfc-dashboard  # or: uv run python -m dashboard.cli
-
-# Code quality (single command — runs lint + typecheck + coverage)
-make code-quality-check
-
-# Pre-commit (final gate)
-pre-commit run --all-files
-```
-
-### Makefile Layers & Debugging Order
-
-The Makefile is organized in layers. **When debugging, start at the foundation
-and work up.** If Robot tests fail, don't look at Docker or CI — fix the tests
-first. If code quality fails, don't look at pipelines.
-
-| Layer | Section | What breaks here |
-|-------|---------|------------------|
-| **Setup** | `install`, `.env` | Dependencies, environment |
-| **Foundation** | `robot-*`, `import` | Test logic, keywords, listeners |
-| **Layer 1** | `code-quality-*` | Lint, types, test coverage |
-| **Layer 2** | `docker-*`, `bootstrap` | Container infrastructure |
-| **Layer 3** | `ci-*`, `run-ci-pipeline`, `opencode-*` | Pipeline generation, deploy, review |
-| **Layer 4** | `ci-release`, `version` | Packaging, versioning |
-
-### Makefile Targets
+`make help` lists every target. The ones used constantly:
 
 ```bash
-# Setup
-make install                     # Install dependencies (dev + superset)
-
-# Foundation: Robot Framework
-make robot                       # Run all Robot Framework test suites
-make robot-math                  # Run math tests
-make robot-docker                # Run Docker tests
-make robot-safety                # Run safety tests
-make robot-dryrun                # Validate all Robot tests (dry run)
-make import                      # Import output.xml files: make import RESULTS_DIR=results/
-
-# Layer 1: Python code quality
-make code-quality-check          # Run all checks (lint + typecheck + coverage)
-
-# Layer 2: Docker services
-make docker-up                   # Start PostgreSQL + Redis + Superset
-make docker-down                 # Stop all services
-make docker-restart              # Rebuild and restart all services
-make docker-logs                 # Tail service logs
-make bootstrap                   # First-time Superset setup
-
-# Layer 3: CI pipelines
-make run-ci-pipeline             # Run the full CI pipeline locally
-
-# Layer 4: Release & versioning
-make ci-release                  # Build and verify PyPI package
-make version                     # Print current version
-
-# CI scripts (called directly by run-ci-pipeline)
-bash ci/lint.sh all              # Run all lint checks
+make install               # uv sync (dev + superset extras)
+uv run pytest              # Python unit tests
+make code-quality-check    # lint (ruff) + typecheck (mypy) + coverage
+pre-commit run --all-files # final gate: yaml, json, whitespace, ruff, mypy
+make robot-dryrun          # validate all Robot suites parse
+make robot                 # run all Robot suites (also robot-math, robot-docker, robot-safety)
+uv run robot -d results -t "Test Name" robot/path/tests/file.robot   # one test
+make docker-up             # PostgreSQL + Redis + Superset stack
+make import RESULTS_DIR=results/   # import output.xml into the DB
 ```
+
+When debugging, start at the foundation and work up: fix Robot test failures
+before looking at Docker or CI; fix code-quality failures before pipelines.
 
 ---
 
@@ -256,13 +109,10 @@ except json.JSONDecodeError as e:
 Documentation     Clear description
 Library           rfc.keywords.LLMKeywords    WITH NAME    LLM
 
-*** Variables ***
-${UPPER_CASE}     suite variables
-
 *** Test Cases ***
 Test Case Name
     [Documentation]    What this tests
-    [Tags]    IQ:100    math
+    [Tags]    tier:2    verify:llm
     ${answer}=    LLM.Ask LLM    ${QUESTION}
     Should Be Equal    ${answer}    ${EXPECTED}
 
@@ -273,11 +123,11 @@ Custom Keyword
     RETURN    ${result}    # Use RETURN, not [Return]
 ```
 
-**Important Robot Framework Syntax:**
-- Use `RETURN` (not `[Return]`) for keyword return values
-- Define keywords in `*** Keywords ***` section before test cases
-- Use `Suite Setup`/`Suite Teardown` for container lifecycle management
-- Variables: `${scalar}`, `@{list}`, `&{dict}`
+- Use `RETURN` (not the deprecated `[Return]`).
+- Every test carries exactly one `tier:*` and one `verify:*` tag; every suite
+  declares one `axis:*` tag (see `testing.md`).
+- Use `Suite Setup` / `Suite Teardown` for container lifecycle.
+- Variables: `${scalar}`, `@{list}`, `&{dict}`.
 
 ---
 
@@ -287,231 +137,58 @@ Custom Keyword
 Robot Framework Test
 │
 ├─> Python Keyword Library (src/rfc/)
-│   ├─ Ollama Client (ollama.py) ── generation + model discovery
-│   ├─ Grader (grader.py)
-│   ├─ Safety Grader (safety_grader.py)
+│   ├─ LLM clients (ollama.py, llm_client.py) ── generation + model discovery
+│   ├─ Graders (grader.py, safety_grader.py)
 │   ├─ Docker Manager (container_manager.py)
 │   ├─ Keywords (keywords.py, docker_keywords.py, safety_keywords.py)
-│   ├─ Data Models (models.py) ── GradeResult, SafetyResult
-│   ├─ CI Metadata (git_metadata.py) ── GitHub Actions env collection
-│   ├─ CI Metadata Listener (git_metadata_listener.py) ── attaches CI metadata to output
-│   ├─ DB Listener (db_listener.py) ── archives results to SQL database
-│   ├─ Ollama Timestamp Listener (ollama_timestamp_listener.py) ── timestamps Ollama chats
-│   └─ Test Database (test_database.py) ── SQLite + PostgreSQL backends
+│   └─ Data Models (models.py) ── GradeResult, SafetyResult
 │
 ├─> Listeners (auto-attached to every test run)
 │   ├─ DbListener ── archives runs/results to SQL (SQLite or PostgreSQL)
-│   ├─ GitMetaData ── adds CI context to Robot Framework output
+│   ├─ GitMetaData ── adds CI context (commit, branch, run URL) to output
 │   └─ OllamaTimestampListener ── timestamps every Ollama chat call
 │
-├─> Docker Containers
-│   ├─ Code Execution (Python, Node, Shell)
-│   └─ LLM Services (Ollama)
+├─> Docker Containers ── sandboxed code execution + LLM services
 │
-├─> Superset Stack (docker-compose.yml)
-│   ├─ PostgreSQL 16 ── test result storage
-│   ├─ Redis 7 ── Superset cache
-│   └─ Apache Superset 4.1.1 ── dashboards & visualization
+├─> Superset Stack (docker-compose.yml) ── PostgreSQL 16, Redis 7, Superset
 │
-└─> Test Results & Reports
-    ├─ Robot Framework HTML reports
-    ├─ SQL database (queryable history)
-    └─ Superset dashboards (visualization)
+└─> Results ── Robot HTML reports, SQL history, Superset dashboards
 ```
+
+CI runs on GitHub Actions (`.github/workflows/`): `robot-tests.yml` (lint,
+pytest, Robot dry-run, robot tests), `docker-publish.yml` (Docker image),
+`pypi-publish.yml` (PyPI on `v*` tags). All executable logic stays in Makefile
+targets so it runs identically in CI and locally — edit the Makefile (or the
+scripts it wraps), not the workflow YAML, to change what a job does.
 
 ---
 
-## Project Structure
+## Listeners & Database
 
-```
-robotframework-chat/
-├── readme.md                   # Project overview
-├── ai/                         # AI agent documentation
-│   ├── testing.md              # Grading tiers & test rules
-│   ├── agents.md               # Agent instructions (this file)
-│   ├── dev.md                  # Development guidelines
-│   ├── pipelines.md            # Pipeline strategy & model selection
-│   ├── refactor.md             # Refactoring & maintenance guide
-│   ├── devops.md               # DevOps practices tracker
-│   ├── roles/                  # Agent role definitions
-│   └── skills/                 # Task-specific skill tutorials
-├── ci/                         # CI helper scripts
-│   ├── lint.sh                 # Code quality checks
-│   ├── release.sh              # Package build + verify
-│   └── audit_markdown.sh       # Markdown reference audit
-├── Makefile                    # Build, test, and ci-* targets
-├── docker-compose.yml          # PostgreSQL + Redis + Superset stack
-├── .env.example                # Environment variable template
-├── pyproject.toml              # Python dependencies + optional extras
-├── src/rfc/                    # Python keyword library
-│   ├── __init__.py             # Package version (__version__)
-│   ├── ollama.py               # Ollama API client
-│   ├── models.py               # Shared data classes
-│   ├── git_metadata.py          # CI metadata collection
-│   ├── git_metadata_listener.py # Listener: CI metadata → Robot output
-│   ├── db_listener.py          # Listener: test results → SQL database
-│   ├── ollama_timestamp_listener.py # Listener: timestamps Ollama chats
-│   ├── test_database.py        # SQLite + PostgreSQL database backends
-│   ├── keywords.py             # Core LLM keywords
-│   ├── grader.py               # LLM answer grading
-│   ├── safety_keywords.py      # Safety testing keywords
-│   ├── safety_grader.py        # Regex-based safety grading
-│   ├── docker_config.py        # Container configuration models
-│   ├── container_manager.py    # Docker lifecycle management
-│   ├── docker_keywords.py      # Docker container keywords
-│   └── pre_run_modifier.py     # Dynamic model configuration
-├── robot/                      # Robot Framework tests
-│   ├── math/tests/             # Math reasoning tests
-│   ├── docker/                 # Docker-based tests
-│   │   ├── python/tests/       # Python code execution
-│   │   ├── llm/tests/          # LLM-in-Docker tests
-│   │   └── shell/tests/        # Shell/terminal tests
-│   ├── safety/                 # Safety/security tests
-│   └── resources/              # Reusable resource files
-├── dashboard/                  # Dash-based test runner UI (DEPRECATED)
-├── superset/                   # Superset configuration
-├── scripts/                    # Import/query/CI utilities
-├── docs/                       # Additional documentation
-│   └── TEST_DATABASE.md        # Database schema & usage
-├── humans/                     # Owner decisions & action items
-│   └── TODO.md                 # Actionable items from spec reviews
-├── data/                       # SQLite database (gitignored)
-├── results/                    # Test output (gitignored)
-└── .pre-commit-config.yaml     # Git hooks
-```
-
-**Important:** `src/rfc/` is the single source of truth for all Python code.
-`robot/` is the single home for all Robot Framework test suites. Never duplicate
-logic outside of these directories.
-
----
-
-## Listeners
-
-Three Robot Framework listeners handle test result collection:
+All three listeners are attached by the Makefile targets and CI:
 
 | Listener | Purpose |
 |----------|---------|
-| `rfc.db_listener.DbListener` | Archives test runs and individual results to the SQL database (SQLite or PostgreSQL) |
-| `rfc.git_metadata_listener.GitMetaData` | Collects CI metadata from GitHub Actions (commit, branch, run URL) and adds it to test output |
-| `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps every Ollama keyword call (Ask LLM, Wait For LLM, etc.) and saves `ollama_timestamps.json` |
+| `rfc.db_listener.DbListener` | Archives test runs and results to SQL |
+| `rfc.git_metadata_listener.GitMetaData` | Adds CI metadata to Robot output |
+| `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps Ollama keyword calls; saves `ollama_timestamps.json` |
 
-All listeners are always active in the Makefile targets and in CI. Use them together:
-
-```bash
-uv run robot -d results/math \
-  --listener rfc.db_listener.DbListener \
-  --listener rfc.git_metadata_listener.GitMetaData \
-  --listener rfc.ollama_timestamp_listener.OllamaTimestampListener \
-  robot/20__tier2/math/tests/
-```
-
-The `DbListener` reads `DATABASE_URL` from the environment to decide where to store results:
-
-| `DATABASE_URL` | Backend | Notes |
-|----------------|---------|-------|
-| Not set | `.env` fallback | Read from `.env`; `RuntimeError` if still missing |
-| `postgresql://...` | PostgreSQL | Requires `uv sync --extra superset` |
-
----
-
-## CI/CD Pipeline
-
-CI runs on GitHub Actions (`.github/workflows/`). GitLab CI support was
-removed at source (rfc-monorepo #106/#107).
-
-| Workflow | Purpose |
-|----------|---------|
-| `robot-tests.yml` | Lint, pytest, Robot dry-run, robot tests |
-| `docker-publish.yml` | Build and publish the Docker image |
-| `pypi-publish.yml` | Build and publish the package to PyPI on version tags |
-
-All executable logic stays in Makefile targets so it runs identically in CI
-and locally — edit the Makefile (or the scripts it wraps), not the workflow
-YAML, to change what a job does.
-
-### Pipeline Data Flow
-
-```
-test stage:  math ─────────┐   docker ────────┐   safety ────────┐
-             listener→DB   │   listener→DB    │   listener→DB   │
-             (per-suite)   │   (per-suite)    │   (per-suite)   │
-                           ▼                  ▼                 ▼
-report stage:          rebot merges output.xml files
-                           │
-                           ├── results/combined/report.html  (one unified report)
-                           ├── results/combined/log.html
-                           └── import → DB  (pipeline-level combined run)
-```
-
-During the **test stage**, each suite runs with all listeners attached. The `DbListener` archives per-suite results to the database as each job completes.
-
-During the **report stage**, `rebot` merges all `output.xml` files into a single combined report, and the combined results are imported into the database as a pipeline-level run.
-
-During the **deploy stage** (default branch only), the Superset stack is deployed/updated on the target host.
-
-During the **review stage** (MR label `opencode-review` or manual trigger), OpenCode (Kimi K2.5 via OpenRouter) inspects the pipeline for failed jobs, attempts to generate and apply fixes, then reviews the full MR diff against `ai/agents.md` and `ai/refactor.md`.
-
----
-
-## Database
-
-Test results are stored in PostgreSQL (required). `DATABASE_URL` must be set
-in the environment or `.env`:
-
-```bash
-DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
-```
-
-SQLite is only used internally by test fixtures (via `db_path=` parameter)
-and is not a supported production backend.
-
-See [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) for schema details, queries, and maintenance.
-
----
-
-## Environment Configuration
-
-All runtime settings live in `.env` (copied from `.env.example`). The file is
-loaded at multiple layers so the same values propagate everywhere:
-
-| Layer | How `.env` is loaded |
-|-------|---------------------|
-| **Makefile** | `-include .env` + `export` (lines 8-10) |
-| **CI scripts** (`ci/*.sh`) | `set -a; source .env; set +a` (conditional) |
-| **Python tests** (pytest) | `python-dotenv` via session fixture in `conftest.py` (`override=False`) |
-| **suite_config.py** | `load_config()` overlays env vars onto YAML values |
-| **Docker Compose** | Native `${VAR:-default}` interpolation |
-
-### Env var → YAML config overrides
-
-`load_config()` in `src/rfc/suite_config.py` applies these env var overrides
-after loading `config/test_suites.yaml`:
-
-| Env var | YAML path | Example |
-|---------|-----------|---------|
-| `DEFAULT_MODEL` | `defaults.model` | `qwen3.5:27b` |
-| `OLLAMA_ENDPOINT` | `defaults.ollama_endpoint` | `http://gpu1:11434` |
-
-Empty env vars are ignored (YAML defaults are preserved). The `OLLAMA_NODES_LIST`
-env var is handled separately by `dashboard/monitoring.py::_node_list()`.
+Results are stored in PostgreSQL; `DATABASE_URL` must be set in the
+environment or `.env` (e.g. `postgresql://rfc:changeme@localhost:5433/rfc`).
+SQLite is used only by test fixtures. Schema, queries, and maintenance:
+[../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) (path relative to the
+published `ai/` location); environment variables: `.env.example`.
 
 ---
 
 ## Docker Testing
 
-**Container Profiles** (`robot/resources/container_profiles.resource`):
-- `MINIMAL` - 0.25 CPU, 128MB RAM
-- `STANDARD` - 0.5 CPU, 512MB RAM
-- `PERFORMANCE` - 1.0 CPU, 1GB RAM
-- `NETWORKED` - Bridged network
-- `OLLAMA_CPU` - 2.0 CPU, 4GB RAM
+Container profiles live in `robot/resources/container_profiles.resource`
+(MINIMAL / STANDARD / PERFORMANCE / NETWORKED / OLLAMA_CPU).
 
-**Example:**
 ```robot
 *** Settings ***
 Resource          resources/container_profiles.resource
-
 Suite Setup       Create Container From Profile    PYTHON_STANDARD
 Suite Teardown    Docker.Stop Container    ${CONTAINER_ID}
 
@@ -522,63 +199,31 @@ Test Code Generation
     Should Be Equal As Integers    ${result}[exit_code]    0
 ```
 
-**Keywords:**
-- `Docker.Create Configurable Container` - Create with resources
-- `Docker.Execute In Container` - Run command
-- `Docker.Execute Python In Container` - Run Python code
-- `Docker.Stop Container` - Cleanup
-- `Docker.Get Container Metrics` - Monitor usage
-- `Docker.Find Available Port` - Find unused port (11434-11500)
-- `Docker.Stop Container By Name` - Cleanup by container name
+Key keywords: `Docker.Create Configurable Container`, `Docker.Execute In
+Container`, `Docker.Execute Python In Container`, `Docker.Stop Container`,
+`Docker.Get Container Metrics`, `Docker.Find Available Port` (use it instead
+of hardcoding ports; LLM containers allocate from 11434–11500), `Docker.Stop
+Container By Name` (use unique, timestamped container names).
 
-**Dynamic Port Allocation:**
-LLM containers use dynamic port allocation to avoid conflicts:
-```robot
-${available_port}=    Docker.Find Available Port    11434    11500
-${port_mapping}=    Create Dictionary    11434/tcp=${available_port}
-${config}=    Create Dictionary    &{OLLAMA_CPU}    ports=${port_mapping}
-${container}=    Docker.Create Configurable Container    ${config}
-```
-
-**Container Naming:**
-Use unique names to prevent conflicts:
-```robot
-${timestamp}=    Evaluate    int(__import__('time').time())
-${container_name}=    Set Variable    rfc-ollama-${timestamp}
-```
+Dependencies: Docker daemon (container tests), Ollama endpoint (LLM tests,
+default `http://localhost:11434`), Python 3.11+.
 
 ---
 
-## Testing Patterns
-
-1. **Use `Ask LLM`** for prompting
-2. **Use `Grade Answer`** for evaluation
-3. **Assert on score** (0 or 1)
-4. **Tag with IQ level** (IQ:100-160)
-5. **Log outputs** for debugging
-
-**Dependencies:**
-- Docker daemon (required for container tests)
-- Ollama (optional, default: http://localhost:11434)
-- Python 3.11+
-
 ## Agent Workflow Capture
 
-For tests that exercise multi-turn agent behavior (messages, tool
-calls, state evolution), use `AgentWorkflowKeywords`:
+For tests that exercise multi-turn agent behavior (messages, tool calls,
+state evolution):
 
 - Library: `rfc.agent_workflow_keywords.AgentWorkflowKeywords`
-- Tracker: `rfc.agent_interaction_tracker.AgentInteractionTracker`
-  builds an immutable `AgentWorkflow` with frozen interactions, tool
-  calls, and tool results.
-- Validator: `rfc.tool_call_validator.ToolCallValidator` enforces
-  schema, ordering, and result expectations.
-- Memory: `rfc.agent_memory_manager.MemoryManager` provides
-  sliding-window short-term, vector long-term, and schema-checked
-  persistent storage.
-- Listener: `rfc.agent_workflow_listener.AgentWorkflowListener` reads
-  the `agent_workflow` RFC_DATA payload at end-of-test and persists
-  via `AgentWorkflowDatabase` (SQLite or PostgreSQL).
+- Tracker: `rfc.agent_interaction_tracker.AgentInteractionTracker` builds an
+  immutable `AgentWorkflow` with frozen interactions, tool calls, and results.
+- Validator: `rfc.tool_call_validator.ToolCallValidator` enforces schema,
+  ordering, and result expectations.
+- Memory: `rfc.agent_memory_manager.MemoryManager` — sliding-window short-term,
+  vector long-term, schema-checked persistent storage.
+- Listener: `rfc.agent_workflow_listener.AgentWorkflowListener` persists the
+  `agent_workflow` RFC_DATA payload at end-of-test.
 
-Example tests live under `robot/30__tier3/agent_workflows/tests/`. Suite README:
+Example tests: `robot/30__tier3/agent_workflows/tests/`; suite guide:
 `robot/30__tier3/agent_workflows/README.md`.
