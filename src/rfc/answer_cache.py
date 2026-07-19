@@ -35,6 +35,15 @@ that digest is folded in too (#526): an Ollama tag can be repointed in place, so
 keying on the tag name alone would replay answers from the old weights under the
 new tag. Providers whose model id already pins the weights (OpenAI snapshot ids,
 vLLM per-process weights) lack the resolver and simply omit the digest field.
+
+RFC-010 S4 (#262) adds two invalidation affordances on top of that key. A suite
+whose prompt embeds repo state (a code snapshot, the current commit, a versioned
+prompt) may set ``client.cache_context`` to a fingerprint of that state; it is
+folded into the key so a code change invalidates its own cached answers instead
+of silently replaying an answer about the old code. And :meth:`AnswerCache.invalidate`
+plus ``rfc cache invalidate`` bust the cache by scope — one version namespace or
+the whole keyspace — without hand-editing Redis, reusing the version namespace as
+the same bust lever a deliberate ``v2->v3`` schema bump uses.
 """
 
 from __future__ import annotations
@@ -186,6 +195,10 @@ class _CacheableClient(Protocol):
     # ``_KEY_ATTRS``. make_key reads it via ``getattr(client, attr, None)``, so
     # no protocol member is needed, and requiring it would exclude providers
     # (e.g. OpenAI) whose client legitimately has no ``think`` attribute (#131).
+    # ``cache_context`` (RFC-010 S4, #262) is likewise NOT declared: it is an
+    # optional, opt-in repo/prompt fingerprint that make_key duck-types via
+    # ``getattr(client, "cache_context", None)`` and folds in only when set, so
+    # every self-contained provider omits it without needing the attribute.
 
     def generate(self, prompt: str) -> str: ...
 
@@ -278,6 +291,25 @@ class AnswerCache:
         if callable(resolve_digest):
             payload["model_digest"] = resolve_digest()
 
+        # Repo / prompt context for context-sensitive suites (RFC-010 S4, #262).
+        # A suite whose PROMPT embeds repo state — a pasted code snapshot, the
+        # current commit, a versioned prompt template — must invalidate its own
+        # cached answers when that state changes, or a code change silently
+        # replays an answer about the old code. Such a suite sets
+        # ``client.cache_context`` to a fingerprint of that state (e.g. the repo
+        # commit plus the prompt version); it is folded into the key so a changed
+        # fingerprint is a MISS, not a stale hit. It is intentionally opt-in: a
+        # plain optional attribute read via getattr (shaped like ``think``, not a
+        # callable resolver like ``model_digest``) and folded in with the same
+        # omit-when-absent discipline — absent OR ``None`` (every provider
+        # whose prompt is self-contained) omits the field entirely, so those keys
+        # are byte-for-byte identical to the pre-#262 schema and no version bump
+        # is needed. The dimension exists only for prompts that actually embed
+        # repo state — the broader nv-cache metadata schema stays parked under #23.
+        context = getattr(client, "cache_context", None)
+        if context is not None:
+            payload["cache_context"] = context
+
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"{_KEY_PREFIX}:{self._version}:{digest}"
@@ -306,6 +338,42 @@ class AnswerCache:
         except _redis_connection_errors() as exc:
             self._note_unreachable(exc)
 
+    def invalidate(
+        self, *, version: Optional[str] = None, dry_run: bool = False
+    ) -> int:
+        """Delete cached entries by scope; return how many keys matched (RFC-010 S4, #262).
+
+        The operator / CI affordance for busting the test cache without
+        hand-editing Redis. It reuses the version namespace as the bust lever —
+        the same mechanism a deliberate ``v2->v3`` schema bump uses to orphan the
+        whole cache at once:
+
+        * ``version=None`` — delete every ``rfc:answer_cache:*`` entry across all
+          namespaces (the full flush).
+        * ``version="vN"`` — delete only ``rfc:answer_cache:vN:*`` entries, so a
+          single schema generation can be busted while others survive.
+
+        With ``dry_run=True`` the matching keys are counted but not deleted — a
+        safe preview before a destructive flush.
+
+        Unlike :meth:`get` / :meth:`set`, this does **not** swallow a Redis
+        outage into a passthrough: an operator running an explicit invalidation
+        must hear that the cache was unreachable, not be told "0 keys" as if the
+        cache were already clean. Connection errors propagate to the caller.
+        """
+        pattern = (
+            f"{_KEY_PREFIX}:*" if version is None else f"{_KEY_PREFIX}:{version}:*"
+        )
+        # Materialize the full match set BEFORE deleting: deleting mid-SCAN
+        # mutates the keyspace the cursor walks and can skip not-yet-returned
+        # keys. The answer cache is bounded (deterministic requests, 7-day TTL),
+        # so collecting the matches is cheap and correct.
+        keys = list(self._redis.scan_iter(match=pattern, count=500))
+        if not dry_run:
+            for start in range(0, len(keys), 500):
+                self._redis.delete(*keys[start : start + 500])
+        return len(keys)
+
     def _note_unreachable(self, exc: BaseException) -> None:
         # Disable for the rest of the run so we never pay the timeout twice.
         self._disabled = True
@@ -315,6 +383,20 @@ class AnswerCache:
                 exc,
             )
             self._logged_unreachable = True
+
+    @property
+    def version(self) -> str:
+        """The active key namespace this cache reads and writes.
+
+        Resolved from ``ANSWER_CACHE_VERSION`` by :meth:`from_env` (falling back
+        to :data:`DEFAULT_VERSION`), so it is the namespace an operator is
+        *actually* on — not the compiled-in default. ``rfc cache invalidate``
+        with no ``--version`` busts this, so the documented default ("bust the
+        current schema namespace") matches behaviour even when the env knob is
+        set. A public read-only accessor so callers (the CLI, mirror-shipped)
+        need not reach into the private ``_version``.
+        """
+        return self._version
 
     @property
     def available(self) -> bool:

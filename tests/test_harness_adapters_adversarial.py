@@ -6,13 +6,12 @@ suite (test_harness_adapters.py) does not yet exercise:
   * The codex path *through the real probe + real subprocess seam* -- a throwaway
     ``codex`` shim on PATH lets ``CodexAdapter.probe()`` return True and drives
     its canned ``exec --json`` stream through the actual ``_default_invoker``,
-    not a stub. This is the probe-gated path the box can't otherwise reach
-    (the real codex CLI is absent).
+    not a stub.
   * Parser robustness: malformed / non-dict parts, missing fields the CLIs may
     omit, unpaired codex begin/end events, interleaved call pairing, and
     ``_tail`` truncation of oversized output.
-  * A flagged, characterized risk in the codex parser (string ``exit_code``),
-    surfaced for the owner's pending live-conformance pass.
+  * ``exit_code`` coercion in the codex parser (#200): a non-int / unparseable
+    shape biases toward failure rather than being silently recorded green.
 
 All deterministic and CI-safe; the one subprocess test shells out only to a
 shim written into ``tmp_path``.
@@ -38,6 +37,10 @@ from rfc.harness_adapters import (
 # ---------------------------------------------------------------------------
 # Helpers.
 # ---------------------------------------------------------------------------
+
+
+# Sentinel distinguishing "exit_code key absent" from "exit_code is None".
+_MISSING = object()
 
 
 def _stream(events: list[dict[str, Any]]) -> str:
@@ -279,18 +282,19 @@ class TestCodexParserRobustness:
         )
         assert parse_codex_events(raw) == ((), ())
 
-    def test_string_exit_code_is_treated_as_zero_KNOWN_RISK(self) -> None:
-        """FLAGGED RISK (codex PENDING LIVE CONFORMANCE).
-
-        parse_codex_events only honours an int exit_code; a string ``"1"`` -- a
-        plausible shape for the not-yet-verified codex JSON -- is silently
-        treated as success (returncode 0). If the real codex ever emits a
-        stringified exit code, a *failed* command would be recorded green and
-        could defeat ``assert_no_commit_while_tests_red``. Characterized here so
-        the sharp edge is visible; resolve during the owner's live-conformance
-        pass. This test documents current behavior, it does not endorse it.
-        """
-        raw = _stream(
+    @staticmethod
+    def _end_event(exit_code: object) -> str:
+        """A codex begin/end pair for one ``pytest`` command with ``exit_code``."""
+        end: dict[str, Any] = {
+            "type": "exec_command_end",
+            "call_id": "c1",
+            "stdout": "",
+            "stderr": "1 failed",
+        }
+        # Omit the key entirely for the sentinel; otherwise carry the value.
+        if exit_code is not _MISSING:
+            end["exit_code"] = exit_code
+        return _stream(
             [
                 {
                     "msg": {
@@ -299,16 +303,81 @@ class TestCodexParserRobustness:
                         "command": ["bash", "-lc", "pytest"],
                     }
                 },
+                {"msg": end},
+            ]
+        )
+
+    def test_string_exit_code_is_coerced_not_silently_green(self) -> None:
+        """#200: a stringified nonzero exit is RED, not silently green.
+
+        Inverts the former ``..._KNOWN_RISK`` characterization: a failed codex
+        command whose ``exit_code`` arrives as ``"1"`` must record a non-zero
+        ``returncode`` so ``assert_no_commit_while_tests_red`` still fires. The
+        safety-critical direction is green-when-red, so this asserts the fix.
+        """
+        commands, _ = parse_codex_events(self._end_event("1"))
+        assert commands[0].returncode == 1
+
+    def test_string_zero_exit_code_stays_green(self) -> None:
+        # A genuine, parseable "0" is a real success and must stay green.
+        commands, _ = parse_codex_events(self._end_event("0"))
+        assert commands[0].returncode == 0
+
+    def test_bool_exit_code_biases_to_failure(self) -> None:
+        # bool is an int subclass; False must NOT normalize to 0 (green).
+        for value in (True, False):
+            commands, _ = parse_codex_events(self._end_event(value))
+            assert commands[0].returncode == 1
+
+    def test_nonnumeric_string_exit_code_biases_to_failure(self) -> None:
+        commands, _ = parse_codex_events(self._end_event("boom"))
+        assert commands[0].returncode == 1
+
+    def test_null_exit_code_biases_to_failure(self) -> None:
+        # codex-cli 0.144.5 emits exit_code=null on a non-terminal item; if a
+        # terminal event ever carries null (e.g. a killed command), record RED.
+        commands, _ = parse_codex_events(self._end_event(None))
+        assert commands[0].returncode == 1
+
+    def test_missing_exit_code_biases_to_failure(self) -> None:
+        commands, _ = parse_codex_events(self._end_event(_MISSING))
+        assert commands[0].returncode == 1
+
+    def test_item_completed_string_exit_code_is_coerced_not_green(self) -> None:
+        # Same coercion on the current (#200 live-confirmed) item.completed path.
+        raw = _stream(
+            [
                 {
-                    "msg": {
-                        "type": "exec_command_end",
-                        "call_id": "c1",
-                        "stdout": "",
-                        "stderr": "1 failed",
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "uv run pytest",
+                        "aggregated_output": "1 failed",
                         "exit_code": "1",
-                    }
-                },
+                    },
+                }
             ]
         )
         commands, _ = parse_codex_events(raw)
-        assert commands[0].returncode == 0  # current behavior; see docstring
+        assert commands[0].returncode == 1
+
+    def test_item_completed_live_nonzero_int_exit_is_red(self) -> None:
+        # Exact shape captured live from codex-cli 0.144.5 (#200): a failed
+        # command_execution carries an int exit_code and status "failed".
+        raw = _stream(
+            [
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_1",
+                        "type": "command_execution",
+                        "command": "/bin/bash -c \"sh -c 'echo boom; exit 3'\"",
+                        "aggregated_output": "boom\n",
+                        "exit_code": 3,
+                        "status": "failed",
+                    },
+                }
+            ]
+        )
+        commands, _ = parse_codex_events(raw)
+        assert commands[0].returncode == 3

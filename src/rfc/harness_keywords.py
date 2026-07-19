@@ -58,6 +58,12 @@ from .harness_adapters import (
     ProcessInvoker,
     get_adapter,
 )
+from .harness_replay import (
+    build_replay_invoker,
+    has_recording,
+    load_recording,
+    replay_requested,
+)
 from .live_agent_runner import LiveClaudeCodeRunner
 
 _SIDECAR_NAME = "rfc-harness-session.json"
@@ -156,6 +162,28 @@ class HarnessKeywords:
             raise ValueError(f"unknown harness {tool!r}; known: {sorted(ADAPTERS)}")
         return get_adapter(tool).probe()
 
+    @keyword("Replay Mode Requested")
+    def replay_mode_requested(self) -> bool:
+        """Whether this run replays recorded transcripts instead of live agents.
+
+        True under ``HARNESS_MATRIX_REPLAY=1`` or the S2 ``RFC_RUN_MODE=replay``
+        intent (RFC-010 S3, #261). Lets the conformance suite select the run mode
+        without changing the per-leg test bodies.
+        """
+        return replay_requested()
+
+    @keyword("Recording Available")
+    def recording_available(self, tool: str) -> bool:
+        """Whether a recorded transcript exists for ``tool`` in the corpus.
+
+        The replay-mode analogue of `Harness Is Available`: a leg has a recording
+        to replay even when the agent CLI is absent, so the matrix runs in CI at
+        ~0 tokens with no harness installed.
+        """
+        if tool not in ADAPTERS:
+            raise ValueError(f"unknown harness {tool!r}; known: {sorted(ADAPTERS)}")
+        return has_recording(tool)
+
     # ------------------------------------------------------------------
     # Session lifecycle.
     # ------------------------------------------------------------------
@@ -206,6 +234,14 @@ class HarnessKeywords:
         ]
         if model:
             argv += ["--model", model]
+        # Honesty (RFC-010 §3, #261): a replayed session stamps its provenance on
+        # the agentic_harnesses spine, so a green conformance cell is never
+        # mistaken for a fresh live pass — the same discipline as cache_hit=True.
+        # Only when the caller did not inject its own invoker (the pytest twin
+        # drives provenance explicitly).
+        if self._invoker is None and replay_requested():
+            recording = load_recording(tool)
+            argv += ["--replay-of", recording.recording_id]
         result = subprocess.run(
             argv,
             cwd=str(workspace_path),
@@ -253,6 +289,14 @@ class HarnessKeywords:
         workspace = Path(session["workspace"])
         adapter = self._build_adapter(session["tool"], session["model"])
 
+        # Replay run mode (RFC-010 S3, #261): when no invoker was injected and
+        # replay is selected, drive the run from the recorded transcript corpus
+        # instead of a live agent subprocess. A missing recording raises loudly
+        # (never a silent fall-through to a token-spending live agent).
+        invoker = self._invoker
+        if invoker is None and replay_requested():
+            invoker = build_replay_invoker(load_recording(session["tool"]))
+
         scenarios_root = workspace / ".rfc-harness-scenarios"
         scenario_dir = scenarios_root / _SCENARIO_ID
         scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -272,7 +316,7 @@ class HarnessKeywords:
         runner = LiveClaudeCodeRunner(
             config=config,
             scenarios_root=scenarios_root,
-            invoker=self._invoker,
+            invoker=invoker,
             workspace_root=workspace / ".rfc-harness-worktrees",
             repo_root=self._repo_root,
             adapter=adapter,
@@ -287,6 +331,26 @@ class HarnessKeywords:
         if self._run is None:
             raise AssertionError("no agent run captured; call 'Run Agent Task' first")
         return self._run
+
+    @keyword("Get Session Provenance")
+    def get_session_provenance(self) -> str:
+        """Return the active session's ``replay_of_recording_id`` from the spine.
+
+        Reads the ``agentic_harnesses`` row back from the session's database, so a
+        suite can assert the honesty stamp end-to-end: a replayed leg carries a
+        non-empty recording id, a live leg carries none (RFC-010 §3, #261).
+        """
+        from .harness_db import HarnessDatabase
+
+        session = self._require_session()
+        row = HarnessDatabase(database_url=session["database_url"]).get_harness(
+            session["session_id"]
+        )
+        if row is None:
+            raise AssertionError(
+                f"active session {session['session_id']} not found in the spine"
+            )
+        return row.replay_of_recording_id
 
     @keyword("End Harness Session")
     def end_harness_session(self, outcome: str = "success") -> dict:

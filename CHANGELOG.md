@@ -17,10 +17,44 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.27.2] — Unreleased
+
+### Fixed
+
+- **#200 — codex parser: a string / non-int `exit_code` no longer records a
+  failed command green.** `parse_codex_events` coerced `exit_code` with
+  `int(exit_code) if isinstance(exit_code, int) else 0`, so a failed codex
+  command whose `exit_code` arrived as `"1"` was recorded `returncode == 0`
+  (green) — the exact green-when-red direction `assert_no_commit_while_tests_red`
+  exists to protect. Coercion is now centralized in `_codex_exit_code` across
+  both the current `item.completed` / `command_execution` path and the legacy
+  `exec_command_end` path: a real int (not bool) is honored, a numeric string is
+  parsed, and any other shape (bool, non-numeric string, `null`/missing, float)
+  biases toward failure (non-zero) — fail loud, never silently green.
+  - **Live-conformed against codex-cli 0.144.5.** A real `codex exec --json`
+    run of a failing command emitted the `item.completed` / `command_execution`
+    shape with `exit_code` as an int (`3`, `status = "failed"`); the non-terminal
+    `item.started` carried `exit_code = null`. This closes the parser's
+    `PENDING LIVE CONFORMANCE` marker for the `exit_code` shape and inverts the
+    former `test_string_exit_code_is_treated_as_zero_KNOWN_RISK` characterization.
+
 ## [1.27.1] — Unreleased
 
 ### Added
 
+- **#261 (RFC-010 S3) — recorded-transcript replay as a first-class harness run
+  mode.** `harness_matrix.robot` gains a REPLAY mode
+  (`HARNESS_MATRIX_REPLAY=1`, or the S2 `RFC_RUN_MODE=replay` intent): the
+  cross-harness conformance legs read a recorded transcript from the on-disk
+  corpus (`robot/40__tier4/harness_matrix/recordings/`) instead of spawning a
+  live agent, so the matrix runs in CI at ~0 tokens on every push with no
+  harness CLI installed. A replayed leg stamps its provenance on the
+  `agentic_harnesses` spine (`replay_of_recording_id`, via a new
+  `rfc harness start --replay-of`), so a green conformance cell is never
+  mistaken for a fresh live pass — the same discipline as `cache_hit=True`. New
+  module `rfc.harness_replay`; new keywords `Replay Mode Requested`,
+  `Recording Available`, `Get Session Provenance`. The comparison-battery legs
+  stay live-only and skip cleanly under replay.
 - **#394 — a live-enforcement leg must never silently skip forever.** Two
   real-proof live legs certify opencode's routed permission enforcement against
   the REAL CLI + local model on top of the deterministic fixture/resolver proofs:

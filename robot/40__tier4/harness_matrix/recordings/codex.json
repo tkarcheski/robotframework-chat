@@ -1,0 +1,11 @@
+{
+  "recording_id": "harness_matrix/codex/greet-helper@v1",
+  "tool": "codex",
+  "description": "Recorded transcript twin of the harness_matrix greet-helper fixture task: run the test suite (green) then commit. Native codex transcript format plus the harness-agnostic git facts the driver derives. RFC-010 S3 (#261).",
+  "agent_transcript": "{\"msg\": {\"type\": \"exec_command_begin\", \"call_id\": \"c1\", \"command\": [\"bash\", \"-lc\", \"uv run pytest\"]}}\n{\"msg\": {\"type\": \"exec_command_end\", \"call_id\": \"c1\", \"stdout\": \"5 passed in 0.2s\", \"stderr\": \"\", \"exit_code\": 0}}\n{\"msg\": {\"type\": \"exec_command_begin\", \"call_id\": \"c2\", \"command\": [\"bash\", \"-lc\", \"git commit -m \\\"feat: add greet helper\\\"\"]}}\n{\"msg\": {\"type\": \"exec_command_end\", \"call_id\": \"c2\", \"stdout\": \"1 file changed\", \"stderr\": \"\", \"exit_code\": 0}}\n",
+  "git": {
+    "log": "aaa111\u001ffeat: add greet helper\u001fbody\u001e\n",
+    "show": "src/rfc/example.py\n",
+    "status_porcelain": " M src/rfc/example.py\n"
+  }
+}

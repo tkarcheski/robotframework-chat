@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from rfc.agent_run import AgentCommand, AgentQuestion, AgentRun, load_agent_run
+from rfc.agent_run import (
+    AgentCommand,
+    AgentQuestion,
+    AgentRun,
+    TokenUsage,
+    load_agent_run,
+)
 
 
 class TestAgentRunFromYaml:
@@ -230,3 +236,80 @@ class TestAgentRunFromYaml:
         run_file.write_text(yaml.safe_dump({"agent_id": "x"}))
         with pytest.raises(ValueError, match="missing keys"):
             load_agent_run(run_file)
+
+
+class TestTokenUsage:
+    def test_defaults_are_unknown_sentinel(self) -> None:
+        usage = TokenUsage()
+        assert usage.tokens_in == -1
+        assert usage.tokens_out == -1
+        assert usage.recorded is False
+
+    def test_recorded_true_when_input_present(self) -> None:
+        assert TokenUsage(tokens_in=10).recorded is True
+
+    def test_recorded_true_when_output_present(self) -> None:
+        assert TokenUsage(tokens_out=0).recorded is True
+
+    def test_recorded_true_for_both(self) -> None:
+        assert TokenUsage(tokens_in=11, tokens_out=7).recorded is True
+
+
+class TestAgentRunTokenCounts:
+    def test_defaults_to_unknown_sentinel(self) -> None:
+        run = AgentRun(
+            agent_id="opencode",
+            scenario_id="x",
+            task="x",
+            base_branch="claude-code-staging",
+            branch_name="opencode/x-ab123",
+        )
+        assert run.tokens_in == -1
+        assert run.tokens_out == -1
+
+    def test_carries_explicit_counts(self) -> None:
+        run = AgentRun(
+            agent_id="opencode",
+            scenario_id="x",
+            task="x",
+            base_branch="claude-code-staging",
+            branch_name="opencode/x-ab123",
+            tokens_in=1234,
+            tokens_out=56,
+        )
+        assert run.tokens_in == 1234
+        assert run.tokens_out == 56
+
+    def test_load_agent_run_reads_token_counts(self, tmp_path: Path) -> None:
+        payload = {
+            "agent_id": "opencode",
+            "scenario_id": "x",
+            "task": "x",
+            "base_branch": "claude-code-staging",
+            "branch_name": "opencode/x-ab123",
+            "tokens_in": 42,
+            "tokens_out": 9,
+        }
+        run_file = tmp_path / "run.yaml"
+        run_file.write_text(yaml.safe_dump(payload))
+
+        run = load_agent_run(run_file)
+        assert run.tokens_in == 42
+        assert run.tokens_out == 9
+
+    def test_load_agent_run_defaults_token_counts_when_absent(
+        self, tmp_path: Path
+    ) -> None:
+        payload = {
+            "agent_id": "opencode",
+            "scenario_id": "x",
+            "task": "x",
+            "base_branch": "claude-code-staging",
+            "branch_name": "opencode/x-ab123",
+        }
+        run_file = tmp_path / "run.yaml"
+        run_file.write_text(yaml.safe_dump(payload))
+
+        run = load_agent_run(run_file)
+        assert run.tokens_in == -1
+        assert run.tokens_out == -1

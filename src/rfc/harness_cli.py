@@ -125,6 +125,7 @@ def _cmd_start(args: argparse.Namespace) -> int:
         model_id=args.model or os.environ.get("DEFAULT_MODEL", ""),
         rfc_version=__version__,
         branch=collect_ci_metadata().get("Branch", ""),
+        replay_of_recording_id=args.replay_of,
     )
 
     try:
@@ -268,6 +269,41 @@ def _cmd_scoreboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_cache_invalidate(args: argparse.Namespace) -> int:
+    """Bust cached answers by scope (RFC-010 S4, #262).
+
+    Reuses the version namespace as the bust lever: ``--all`` flushes every
+    namespace, otherwise a single version (default: the current schema version)
+    is deleted. ``--dry-run`` reports the match count without deleting. A Redis
+    outage is a loud failure here — an operator running an explicit invalidation
+    must not be told "0 keys" as if the cache were already clean.
+    """
+    import redis
+
+    from rfc.answer_cache import AnswerCache
+
+    cache = AnswerCache.from_env()
+    # Default (no --version) busts the namespace the cache is ACTUALLY on —
+    # ``cache.version`` honors ANSWER_CACHE_VERSION, resolved by from_env — not
+    # the compiled-in DEFAULT_VERSION. Reading the constant would delete the
+    # wrong namespace whenever an operator set the documented version knob, and
+    # print a confident "deleted N key(s)" for a bust that never touched the
+    # live cache (RFC-010's cache-honesty thesis, applied to invalidation).
+    version = None if args.all else (args.version or cache.version)
+    try:
+        matched = cache.invalidate(version=version, dry_run=args.dry_run)
+    except (redis.RedisError, OSError) as exc:
+        print(
+            f"ERROR: could not reach the answer cache ({exc}); nothing invalidated.",
+            file=sys.stderr,
+        )
+        return 1
+    scope = "all namespaces" if version is None else f"namespace {version}"
+    verb = "would delete" if args.dry_run else "deleted"
+    print(f"answer cache: {verb} {matched} key(s) ({scope}).")
+    return 0
+
+
 def active_session_id() -> str:
     """The sidecar's session_id, or '' when no session is active.
 
@@ -305,6 +341,15 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--tool", required=True, choices=TOOLS)
     start.add_argument("--tool-version", default="")
     start.add_argument("--model", default="")
+    start.add_argument(
+        "--replay-of",
+        default="",
+        help=(
+            "recording id this session replays (RFC-010 S3, #261); stamps "
+            "agentic_harnesses.replay_of_recording_id so a replayed run is never "
+            "mistaken for a fresh live pass"
+        ),
+    )
     start.add_argument("--database-url", default="")
     start.add_argument("--force-overwrite", action="store_true")
     start.add_argument(
@@ -332,6 +377,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scoreboard.add_argument("--database-url", default="")
     scoreboard.set_defaults(func=_cmd_scoreboard)
+
+    cache = commands.add_parser("cache", help="answer-cache maintenance (RFC-010 S4)")
+    cache_actions = cache.add_subparsers(dest="action", required=True)
+    invalidate = cache_actions.add_parser(
+        "invalidate", help="bust cached answers by scope (version namespace or all)"
+    )
+    scope = invalidate.add_mutually_exclusive_group()
+    scope.add_argument(
+        "--all",
+        action="store_true",
+        help="delete every namespace (rfc:answer_cache:*), not just one version",
+    )
+    scope.add_argument(
+        "--version",
+        default="",
+        help="version namespace to bust (default: the current schema version)",
+    )
+    invalidate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report how many keys match without deleting them",
+    )
+    invalidate.set_defaults(func=_cmd_cache_invalidate)
 
     register_dialog_command(commands)
     return parser

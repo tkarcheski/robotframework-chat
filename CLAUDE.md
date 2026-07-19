@@ -158,8 +158,13 @@ Multiple agents may work on this repo simultaneously, so:
   sampling params, grader version — is recorded in the spine for the run. A result
   whose coordinate is not recorded is not a comparison signal; the scoreboard
   ignores it.
-- New Robot test suites must be registered in `config/test_suites.yaml` and
-  `config/local_models.yaml`.
+- New Robot test suites must be registered in `config/test_suites.yaml` (the
+  canonical registry every suite appears in). **Model-parameterized** suites —
+  those an `axis:model` model sweep runs (`make run-local-models`) — must
+  additionally be registered in `config/local_models.yaml`, the model-sweep /
+  routing registry (see `docs/testing.md`). Its membership is a superset of
+  `axis:model` (it also carries provider/routing entries), so suites on other
+  axes are **not required** to appear there.
 - Always rebase onto `claude-code-staging`, not `main`.
 - **Never commit `uv.lock`.** It is gitignored. Run `uv sync` to regenerate
   locally. `pyproject.toml` pins exact versions and is the source of truth.

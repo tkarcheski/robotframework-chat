@@ -743,6 +743,11 @@ class AgentSandbox:
                 f"{variant} (harness={harness}): {budget.summary}"
             )
         commands, questions = adapter.parse_output(agent_stdout)
+        # #268: capture prompt/completion tokens from the same transcript when the
+        # harness reports them; null-safe (-1 sentinel) when it does not, so the
+        # comparison runner's tokens_in/tokens_out EAV metrics light up for a
+        # token-reporting harness and stay absent otherwise.
+        usage = adapter.parse_usage(agent_stdout)
         test_row = AgentCommand(
             argv=("sh", "-c", test_command),
             cwd=_WORKSPACE,
@@ -758,6 +763,8 @@ class AgentSandbox:
             branch_name=make_branch_name(resolved.task, prefix=adapter.branch_prefix),
             commands=(*commands, test_row),
             questions=questions,
+            tokens_in=usage.tokens_in,
+            tokens_out=usage.tokens_out,
         )
         result = SandboxResult(
             scenario_id=resolved.scenario_id,

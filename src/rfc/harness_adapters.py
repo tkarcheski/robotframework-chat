@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from .agent_run import AgentCommand, AgentQuestion
+from .agent_run import AgentCommand, AgentQuestion, TokenUsage
 from .exec_mcp import (
     SandboxExecRouting,
     claude_mcp_config_json,
@@ -151,6 +151,28 @@ def _tail(text: str, limit: int = _TAIL_LIMIT) -> str:
     if len(text) <= limit:
         return text
     return text[-limit:]
+
+
+def _coerce_token_count(value: Any) -> int:
+    """Return a transcript token count as a non-negative int, else ``-1``.
+
+    A JSON bool is an ``int`` subclass but never a real token count, so it is
+    treated as absent (mirrors ``_opencode_exit_code``). A numeric string is
+    honored; anything else (None, a nested object, an unparseable string) yields
+    the ``-1`` unknown sentinel so an absent count never fabricates a phantom
+    zero into the ``tokens_in``/``tokens_out`` metrics (#268).
+    """
+    if isinstance(value, bool):
+        return -1
+    if isinstance(value, int):
+        return value if value >= 0 else -1
+    if isinstance(value, str):
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return -1
+        return parsed if parsed >= 0 else -1
+    return -1
 
 
 def _slugify(text: str) -> str:
@@ -332,6 +354,65 @@ def parse_transcript(
     return tuple(commands), tuple(questions)
 
 
+def parse_transcript_usage(stdout: str) -> TokenUsage:
+    """Prompt/completion token counts from a Claude Code stream-json transcript.
+
+    Claude Code stamps a ``usage`` object on each ``assistant`` event and a
+    cumulative ``usage`` on the terminal ``result`` event (``input_tokens`` /
+    ``output_tokens``). The terminal event's cumulative total is preferred; when
+    it is absent (a truncated / killed run that never emitted ``result``) the
+    per-assistant ``input_tokens``/``output_tokens`` are summed instead. A
+    transcript that reports no usage at all yields the ``-1`` unknown sentinel
+    for both sides (null-safe, #268).
+
+    Cache-read / cache-creation input tokens are recorded by the CLI but NOT
+    folded into ``tokens_in`` here -- the two reserved keys map to the primary
+    ``input_tokens``/``output_tokens`` fields; cache-token accounting is a
+    documented follow-up.
+    """
+    result_usage: dict[str, Any] | None = None
+    acc_in = 0
+    acc_out = 0
+    saw_assistant_usage = False
+
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+        if etype == "result":
+            usage = event.get("usage")
+            if isinstance(usage, dict):
+                result_usage = usage
+        elif etype == "assistant":
+            usage = (event.get("message") or {}).get("usage")
+            if not isinstance(usage, dict):
+                continue
+            tokens_in = _coerce_token_count(usage.get("input_tokens"))
+            tokens_out = _coerce_token_count(usage.get("output_tokens"))
+            if tokens_in >= 0:
+                acc_in += tokens_in
+                saw_assistant_usage = True
+            if tokens_out >= 0:
+                acc_out += tokens_out
+                saw_assistant_usage = True
+
+    if result_usage is not None:
+        return TokenUsage(
+            tokens_in=_coerce_token_count(result_usage.get("input_tokens")),
+            tokens_out=_coerce_token_count(result_usage.get("output_tokens")),
+        )
+    if saw_assistant_usage:
+        return TokenUsage(tokens_in=acc_in, tokens_out=acc_out)
+    return TokenUsage()
+
+
 # ---------------------------------------------------------------------------
 # The adapter protocol.
 # ---------------------------------------------------------------------------
@@ -361,6 +442,15 @@ class HarnessAdapter(Protocol):
         self, raw: str, *, extra_secrets: tuple[str, ...] = ()
     ) -> ParsedOutput:
         """Normalize this CLI's transcript into ``(commands, questions)``."""
+        ...
+
+    def parse_usage(self, raw: str) -> TokenUsage:
+        """Prompt/completion token counts from this CLI's transcript (#268).
+
+        Null-safe: a transcript that reports no usage yields ``TokenUsage()``
+        (both sides the ``-1`` unknown sentinel). No redaction hook is needed --
+        only integer counts are read, never free text.
+        """
         ...
 
     def probe(self) -> bool:
@@ -442,6 +532,9 @@ class ClaudeCodeAdapter:
         self, raw: str, *, extra_secrets: tuple[str, ...] = ()
     ) -> ParsedOutput:
         return parse_transcript(raw, extra_secrets=extra_secrets)
+
+    def parse_usage(self, raw: str) -> TokenUsage:
+        return parse_transcript_usage(raw)
 
     def probe(self) -> bool:
         return _probe_binary(self.claude_bin)
@@ -568,6 +661,73 @@ def parse_opencode_events(
                 questions.extend(_extract_questions(text))
 
     return tuple(commands), tuple(questions)
+
+
+def _opencode_token_block(event: dict[str, Any]) -> dict[str, Any] | None:
+    """Locate an opencode ``tokens`` usage object in one event, else ``None``.
+
+    opencode attaches token usage as a ``tokens`` object
+    (``{"input": N, "output": M, "reasoning": R, "cache": {...}}``) to the
+    assistant message info. Its exact carrier varies by opencode version
+    (a ``step-finish`` part, the message ``info``, or the message object), so
+    the plausible carriers are probed in turn and the first ``tokens`` dict
+    found is returned.
+    """
+    part = event.get("part")
+    message = event.get("message")
+    candidates: tuple[Any, ...] = (
+        event,
+        part,
+        part.get("state") if isinstance(part, dict) else None,
+        message,
+        message.get("info") if isinstance(message, dict) else None,
+    )
+    for container in candidates:
+        if isinstance(container, dict):
+            tokens = container.get("tokens")
+            if isinstance(tokens, dict):
+                return tokens
+    return None
+
+
+def parse_opencode_usage(raw: str) -> TokenUsage:
+    """Prompt/completion token counts from an ``opencode run --format json`` stream.
+
+    opencode reports usage as a ``tokens`` object with ``input`` / ``output``
+    fields on the assistant message (see :func:`_opencode_token_block`). The
+    LAST usage-bearing event wins -- opencode reports the running total on the
+    message info, so the final event carries the run total. A stream that reports
+    no usage yields the ``-1`` unknown sentinel for both sides (null-safe, #268).
+
+    PENDING LIVE CONFORMANCE (token fields only): the ``bash``/``text`` part
+    shapes above are live-conformed against opencode 1.2.9 (#390/#381), but the
+    ``tokens`` object's exact carrier was not captured from a live transcript, so
+    the several candidate carriers are probed defensively; ``cache`` / ``reasoning``
+    sub-counts are out of MVP scope (a documented follow-up). Because the path is
+    null-safe, a carrier mismatch degrades to "no tokens recorded" -- today's
+    behaviour -- never a wrong number.
+    """
+    latest = TokenUsage()
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        tokens = _opencode_token_block(event)
+        if tokens is None:
+            continue
+        usage = TokenUsage(
+            tokens_in=_coerce_token_count(tokens.get("input")),
+            tokens_out=_coerce_token_count(tokens.get("output")),
+        )
+        if usage.recorded:
+            latest = usage
+    return latest
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:
@@ -754,13 +914,50 @@ class OpenCodeAdapter:
     ) -> ParsedOutput:
         return parse_opencode_events(raw, extra_secrets=extra_secrets)
 
+    def parse_usage(self, raw: str) -> TokenUsage:
+        return parse_opencode_usage(raw)
+
     def probe(self) -> bool:
         return _probe_binary(self.opencode_bin)
 
 
 # ---------------------------------------------------------------------------
-# CodexAdapter (PENDING LIVE CONFORMANCE — codex CLI not installed here).
+# CodexAdapter (live-conformed against codex-cli 0.144.5, #200).
 # ---------------------------------------------------------------------------
+
+
+def _codex_exit_code(value: object) -> int:
+    """Coerce a codex command event ``exit_code`` to a recorded ``returncode``.
+
+    Unlike an opencode bash tool state (which also carries a ``status`` field),
+    a codex command event's ``exit_code`` is the *only* numeric pass/fail
+    signal, so an unconfirmable value must never normalize to ``0`` (green): a
+    failed command silently recorded green defeats
+    ``assert_no_commit_while_tests_red`` — the safety-critical direction #200
+    guards. Coercion:
+
+      * a real int that is not a bool -> itself (``0`` green, nonzero red);
+      * a numeric string (``"1"``, ``" 0 "``) -> its parsed int value;
+      * anything else — bool, non-numeric string, ``None``/missing, float,
+        list, dict — is not a trustworthy exit code, so bias to failure and
+        return ``1`` (fail loud, never silently green).
+
+    Live-confirmed against codex-cli 0.144.5 ``exec --json`` (#200): a completed
+    ``command_execution`` item reports ``exit_code`` as an int (a failed command
+    recorded ``exit_code = 3``, ``status = "failed"``), while the non-terminal
+    ``item.started`` carries ``exit_code = null`` — biasing that ``null`` (and
+    any other non-int shape) toward failure is the safe direction.
+    """
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 1
+    return 1
 
 
 def parse_codex_events(
@@ -770,9 +967,10 @@ def parse_codex_events(
 ) -> ParsedOutput:
     """Parse a ``codex exec --json`` event stream (JSONL).
 
-    PENDING LIVE CONFORMANCE: written against codex's documented ``exec --json``
-    format, not yet verified against a real binary (the CLI is not installed on
-    this box). Each line is a JSON object; two schema generations are handled:
+    Live-conformed against codex-cli 0.144.5 (#200): the current thread-item
+    schema below is the one a real ``codex exec --json`` stream emits; the legacy
+    ``msg`` envelope is retained defensively for older / other builds. Each line
+    is a JSON object; two schema generations are handled:
 
     Current thread-item schema (``codex exec --json``, top-level events):
 
@@ -781,9 +979,11 @@ def parse_codex_events(
         such as ``"bash -lc 'uv run pytest'"``, or defensively an argv array),
         ``item.aggregated_output`` (combined stdout+stderr), and
         ``item.exit_code`` (int). Yields one :class:`AgentCommand`; the
-        ``exit_code`` becomes the recorded ``returncode`` so a failed command is
-        recorded RED (#387 — without this branch a real codex run produced an
-        empty-transcript ``AgentRun`` that defeats the conformance verifiers).
+        ``exit_code`` is coerced by :func:`_codex_exit_code` into the recorded
+        ``returncode`` so a failed command is recorded RED (#387 — without this
+        branch a real codex run produced an empty-transcript ``AgentRun`` that
+        defeats the conformance verifiers) and a non-int / unparseable shape
+        biases toward failure rather than silently green (#200).
       * ``item.completed`` with ``item.type == "agent_message"`` — assistant
         text (``item.text``), scanned for clarifying questions.
 
@@ -793,14 +993,17 @@ def parse_codex_events(
       * ``exec_command_begin`` — ``command`` (an argv array) keyed by
         ``call_id``.
       * ``exec_command_end`` — ``stdout`` / ``stderr`` / ``exit_code`` paired
-        back to its begin by ``call_id``, yielding one :class:`AgentCommand`.
+        back to its begin by ``call_id``, yielding one :class:`AgentCommand`
+        (``exit_code`` coerced by :func:`_codex_exit_code`).
       * ``agent_message`` — assistant text (``message``/``text``), scanned for
         clarifying questions.
 
-    ASSUMPTION (#387): the ``item.completed`` / ``command_execution`` field names
-    (``command`` as a string, ``aggregated_output``, ``exit_code``) follow the
-    documented ``codex exec --json`` item shape; they could not be observed live
-    here (codex CLI absent). See the issue for the live-conformance follow-up.
+    CONFORMANCE (#200, codex-cli 0.144.5): a live ``codex exec --json`` run that
+    executed a failing command emitted the ``item.completed`` /
+    ``command_execution`` shape (``command`` as a string, ``aggregated_output``,
+    ``exit_code`` as an int ``3`` with ``status = "failed"``); the legacy ``msg``
+    envelope was not emitted by this build but is retained for older / other
+    builds. ``exit_code`` coercion is centralized in :func:`_codex_exit_code`.
     """
     commands: list[AgentCommand] = []
     questions: list[AgentQuestion] = []
@@ -836,8 +1039,7 @@ def parse_codex_events(
                 continue
             stdout = str(msg.get("stdout") or "")
             stderr = str(msg.get("stderr") or "")
-            exit_code = msg.get("exit_code")
-            returncode = int(exit_code) if isinstance(exit_code, int) else 0
+            returncode = _codex_exit_code(msg.get("exit_code"))
             commands.append(
                 AgentCommand(
                     argv=argv,
@@ -869,14 +1071,10 @@ def parse_codex_events(
                     argv = ("bash", "-lc", command)
                 else:
                     continue
-                exit_code = item.get("exit_code")
-                # int (not bool) is the documented shape; anything else is not a
-                # trustworthy exit code, so record 0 (success) only for a real 0.
-                returncode = (
-                    int(exit_code)
-                    if isinstance(exit_code, int) and not isinstance(exit_code, bool)
-                    else 0
-                )
+                # int is the documented (and #200 live-confirmed) shape; any
+                # other shape biases toward failure so a red command is never
+                # silently recorded green — see :func:`_codex_exit_code`.
+                returncode = _codex_exit_code(item.get("exit_code"))
                 output = str(item.get("aggregated_output") or item.get("output") or "")
                 commands.append(
                     AgentCommand(
@@ -896,14 +1094,67 @@ def parse_codex_events(
     return tuple(commands), tuple(questions)
 
 
+def _codex_usage_from(block: dict[str, Any]) -> TokenUsage:
+    """Read ``input_tokens``/``output_tokens`` off one codex dict, else unknown."""
+    return TokenUsage(
+        tokens_in=_coerce_token_count(block.get("input_tokens")),
+        tokens_out=_coerce_token_count(block.get("output_tokens")),
+    )
+
+
+def parse_codex_usage(raw: str) -> TokenUsage:
+    """Prompt/completion token counts from a ``codex exec --json`` stream (JSONL).
+
+    PENDING LIVE CONFORMANCE: like :func:`parse_codex_events`, written against
+    codex's documented ``exec --json`` shapes, not a live binary (the CLI is
+    absent on this box). codex reports ``input_tokens`` / ``output_tokens`` under
+    a ``token_count`` msg (legacy envelope), a ``usage`` object on a terminal
+    ``turn.completed`` / ``item.completed`` event, or ``info`` nesting. All
+    plausible carriers are probed; the LAST usage-bearing event wins (codex
+    reports a running total). A stream with no usage yields the ``-1`` unknown
+    sentinel for both sides (null-safe, #268), so a schema mismatch degrades to
+    "no tokens recorded" rather than a wrong number.
+    """
+    latest = TokenUsage()
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        msg = event.get("msg")
+        if not isinstance(msg, dict):
+            msg = event
+        # Probe the plausible usage carriers, most-specific first.
+        item = msg.get("item")
+        candidates: tuple[Any, ...] = (
+            msg.get("usage"),
+            msg.get("info"),
+            item.get("usage") if isinstance(item, dict) else None,
+            msg,
+        )
+        for container in candidates:
+            if not isinstance(container, dict):
+                continue
+            usage = _codex_usage_from(container)
+            if usage.recorded:
+                latest = usage
+                break
+    return latest
+
+
 class CodexAdapter:
     """Drive the Codex CLI headless (``codex exec --json <task>``).
 
-    PENDING LIVE CONFORMANCE: the ``codex`` binary is not installed here, so
-    :meth:`probe` returns ``False`` and the driver / tests skip it cleanly. The
-    argv and parser follow codex's documented ``exec --json`` format; once the
-    owner installs the CLI (and OpenAI auth) the codex path joins with no code
-    change (Issue #172, owner decision 3).
+    :meth:`probe` gates the adapter on the ``codex`` binary being on ``PATH``,
+    so a box without the CLI skips it cleanly. The ``exec --json`` event schema
+    and ``exit_code`` shape the parser reads were live-conformed against
+    codex-cli 0.144.5 (#200); the argv / env surface follows codex's documented
+    ``exec`` interface (Issue #172, owner decision 3).
     """
 
     name = "codex"
@@ -922,6 +1173,9 @@ class CodexAdapter:
         self, raw: str, *, extra_secrets: tuple[str, ...] = ()
     ) -> ParsedOutput:
         return parse_codex_events(raw, extra_secrets=extra_secrets)
+
+    def parse_usage(self, raw: str) -> TokenUsage:
+        return parse_codex_usage(raw)
 
     def probe(self) -> bool:
         return _probe_binary(self.codex_bin)

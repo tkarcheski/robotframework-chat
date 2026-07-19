@@ -161,6 +161,16 @@ class ComputerUseDispatcher:
         }
 
     @property
+    def browser(self) -> Any:
+        """The live Browser instance this dispatcher drives.
+
+        Exposed so a GLOBAL-scope adapter can compare it against the currently
+        resolved Browser and rebind when the live instance changes (see
+        ``ComputerUseKeywords._get_dispatcher``).
+        """
+        return self._browser
+
+    @property
     def tool_names(self) -> List[str]:
         """Names of the tools this dispatcher can execute."""
         return list(self._handlers)
@@ -265,12 +275,19 @@ class ComputerUseKeywords:
         self._dispatcher: Optional[ComputerUseDispatcher] = None
 
     def _get_dispatcher(self) -> ComputerUseDispatcher:
-        if self._dispatcher is None:
-            from robot.libraries.BuiltIn import (  # type: ignore[import-not-found]
-                BuiltIn,
-            )
+        from robot.libraries.BuiltIn import (  # type: ignore[import-not-found]
+            BuiltIn,
+        )
 
-            browser = BuiltIn().get_library_instance(self._browser_library_name)
+        browser = BuiltIn().get_library_instance(self._browser_library_name)
+        # ROBOT_LIBRARY_SCOPE is GLOBAL, so this single adapter instance is
+        # reused across every suite. Resolve the live Browser on each dispatch
+        # and rebind the cached dispatcher whenever the live instance changes
+        # (a second suite importing its own Browser, or a SUITE-scoped Browser
+        # swapped in on close/relaunch). Keying the cache on live-instance
+        # identity keeps the dispatcher cached for repeat calls against the same
+        # Browser while never driving a stale, possibly-closed one (#193).
+        if self._dispatcher is None or self._dispatcher.browser is not browser:
             self._dispatcher = ComputerUseDispatcher(browser)
         return self._dispatcher
 

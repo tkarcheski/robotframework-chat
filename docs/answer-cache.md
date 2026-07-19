@@ -57,8 +57,27 @@ past answer just because the switch was left on in the shell.
 
 ## Invalidation
 
-- **Version bump.** `ANSWER_CACHE_VERSION` (default `v1`) namespaces every key.
-  Bump it to bust the entire cache on a schema or keying change.
+- **`rfc cache invalidate`.** The operator / CI affordance — bust by scope
+  without hand-editing Redis (RFC-010 S4, #262). It reuses the version namespace
+  as the bust lever:
+
+  ```bash
+  rfc cache invalidate                     # bust the current schema namespace
+  rfc cache invalidate --version v2        # bust one specific namespace
+  rfc cache invalidate --all               # flush every rfc:answer_cache:* key
+  rfc cache invalidate --all --dry-run     # report the match count, delete nothing
+  ```
+
+  It honors `REDIS_URL` / `ANSWER_CACHE_*` like every other cache path. Unlike a
+  run's cache reads/writes, an explicit invalidation is **loud on an outage**: an
+  unreachable Redis exits non-zero rather than silently reporting "0 keys".
+- **Version bump.** `ANSWER_CACHE_VERSION` (default `v2`) namespaces every key.
+  Bump it to bust the entire cache on a schema or keying change: the new
+  namespace starts empty and the old entries are orphaned (and TTL-expire on
+  their own). To reclaim the orphaned old-namespace keys immediately, run
+  `rfc cache invalidate --all` (or `--version <old>`, or a `FLUSHDB`) — the plain
+  `rfc cache invalidate` busts only the *current* namespace (now the new, empty
+  one), so it will not touch the orphans left under the previous version.
 - **TTL.** `ANSWER_CACHE_TTL_SECONDS` (default `604800` = 7 days) expires
   entries automatically.
 - **Flush.** `docker compose exec redis redis-cli -n 1 FLUSHDB` clears db 1.
@@ -73,6 +92,19 @@ genuinely different requests collide, so the key builder enumerates them
 explicitly. A sibling change refines the model component from a mutable tag to
 the immutable image digest so a re-pull of the *same* tag with different weights
 does not serve a stale answer.
+
+### Repo / prompt context (context-sensitive suites)
+
+Most suites' prompts are self-contained, so their key needs no repo state. A
+suite whose prompt **embeds repo state** — a pasted code snapshot, the current
+commit, a versioned prompt template — is different: a code change must invalidate
+that suite's own cached answers, or the cache replays an answer about the old
+code. Such a suite opts in by setting `client.cache_context` to a fingerprint of
+that state (for example the repo commit plus the prompt version) before calling
+`generate()`; the fingerprint is folded into the key (RFC-010 S4, #262), so a
+changed fingerprint is a miss, not a stale hit. The dimension is opt-in and
+duck-typed like the model digest: a provider that never sets `cache_context`
+keys exactly as before, so self-contained suites are unaffected.
 
 ### Why grader answers are cached too (one knob, not two)
 

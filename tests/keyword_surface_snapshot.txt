@@ -115,6 +115,7 @@ Get Makefile Session Id
 Get Metric Rows
 Get Running Models
 Get Safety Report
+Get Session Provenance
 Get Sidecar Session Id
 Get Table Row Counts
 Get Workflow Summary
@@ -158,7 +159,9 @@ Pr Body Should Include Contract Sections
 Questions Should Be Multiple Choice
 Rebase Should Be Resolved Without Dropping Changes
 Record Defect Detection Accuracy
+Recording Available
 Register Tool Schema
+Replay Mode Requested
 Request Clarification
 Request Human Approval
 Request Human Input

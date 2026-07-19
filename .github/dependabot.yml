@@ -1,0 +1,25 @@
+# Dependabot — keep SHA-pinned GitHub Actions fresh (issue #354).
+#
+# House rule: SHA-pin, never float. Every `uses:` in these workflows is pinned to
+# a full-length commit SHA with a trailing `# vX.Y.Z` comment. A floating major
+# tag (`@v4`) is mutable and force-moveable, so a compromised or retagged
+# upstream would silently run new code with the permissions the workflow already
+# grants. Dependabot bumps the pins as reviewed PRs so they stay current instead
+# of rotting.
+#
+# This config lives under `core/.github/` so it publishes to the public mirror
+# (robotframework-chat) as that repo's `.github/dependabot.yml`, keeping the
+# mirror's workflow pins maintained too. The monorepo's own private workflows
+# are covered by the root `.github/dependabot.yml`.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"

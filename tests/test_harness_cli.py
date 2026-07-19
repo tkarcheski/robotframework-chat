@@ -183,6 +183,27 @@ class TestStart:
         assert harness is not None
         assert harness.model_id == "llama3:latest"
 
+    def test_replay_of_stamps_provenance_on_row(self, repo):
+        # RFC-010 S3 (#261): --replay-of records the recording id on the spine so
+        # a replayed session is never mistaken for a fresh live pass.
+        assert (
+            _start(repo, "--replay-of", "harness_matrix/opencode/greet-helper@v1") == 0
+        )
+        session_id = json.loads(_sidecar(repo).read_text())["session_id"]
+        harness = HarnessDatabase(database_url=_db_url(repo)).get_harness(session_id)
+        assert harness is not None
+        assert (
+            harness.replay_of_recording_id == "harness_matrix/opencode/greet-helper@v1"
+        )
+
+    def test_replay_of_defaults_empty_for_live_sessions(self, repo):
+        # A normal (live) start carries no replay stamp.
+        assert _start(repo) == 0
+        session_id = json.loads(_sidecar(repo).read_text())["session_id"]
+        harness = HarnessDatabase(database_url=_db_url(repo)).get_harness(session_id)
+        assert harness is not None
+        assert harness.replay_of_recording_id == ""
+
     def test_no_database_url_hard_fails(self, repo, capsys):
         rc = main(["harness", "start", "--tool", "claude-code", "--tool-version", "1"])
         assert rc == 2
