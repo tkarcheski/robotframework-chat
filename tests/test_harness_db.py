@@ -139,6 +139,33 @@ CREATE TABLE agentic_harnesses (
 );
 """
 
+# Pre-#328 agentic_harnesses DDL: the full #217 + #242 + #277 + #350 column set,
+# but not yet served_by — to exercise the #328 (RFC-012 MS5) backfill on a DB
+# created after #350 but before the open-tolkein route-provenance column.
+_PRE_328_HARNESSES_DDL = """
+CREATE TABLE agentic_harnesses (
+    session_id              TEXT PRIMARY KEY,
+    tool_name               TEXT NOT NULL,
+    tool_version            TEXT,
+    model_id                TEXT,
+    rfc_version             TEXT,
+    branch                  TEXT,
+    started_at              TEXT NOT NULL,
+    ended_at                TEXT,
+    outcome                 TEXT,
+    replay_of_recording_id  TEXT,
+    scenario_id             TEXT,
+    battery_run_id          TEXT,
+    model_digest            TEXT,
+    prompt_id               TEXT,
+    prompt_hash             TEXT,
+    grader_version          TEXT,
+    params_json             TEXT,
+    repeat_idx              INTEGER,
+    verified_local          INTEGER
+);
+"""
+
 NOW = "2026-05-09T00:00:00Z"
 
 
@@ -404,6 +431,42 @@ class TestHarnessLifecycle:
         fetched = harness_db.get_harness("s-vl-null")
         assert fetched is not None
         assert fetched.verified_local == -1
+
+    def test_save_and_get_with_served_by(self, harness_db):
+        # #328 (RFC-012 MS5): the route-trace serving host/provider round-trips on
+        # the spine so the scoreboard can tell two fleet hosts on one digest apart
+        # (the RFC-008 section 5 host gap). Both provenance shapes round-trip: a
+        # fleet host@endpoint and a BYOK provider/model.
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-sb-fleet",
+                tool_name="opencode",
+                started_at=NOW,
+                served_by="ollama@http://ai1:11434",
+            )
+        )
+        harness_db.save_harness(
+            AgenticHarness(
+                session_id="s-sb-byok",
+                tool_name="claude-code",
+                started_at=NOW,
+                served_by="openai/gpt-4o",
+            )
+        )
+        fleet = harness_db.get_harness("s-sb-fleet")
+        byok = harness_db.get_harness("s-sb-byok")
+        assert fleet is not None and fleet.served_by == "ollama@http://ai1:11434"
+        assert byok is not None and byok.served_by == "openai/gpt-4o"
+
+    def test_served_by_defaults_to_empty_string(self, harness_db):
+        # A writer that never sets served_by (no gateway route trace yet): NULL ->
+        # "" sentinel, so pre-seam writers are unchanged (nullable, backward-compat).
+        harness_db.save_harness(
+            AgenticHarness(session_id="s-sb-null", tool_name="replay", started_at=NOW)
+        )
+        fetched = harness_db.get_harness("s-sb-null")
+        assert fetched is not None
+        assert fetched.served_by == ""
 
 
 class TestSnapshots:
@@ -1192,5 +1255,102 @@ class TestVerifiedLocalColumnMigration:
     def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
         db_file = tmp_path / "pre350.db"
         self._seed_pre_350_db(db_file)
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise
+
+
+class TestServedByColumnMigration:
+    """#328 (RFC-012 MS5): served_by backfilled onto a pre-#328 DB (has all of
+    #217+#242+#277+#350).
+
+    Mirrors TestVerifiedLocalColumnMigration (#350) / the earlier additive
+    backfills: fresh, migrated, and idempotent re-open on both backends. Sequenced
+    AFTER verified_local so the positional index (19) never collides. No data
+    rewrite: existing rows keep NULL (read back as the "" sentinel), and a set
+    value never carries key material (RFC-012 section 5.2 — provider/model only).
+    """
+
+    def _seed_pre_328_db(self, db_file) -> None:
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.executescript(_PRE_328_HARNESSES_DDL)
+            conn.execute(
+                "INSERT INTO agentic_harnesses "
+                "(session_id, tool_name, started_at, scenario_id, verified_local) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("pre-328-row", "opencode", NOW, "tier4_bug_fix", 1),
+            )
+
+    def test_column_absent_before_migration(self, tmp_path):
+        # Guard: the fixture really models a pre-#328 schema (#350 present, not #328).
+        db_file = tmp_path / "pre328.db"
+        self._seed_pre_328_db(db_file)
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "verified_local" in cols  # #350 present
+        assert "served_by" not in cols  # #328 absent
+
+    def test_sqlite_native_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre328.db"
+        self._seed_pre_328_db(db_file)
+        db = HarnessDatabase(db_path=str(db_file))
+        with sqlite3.connect(str(db_file)) as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(agentic_harnesses)")}
+        assert "served_by" in cols
+        # Pre-existing row intact and NEVER rewritten: served_by reads the ""
+        # sentinel (NULL), other columns untouched.
+        old = db.get_harness("pre-328-row")
+        assert old is not None
+        assert old.scenario_id == "tier4_bug_fix"
+        assert old.verified_local == 1
+        assert old.served_by == ""
+        # A new row round-trips the serving host on the upgraded DB.
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-328",
+                tool_name="opencode",
+                started_at=NOW,
+                served_by="ollama@http://ai1:11434",
+            )
+        )
+        assert db.get_harness("new-328").served_by == "ollama@http://ai1:11434"
+
+    def test_sqlite_native_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre328.db"
+        self._seed_pre_328_db(db_file)
+        HarnessDatabase(db_path=str(db_file))
+        HarnessDatabase(db_path=str(db_file))  # second open must not raise
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_adds_column(self, tmp_path):
+        db_file = tmp_path / "pre328.db"
+        self._seed_pre_328_db(db_file)
+        # create_all leaves the existing pre-#328 table alone, so _run_migrations
+        # must ALTER-add served_by.
+        db = HarnessDatabase(database_url=f"sqlite:///{db_file}")
+        old = db.get_harness("pre-328-row")
+        assert old is not None
+        assert old.served_by == ""
+        db.save_harness(
+            AgenticHarness(
+                session_id="new-328",
+                tool_name="claude-code",
+                started_at=NOW,
+                served_by="openai/gpt-4o",
+            )
+        )
+        new = db.get_harness("new-328")
+        assert new is not None
+        assert new.served_by == "openai/gpt-4o"
+
+    @pytest.mark.skipif(
+        not HAS_SQLALCHEMY,
+        reason="sqlalchemy not installed (uv sync --extra superset)",
+    )
+    def test_sqlalchemy_migration_is_idempotent(self, tmp_path):
+        db_file = tmp_path / "pre328.db"
+        self._seed_pre_328_db(db_file)
         HarnessDatabase(database_url=f"sqlite:///{db_file}")
         HarnessDatabase(database_url=f"sqlite:///{db_file}")  # must not raise

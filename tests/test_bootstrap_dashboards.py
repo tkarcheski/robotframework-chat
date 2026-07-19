@@ -954,6 +954,10 @@ class TestAgenticSessionsFullView:
             "avg_grader_score",
             "cache_hit_rate",
             "suite_runtime_ms",
+            # RFC-012 MS5 (#328): open-tolkein route-efficiency pivots.
+            "route_taken",
+            "tokens_saved_by_route",
+            "route_local_fraction",
         }
         assert expected <= set(cols), f"missing: {expected - set(cols)}"
 
@@ -983,6 +987,14 @@ class TestAgenticSessionsFullView:
                 ("m8", "s1", "cache_hit_rate", 1.0),
                 ("m9", "s1", "suite_runtime_ms", 1000.0),
                 ("m10", "s1", "suite_runtime_ms", 500.0),
+                # RFC-012 MS5 (#328): route_taken/route_local_fraction AVG'd,
+                # tokens_saved_by_route SUM'd (the headline "LOTR-books" total).
+                ("m11", "s1", "route_taken", 1.0),
+                ("m12", "s1", "route_taken", 3.0),
+                ("m13", "s1", "tokens_saved_by_route", 800.0),
+                ("m14", "s1", "tokens_saved_by_route", 200.0),
+                ("m15", "s1", "route_local_fraction", 1.0),
+                ("m16", "s1", "route_local_fraction", 0.0),
             ]
             conn.executemany(
                 "INSERT INTO agentic_metrics "
@@ -1003,6 +1015,9 @@ class TestAgenticSessionsFullView:
         assert record["avg_grader_score"] == 0.5
         assert record["cache_hit_rate"] == 0.75  # AVG(0.5, 1.0)
         assert record["suite_runtime_ms"] == 1500.0  # SUM(1000, 500)
+        assert record["route_taken"] == 2.0  # AVG(1, 3): mean route depth
+        assert record["tokens_saved_by_route"] == 1000.0  # SUM(800, 200)
+        assert record["route_local_fraction"] == 0.5  # AVG(1.0, 0.0)
 
 
 class TestAgenticVirtualDatasets:
@@ -1394,6 +1409,10 @@ SCOREBOARD_COLUMNS = {
     "avg_latency_ms",
     "avg_cache_hit_rate",
     "avg_suite_runtime_ms",
+    # RFC-012 MS5 (#328): open-tolkein route-efficiency per-cell means.
+    "avg_route_taken",
+    "avg_tokens_saved_by_route",
+    "avg_route_local_fraction",
 }
 
 
@@ -1512,6 +1531,9 @@ class TestHarnessScoreboardView:
                     "latency_ms": 200.0,
                     "cache_hit_rate": 0.5,
                     "suite_runtime_ms": 1000.0,
+                    "route_taken": 1.0,
+                    "tokens_saved_by_route": 800.0,
+                    "route_local_fraction": 1.0,
                 },
             )
             _insert_run(
@@ -1530,6 +1552,9 @@ class TestHarnessScoreboardView:
                     "latency_ms": 400.0,
                     "cache_hit_rate": 1.0,
                     "suite_runtime_ms": 2000.0,
+                    "route_taken": 3.0,
+                    "tokens_saved_by_route": 200.0,
+                    "route_local_fraction": 0.0,
                 },
             )
             cols = _probe_columns(agentic_db, HARNESS_SCOREBOARD_VIEW_BODY)
@@ -1552,6 +1577,9 @@ class TestHarnessScoreboardView:
         assert cell["avg_latency_ms"] == 300.0
         assert cell["avg_cache_hit_rate"] == 0.75
         assert cell["avg_suite_runtime_ms"] == 1500.0
+        assert cell["avg_route_taken"] == 2.0  # AVG(1, 3): mean route depth
+        assert cell["avg_tokens_saved_by_route"] == 500.0  # AVG(800, 200)
+        assert cell["avg_route_local_fraction"] == 0.5  # AVG(1.0, 0.0)
 
     def test_tier_separation_never_shares_a_cell(self, agentic_db: str) -> None:
         """A Tier-B native run never lands in a Tier-A cell (RFC-007 s5 / #273).

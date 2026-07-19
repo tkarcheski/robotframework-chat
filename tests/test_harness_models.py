@@ -6,11 +6,14 @@ from rfc.harness_models import (
     METRIC_GRADER_SCORE,
     METRIC_LATENCY_MS,
     METRIC_PROCESS_VIOLATIONS,
+    METRIC_ROUTE_LOCAL_FRACTION,
+    METRIC_ROUTE_TAKEN,
     METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_SUITE_RUNTIME_MS,
     METRIC_TASK_SUCCESS,
     METRIC_TOKENS_IN,
     METRIC_TOKENS_OUT,
+    METRIC_TOKENS_SAVED_BY_ROUTE,
     RESERVED_METRIC_KEYS,
     AgenticHarness,
     AgenticMetric,
@@ -161,7 +164,14 @@ class TestReservedMetricKeys:
         # agree on the spelling of the per-code-exec-call overhead key.
         assert METRIC_SANDBOX_EXEC_OVERHEAD_MS == "sandbox_exec_overhead_ms"
 
-    def test_reserved_set_is_the_ten_keys_in_order(self) -> None:
+    def test_route_keys_have_expected_spelling(self) -> None:
+        # RFC-012 MS5 (#328): the open-tolkein seam writer, both spine views, and
+        # the drift-guard must agree on the spelling of the route-efficiency keys.
+        assert METRIC_ROUTE_TAKEN == "route_taken"
+        assert METRIC_TOKENS_SAVED_BY_ROUTE == "tokens_saved_by_route"
+        assert METRIC_ROUTE_LOCAL_FRACTION == "route_local_fraction"
+
+    def test_reserved_set_is_the_thirteen_keys_in_order(self) -> None:
         assert RESERVED_METRIC_KEYS == (
             "task_success",
             "churn_ratio",
@@ -173,6 +183,9 @@ class TestReservedMetricKeys:
             "cache_hit_rate",
             "suite_runtime_ms",
             "sandbox_exec_overhead_ms",
+            "route_taken",
+            "tokens_saved_by_route",
+            "route_local_fraction",
         )
 
     def test_reserved_keys_are_unique(self) -> None:

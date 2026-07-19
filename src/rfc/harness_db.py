@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS agentic_harnesses (
     grader_version          TEXT,
     params_json             TEXT,
     repeat_idx              INTEGER,
-    verified_local          INTEGER
+    verified_local          INTEGER,
+    served_by               TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_harnesses_tool ON agentic_harnesses(tool_name);
 
@@ -183,7 +184,8 @@ CREATE INDEX IF NOT EXISTS idx_hitl_action  ON hitl_interactions(target_action_i
 # half-migrated DB (some columns already present) backfills only the missing ones.
 # #217 added scenario_id/battery_run_id; #242 (RFC-008 A3) added the provenance set;
 # #277 added repeat_idx (INTEGER, the one non-text column) for S4 pairing; #350
-# added verified_local (INTEGER, the persisted local-resolution tier verdict).
+# added verified_local (INTEGER, the persisted local-resolution tier verdict);
+# #328 (RFC-012 MS5) added served_by (TEXT, the route-trace serving host/provider).
 _SQLITE_MIGRATIONS: list[str] = [
     "ALTER TABLE agentic_harnesses ADD COLUMN scenario_id TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN battery_run_id TEXT",
@@ -194,16 +196,20 @@ _SQLITE_MIGRATIONS: list[str] = [
     "ALTER TABLE agentic_harnesses ADD COLUMN params_json TEXT",
     "ALTER TABLE agentic_harnesses ADD COLUMN repeat_idx INTEGER",
     "ALTER TABLE agentic_harnesses ADD COLUMN verified_local INTEGER",
+    "ALTER TABLE agentic_harnesses ADD COLUMN served_by TEXT",
 ]
 
 # Canonical body of the ``agentic_sessions_full`` view (issue #353).
 #
 # Denormalizes ``agentic_harnesses`` and pre-pivots the EAV rows in
 # ``agentic_metrics`` (tokens_in / tokens_out / latency_ms / grader_score, plus
-# the RFC-010 S1 efficiency pair cache_hit_rate / suite_runtime_ms — #258) into
-# one row per harness session. cache_hit_rate is AVG'd (mean per-run rate) and
-# suite_runtime_ms is SUM'd (total wall time across the session's suites). The
-# Superset bootstrap
+# the RFC-010 S1 efficiency pair cache_hit_rate / suite_runtime_ms — #258, plus
+# the RFC-012 MS5 route keys route_taken / tokens_saved_by_route /
+# route_local_fraction — #328) into one row per harness session. Rates
+# (cache_hit_rate, route_taken, route_local_fraction) are AVG'd (mean per-run);
+# totals (suite_runtime_ms = wall time, tokens_saved_by_route = the headline
+# "LOTR-books" number) are SUM'd across the session's suites. The Superset
+# bootstrap
 # (superset/bootstrap_dashboards.py) embeds a copy of this SQL in its DDL;
 # a drift-guard test in tests/test_bootstrap_dashboards.py keeps the two
 # in sync. Written in the portable subset shared by PostgreSQL and SQLite.
@@ -231,7 +237,13 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
         AS cache_hit_rate,
     SUM(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
-        AS suite_runtime_ms
+        AS suite_runtime_ms,
+    AVG(CASE WHEN m.metric_key = 'route_taken' THEN m.metric_value END)
+        AS route_taken,
+    SUM(CASE WHEN m.metric_key = 'tokens_saved_by_route' THEN m.metric_value END)
+        AS tokens_saved_by_route,
+    AVG(CASE WHEN m.metric_key = 'route_local_fraction' THEN m.metric_value END)
+        AS route_local_fraction
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
@@ -253,7 +265,11 @@ GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
 #                       the cell's runs is the pass rate; ``pass_count`` is the SUM.
 #   * economy         = AVG(churn_ratio), AVG(process_violations)
 #   * efficiency      = AVG(tokens_in / tokens_out / latency_ms) plus the RFC-010
-#                       S1 pair AVG(cache_hit_rate / suite_runtime_ms) (#258)
+#                       S1 pair AVG(cache_hit_rate / suite_runtime_ms) (#258) plus
+#                       the RFC-012 MS5 route keys AVG(route_taken /
+#                       tokens_saved_by_route / route_local_fraction) (#328) — all
+#                       per-cell means (avg_ prefix), so the headline saved-tokens
+#                       grand total is a dashboard SUM over agentic_sessions_full
 # Each aggregate is a mean over the runs in the cell (comparison runs write one
 # metric row per key per session), NULL-skipping like ``agentic_sessions_full``.
 #
@@ -335,7 +351,13 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
         AS avg_cache_hit_rate,
     AVG(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
-        AS avg_suite_runtime_ms
+        AS avg_suite_runtime_ms,
+    AVG(CASE WHEN m.metric_key = 'route_taken' THEN m.metric_value END)
+        AS avg_route_taken,
+    AVG(CASE WHEN m.metric_key = 'tokens_saved_by_route' THEN m.metric_value END)
+        AS avg_tokens_saved_by_route,
+    AVG(CASE WHEN m.metric_key = 'route_local_fraction' THEN m.metric_value END)
+        AS avg_route_local_fraction
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
@@ -376,6 +398,10 @@ def _harness_from_row(row: Sequence[Any]) -> AgenticHarness:
         # this is an explicit is-None check: NULL (legacy / non-comparison writer)
         # -> -1, which the scoreboard view reads fail-closed to Tier B.
         verified_local=int(row[18]) if row[18] is not None else -1,
+        # #328: route-trace serving host/provider; TEXT, so the "" sentinel
+        # convention (NULL -> "") — a row written before the gateway seam
+        # populates it reads back "".
+        served_by=row[19] or "",
     )
 
 
@@ -606,8 +632,8 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                 (session_id, tool_name, tool_version, model_id, rfc_version,
                  branch, started_at, ended_at, outcome, replay_of_recording_id,
                  scenario_id, battery_run_id, model_digest, prompt_id, prompt_hash,
-                 grader_version, params_json, repeat_idx, verified_local)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 grader_version, params_json, repeat_idx, verified_local, served_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     harness.session_id,
@@ -632,6 +658,9 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                     # #350: same >=0 guard -- Tier B (0) must persist as 0, never
                     # collapse to NULL; only the -1 legacy sentinel maps to NULL.
                     harness.verified_local if harness.verified_local >= 0 else None,
+                    # #328: text "" sentinel -> NULL, like the other provenance
+                    # columns; a set value never carries key material (RFC-012 5.2).
+                    harness.served_by or None,
                 ),
             )
         return harness.session_id
@@ -653,7 +682,7 @@ class _SQLiteHarnessBackend(_HarnessBackend):
                        branch, started_at, ended_at, outcome, replay_of_recording_id,
                        scenario_id, battery_run_id, model_digest, prompt_id,
                        prompt_hash, grader_version, params_json, repeat_idx,
-                       verified_local
+                       verified_local, served_by
                 FROM agentic_harnesses WHERE session_id = ?
                 """,
                 (session_id,),
@@ -1036,6 +1065,9 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
         # #350: persisted local-resolution tier verdict; INTEGER, matching the
         # SQLite migration and the Table column below.
         "ALTER TABLE agentic_harnesses ADD COLUMN verified_local INTEGER",
+        # #328 (RFC-012 MS5): route-trace serving host/provider; VARCHAR, matching
+        # the SQLite migration (TEXT) and the Table column below.
+        "ALTER TABLE agentic_harnesses ADD COLUMN served_by VARCHAR",
     ]
 
     def __init__(self, database_url: str) -> None:
@@ -1102,6 +1134,10 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
             # .select() returns table order, so this is index-stable regardless of
             # a migrated DB's physical column order.
             Column("verified_local", Integer),
+            # #328: served_by at positional index 19 (after verified_local), the
+            # route-trace serving host/provider. Sequenced last so the SQLite
+            # SELECT / _harness_from_row index (19) agrees across backends.
+            Column("served_by", String),
         )
         self._plugins = Table(
             "agentic_plugins",
@@ -1296,6 +1332,8 @@ class _SQLAlchemyHarnessBackend(_HarnessBackend):
                     "verified_local": harness.verified_local
                     if harness.verified_local >= 0
                     else None,
+                    # #328: text "" sentinel -> NULL; never carries key material.
+                    "served_by": harness.served_by or None,
                 },
             )
         return harness.session_id
