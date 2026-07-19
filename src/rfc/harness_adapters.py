@@ -759,8 +759,42 @@ class OpenCodeAdapter:
 
 
 # ---------------------------------------------------------------------------
-# CodexAdapter (PENDING LIVE CONFORMANCE — codex CLI not installed here).
+# CodexAdapter (live-conformed against codex-cli 0.144.5, #200).
 # ---------------------------------------------------------------------------
+
+
+def _codex_exit_code(value: object) -> int:
+    """Coerce a codex command event ``exit_code`` to a recorded ``returncode``.
+
+    Unlike an opencode bash tool state (which also carries a ``status`` field),
+    a codex command event's ``exit_code`` is the *only* numeric pass/fail
+    signal, so an unconfirmable value must never normalize to ``0`` (green): a
+    failed command silently recorded green defeats
+    ``assert_no_commit_while_tests_red`` — the safety-critical direction #200
+    guards. Coercion:
+
+      * a real int that is not a bool -> itself (``0`` green, nonzero red);
+      * a numeric string (``"1"``, ``" 0 "``) -> its parsed int value;
+      * anything else — bool, non-numeric string, ``None``/missing, float,
+        list, dict — is not a trustworthy exit code, so bias to failure and
+        return ``1`` (fail loud, never silently green).
+
+    Live-confirmed against codex-cli 0.144.5 ``exec --json`` (#200): a completed
+    ``command_execution`` item reports ``exit_code`` as an int (a failed command
+    recorded ``exit_code = 3``, ``status = "failed"``), while the non-terminal
+    ``item.started`` carries ``exit_code = null`` — biasing that ``null`` (and
+    any other non-int shape) toward failure is the safe direction.
+    """
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 1
+    return 1
 
 
 def parse_codex_events(
@@ -770,9 +804,10 @@ def parse_codex_events(
 ) -> ParsedOutput:
     """Parse a ``codex exec --json`` event stream (JSONL).
 
-    PENDING LIVE CONFORMANCE: written against codex's documented ``exec --json``
-    format, not yet verified against a real binary (the CLI is not installed on
-    this box). Each line is a JSON object; two schema generations are handled:
+    Live-conformed against codex-cli 0.144.5 (#200): the current thread-item
+    schema below is the one a real ``codex exec --json`` stream emits; the legacy
+    ``msg`` envelope is retained defensively for older / other builds. Each line
+    is a JSON object; two schema generations are handled:
 
     Current thread-item schema (``codex exec --json``, top-level events):
 
@@ -781,9 +816,11 @@ def parse_codex_events(
         such as ``"bash -lc 'uv run pytest'"``, or defensively an argv array),
         ``item.aggregated_output`` (combined stdout+stderr), and
         ``item.exit_code`` (int). Yields one :class:`AgentCommand`; the
-        ``exit_code`` becomes the recorded ``returncode`` so a failed command is
-        recorded RED (#387 — without this branch a real codex run produced an
-        empty-transcript ``AgentRun`` that defeats the conformance verifiers).
+        ``exit_code`` is coerced by :func:`_codex_exit_code` into the recorded
+        ``returncode`` so a failed command is recorded RED (#387 — without this
+        branch a real codex run produced an empty-transcript ``AgentRun`` that
+        defeats the conformance verifiers) and a non-int / unparseable shape
+        biases toward failure rather than silently green (#200).
       * ``item.completed`` with ``item.type == "agent_message"`` — assistant
         text (``item.text``), scanned for clarifying questions.
 
@@ -793,14 +830,17 @@ def parse_codex_events(
       * ``exec_command_begin`` — ``command`` (an argv array) keyed by
         ``call_id``.
       * ``exec_command_end`` — ``stdout`` / ``stderr`` / ``exit_code`` paired
-        back to its begin by ``call_id``, yielding one :class:`AgentCommand`.
+        back to its begin by ``call_id``, yielding one :class:`AgentCommand`
+        (``exit_code`` coerced by :func:`_codex_exit_code`).
       * ``agent_message`` — assistant text (``message``/``text``), scanned for
         clarifying questions.
 
-    ASSUMPTION (#387): the ``item.completed`` / ``command_execution`` field names
-    (``command`` as a string, ``aggregated_output``, ``exit_code``) follow the
-    documented ``codex exec --json`` item shape; they could not be observed live
-    here (codex CLI absent). See the issue for the live-conformance follow-up.
+    CONFORMANCE (#200, codex-cli 0.144.5): a live ``codex exec --json`` run that
+    executed a failing command emitted the ``item.completed`` /
+    ``command_execution`` shape (``command`` as a string, ``aggregated_output``,
+    ``exit_code`` as an int ``3`` with ``status = "failed"``); the legacy ``msg``
+    envelope was not emitted by this build but is retained for older / other
+    builds. ``exit_code`` coercion is centralized in :func:`_codex_exit_code`.
     """
     commands: list[AgentCommand] = []
     questions: list[AgentQuestion] = []
@@ -836,8 +876,7 @@ def parse_codex_events(
                 continue
             stdout = str(msg.get("stdout") or "")
             stderr = str(msg.get("stderr") or "")
-            exit_code = msg.get("exit_code")
-            returncode = int(exit_code) if isinstance(exit_code, int) else 0
+            returncode = _codex_exit_code(msg.get("exit_code"))
             commands.append(
                 AgentCommand(
                     argv=argv,
@@ -869,14 +908,10 @@ def parse_codex_events(
                     argv = ("bash", "-lc", command)
                 else:
                     continue
-                exit_code = item.get("exit_code")
-                # int (not bool) is the documented shape; anything else is not a
-                # trustworthy exit code, so record 0 (success) only for a real 0.
-                returncode = (
-                    int(exit_code)
-                    if isinstance(exit_code, int) and not isinstance(exit_code, bool)
-                    else 0
-                )
+                # int is the documented (and #200 live-confirmed) shape; any
+                # other shape biases toward failure so a red command is never
+                # silently recorded green — see :func:`_codex_exit_code`.
+                returncode = _codex_exit_code(item.get("exit_code"))
                 output = str(item.get("aggregated_output") or item.get("output") or "")
                 commands.append(
                     AgentCommand(
@@ -899,11 +934,11 @@ def parse_codex_events(
 class CodexAdapter:
     """Drive the Codex CLI headless (``codex exec --json <task>``).
 
-    PENDING LIVE CONFORMANCE: the ``codex`` binary is not installed here, so
-    :meth:`probe` returns ``False`` and the driver / tests skip it cleanly. The
-    argv and parser follow codex's documented ``exec --json`` format; once the
-    owner installs the CLI (and OpenAI auth) the codex path joins with no code
-    change (Issue #172, owner decision 3).
+    :meth:`probe` gates the adapter on the ``codex`` binary being on ``PATH``,
+    so a box without the CLI skips it cleanly. The ``exec --json`` event schema
+    and ``exit_code`` shape the parser reads were live-conformed against
+    codex-cli 0.144.5 (#200); the argv / env surface follows codex's documented
+    ``exec`` interface (Issue #172, owner decision 3).
     """
 
     name = "codex"
