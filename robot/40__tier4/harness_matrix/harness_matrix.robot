@@ -5,15 +5,26 @@ Documentation     Cross-harness conformance matrix (#173): the SAME fixture task
 ...               outcomes via ``rfc.agent_verifiers``. Every run brackets an
 ...               ``agentic_harnesses`` session, so it lands in the DB spine.
 ...
-...               LIVE and probe-gated. Each harness leg is a real subprocess (real
-...               git worktree, real agent) and skips cleanly when its CLI is
-...               absent — ``codex`` is absent by default and joins the matrix with
-...               no suite change once installed. The ``claude-code`` leg spends API
-...               tokens, so it is gated behind ``HARNESS_MATRIX_CLAUDE=1`` on top of
-...               the live gate. The ``opencode`` + local-Ollama leg is the cheap
-...               leg. The whole suite is gated behind ``HARNESS_MATRIX_LIVE=1``; the
-...               deterministic twin (no models, no tokens) is
-...               ``tests/test_harness_keywords.py``.
+...               Two run modes select how the conformance legs execute:
+...
+...               LIVE (``HARNESS_MATRIX_LIVE=1``) — each harness leg is a real
+...               subprocess (real git worktree, real agent) and skips cleanly when
+...               its CLI is absent. ``codex`` is absent by default and joins the
+...               matrix with no suite change once installed. The ``claude-code`` leg
+...               spends API tokens, so it is gated behind ``HARNESS_MATRIX_CLAUDE=1``
+...               on top of the live gate. The ``opencode`` + local-Ollama leg is the
+...               cheap leg.
+...
+...               REPLAY (``HARNESS_MATRIX_REPLAY=1``, or the S2 ``RFC_RUN_MODE=replay``
+...               intent) — RFC-010 S3 (#261): the conformance legs read a recorded
+...               transcript from ``recordings/`` instead of spawning an agent, so the
+...               matrix runs in CI at ~0 tokens on every push with no harness
+...               installed. A replayed leg stamps its provenance on the
+...               ``agentic_harnesses`` spine (``replay_of_recording_id``), so a green
+...               conformance cell is never mistaken for a fresh live pass — the same
+...               discipline as ``cache_hit=True``. The comparison-battery legs are
+...               live-only and skip under replay. This is the first-class-suite form
+...               of the deterministic twin ``tests/test_harness_keywords.py``.
 ...
 ...               Feeds public-repo issue rfc#596 (public keyword surface).
 
@@ -24,7 +35,7 @@ Library           rfc.harness_significance.HarnessSignificanceKeywords
 Library           OperatingSystem
 Resource          harness_matrix.resource
 
-Suite Setup       Require Live Matrix
+Suite Setup       Require Matrix Mode
 
 Test Tags         tier:4    verify:python    harness-matrix    category:live    axis:harness
 
@@ -56,8 +67,13 @@ Claude Code Honors The Harness Contract
     [Documentation]    The token-spending leg: gated behind HARNESS_MATRIX_CLAUDE=1
     ...                so the matrix never bills tokens unless the operator opts in.
     [Tags]    harness:claude-code    cost:tokens
-    Skip If    "%{HARNESS_MATRIX_CLAUDE=}" != "1"
-    ...    Set HARNESS_MATRIX_CLAUDE=1 to run the token-spending claude-code leg
+    # The token gate applies to the LIVE leg only; a replayed leg spends no
+    # tokens, so replay runs claude-code as a free CI conformance cell.
+    ${replay}=    Replay Mode Requested
+    IF    not ${replay}
+        Skip If    "%{HARNESS_MATRIX_CLAUDE=}" != "1"
+        ...    Set HARNESS_MATRIX_CLAUDE=1 to run the token-spending claude-code leg
+    END
     Skip Unless Harness Available    claude-code
     ${ws}=    New Matrix Workspace
     Start Harness Session    tool=claude-code    workspace=${ws}[path]
@@ -91,6 +107,7 @@ Comparison Mode Records The Battery Per Harness
     ...                rfc.harness_comparison docstring); this proves the recorder
     ...                writes pairable opencode rows. The McNemar gate is S4/#220.
     [Tags]    comparison    harness:opencode
+    Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${ws}=    New Matrix Workspace
     ${scenarios}=    Create List    tier4_bug_fix
@@ -104,7 +121,7 @@ Comparison Mode Records The Battery Per Harness
     ${verdict}=    Mcnemar Verdict For Harness Pair    ${report}    opencode    codex
     Mcnemar Verdict Should Be Insufficient    ${verdict}
     Log    McNemar gate: reason=${verdict.reason} (needs a second Tier-A harness to pair)
-    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+    [Teardown]    Remove Matrix Workspace If Created
 
 Repeats Yield A Complete Within-Harness Reliability Sample
     [Documentation]    Council #675 variation (checklist item 1): run the same
@@ -118,6 +135,7 @@ Repeats Yield A Complete Within-Harness Reliability Sample
     ...                comparison smoke above (N=1) to a variance-bearing N; the
     ...                deterministic twin is ``tests/test_harness_comparison.py``.
     [Tags]    comparison    harness:opencode
+    Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${ws}=    New Matrix Workspace
     ${scenarios}=    Create List    tier4_bug_fix
@@ -126,7 +144,7 @@ Repeats Yield A Complete Within-Harness Reliability Sample
     Comparison Report Should Have Rows For    ${report}    opencode
     Length Should Be    ${report.rows}    ${MATRIX_REPEATS}
     ...    the within-harness reliability sample must record all ${MATRIX_REPEATS} repeats -- a dropped repeat is lost variance signal, not a pass
-    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+    [Teardown]    Remove Matrix Workspace If Created
 
 Absent Optional Harness Skips Its Leg Without Failing
     [Documentation]    Council #675 variation (checklist item 6): an optional
@@ -140,6 +158,7 @@ Absent Optional Harness Skips Its Leg Without Failing
     ...                aborted the whole battery on the absent leg would fail here.
     ...                Restricting to the absent path also keeps this leg token-free.
     [Tags]    comparison    harness:claude-code
+    Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${claude_available}=    Harness Is Available    claude-code
     Skip If    ${claude_available}
@@ -152,19 +171,53 @@ Absent Optional Harness Skips Its Leg Without Failing
     ${skipped_harnesses}=    Evaluate    [harness for harness, _reason in $report.skipped]
     Should Contain    ${skipped_harnesses}    claude-code
     ...    an absent optional harness must appear as a skipped leg, not a hard failure
-    [Teardown]    Remove Directory    ${ws}[path]    recursive=True
+    [Teardown]    Remove Matrix Workspace If Created
 
 *** Keywords ***
-Require Live Matrix
-    [Documentation]    Gate the whole suite: it drives real agents and git.
-    Skip If    "%{HARNESS_MATRIX_LIVE=}" != "1"
-    ...    Set HARNESS_MATRIX_LIVE=1 to run the live cross-harness matrix
+Require Matrix Mode
+    [Documentation]    Gate the whole suite on a selected run mode: LIVE
+    ...                (``HARNESS_MATRIX_LIVE=1`` — real agents and git) or REPLAY
+    ...                (``HARNESS_MATRIX_REPLAY=1`` / ``RFC_RUN_MODE=replay`` —
+    ...                recorded transcripts, ~0 tokens). Skip when neither is set.
+    ${live}=    Get Environment Variable    HARNESS_MATRIX_LIVE    ${EMPTY}
+    ${replay}=    Replay Mode Requested
+    IF    '${live}' != '1' and not ${replay}
+        Skip    Set HARNESS_MATRIX_LIVE=1 (live) or HARNESS_MATRIX_REPLAY=1 (recorded replay) to run the cross-harness matrix
+    END
 
 Skip Unless Harness Available
-    [Documentation]    Probe-gate a leg: skip cleanly when the CLI is absent.
+    [Documentation]    Mode-aware leg gate: in live mode probe the CLI and skip
+    ...                when it is absent; in replay mode require a recorded
+    ...                transcript for the harness and skip when the corpus lacks
+    ...                one. Either way an unavailable leg is skip-and-logged, never
+    ...                a hard failure (CLAUDE.md skip-over-fail).
     [Arguments]    ${tool}
-    ${available}=    Harness Is Available    ${tool}
-    Skip If    not $available    ${tool} CLI is not installed; skipping its leg
+    ${replay}=    Replay Mode Requested
+    IF    ${replay}
+        ${available}=    Recording Available    ${tool}
+        Skip If    not $available    no recorded transcript for ${tool}; skipping its replay leg
+    ELSE
+        ${available}=    Harness Is Available    ${tool}
+        Skip If    not $available    ${tool} CLI is not installed; skipping its leg
+    END
+
+Skip In Replay Mode
+    [Documentation]    The comparison-battery legs (RFC-007 S2/S4) drive the live
+    ...                comparison recorder, not the recorded-transcript replay path
+    ...                (RFC-010 S3 scopes the conformance legs). Skip them cleanly
+    ...                under replay; live-mode behaviour is unchanged.
+    ${replay}=    Replay Mode Requested
+    Skip If    ${replay}    comparison battery is live-only; not part of the S3 replay slice
+
+Remove Matrix Workspace If Created
+    [Documentation]    Teardown for the comparison legs: remove the throwaway
+    ...                workspace, tolerating a leg that skipped before
+    ...                `New Matrix Workspace` ran (replay mode, or an absent
+    ...                harness in live mode) so ``${ws}`` was never assigned.
+    ${ws}=    Get Variable Value    ${ws}    ${NONE}
+    IF    $ws is not None
+        Remove Directory    ${ws}[path]    recursive=True
+    END
 
 New Matrix Workspace
     [Documentation]    Throwaway git repo + sqlite DB for one harness leg.
@@ -187,3 +240,20 @@ Harness Run Should Conform
     Should Be Equal    ${transcript}    ${run}
     Run Should Do Positive Work    ${run}
     No Commit Should Occur While Tests Red    ${run}
+    Run Provenance Should Match Mode
+
+Run Provenance Should Match Mode
+    [Documentation]    Honesty (RFC-010 §3, #261): a replayed leg MUST stamp its
+    ...                provenance on the ``agentic_harnesses`` spine, so a green
+    ...                conformance cell is never mistaken for a fresh live pass —
+    ...                the same discipline as ``cache_hit=True``. A live leg must
+    ...                carry no replay stamp.
+    ${provenance}=    Get Session Provenance
+    ${replay}=    Replay Mode Requested
+    IF    ${replay}
+        Should Not Be Empty    ${provenance}
+        ...    a replayed leg must stamp replay_of_recording_id on the spine (green != live)
+    ELSE
+        Should Be Empty    ${provenance}
+        ...    a live leg must not carry replay provenance
+    END

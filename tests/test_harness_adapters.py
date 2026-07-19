@@ -24,7 +24,7 @@ import yaml
 
 from rfc.agent_config import AgentConfig
 from rfc.agent_contract import AgentContract
-from rfc.agent_run import AgentCommand, AgentRun
+from rfc.agent_run import AgentCommand, AgentRun, TokenUsage
 from rfc.agent_verifiers import (
     VerificationFailure,
     assert_all_commits_match_convention,
@@ -43,8 +43,11 @@ from rfc.harness_adapters import (
     get_adapter,
     make_branch_name,
     parse_codex_events,
+    parse_codex_usage,
     parse_opencode_events,
+    parse_opencode_usage,
     parse_transcript,
+    parse_transcript_usage,
 )
 from rfc.harness_cli import TOOLS
 from rfc.live_agent_runner import LiveClaudeCodeRunner
@@ -1202,3 +1205,156 @@ class TestOpenCodeRunNormalizesToAgentRun:
         assert oc_calls, "expected an opencode invocation"
         _, _, env, _ = oc_calls[0]
         assert env == {"OPENCODE_CONFIG": str(cfg)}
+
+
+# ---------------------------------------------------------------------------
+# Token-usage parsing (#268): every adapter surfaces prompt/completion token
+# counts from its own CLI transcript, null-safe (-1 sentinel) when the CLI
+# reports none. Transcripts are hand-serialized so the suite stays CI-safe.
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeCodeUsage:
+    def test_prefers_cumulative_result_event(self) -> None:
+        raw = _cc_stream(
+            [
+                {
+                    "type": "assistant",
+                    "message": {"usage": {"input_tokens": 5, "output_tokens": 2}},
+                },
+                {
+                    "type": "result",
+                    "usage": {"input_tokens": 120, "output_tokens": 34},
+                },
+            ]
+        )
+        assert parse_transcript_usage(raw) == TokenUsage(tokens_in=120, tokens_out=34)
+
+    def test_sums_assistant_events_when_no_result(self) -> None:
+        raw = _cc_stream(
+            [
+                {
+                    "type": "assistant",
+                    "message": {"usage": {"input_tokens": 5, "output_tokens": 2}},
+                },
+                {
+                    "type": "assistant",
+                    "message": {"usage": {"input_tokens": 7, "output_tokens": 3}},
+                },
+            ]
+        )
+        assert parse_transcript_usage(raw) == TokenUsage(tokens_in=12, tokens_out=5)
+
+    def test_absent_usage_is_unknown(self) -> None:
+        raw = _cc_stream([_cc_bash("t1", "uv run pytest")])
+        assert parse_transcript_usage(raw) == TokenUsage()
+
+    def test_bool_token_value_is_treated_as_absent(self) -> None:
+        raw = _cc_stream(
+            [{"type": "result", "usage": {"input_tokens": True, "output_tokens": 8}}]
+        )
+        assert parse_transcript_usage(raw) == TokenUsage(tokens_in=-1, tokens_out=8)
+
+    def test_adapter_parse_usage_delegates(self) -> None:
+        raw = _cc_stream(
+            [{"type": "result", "usage": {"input_tokens": 9, "output_tokens": 4}}]
+        )
+        assert ClaudeCodeAdapter().parse_usage(raw) == TokenUsage(
+            tokens_in=9, tokens_out=4
+        )
+
+
+def _oc_tokens_part(input_tokens: int, output_tokens: int) -> dict[str, Any]:
+    """An opencode step-finish part carrying a ``tokens`` usage object."""
+    return {
+        "type": "step-finish",
+        "part": {
+            "type": "step-finish",
+            "tokens": {
+                "input": input_tokens,
+                "output": output_tokens,
+                "reasoning": 0,
+                "cache": {"read": 0, "write": 0},
+            },
+        },
+    }
+
+
+class TestOpenCodeUsage:
+    def test_reads_tokens_from_step_finish_part(self) -> None:
+        raw = _oc_stream(
+            [
+                _oc_bash("c1", "sed -i s/a/b/ calc.py", "", exit_code=0),
+                _oc_tokens_part(88, 21),
+            ]
+        )
+        assert parse_opencode_usage(raw) == TokenUsage(tokens_in=88, tokens_out=21)
+
+    def test_reads_tokens_from_message_info(self) -> None:
+        raw = _oc_stream(
+            [
+                {
+                    "type": "message",
+                    "message": {"info": {"tokens": {"input": 4, "output": 6}}},
+                }
+            ]
+        )
+        assert parse_opencode_usage(raw) == TokenUsage(tokens_in=4, tokens_out=6)
+
+    def test_last_usage_event_wins(self) -> None:
+        raw = _oc_stream([_oc_tokens_part(1, 1), _oc_tokens_part(50, 12)])
+        assert parse_opencode_usage(raw) == TokenUsage(tokens_in=50, tokens_out=12)
+
+    def test_absent_usage_is_unknown(self) -> None:
+        raw = _oc_stream([_oc_bash("c1", "ls", "ok", exit_code=0), _oc_text("done")])
+        assert parse_opencode_usage(raw) == TokenUsage()
+
+    def test_adapter_parse_usage_delegates(self) -> None:
+        raw = _oc_stream([_oc_tokens_part(7, 3)])
+        assert OpenCodeAdapter().parse_usage(raw) == TokenUsage(
+            tokens_in=7, tokens_out=3
+        )
+
+
+class TestCodexUsage:
+    def test_reads_token_count_msg(self) -> None:
+        raw = _codex_stream(
+            [{"msg": {"type": "token_count", "input_tokens": 30, "output_tokens": 9}}]
+        )
+        assert parse_codex_usage(raw) == TokenUsage(tokens_in=30, tokens_out=9)
+
+    def test_reads_usage_on_turn_completed(self) -> None:
+        raw = _codex_stream(
+            [
+                {
+                    "type": "turn.completed",
+                    "usage": {"input_tokens": 15, "output_tokens": 4},
+                }
+            ]
+        )
+        assert parse_codex_usage(raw) == TokenUsage(tokens_in=15, tokens_out=4)
+
+    def test_last_usage_event_wins(self) -> None:
+        raw = _codex_stream(
+            [
+                {"msg": {"type": "token_count", "input_tokens": 1, "output_tokens": 1}},
+                {
+                    "msg": {
+                        "type": "token_count",
+                        "input_tokens": 42,
+                        "output_tokens": 8,
+                    }
+                },
+            ]
+        )
+        assert parse_codex_usage(raw) == TokenUsage(tokens_in=42, tokens_out=8)
+
+    def test_absent_usage_is_unknown(self) -> None:
+        raw = _codex_stream([{"msg": {"type": "agent_message", "message": "hi"}}])
+        assert parse_codex_usage(raw) == TokenUsage()
+
+    def test_adapter_parse_usage_delegates(self) -> None:
+        raw = _codex_stream(
+            [{"msg": {"type": "token_count", "input_tokens": 6, "output_tokens": 2}}]
+        )
+        assert CodexAdapter().parse_usage(raw) == TokenUsage(tokens_in=6, tokens_out=2)

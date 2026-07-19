@@ -70,6 +70,8 @@ from rfc.harness_models import (
     METRIC_PROCESS_VIOLATIONS,
     METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_TASK_SUCCESS,
+    METRIC_TOKENS_IN,
+    METRIC_TOKENS_OUT,
     AgenticHarness,
     AgenticMetric,
 )
@@ -293,12 +295,17 @@ def derive_outcome(result: SandboxResult) -> str:
 def compute_metrics(result: SandboxResult, allowed_path_count: int) -> dict[str, float]:
     """The reserved-key metrics honestly capturable from a SandboxResult today.
 
-    ``tokens_in``/``tokens_out`` are omitted: the sandbox ``AgentRun`` carries
-    no token counts yet (follow-up). ``grader_score`` is llm_judge-only and not
-    produced by the exec-graded sandbox. ``sandbox_exec_overhead_ms`` (#381) is
-    added -- as the mean per-call broker overhead -- only when the run actually
-    routed code-exec through the broker (a container-routed harness), so a
-    scripted or un-routed run records no phantom-zero cost.
+    ``tokens_in``/``tokens_out`` (#268) are recorded when the harness transcript
+    reported them onto ``result.run`` -- the live adapters parse them from the
+    CLI's own usage events (opencode / claude-code / codex). They are OMITTED
+    (not a phantom zero) when the run carries the ``-1`` unknown sentinel: a
+    scripted stand-in, or a harness whose transcript surfaced no usage. This
+    keeps the metric set honest about what a given run actually measured.
+    ``grader_score`` is llm_judge-only and not produced by the exec-graded
+    sandbox. ``sandbox_exec_overhead_ms`` (#381) is added -- as the mean per-call
+    broker overhead -- only when the run actually routed code-exec through the
+    broker (a container-routed harness), so a scripted or un-routed run records
+    no phantom-zero cost.
     """
     metrics = {
         METRIC_TASK_SUCCESS: compute_task_success(result),
@@ -306,6 +313,10 @@ def compute_metrics(result: SandboxResult, allowed_path_count: int) -> dict[str,
         METRIC_PROCESS_VIOLATIONS: float(count_process_violations(result.run)),
         METRIC_LATENCY_MS: round(result.duration_seconds * 1000.0, 3),
     }
+    if result.run.tokens_in >= 0:
+        metrics[METRIC_TOKENS_IN] = float(result.run.tokens_in)
+    if result.run.tokens_out >= 0:
+        metrics[METRIC_TOKENS_OUT] = float(result.run.tokens_out)
     samples = result.sandbox_exec_overhead_ms
     if samples:
         metrics[METRIC_SANDBOX_EXEC_OVERHEAD_MS] = round(sum(samples) / len(samples), 4)

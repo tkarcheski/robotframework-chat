@@ -148,6 +148,26 @@ class AgentPR:
 
 
 @dataclass(frozen=True)
+class TokenUsage:
+    """Prompt/completion token counts parsed from a harness CLI transcript.
+
+    ``-1`` is the unknown sentinel -- the CLI reported no usage for that side --
+    matching the int-id NULL convention used by ``DialogTurn.prompt_tokens`` and
+    ``AgenticDecision.tokens_used`` (never ``Optional`` on a spine dataclass, per
+    ``ai/agents.md``). :attr:`recorded` is True iff at least one side carries a
+    real (``>= 0``) count, so a null-safe consumer can skip emitting a metric for
+    a run whose harness surfaced no tokens.
+    """
+
+    tokens_in: int = -1
+    tokens_out: int = -1
+
+    @property
+    def recorded(self) -> bool:
+        return self.tokens_in >= 0 or self.tokens_out >= 0
+
+
+@dataclass(frozen=True)
 class AgentRun:
     """Normalized record of one agent run against one scenario."""
 
@@ -161,6 +181,14 @@ class AgentRun:
     commits: tuple[AgentCommit, ...] = field(default_factory=tuple)
     pr: AgentPR | None = None
     transcript_path: str | None = None
+    # Prompt/completion token counts the harness transcript reported, when it
+    # reports them (opencode / claude-code / codex all can). ``-1`` == the CLI
+    # surfaced no count for that side, so a consumer records nothing rather than a
+    # phantom zero (the sandbox comparison runner's ``tokens_in``/``tokens_out``
+    # EAV metrics, #268). Rows from harnesses / recordings that never carried
+    # tokens keep the sentinel and are unchanged.
+    tokens_in: int = -1
+    tokens_out: int = -1
 
     def first_change_under(self, prefix: str) -> int | None:
         """Return the index of the first command whose changed paths touch ``prefix``."""
@@ -231,4 +259,6 @@ def load_agent_run(path: Path) -> AgentRun:
         commits=tuple(_build_commit(c) for c in raw.get("commits", [])),
         pr=_build_pr(raw.get("pr")),
         transcript_path=raw.get("transcript_path"),
+        tokens_in=int(raw.get("tokens_in", -1)),
+        tokens_out=int(raw.get("tokens_out", -1)),
     )

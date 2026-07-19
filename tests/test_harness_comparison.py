@@ -46,6 +46,8 @@ from rfc.harness_models import (
     METRIC_PROCESS_VIOLATIONS,
     METRIC_SANDBOX_EXEC_OVERHEAD_MS,
     METRIC_TASK_SUCCESS,
+    METRIC_TOKENS_IN,
+    METRIC_TOKENS_OUT,
 )
 from rfc.opencode_config import VerifiedLocalModel, assert_model_resolves_local
 
@@ -80,7 +82,7 @@ def _id_factory():
     return factory
 
 
-def _run(*, questions=(), commands=()) -> AgentRun:
+def _run(*, questions=(), commands=(), tokens_in=-1, tokens_out=-1) -> AgentRun:
     return AgentRun(
         agent_id="opencode",
         scenario_id="tier4_bug_fix",
@@ -89,6 +91,8 @@ def _run(*, questions=(), commands=()) -> AgentRun:
         branch_name="opencode/x",
         commands=tuple(commands),
         questions=tuple(questions),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
     )
 
 
@@ -220,6 +224,33 @@ class TestMetrics:
             METRIC_LATENCY_MS,
         }
         assert metrics[METRIC_LATENCY_MS] == 500.0
+
+    def test_compute_metrics_records_tokens_when_run_carries_them(self) -> None:
+        run = _run(tokens_in=1234, tokens_out=56)
+        metrics = compute_metrics(_result(run=run), allowed_path_count=1)
+        assert metrics[METRIC_TOKENS_IN] == 1234.0
+        assert metrics[METRIC_TOKENS_OUT] == 56.0
+
+    def test_compute_metrics_omits_tokens_when_absent(self) -> None:
+        # -1 sentinel (a scripted / non-reporting harness) records no token
+        # metric -- never a phantom zero (#268).
+        metrics = compute_metrics(_result(run=_run()), allowed_path_count=1)
+        assert METRIC_TOKENS_IN not in metrics
+        assert METRIC_TOKENS_OUT not in metrics
+
+    def test_compute_metrics_records_zero_token_count(self) -> None:
+        # A genuinely reported zero (>= 0) is honest data and IS recorded; only
+        # the -1 unknown sentinel is omitted.
+        run = _run(tokens_in=0, tokens_out=0)
+        metrics = compute_metrics(_result(run=run), allowed_path_count=1)
+        assert metrics[METRIC_TOKENS_IN] == 0.0
+        assert metrics[METRIC_TOKENS_OUT] == 0.0
+
+    def test_compute_metrics_records_only_the_reported_side(self) -> None:
+        run = _run(tokens_in=42, tokens_out=-1)
+        metrics = compute_metrics(_result(run=run), allowed_path_count=1)
+        assert metrics[METRIC_TOKENS_IN] == 42.0
+        assert METRIC_TOKENS_OUT not in metrics
 
 
 # ---------------------------------------------------------------------------
@@ -574,13 +605,39 @@ def _recording_invoker(stdout: str):
     return invoker
 
 
-def _opencode_routing_invoker(samples: list[float]):
+# opencode's bug-fix stream plus a step-finish event carrying token usage
+# (input/output), so the live path can be verified to thread tokens_in/tokens_out
+# from the transcript into the recorded metrics (#268).
+OPENCODE_FIX_TRANSCRIPT_WITH_TOKENS = (
+    OPENCODE_FIX_TRANSCRIPT
+    + json.dumps(
+        {
+            "type": "step-finish",
+            "part": {
+                "type": "step-finish",
+                "tokens": {
+                    "input": 640,
+                    "output": 128,
+                    "reasoning": 0,
+                    "cache": {"read": 0, "write": 0},
+                },
+            },
+        }
+    )
+    + "\n"
+)
+
+
+def _opencode_routing_invoker(
+    samples: list[float], transcript: str = OPENCODE_FIX_TRANSCRIPT
+):
     """An opencode invoker double that plays the rfc-exec MCP child (#381).
 
     Reads the merged routed config the sandbox exported via ``OPENCODE_CONFIG``,
     pulls the broker's metrics-sink path from its ``mcp`` block, and writes
     ``samples`` there -- standing in for the broker dispatching that many
-    code-exec calls into the container. Returns opencode's bug-fix event stream.
+    code-exec calls into the container. Returns ``transcript`` (opencode's bug-fix
+    event stream by default).
     """
 
     def invoker(argv, cwd, env, timeout) -> ClaudeProcessResult:
@@ -592,9 +649,7 @@ def _opencode_routing_invoker(samples: list[float]):
             )
             if metrics_path:
                 Path(metrics_path).write_text("".join(f"{s}\n" for s in samples))
-        return ClaudeProcessResult(
-            returncode=0, stdout=OPENCODE_FIX_TRANSCRIPT, stderr=""
-        )
+        return ClaudeProcessResult(returncode=0, stdout=transcript, stderr="")
 
     return invoker
 
@@ -653,6 +708,42 @@ class TestRealSandboxPath:
         stored = db.get_harness(row.session_id)
         assert stored is not None and stored.scenario_id == "tier4_bug_fix"
         assert db.get_table_row_count("agentic_harnesses") == 1
+
+    def test_live_opencode_leg_records_token_counts_end_to_end(
+        self, tmp_path: Path
+    ) -> None:
+        # #268 end-to-end: when opencode's transcript reports token usage, the
+        # live AgentSandbox path threads it onto the AgentRun and the runner
+        # writes tokens_in/tokens_out EAV rows -- lighting up RFC-007 6.1's
+        # efficiency column. Proven at the PERSISTENCE layer, not just report.rows.
+        fake = _FakeContainerManager(
+            exec_results=[
+                _manifest({"calculator.py": "old", "test_calculator.py": "t"}),
+                _manifest({"calculator.py": "new", "test_calculator.py": "t"}),
+                {"stdout": "OK", "stderr": "", "exit_code": 0, "duration_ms": 9},
+            ]
+        )
+        sandbox = AgentSandbox(
+            limits=_limits(),
+            manager=fake,
+            invoker=_opencode_routing_invoker(
+                [14.0], transcript=OPENCODE_FIX_TRANSCRIPT_WITH_TOKENS
+            ),
+        )
+        db = _db(tmp_path)
+        runner = _runner(sandbox, db, repeats=1)
+        report = runner.run(
+            ["tier4_bug_fix"], [HarnessLeg("opencode")], battery_run_id="batt-tokens"
+        )
+        assert len(report.rows) == 1
+        row = report.rows[0]
+        assert row.metrics[METRIC_TOKENS_IN] == 640.0
+        assert row.metrics[METRIC_TOKENS_OUT] == 128.0
+        # Persisted to the spine as agentic_metrics EAV rows.
+        stored_in = db.get_metrics(row.session_id, metric_key=METRIC_TOKENS_IN)
+        stored_out = db.get_metrics(row.session_id, metric_key=METRIC_TOKENS_OUT)
+        assert [m.metric_value for m in stored_in] == [640.0]
+        assert [m.metric_value for m in stored_out] == [128.0]
 
     def test_live_claude_code_leg_writes_row_through_real_sandbox(
         self, tmp_path: Path

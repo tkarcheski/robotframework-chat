@@ -35,7 +35,7 @@ jobs:
     if: ${{ github.actor != 'github-actions[bot]' }}
     steps:
       - name: Apply needs-review label
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -79,7 +79,7 @@ jobs:
       # heartbeat does the review — no secret required for this workflow to work.
       # ----------------------------------------------------------------------
       # - name: Inline Claude review
-      #   uses: anthropics/claude-code-action@v1
+      #   uses: anthropics/claude-code-action@3553f84341b92da26052e28acf1aa898f9511f32 # v1.0.177
       #   with:
       #     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
       #     prompt: |

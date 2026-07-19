@@ -12,10 +12,10 @@ jobs:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
 
       - name: Install dependencies
         run: uv sync --extra dev --extra superset --extra swebench
@@ -40,7 +40,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # The guard diffs against the merge-base with the target branch,
           # so it needs real history, not a depth-1 snapshot.
@@ -64,10 +64,10 @@ jobs:
       DEFAULT_MODEL: dryrun-placeholder
       OLLAMA_ENDPOINT: http://localhost:11434
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
 
       - name: Install dependencies
         # Same as `make install`: keyword libraries import superset/swebench
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload dry-run results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dryrun-results
           path: results/dryrun/
@@ -102,10 +102,10 @@ jobs:
         --listener rfc.git_metadata_listener.GitMetaData
         --listener rfc.ollama_timestamp_listener.OllamaTimestampListener
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
 
       - name: Install dependencies
         run: uv sync --extra dev --extra superset --extra swebench
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: robot-results
           path: results/

@@ -83,6 +83,16 @@ class UnreachableRedis:
 
         raise redis.ConnectionError("redis down")
 
+    def scan_iter(self, *_a: Any, **_k: Any) -> Any:
+        import redis
+
+        raise redis.ConnectionError("redis down")
+
+    def delete(self, *_a: Any, **_k: Any) -> Any:
+        import redis
+
+        raise redis.ConnectionError("redis down")
+
 
 def make_cache(**kwargs: Any) -> AnswerCache:
     return AnswerCache(redis_client=fakeredis.FakeStrictRedis(), **kwargs)
@@ -563,6 +573,30 @@ def test_from_env_passes_finite_socket_timeouts(monkeypatch):
     assert captured.get("socket_timeout", 0) > 0
 
 
+def test_version_property_reports_active_namespace():
+    """The public ``version`` accessor exposes the resolved namespace so callers
+    (the CLI) need not reach into ``_version``."""
+    from rfc.answer_cache import DEFAULT_VERSION
+
+    default_cache = AnswerCache(redis_client=fakeredis.FakeStrictRedis())
+    assert default_cache.version == DEFAULT_VERSION
+
+    pinned = AnswerCache(redis_client=fakeredis.FakeStrictRedis(), version="v9")
+    assert pinned.version == "v9"
+
+
+def test_from_env_version_property_honors_env(monkeypatch):
+    import redis
+
+    monkeypatch.setenv("ANSWER_CACHE_VERSION", "v7")
+    monkeypatch.setattr(
+        redis.Redis,
+        "from_url",
+        staticmethod(lambda *a, **k: fakeredis.FakeStrictRedis()),
+    )
+    assert AnswerCache.from_env().version == "v7"
+
+
 def test_redis_outage_latches_and_stops_reattempting():
     redis_dbl = CountingUnreachableRedis()
     cache = AnswerCache(redis_client=redis_dbl)
@@ -916,3 +950,326 @@ def test_live_mode_blank_stored_value_relives(blank):
     # The fresh answer replaced the blank, so the next call is a genuine hit.
     assert wrapped.generate("q") == "fresh"
     assert inner.calls == ["q"]  # second call served from cache
+
+
+# ── RFC-010 S4: repo/prompt context in the key (#262) ────────────────────
+#
+# A suite whose prompt embeds repo state opts into a ``cache_context``
+# fingerprint (repo commit + prompt version). It is folded into the key so a
+# code change invalidates that suite's own cached answers — while every
+# self-contained provider (no ``cache_context``) keeps the pre-#262 key.
+
+
+class ContextProvider(FakeProvider):
+    """FakeProvider that exposes an opt-in ``cache_context`` fingerprint (#262)."""
+
+    def __init__(self, cache_context: Any = None, **attrs: Any) -> None:
+        super().__init__(**attrs)
+        self.cache_context = cache_context
+
+
+def test_cache_context_none_matches_absent_attribute():
+    """A ``cache_context`` of ``None`` keys identically to a provider that has no
+    such attribute at all: the dimension is opt-in, so self-contained suites are
+    byte-for-byte unchanged from the pre-#262 schema (no version bump, no
+    orphaned entries). Same provider class both sides so only the field varies."""
+    cache = make_cache()
+    p_absent = FakeProvider()  # no cache_context attribute at all (pre-#262 shape)
+    p_none = FakeProvider()
+    p_none.cache_context = None  # explicit None
+    assert cache.make_key(p_absent, "hello") == cache.make_key(p_none, "hello")
+
+
+def test_cache_context_changes_the_key():
+    """Different repo state (different fingerprint) must not reuse the old key —
+    otherwise a code change silently replays answers about the old code."""
+    cache = make_cache()
+    old = ContextProvider(cache_context="commit=aaa;prompt=v1")
+    new = ContextProvider(cache_context="commit=bbb;prompt=v1")
+    assert cache.make_key(old, "hello") != cache.make_key(new, "hello")
+
+
+def test_same_cache_context_is_stable():
+    cache = make_cache()
+    a = ContextProvider(cache_context="commit=aaa;prompt=v1")
+    b = ContextProvider(cache_context="commit=aaa;prompt=v1")
+    assert cache.make_key(a, "hello") == cache.make_key(b, "hello")
+
+
+def test_cache_context_none_and_set_are_distinct_namespaces():
+    """A set fingerprint never collides with the no-context namespace, so a
+    context-stamped entry is never served to a self-contained request."""
+    cache = make_cache()
+    k_none = cache.make_key(ContextProvider(cache_context=None), "hello")
+    k_set = cache.make_key(ContextProvider(cache_context="commit=aaa"), "hello")
+    assert k_none != k_set
+
+
+def test_cache_context_accepts_structured_fingerprint():
+    """A dict fingerprint is canonicalized (sort_keys) so key-order can't split
+    one repo state across two keys."""
+    cache = make_cache()
+    a = ContextProvider(cache_context={"commit": "aaa", "prompt": "v1"})
+    b = ContextProvider(cache_context={"prompt": "v1", "commit": "aaa"})
+    assert cache.make_key(a, "hello") == cache.make_key(b, "hello")
+
+
+# ── RFC-010 S4: stale-hit honesty guard (#262) ───────────────────────────
+#
+# The load-bearing rule (RFC-010 §1/§3): a changed model digest / version /
+# repo-context must produce a MISS, not a silent pass. "A stale cache that
+# silently passes is worse than slow truth." These prove the miss end-to-end
+# through CachingProvider — cache_only fails LOUD, live modes regenerate — so a
+# stale entry can never be replayed as a confident hit.
+
+
+def test_version_bump_is_loud_miss_under_cache_only():
+    """An entry primed under one version is NOT served after a version bump:
+    cache_only misses LOUD on the new namespace instead of a stale pass."""
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        FakeProvider(answer="v2-answer"),
+        AnswerCache(redis_client=redis, version="v2"),
+    ).generate("q")  # primed under v2
+
+    inner = FakeProvider(answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner,
+        AnswerCache(redis_client=redis, version="v3"),
+        mode=CacheMode.CACHE_ONLY,
+    )
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
+    assert inner.calls == []  # zero upstream — no stale-namespace hit
+    assert excinfo.value.reason == "cache-miss"
+
+
+def test_version_bump_relives_under_live_mode():
+    """Under a live-on-miss mode a version bump regenerates rather than serving
+    the old-namespace answer."""
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        FakeProvider(answer="v2-answer"),
+        AnswerCache(redis_client=redis, version="v2"),
+    ).generate("q")
+
+    inner = FakeProvider(answer="v3-answer")
+    wrapped = CachingProvider(inner, AnswerCache(redis_client=redis, version="v3"))
+    assert wrapped.generate("q") == "v3-answer"  # fresh, not the v2 answer
+    assert inner.calls == ["q"]
+
+
+def test_changed_cache_context_is_loud_miss_under_cache_only():
+    """A changed repo/prompt fingerprint is a LOUD miss under cache_only — the
+    honesty guard for a code change (#262): never replay the old-code answer."""
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        ContextProvider(cache_context="commit=old", answer="about-old-code"),
+        AnswerCache(redis_client=redis),
+    ).generate("q")  # primed against the old commit
+
+    inner = ContextProvider(cache_context="commit=new", answer="SHOULD_NOT_RUN")
+    wrapped = CachingProvider(
+        inner, AnswerCache(redis_client=redis), mode=CacheMode.CACHE_ONLY
+    )
+    with pytest.raises(AnswerCacheMiss) as excinfo:
+        wrapped.generate("q")
+    assert inner.calls == []  # zero upstream — no stale-code hit
+    assert excinfo.value.reason == "cache-miss"
+
+
+def test_changed_cache_context_relives_under_live_mode():
+    """Under a live-on-miss mode a changed fingerprint regenerates against the
+    new repo state instead of serving the old-code answer."""
+    redis = fakeredis.FakeStrictRedis()
+    CachingProvider(
+        ContextProvider(cache_context="commit=old", answer="about-old-code"),
+        AnswerCache(redis_client=redis),
+    ).generate("q")
+
+    inner = ContextProvider(cache_context="commit=new", answer="about-new-code")
+    wrapped = CachingProvider(inner, AnswerCache(redis_client=redis))
+    assert wrapped.generate("q") == "about-new-code"
+    assert inner.calls == ["q"]
+
+
+# ── RFC-010 S4: explicit invalidation (#262) ─────────────────────────────
+#
+# ``AnswerCache.invalidate`` busts by scope — one version namespace or the whole
+# keyspace — reusing the version namespace as the bust lever, without
+# hand-editing Redis. It is the engine behind ``rfc cache invalidate``.
+
+
+def _seed(redis: Any, *keys: str) -> None:
+    for k in keys:
+        redis.set(k, "answer")
+
+
+def test_invalidate_all_deletes_every_namespace():
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(
+        redis,
+        "rfc:answer_cache:v1:aaa",
+        "rfc:answer_cache:v2:bbb",
+        "rfc:answer_cache:v3:ccc",
+    )
+    cache = AnswerCache(redis_client=redis)
+    assert cache.invalidate(version=None) == 3
+    assert redis.keys("rfc:answer_cache:*") == []
+
+
+def test_invalidate_version_scopes_to_that_namespace():
+    """Busting one version leaves the others intact."""
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(
+        redis,
+        "rfc:answer_cache:v2:aaa",
+        "rfc:answer_cache:v2:bbb",
+        "rfc:answer_cache:v1:ccc",
+    )
+    cache = AnswerCache(redis_client=redis)
+    assert cache.invalidate(version="v2") == 2
+    survivors = sorted(redis.keys("rfc:answer_cache:*"))
+    assert survivors == ["rfc:answer_cache:v1:ccc"]
+
+
+def test_invalidate_only_touches_answer_cache_keys():
+    """Invalidation never reaches beyond the answer-cache prefix (e.g. Superset
+    or session keys sharing the DB are untouched)."""
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(redis, "rfc:answer_cache:v2:aaa", "some:other:key")
+    cache = AnswerCache(redis_client=redis)
+    assert cache.invalidate(version=None) == 1
+    assert redis.get("some:other:key") == "answer"
+
+
+def test_invalidate_dry_run_counts_without_deleting():
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(redis, "rfc:answer_cache:v2:aaa", "rfc:answer_cache:v2:bbb")
+    cache = AnswerCache(redis_client=redis)
+    assert cache.invalidate(version="v2", dry_run=True) == 2
+    assert len(redis.keys("rfc:answer_cache:*")) == 2  # nothing deleted
+
+
+def test_invalidate_empty_keyspace_returns_zero():
+    cache = make_cache()
+    assert cache.invalidate(version=None) == 0
+
+
+def test_invalidate_raises_on_redis_down_not_silent_zero():
+    """An operator invalidation must be LOUD on outage — not report 0 keys as if
+    the cache were already clean (contrast get/set, which passthrough)."""
+    import redis as redis_mod
+
+    cache = AnswerCache(redis_client=UnreachableRedis())
+    with pytest.raises((redis_mod.RedisError, OSError)):
+        cache.invalidate(version=None)
+
+
+def test_invalidate_deletes_a_large_keyspace_in_batches():
+    """More keys than one delete batch (500) are all removed."""
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    for i in range(1200):
+        redis.set(f"rfc:answer_cache:v2:{i:04d}", "answer")
+    cache = AnswerCache(redis_client=redis)
+    assert cache.invalidate(version="v2") == 1200
+    assert redis.keys("rfc:answer_cache:*") == []
+
+
+# ── RFC-010 S4: `rfc cache invalidate` CLI (#262) ────────────────────────
+#
+# The operator/CI affordance: bust the cache by scope without hand-editing
+# Redis. These drive rfc.harness_cli.main end-to-end over a fakeredis wired in
+# through the same ``redis.Redis.from_url`` seam AnswerCache.from_env uses.
+
+
+def _patch_from_url(monkeypatch, redis_client):
+    import redis
+
+    monkeypatch.setattr(
+        redis.Redis, "from_url", staticmethod(lambda *a, **k: redis_client)
+    )
+
+
+def test_cli_cache_invalidate_all(monkeypatch, capsys):
+    from rfc.harness_cli import main
+
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(redis, "rfc:answer_cache:v1:aaa", "rfc:answer_cache:v2:bbb")
+    _patch_from_url(monkeypatch, redis)
+
+    assert main(["cache", "invalidate", "--all"]) == 0
+    assert redis.keys("rfc:answer_cache:*") == []
+    out = capsys.readouterr().out
+    assert "deleted 2 key(s)" in out
+    assert "all namespaces" in out
+
+
+def test_cli_cache_invalidate_default_version(monkeypatch, capsys):
+    from rfc.answer_cache import DEFAULT_VERSION
+    from rfc.harness_cli import main
+
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(redis, f"rfc:answer_cache:{DEFAULT_VERSION}:aaa", "rfc:answer_cache:v1:bbb")
+    _patch_from_url(monkeypatch, redis)
+
+    assert main(["cache", "invalidate"]) == 0
+    # Only the default (current) namespace is busted; the older one survives.
+    assert redis.get("rfc:answer_cache:v1:bbb") == "answer"
+    assert redis.get(f"rfc:answer_cache:{DEFAULT_VERSION}:aaa") is None
+    assert f"namespace {DEFAULT_VERSION}" in capsys.readouterr().out
+
+
+def test_cli_cache_invalidate_default_honors_active_version(monkeypatch, capsys):
+    """Default invalidate busts the ACTIVE namespace (ANSWER_CACHE_VERSION),
+    not the compiled-in DEFAULT_VERSION.
+
+    Regression for the S4 review: an operator who sets the documented
+    ``ANSWER_CACHE_VERSION`` knob (the run reads/writes that namespace) must have
+    ``rfc cache invalidate`` (no args) bust *that* namespace — not silently
+    delete DEFAULT_VERSION and print a confident success for a bust that never
+    touched the live cache. Both the CLI help ("the current schema version") and
+    the runbook ("bust the current schema namespace") promise the active one.
+    """
+    from rfc.answer_cache import DEFAULT_VERSION
+    from rfc.harness_cli import main
+
+    active = "v3"
+    assert active != DEFAULT_VERSION  # otherwise the test proves nothing
+    monkeypatch.setenv("ANSWER_CACHE_VERSION", active)
+
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(
+        redis,
+        f"rfc:answer_cache:{active}:aaa",  # the live namespace — must be busted
+        f"rfc:answer_cache:{DEFAULT_VERSION}:bbb",  # the default — must survive
+    )
+    _patch_from_url(monkeypatch, redis)
+
+    assert main(["cache", "invalidate"]) == 0
+    # The active namespace is cleared; the compiled-in default is untouched.
+    assert redis.get(f"rfc:answer_cache:{active}:aaa") is None
+    assert redis.get(f"rfc:answer_cache:{DEFAULT_VERSION}:bbb") == "answer"
+    out = capsys.readouterr().out
+    assert f"namespace {active}" in out
+    assert f"namespace {DEFAULT_VERSION}" not in out
+
+
+def test_cli_cache_invalidate_dry_run(monkeypatch, capsys):
+    from rfc.harness_cli import main
+
+    redis = fakeredis.FakeStrictRedis(decode_responses=True)
+    _seed(redis, "rfc:answer_cache:v2:aaa", "rfc:answer_cache:v2:bbb")
+    _patch_from_url(monkeypatch, redis)
+
+    assert main(["cache", "invalidate", "--version", "v2", "--dry-run"]) == 0
+    assert len(redis.keys("rfc:answer_cache:*")) == 2  # nothing deleted
+    assert "would delete 2 key(s)" in capsys.readouterr().out
+
+
+def test_cli_cache_invalidate_redis_down_returns_1(monkeypatch, capsys):
+    from rfc.harness_cli import main
+
+    _patch_from_url(monkeypatch, UnreachableRedis())
+    assert main(["cache", "invalidate", "--all"]) == 1
+    assert "could not reach the answer cache" in capsys.readouterr().err

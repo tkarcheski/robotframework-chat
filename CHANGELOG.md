@@ -42,6 +42,19 @@ Provenance notes:
 
 ### Added
 
+- **#261 (RFC-010 S3) — recorded-transcript replay as a first-class harness run
+  mode.** `harness_matrix.robot` gains a REPLAY mode
+  (`HARNESS_MATRIX_REPLAY=1`, or the S2 `RFC_RUN_MODE=replay` intent): the
+  cross-harness conformance legs read a recorded transcript from the on-disk
+  corpus (`robot/40__tier4/harness_matrix/recordings/`) instead of spawning a
+  live agent, so the matrix runs in CI at ~0 tokens on every push with no
+  harness CLI installed. A replayed leg stamps its provenance on the
+  `agentic_harnesses` spine (`replay_of_recording_id`, via a new
+  `rfc harness start --replay-of`), so a green conformance cell is never
+  mistaken for a fresh live pass — the same discipline as `cache_hit=True`. New
+  module `rfc.harness_replay`; new keywords `Replay Mode Requested`,
+  `Recording Available`, `Get Session Provenance`. The comparison-battery legs
+  stay live-only and skip cleanly under replay.
 - **#394 — a live-enforcement leg must never silently skip forever.** Two
   real-proof live legs certify opencode's routed permission enforcement against
   the REAL CLI + local model on top of the deterministic fixture/resolver proofs:
