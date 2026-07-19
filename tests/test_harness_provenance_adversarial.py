@@ -41,7 +41,7 @@ NOW = "2026-07-13T00:00:00Z"
 # positional indices. The provenance set occupies indices 12-16; #277's repeat_idx
 # is appended at index 17, after the provenance set, so it never collides with it;
 # #350's verified_local is appended at index 18, after repeat_idx, for the same
-# reason.
+# reason; #328's served_by is appended at index 19, after verified_local.
 _CANONICAL_HARNESS_COLUMNS = [
     "session_id",
     "tool_name",
@@ -62,6 +62,7 @@ _CANONICAL_HARNESS_COLUMNS = [
     "params_json",
     "repeat_idx",
     "verified_local",
+    "served_by",
 ]
 _PROVENANCE_COLUMNS = _CANONICAL_HARNESS_COLUMNS[12:17]
 
