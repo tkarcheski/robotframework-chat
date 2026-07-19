@@ -1,4 +1,4 @@
-# Grafana & Superset Setup Guide
+# Superset Setup Guide
 
 Complete guide for setting up the visualization stack, populating the database,
 and using dashboards to compare LLM model performance.
@@ -18,24 +18,18 @@ and using dashboards to compare LLM model performance.
 5. [Populating the Database](#populating-the-database)
    - [Running Tests with Archiving](#running-tests-with-archiving)
    - [Importing Existing Results](#importing-existing-results)
-6. [Grafana Dashboards](#grafana-dashboards)
-   - [Accessing Grafana](#accessing-grafana)
-   - [Pre-provisioned Dashboards](#pre-provisioned-dashboards)
-   - [Template Variables](#template-variables)
-   - [Creating Custom Panels](#creating-custom-panels)
-7. [Superset Dashboards](#superset-dashboards)
+6. [Superset Dashboards](#superset-dashboards)
    - [Accessing Superset](#accessing-superset)
    - [Pre-configured Dashboards](#pre-configured-dashboards)
    - [Using SQL Lab](#using-sql-lab)
-8. [Model Comparison Reports](#model-comparison-reports)
+7. [Model Comparison Reports](#model-comparison-reports)
    - [CLI Comparison Tools](#cli-comparison-tools)
-   - [Grafana: Visual Model Comparison](#grafana-visual-model-comparison)
    - [Superset: Cross-Model Analytics](#superset-cross-model-analytics)
    - [SQL Queries for Model Comparison](#sql-queries-for-model-comparison)
    - [Programmatic Comparison](#programmatic-comparison)
-9. [Database Schema Reference](#database-schema-reference)
-10. [Troubleshooting](#troubleshooting)
-11. [Maintenance](#maintenance)
+8. [Database Schema Reference](#database-schema-reference)
+9. [Troubleshooting](#troubleshooting)
+10. [Maintenance](#maintenance)
 
 ---
 
@@ -45,14 +39,14 @@ and using dashboards to compare LLM model performance.
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        Docker Compose Stack                          │
 │                                                                      │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────────┐  │
-│  │   Grafana    │   │   Superset   │   │   Superset-Init          │  │
-│  │  :3000       │   │   :8088      │   │   (one-shot bootstrap)   │  │
-│  │  Dashboards  │   │   Dashboards │   │   Creates tables,        │  │
-│  │  provisione  │   │   SQL Lab    │   │   charts, dashboards     │  │
-│  └──────┬───────┘   └──────┬───────┘   └────────────┬─────────────┘  │
-│         │                  │                        │                │
-│         └────────────┬─────┴────────────────────────┘                │
+│  ┌──────────────┐   ┌──────────────────────────┐                     │
+│  │   Superset   │   │   Superset-Init          │                     │
+│  │   :8088      │   │   (one-shot bootstrap)   │                     │
+│  │   Dashboards │   │   Creates tables,        │                     │
+│  │   SQL Lab    │   │   charts, dashboards     │                     │
+│  └──────┬───────┘   └────────────┬─────────────┘                     │
+│         │                        │                                   │
+│         └────────────┬───────────┘                                   │
 │                      │                                               │
 │              ┌───────▼───────┐         ┌──────────────┐              │
 │              │  PostgreSQL   │         │    Redis     │              │
@@ -83,7 +77,6 @@ and using dashboards to compare LLM model performance.
 | PostgreSQL | `postgres:16-alpine` | 5433 (host) / 5432 (internal) | Primary data store for test results |
 | Redis | `redis:7-alpine` | — (internal only) | Superset caching backend |
 | Superset | `apache/superset:4.1.1` | 8088 | Interactive dashboards and SQL Lab |
-| Grafana | `grafana/grafana-oss:11.4.0` | 3000 | Provisioned dashboards |
 
 ---
 
@@ -126,7 +119,6 @@ make bootstrap
 make robot-math
 
 # 7. Open dashboards
-open http://localhost:3000    # Grafana (admin/admin)
 open http://localhost:8088    # Superset (admin/changeme)
 ```
 
@@ -158,11 +150,6 @@ SUPERSET_ADMIN_USER=admin
 SUPERSET_ADMIN_PASSWORD=changeme    # CHANGE THIS
 SUPERSET_ADMIN_EMAIL=admin@rfc.local
 
-# ── Grafana ─────────────────────────────────────────────────────────
-GRAFANA_PORT=3000
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=admin        # CHANGE THIS
-
 # ── Test runner ─────────────────────────────────────────────────────
 # This tells the DbListener to archive results to PostgreSQL
 DATABASE_URL=postgresql://rfc:changeme@localhost:5433/rfc
@@ -187,7 +174,7 @@ make docker-up
 make docker-logs
 ```
 
-This starts PostgreSQL, Redis, Superset (init + web), and Grafana. Wait for
+This starts PostgreSQL, Redis, and Superset (init + web). Wait for
 all health checks to pass (visible in `docker compose ps`):
 
 ```bash
@@ -202,7 +189,6 @@ postgres            Up (healthy)        0.0.0.0:5433->5432/tcp
 redis               Up (healthy)
 superset-init       Exited (0)
 superset            Up (healthy)        0.0.0.0:8088->8088/tcp
-grafana             Up (healthy)        0.0.0.0:3000->3000/tcp
 ```
 
 ### Bootstrapping Superset
@@ -238,10 +224,6 @@ After startup, verify each service:
 ```bash
 # PostgreSQL — check tables exist
 psql $DATABASE_URL -c "\dt"
-
-# Grafana health
-curl -s http://localhost:3000/api/health | python3 -m json.tool
-
 # Superset health
 curl -s http://localhost:8088/health
 ```
@@ -296,89 +278,6 @@ make import RESULTS_DIR=results/
 
 ---
 
-## Grafana Dashboards
-
-### Accessing Grafana
-
-Open `http://localhost:3000` and log in with the credentials from `.env`
-(default: `admin` / `admin`).
-
-The PostgreSQL datasource is auto-provisioned via
-`grafana/provisioning/datasources/rfc.yaml`. No manual datasource configuration
-is needed.
-
-### Pre-provisioned Dashboards
-
-Three JSON dashboards are provisioned automatically in the "Robot Framework Chat"
-folder:
-
-#### 1. RFC Test Results (`rfc_test_results.json`)
-
-The primary dashboard for monitoring test execution and model quality.
-
-**Summary Row (6 stat panels):**
-
-| Panel | Description |
-|-------|-------------|
-| Total Test Runs | Count of all test suite executions |
-| Total Tests Executed | Sum of all individual tests run |
-| Overall Pass Rate | Aggregate pass rate with color thresholds (red < 70%, yellow < 90%, green >= 90%) |
-| Total Failures | Failure count with severity thresholds |
-| Models Tested | Count of distinct models evaluated |
-| Avg Duration | Average suite execution time |
-
-**Charts:**
-
-| Panel | Type | Description |
-|-------|------|-------------|
-| Pass / Fail Over Time | Stacked bar (time series) | Green/red/yellow bars for passed/failed/skipped tests over time |
-| Suite Duration Over Time | Line (time series) | Execution time trends per suite |
-| Pass Rate by Model | Bar chart | Side-by-side model comparison — the key comparison chart |
-| Pass Rate by Suite | Bar chart | Performance breakdown by test suite |
-| Recent Test Runs | Table | Latest 25 runs with model, suite, pass/fail counts, branch, commit |
-| Individual Test Results | Table | Per-test details from the most recent run (status, score, actual vs expected answer) |
-| Score Distribution Over Time | Line (time series) | Average score trend over time |
-| Test Status Distribution | Pie chart | Overall pass/fail/skip breakdown |
-
-**Template Variables:**
-
-| Variable | Source | Purpose |
-|----------|--------|---------|
-| `$model` | `SELECT DISTINCT model_name FROM robot_test_runs` | Filter all panels by model(s) |
-| `$suite` | `SELECT DISTINCT test_suite FROM robot_test_runs` | Filter all panels by suite(s) |
-
-Use the dropdowns at the top of the dashboard to filter by specific models or
-suites. Multi-select is enabled — you can compare any subset of models.
-
-### Creating Custom Panels
-
-To add your own panels to Grafana:
-
-1. Navigate to the dashboard
-2. Click **Edit** (pencil icon)
-3. Click **Add** > **Visualization**
-4. Select the "RFC PostgreSQL" datasource
-5. Write your SQL query (see [SQL Queries for Model Comparison](#sql-queries-for-model-comparison))
-6. Choose the visualization type
-
-Example — custom panel for model pass rate with confidence intervals:
-
-```sql
-SELECT
-    model_name AS "Model",
-    COUNT(*) AS "Runs",
-    ROUND(AVG(passed::numeric / NULLIF(total_tests, 0) * 100), 1) AS "Avg Pass Rate %",
-    ROUND(MIN(passed::numeric / NULLIF(total_tests, 0) * 100), 1) AS "Min %",
-    ROUND(MAX(passed::numeric / NULLIF(total_tests, 0) * 100), 1) AS "Max %",
-    ROUND(STDDEV(passed::numeric / NULLIF(total_tests, 0) * 100), 1) AS "Std Dev"
-FROM test_runs
-WHERE total_tests > 0
-GROUP BY model_name
-ORDER BY "Avg Pass Rate %" DESC;
-```
-
----
-
 ## Superset Dashboards
 
 ### Accessing Superset
@@ -415,7 +314,7 @@ for ready-to-use queries.
 ## Model Comparison Reports
 
 This section covers every method available for comparing model performance:
-CLI tools, Grafana panels, Superset dashboards, raw SQL, and Python API.
+CLI tools, Superset dashboards, raw SQL, and Python API.
 
 ### CLI Comparison Tools
 
@@ -487,97 +386,6 @@ uv run python scripts/query_results.py history "IQ 100 Basic Addition"
 uv run python scripts/query_results.py export --output results.json
 ```
 
-### Grafana: Visual Model Comparison
-
-Grafana's "RFC Test Results" dashboard provides the primary visual comparison
-interface.
-
-#### Using Template Variables for Comparison
-
-1. Open `http://localhost:3000` and navigate to "RFC Test Results"
-2. Use the **$model** dropdown at the top to select 2+ models
-3. All panels filter to show only the selected models
-4. The "Pass Rate by Model" bar chart provides the direct comparison
-
-#### Key Comparison Panels
-
-**Pass Rate by Model** (bar chart):
-
-The most direct comparison. Shows each model's aggregate pass rate as a bar.
-Color-coded: red < 70%, yellow < 90%, green >= 90%.
-
-**Pass / Fail Over Time** (stacked bar, time series):
-
-Shows how each model's pass/fail counts change over time. Useful for detecting
-regressions (a model that was passing starts failing after a code change).
-
-**Suite Duration Over Time** (line, time series):
-
-Compares response speed across models. Slower models appear as higher lines.
-
-**Individual Test Results** (table):
-
-Drill into the latest run's per-test details: which specific questions each
-model got right or wrong, and the grading reasons.
-
-#### Custom Model Comparison Panels
-
-To build deeper comparisons in Grafana, add panels using these SQL queries
-(select "RFC PostgreSQL" as the datasource):
-
-**Pass Rate Heatmap (Model x Suite):**
-
-```sql
-SELECT
-    model_name AS "Model",
-    test_suite AS "Suite",
-    ROUND(AVG(passed::numeric / NULLIF(total_tests, 0) * 100), 1) AS "Pass Rate %"
-FROM test_runs
-WHERE total_tests > 0
-GROUP BY model_name, test_suite
-ORDER BY model_name, test_suite;
-```
-
-**Model Improvement Over Time:**
-
-```sql
-SELECT
-    timestamp AS time,
-    model_name AS metric,
-    ROUND(passed::numeric / NULLIF(total_tests, 0) * 100, 1) AS "Pass Rate"
-FROM test_runs
-WHERE total_tests > 0
-  AND $__timeFilter(timestamp)
-ORDER BY timestamp;
-```
-
-**Head-to-Head: Which Tests Does Model A Pass That Model B Fails?**
-
-```sql
-WITH model_a AS (
-    SELECT tr.test_name, tr.test_status
-    FROM test_results tr
-    JOIN test_runs r ON tr.run_id = r.id
-    WHERE r.model_name = 'llama3.1:8b'
-      AND r.id = (SELECT MAX(id) FROM test_runs WHERE model_name = 'llama3.1:8b')
-),
-model_b AS (
-    SELECT tr.test_name, tr.test_status
-    FROM test_results tr
-    JOIN test_runs r ON tr.run_id = r.id
-    WHERE r.model_name = 'mistral:7b'
-      AND r.id = (SELECT MAX(id) FROM test_runs WHERE model_name = 'mistral:7b')
-)
-SELECT
-    a.test_name AS "Test",
-    a.test_status AS "Model A (llama3.1:8b)",
-    b.test_status AS "Model B (mistral:7b)"
-FROM model_a a
-FULL OUTER JOIN model_b b ON a.test_name = b.test_name
-WHERE a.test_status != b.test_status
-ORDER BY a.test_name;
-```
-
 ### Superset: Cross-Model Analytics
 
 Superset's Model Analytics dashboard provides the deepest cross-model analysis.
@@ -617,9 +425,8 @@ Shows the distribution of scores (0 or 1) by model. A model with more 1s
 
 ### SQL Queries for Model Comparison
 
-These queries work in both Superset SQL Lab and Grafana panel editors. Connect
-to the "Robot Framework Results" database (Superset) or "RFC PostgreSQL"
-datasource (Grafana).
+These queries work in Superset SQL Lab. Connect to the "Robot Framework
+Results" database.
 
 #### Overall Model Ranking
 
@@ -895,28 +702,13 @@ docker compose ps
 
 # View detailed logs
 docker compose logs postgres
-docker compose logs grafana
 docker compose logs superset
 ```
 
 **Common issues:**
-- Port already in use: Change `POSTGRES_PORT`, `SUPERSET_PORT`, or
-  `GRAFANA_PORT` in `.env`
+- Port already in use: Change `POSTGRES_PORT` or `SUPERSET_PORT` in `.env`
 - Docker not running: Start Docker Desktop or the Docker daemon
 - Compose V1 syntax: Ensure you have `docker compose` (V2), not `docker-compose`
-
-### Grafana Shows "No Data"
-
-1. Check that PostgreSQL is healthy: `docker compose ps`
-2. Verify data exists:
-   ```bash
-   psql $DATABASE_URL -c "SELECT COUNT(*) FROM test_runs;"
-   ```
-3. If tables are empty, run tests first: `make robot-math`
-4. Check the Grafana datasource: **Configuration** > **Data Sources** > "RFC
-   PostgreSQL" > **Test**
-5. Ensure the time range in the dashboard covers your data (default: last 30
-   days)
 
 ### Superset Shows Empty Charts
 
@@ -943,7 +735,7 @@ psql $DATABASE_URL -c "SELECT 1;"
 docker compose port postgres 5432
 ```
 
-If connecting from within Docker (Superset/Grafana), use `postgres:5432`.
+If connecting from within Docker (Superset), use `postgres:5432`.
 If connecting from the host (test runner, scripts), use `localhost:5433`.
 
 ### Missing Dependencies
@@ -972,7 +764,6 @@ make docker-up         # Start all services
 
 ```bash
 make docker-logs       # Tail all logs
-docker compose logs -f grafana     # Grafana only
 docker compose logs -f superset    # Superset only
 docker compose logs -f postgres    # PostgreSQL only
 ```

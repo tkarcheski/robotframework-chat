@@ -190,4 +190,4 @@ silently hides skips and yields false comparisons (design's #291 ruling).
 
 ---
 
-For Make targets and local workflows, see `humans/MAKE.md`.
+For Make targets and local workflows, run `make help`.

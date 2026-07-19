@@ -6,7 +6,6 @@ reference docs live under `ai/`.
 
 - Read `ai/agents.md` for architecture, code style, and the agent contract.
 - Read `ai/testing.md` for grading tiers and test rules.
-- Read `ai/ROLES.md` for the four-role agent system (see § Role system).
 
 ---
 
@@ -27,11 +26,6 @@ Every new session begins with a repo health check, before writing any code:
 
 1. **Create a feature branch** from `claude-code-staging` — one branch per
    session, one session per feature.
-   - **Role sessions** (`claude --agent <role>`): follow `ai/GIT.md` instead of
-     the command below — create or enter a worktree, branch named
-     `<type>/<issue-number>-<slug>`, role identity set. `ai/GIT.md` takes
-     precedence over this step; never branch in place in the main checkout.
-   - **Plain (non-role) sessions:**
    ```bash
    git fetch origin claude-code-staging
    git checkout -b claude/<short-description>-<random5> origin/claude-code-staging
@@ -43,10 +37,9 @@ Every new session begins with a repo health check, before writing any code:
    make code-quality-check
    make robot-dryrun
    ```
-3. **Scan for staleness:** check the owner backlog (`modules/ops/humans/TODO.md`
-   in the private monorepo; skip if absent); look for `TODO`/`FIXME`/dead
-   code in files you'll touch; flag findings to the user (fix now / defer /
-   ignore).
+3. **Scan for staleness:** check the issue tracker for open issues touching the
+   same area; look for `TODO`/`FIXME`/dead code in files you'll touch; flag
+   findings to the user (fix now / defer / ignore).
 4. **Ask clarifying questions** (see § Questions).
 
 ---
@@ -119,8 +112,7 @@ If something looks wrong, fix it or ask (fix now / leave / split).
 Multiple agents may work on this repo simultaneously, so:
 
 - **One branch per session:** `claude/<description>-<random5>`, created at
-  session start. All work for the session goes on it. (Role-loop agents use
-  `<type>/<issue-number>-<slug>` instead — see `ai/ROLES.md`.)
+  session start. All work for the session goes on it.
 - **Rebase before pushing:**
   ```bash
   git fetch origin claude-code-staging
@@ -162,7 +154,7 @@ Multiple agents may work on this repo simultaneously, so:
   canonical registry every suite appears in). **Model-parameterized** suites —
   those an `axis:model` model sweep runs (`make run-local-models`) — must
   additionally be registered in `config/local_models.yaml`, the model-sweep /
-  routing registry (see `docs/testing.md`). Its membership is a superset of
+  routing registry (see `ai/testing.md`). Its membership is a superset of
   `axis:model` (it also carries provider/routing entries), so suites on other
   axes are **not required** to appear there.
 - Always rebase onto `claude-code-staging`, not `main`.
@@ -199,28 +191,6 @@ reds first; add nothing new until every suite is 100% green.
   re-verified.
 - **Verify post-merge.** Verification is the post-merge health check across all
   three surfaces; new work resumes only once it passes.
-
-The fleet contract binds this as hard rule 14 in `ai/ROLES.md`.
-
----
-
-## Role system
-
-This repo runs a four-role agent system defined in **`ai/ROLES.md`** — read it
-before acting as a role. Role definitions live in `.claude/agents/`:
-
-- `engineering` — loop: `status:ready` issues → pull requests
-- `test-design` — loop: PRs → test plans → runs → verdicts + issues
-- `project-management` — loop: triage → prioritize → quality review → monitoring
-- `design` — open-ended: full-system awareness, RFCs, system-wide improvements
-
-Start a role session with `claude --agent <role>` (or `@<role>` in-session).
-All four roles may run concurrently: each works in its own git worktree with a
-role-scoped identity per **`ai/GIT.md`** (worktree topology, sharing protocol,
-submodule ownership) — required reading alongside `ai/ROLES.md`.
-Role artifacts: test plans live in `ai/test-plans/`, RFCs in `ai/rfcs/`. The
-label taxonomy and inter-role contract live in `ai/ROLES.md`; if it and a role
-prompt conflict, `ai/ROLES.md` wins.
 
 ---
 
@@ -293,8 +263,8 @@ changes; skip for pure-docs or CI-only work.
 ## Environment
 
 Copy `.env.example` to `.env` and edit before running integration tests. Key
-variables: `OLLAMA_ENDPOINT`, `DEFAULT_MODEL`, `DATABASE_URL`. See `ai/dev.md` §
-Environment Configuration for the full list, and § "Ollama / `.env` setup"
+variables: `OLLAMA_ENDPOINT`, `DEFAULT_MODEL`, `DATABASE_URL`. See
+`.env.example` for the full annotated list, and § "Ollama / `.env` setup"
 below for the LLM-specific walkthrough.
 
 ---
