@@ -394,6 +394,7 @@ def _build_robot_env(
     endpoint: str,
     node_name: str,
     verify: bool = False,
+    replay: bool = False,
 ) -> dict[str, str]:
     """Build the subprocess env for one local ``(node, model, suite)`` robot run.
 
@@ -413,6 +414,10 @@ def _build_robot_env(
     * ``RFC_RUN_MODE=verify`` (when ``verify``) — enables the answer cache for
       re-run speedups (#522), forced on in ``rfc.llm_client`` even if
       ``ANSWER_CACHE_ENABLED`` is unset in the child env.
+    * ``RFC_RUN_MODE=replay`` (when ``replay``) — forces the answer cache on in
+      zero-token ``cache_only`` mode (RFC-010 S2, #259): a miss is a LOUD
+      failure, never a live call, so a CI/dev re-run replays stored answers and
+      spends no tokens (#318). Mutually exclusive with ``verify``.
 
     Returns:
         A copy of ``os.environ`` overlaid with the routing variables above.
@@ -425,6 +430,8 @@ def _build_robot_env(
     }
     if verify:
         env["RFC_RUN_MODE"] = "verify"
+    elif replay:
+        env["RFC_RUN_MODE"] = "replay"
     return env
 
 
@@ -537,6 +544,7 @@ def run_model_suites(
     dry_run: bool = False,
     global_max_parallel: int = 1,
     verify: bool = False,
+    replay: bool = False,
 ) -> list[RunResult]:
     """Run configured test suites against every discovered model.
 
@@ -552,6 +560,9 @@ def run_model_suites(
         global_max_parallel: Cap on concurrent runs across all hosts.
         verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
             the answer cache is enabled for re-run speedups (#522).
+        replay: If True, inject ``RFC_RUN_MODE=replay`` so each run reads the
+            answer cache in zero-token ``cache_only`` mode (#318). Mutually
+            exclusive with ``verify``.
 
     Returns:
         List of :class:`RunResult` objects.
@@ -601,7 +612,13 @@ def run_model_suites(
 
         if dry_run:
             with print_lock:
-                env_prefix = "RFC_RUN_MODE=verify " if verify else ""
+                env_prefix = (
+                    "RFC_RUN_MODE=verify "
+                    if verify
+                    else "RFC_RUN_MODE=replay "
+                    if replay
+                    else ""
+                )
                 print(f"[DRY-RUN] {env_prefix}{' '.join(cmd)}")
             return RunResult(
                 node=node_name,
@@ -626,6 +643,7 @@ def run_model_suites(
             endpoint=endpoint,
             node_name=node_name,
             verify=verify,
+            replay=replay,
         )
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
 
@@ -742,6 +760,7 @@ def run_provider_suites(
     sleep_fn: Any = time.sleep,
     jobs: "list[ProviderJob] | None" = None,
     verify: bool = False,
+    replay: bool = False,
 ) -> list[RunResult]:
     """Run every configured suite against each provider model, sequentially.
 
@@ -761,6 +780,9 @@ def run_provider_suites(
         sleep_fn: Injectable sleep for the RPM pacing (tests).
         verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
             the answer cache is enabled for re-run speedups (#522).
+        replay: If True, inject ``RFC_RUN_MODE=replay`` so each run reads the
+            answer cache in zero-token ``cache_only`` mode (#318). Mutually
+            exclusive with ``verify``.
 
     Returns:
         List of :class:`RunResult`, with ``model`` recorded as
@@ -823,7 +845,13 @@ def run_provider_suites(
         )
 
         if dry_run:
-            env_prefix = "RFC_RUN_MODE=verify " if verify else ""
+            env_prefix = (
+                "RFC_RUN_MODE=verify "
+                if verify
+                else "RFC_RUN_MODE=replay "
+                if replay
+                else ""
+            )
             print(f"[DRY-RUN] {env_prefix}{' '.join(cmd)}")
             results.append(
                 RunResult(
@@ -875,6 +903,10 @@ def run_provider_suites(
             # RFC_RUN_MODE=verify forces it on in rfc.llm_client even if
             # ANSWER_CACHE_ENABLED is unset in the child env.
             env["RFC_RUN_MODE"] = "verify"
+        elif replay:
+            # replay runs force the cache on in zero-token cache_only mode
+            # (#318): a miss is a LOUD failure, never a live provider call.
+            env["RFC_RUN_MODE"] = "replay"
         proc = subprocess.run(cmd, cwd=str(_project_root), env=env)
         results.append(
             RunResult(
@@ -894,6 +926,7 @@ def run_provider_runs(
     *,
     dry_run: bool = False,
     verify: bool = False,
+    replay: bool = False,
 ) -> list[RunResult]:
     """Run all configured external providers (issue #507).
 
@@ -906,6 +939,9 @@ def run_provider_runs(
         dry_run: Print commands without executing.
         verify: If True, inject ``RFC_RUN_MODE=verify`` into each run's env so
             the answer cache is enabled for re-run speedups (#522).
+        replay: If True, inject ``RFC_RUN_MODE=replay`` so each run reads the
+            answer cache in zero-token ``cache_only`` mode (#318). Mutually
+            exclusive with ``verify``.
 
     Returns:
         Combined :class:`RunResult` list across providers (empty when no
@@ -1018,6 +1054,7 @@ def run_provider_runs(
                 jobs=today_jobs,
                 dry_run=dry_run,
                 verify=verify,
+                replay=replay,
             )
         )
 
@@ -1287,6 +1324,7 @@ def run_iteration_loop(
     mode: str = "external",
     host_config: HostConfig | None = None,
     verify: bool = False,
+    replay: bool = False,
 ) -> bool:
     """Run the full discover → test → summary cycle, optionally repeating.
 
@@ -1305,6 +1343,9 @@ def run_iteration_loop(
         host_config: Parsed host-config.toml; required when ``mode="toml"``.
         verify: If True, inject ``RFC_RUN_MODE=verify`` into every run's env so
             the answer cache is enabled for re-run speedups (#522).
+        replay: If True, inject ``RFC_RUN_MODE=replay`` so every run reads the
+            answer cache in zero-token ``cache_only`` mode (#318). Mutually
+            exclusive with ``verify``.
 
     Returns:
         True if any pass had a test failure, False otherwise.
@@ -1323,6 +1364,16 @@ def run_iteration_loop(
         print(
             "  [verify] RFC_RUN_MODE=verify — answer cache ENABLED for re-runs "
             "(deterministic requests replay stored answers)."
+        )
+    elif replay:
+        # Symmetric one-line banner for the zero-token replay mode (#318): the
+        # cache runs in cache_only mode, so a miss is a LOUD failure rather than
+        # a live call. Printed for dry runs too so `--dry-run --replay` previews
+        # the mode without executing anything.
+        print(
+            "  [replay] RFC_RUN_MODE=replay — answer cache CACHE-ONLY "
+            "(zero-token): stored answers only; a miss is a LOUD failure, "
+            "never a live call."
         )
 
     if mode == "toml":
@@ -1394,12 +1445,13 @@ def run_iteration_loop(
                     dry_run=dry_run,
                     global_max_parallel=global_max_parallel,
                     verify=verify,
+                    replay=replay,
                 )
 
             # External providers run regardless of local discovery (#507):
             # a host with zero Ollama nodes can still sweep OpenRouter.
             results = results + run_provider_runs(
-                config, dry_run=dry_run, verify=verify
+                config, dry_run=dry_run, verify=verify, replay=replay
             )
 
             if not results:
@@ -1500,13 +1552,26 @@ def main() -> None:
         action="store_true",
         help="Show what would be executed without running tests",
     )
-    parser.add_argument(
+    # --verify and --replay both select a non-default answer-cache run mode and
+    # cannot be combined; the default (neither) is the measure path (#318).
+    run_mode_group = parser.add_mutually_exclusive_group()
+    run_mode_group.add_argument(
         "--verify",
         action="store_true",
         help=(
             "Verification re-run: inject RFC_RUN_MODE=verify so the answer "
             "cache is enabled and unchanged suites replay stored answers "
             "(see core/docs/answer-cache.md)"
+        ),
+    )
+    run_mode_group.add_argument(
+        "--replay",
+        action="store_true",
+        help=(
+            "Zero-token replay re-run: inject RFC_RUN_MODE=replay so the answer "
+            "cache runs in cache_only mode — stored answers only, a miss is a "
+            "LOUD failure rather than a live call (see core/docs/answer-cache.md). "
+            "Mutually exclusive with --verify."
         ),
     )
     parser.add_argument(
@@ -1596,6 +1661,7 @@ def main() -> None:
         mode=args.mode,
         host_config=host_config,
         verify=args.verify,
+        replay=args.replay,
     )
 
     if had_failure:
