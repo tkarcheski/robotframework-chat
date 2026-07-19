@@ -32,6 +32,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from robot.api.deco import keyword  # type: ignore[import-untyped]
+
 from rfc.harness_db import HarnessDatabase
 
 _INNER_SUITE_NAME = "inner_suite.robot"
@@ -70,6 +72,7 @@ class HarnessListenerRunner:
 
     ROBOT_LIBRARY_SCOPE = "SUITE"
 
+    @keyword("Create Listener Workspace")
     def create_listener_workspace(self, root: str) -> dict:
         """Initialise a throwaway git repo + sqlite DB under ``root``.
 
@@ -87,6 +90,7 @@ class HarnessListenerRunner:
             "database_url": f"sqlite:///{root_path / 'harness.db'}",
         }
 
+    @keyword("Start Harness Session")
     def start_harness_session(self, workspace: dict) -> str:
         """Run ``rfc harness start`` in the workspace; return the session id.
 
@@ -114,6 +118,7 @@ class HarnessListenerRunner:
         sidecar = Path(workspace["path"]) / ".git" / "rfc-harness-session.json"
         return str(json.loads(sidecar.read_text())["session_id"])
 
+    @keyword("Write Inner Suite")
     def write_inner_suite(self, workspace: dict, *test_specs: str) -> str:
         """Generate the inner Robot suite; one test case per spec.
 
@@ -141,6 +146,7 @@ class HarnessListenerRunner:
         suite_path.write_text("\n".join(lines))
         return str(suite_path)
 
+    @keyword("Run Inner Suite")
     def run_inner_suite(
         self, workspace: dict, database_url: Optional[str] = None
     ) -> dict:
@@ -181,6 +187,7 @@ class HarnessListenerRunner:
             "stderr": result.stderr,
         }
 
+    @keyword("Get Metric Rows")
     def get_metric_rows(
         self, workspace: dict, session_id: str, metric_key: str = ""
     ) -> list[dict]:
@@ -189,6 +196,7 @@ class HarnessListenerRunner:
         metrics = db.get_metrics(session_id, metric_key=metric_key)
         return [dataclasses.asdict(metric) for metric in metrics]
 
+    @keyword("Count All Metric Rows")
     def count_all_metric_rows(self, workspace: dict) -> int:
         """Return the total ``agentic_metrics`` row count for the workspace DB."""
         db = HarnessDatabase(database_url=workspace["database_url"])
