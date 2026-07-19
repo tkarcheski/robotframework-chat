@@ -68,6 +68,17 @@ class AgenticHarness:
     # write-time comparability invariant to read time so the view's tier matches the
     # gate's tier by construction, not by a tool_name name-coincidence (#273/#350).
     verified_local: int = -1
+    # RFC-012 MS5 (#328): the backend that actually served this run's generate()
+    # calls — a fleet host name/endpoint (e.g. "ollama@http://ai1:11434") or a
+    # BYOK "provider/model" (e.g. "openai/gpt-4o"), taken from the open-tolkein
+    # gateway's route trace. Fills the RFC-008 section 5 host gap: model_digest
+    # records WHAT ran but not WHERE, so two fleet hosts on one digest are
+    # otherwise indistinguishable. Nullable ("" -> NULL): rows written before the
+    # gateway seam populates it keep NULL, and it NEVER carries key material
+    # (RFC-012 section 5.2 — provider/model only, never an api_key). Q3 (RFC-012
+    # section 9): a discrete column, not a params_json field or a new route_trace
+    # table, so the scoreboard can GROUP BY the serving host without a JSON probe.
+    served_by: str = ""
 
 
 @dataclass
@@ -145,6 +156,25 @@ METRIC_SUITE_RUNTIME_MS = "suite_runtime_ms"  # wall time per suite/run (ms)
 # so it needs no migration.
 METRIC_SANDBOX_EXEC_OVERHEAD_MS = "sandbox_exec_overhead_ms"
 
+# open-tolkein route-efficiency keys (RFC-012 section 7.3, slice MS5 — #328).
+# The standalone gateway (tkarcheski/open-tolkein) emits a per-request route
+# trace; the seam records these numeric route metrics beside the RFC-010 S1
+# efficiency pair, and the host/provider that actually served the call in the
+# nullable agentic_harnesses.served_by provenance column (the RFC-008 section 5
+# host gap: model_digest alone cannot tell two fleet hosts apart). They fold in
+# here rather than in a separate vocabulary, same reserved-name discipline.
+#   * route_taken           — the routing-chain tier that served the call
+#     (RFC-012 section 3.2 order: 1 cache .. 6 openrouter). AVG'd == mean route
+#     depth, an efficiency signal (a lower mean == more cache/local service).
+#   * tokens_saved_by_route — tokens a cache/local hit kept off a billed BYOK
+#     provider (the headline "LOTR-books" number). SUM'd per session like
+#     tokens_in/tokens_out.
+#   * route_local_fraction  — fraction of a run's calls a local/cache tier served
+#     (0..1). AVG'd like cache_hit_rate.
+METRIC_ROUTE_TAKEN = "route_taken"
+METRIC_TOKENS_SAVED_BY_ROUTE = "tokens_saved_by_route"
+METRIC_ROUTE_LOCAL_FRACTION = "route_local_fraction"
+
 # Canonical order == scoreboard column order. An immutable, iterable manifest
 # the scoreboard view (S5) and its drift-guard can enumerate without re-listing
 # the strings.
@@ -159,6 +189,9 @@ RESERVED_METRIC_KEYS: tuple[str, ...] = (
     METRIC_CACHE_HIT_RATE,
     METRIC_SUITE_RUNTIME_MS,
     METRIC_SANDBOX_EXEC_OVERHEAD_MS,
+    METRIC_ROUTE_TAKEN,
+    METRIC_TOKENS_SAVED_BY_ROUTE,
+    METRIC_ROUTE_LOCAL_FRACTION,
 )
 
 

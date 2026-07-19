@@ -1567,7 +1567,13 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
         AS cache_hit_rate,
     SUM(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
-        AS suite_runtime_ms
+        AS suite_runtime_ms,
+    AVG(CASE WHEN m.metric_key = 'route_taken' THEN m.metric_value END)
+        AS route_taken,
+    SUM(CASE WHEN m.metric_key = 'tokens_saved_by_route' THEN m.metric_value END)
+        AS tokens_saved_by_route,
+    AVG(CASE WHEN m.metric_key = 'route_local_fraction' THEN m.metric_value END)
+        AS route_local_fraction
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 GROUP BY h.session_id, h.tool_name, h.tool_version, h.model_id,
@@ -1617,7 +1623,13 @@ SELECT
     AVG(CASE WHEN m.metric_key = 'cache_hit_rate' THEN m.metric_value END)
         AS avg_cache_hit_rate,
     AVG(CASE WHEN m.metric_key = 'suite_runtime_ms' THEN m.metric_value END)
-        AS avg_suite_runtime_ms
+        AS avg_suite_runtime_ms,
+    AVG(CASE WHEN m.metric_key = 'route_taken' THEN m.metric_value END)
+        AS avg_route_taken,
+    AVG(CASE WHEN m.metric_key = 'tokens_saved_by_route' THEN m.metric_value END)
+        AS avg_tokens_saved_by_route,
+    AVG(CASE WHEN m.metric_key = 'route_local_fraction' THEN m.metric_value END)
+        AS avg_route_local_fraction
 FROM agentic_harnesses h
 LEFT JOIN agentic_metrics m ON m.session_id = h.session_id
 WHERE h.scenario_id IS NOT NULL AND h.scenario_id <> ''
