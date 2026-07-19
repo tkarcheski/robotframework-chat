@@ -183,8 +183,12 @@ reds first; add nothing new until every suite is 100% green.
   suite on its `baseline` (its default branch — it has no `main`). All three
   must be 100% green before any new work starts.
 - **Blocked means everything but red-fixes.** While red exists on any surface,
-  the only permitted fleet work is fixing those reds (plus direct owner orders);
-  even review cycles on already-built PRs pause.
+  the only permitted fleet work is fixing those reds (plus an explicit
+  in-session human-owner instruction to do specific work despite the gate — not
+  the standing loop dispatch, not a CEO-layer dispatch); review cycles on
+  already-built non-red-fix PRs pause. Reviewing, signing off on, and merging
+  the red-fix PRs is itself permitted red-fix work — otherwise the dual-sign-off
+  gate would deadlock its own escape path.
 - **A pending fix still blocks.** A red whose dual-signed fix only awaits the
   owner's merge keeps the fleet off new work until that merge lands and green is
   re-verified.
