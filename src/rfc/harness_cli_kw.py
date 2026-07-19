@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from robot.api.deco import keyword  # type: ignore[import-untyped]
+
 from rfc.harness_db import HarnessDatabase
 
 _SIDECAR_NAME = "rfc-harness-session.json"
@@ -28,6 +30,7 @@ class HarnessCliRunner:
 
     ROBOT_LIBRARY_SCOPE = "SUITE"
 
+    @keyword("Create Harness Workspace")
     def create_harness_workspace(self, root: str) -> dict:
         """Initialise a throwaway git repo + sqlite DB under ``root``.
 
@@ -62,6 +65,7 @@ class HarnessCliRunner:
             "sidecar": str(root_path / ".git" / _SIDECAR_NAME),
         }
 
+    @keyword("Run Harness Command")
     def run_harness_command(self, workspace: dict, *args: str) -> dict:
         """Run ``rfc harness <args>`` as a fresh subprocess in the workspace.
 
@@ -95,6 +99,7 @@ class HarnessCliRunner:
             "stderr": result.stderr,
         }
 
+    @keyword("Get Sidecar Session Id")
     def get_sidecar_session_id(self, workspace: dict) -> str:
         """Return the session_id recorded in the workspace sidecar.
 
@@ -106,12 +111,14 @@ class HarnessCliRunner:
             raise AssertionError(f"no sidecar at {sidecar}")
         return str(json.loads(sidecar.read_text())["session_id"])
 
+    @keyword("Sidecar Should Not Exist")
     def sidecar_should_not_exist(self, workspace: dict) -> None:
         """Fail if the workspace sidecar file is still on disk."""
         sidecar = Path(workspace["sidecar"])
         if sidecar.exists():
             raise AssertionError(f"sidecar still present at {sidecar}")
 
+    @keyword("Get Harness Row")
     def get_harness_row(self, workspace: dict, session_id: str) -> dict:
         """Fetch the agentic_harnesses row for ``session_id`` as a dict.
 
@@ -126,6 +133,7 @@ class HarnessCliRunner:
             )
         return dataclasses.asdict(harness)
 
+    @keyword("Get Makefile Session Id")
     def get_makefile_session_id(self, workspace: dict) -> str:
         """Run ``makefile_session_id()`` in a fresh process in the workspace.
 
