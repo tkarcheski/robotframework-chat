@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any, Union
 
+from robot.api import logger
+
 
 def normalize_volumes(
     volumes: Optional[Union[Dict[str, Any], List[str]]],
@@ -24,6 +26,13 @@ def normalize_volumes(
     and convert each ``"/container:mode"`` value into
     ``{"bind": "/container", "mode": ...}``; pass dict values and the list form
     through unchanged so already-valid specs are never altered.
+
+    Converting a str value emits a deprecation warning (``robot.api.logger.warn``,
+    which falls back to Python ``logging`` outside a Robot run) naming the host
+    path and the ``{"bind", "mode"}`` form the caller should emit instead. After
+    #206 nothing in-tree produces the str shape, so the warning exists to get a
+    future caller that reintroduces it fixed at the source rather than leaning on
+    this repair forever. Valid dict/list forms pass through without a warning.
     """
     if not volumes:
         return {}
@@ -35,7 +44,15 @@ def normalize_volumes(
             normalized[host_path] = spec
         elif isinstance(spec, str):
             bind, _, mode = spec.partition(":")
-            normalized[host_path] = {"bind": bind, "mode": mode or "rw"}
+            mode = mode or "rw"
+            logger.warn(
+                f"normalize_volumes repaired a deprecated str volume spec for "
+                f"host path {host_path!r}: {spec!r}. Emit the dict form "
+                f"{{'bind': {bind!r}, 'mode': {mode!r}}} from the caller instead; "
+                "str volume specs are converted for now (issue #189) but this "
+                "repair is deprecated and may be removed (issue #209)."
+            )
+            normalized[host_path] = {"bind": bind, "mode": mode}
         else:
             raise TypeError(
                 f"Unsupported volume spec for host path {host_path!r}: "
