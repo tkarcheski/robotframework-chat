@@ -1,5 +1,7 @@
 """Tests for rfc.docker_config dataclasses."""
 
+import logging
+
 import pytest
 
 from rfc.docker_config import (
@@ -200,6 +202,54 @@ class TestNormalizeVolumes:
         # never a silently dropped or mis-shaped volume.
         with pytest.raises(TypeError):
             normalize_volumes({"/host": None})
+
+    def test_str_shape_emits_deprecation_warning(self, caplog):
+        # #209: the legacy str shape is still repaired, but repairing it must be
+        # observable so the wrong shape gets fixed at the source rather than
+        # living forever. The warning names the host path and points at the dict
+        # form the caller should emit.
+        with caplog.at_level(logging.WARNING):
+            result = normalize_volumes({"/tmp/rfc-env/py-1": "/workspace:rw"})
+        # Repair behaviour is unchanged -- the value is still normalized.
+        assert result == {"/tmp/rfc-env/py-1": {"bind": "/workspace", "mode": "rw"}}
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "/tmp/rfc-env/py-1" in message
+        assert "bind" in message
+
+    def test_str_shape_without_mode_still_warns(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            normalize_volumes({"/host": "/workspace"})
+        assert any(r.levelno >= logging.WARNING for r in caplog.records)
+
+    def test_modern_dict_shape_emits_no_warning(self, caplog):
+        # The correct dict form must pass through silently -- no false alarms
+        # for callers that already emit the right shape.
+        with caplog.at_level(logging.WARNING):
+            normalize_volumes({"/host": {"bind": "/workspace", "mode": "ro"}})
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+    def test_list_form_emits_no_warning(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            normalize_volumes(["/host:/workspace:rw"])
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+    def test_empty_and_none_emit_no_warning(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            normalize_volumes(None)
+            normalize_volumes({})
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+    def test_mixed_shapes_warn_only_for_the_str_value(self, caplog):
+        # One str value + one dict value -> exactly one warning, for the str.
+        with caplog.at_level(logging.WARNING):
+            normalize_volumes(
+                {"/a": "/workspace:rw", "/b": {"bind": "/w2", "mode": "ro"}}
+            )
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1
+        assert "/a" in warnings[0].getMessage()
 
 
 class TestToDockerRunConfigVolumes:

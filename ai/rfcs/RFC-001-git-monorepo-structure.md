@@ -104,6 +104,17 @@ visibility = "private"   # default; set "public" to opt a clean, reusable module
 owner      = "<role>"    # owning role (drives CODEOWNERS)
 ```
 
+**Submodule-backed modules use one convention.** When a module vendors an
+external repository as a git submodule, mount the submodule at
+`modules/<name>/upstream/` and keep the authoritative `modules/<name>/module.toml`
+as a superproject-tracked file one level up. The manifest is then present in every
+checkout — including a default clone with no submodules — so the generated
+registry (`README.md` modules table + `CODEOWNERS`) is deterministic regardless of
+submodule state. Never mount a submodule *as* the module directory, which would
+bury `module.toml` inside the submodule where a no-submodule checkout cannot see
+it. The registry generator ignores any `module.toml` found inside a submodule for
+the same reason.
+
 ### 3.2 Boundary mechanics (safe by default)
 
 - **Allowlist, not denylist.** The mirror publishes `core/` plus only modules

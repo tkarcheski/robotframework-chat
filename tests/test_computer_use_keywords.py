@@ -243,6 +243,51 @@ class TestComputerUseKeywords:
         assert result["success"] is True
         fake_browser.click.assert_called_once_with("#submit")
 
+    def test_dispatcher_rebinds_when_live_browser_instance_changes(self) -> None:
+        """Regression (#193): GLOBAL scope must not dispatch against a stale Browser.
+
+        The library is ``ROBOT_LIBRARY_SCOPE = "GLOBAL"``, so one instance is
+        reused across every suite. When a later suite resolves a *different*
+        live Browser instance -- a SUITE-scoped Browser, or a second suite that
+        imports its own -- the cached dispatcher must rebind to the live
+        instance rather than keep driving the first, possibly-closed, Browser.
+        """
+        kw = ComputerUseKeywords()
+        first_browser = MagicMock(name="suite1_browser")
+        second_browser = MagicMock(name="suite2_browser")
+
+        with patch(
+            "robot.libraries.BuiltIn.BuiltIn.get_library_instance",
+            return_value=first_browser,
+        ):
+            kw.dispatch_computer_use_call("browser_click", {"selector": "#a"})
+        first_browser.click.assert_called_once_with("#a")
+
+        # A later suite resolves a different live Browser instance.
+        with patch(
+            "robot.libraries.BuiltIn.BuiltIn.get_library_instance",
+            return_value=second_browser,
+        ):
+            kw.dispatch_computer_use_call("browser_click", {"selector": "#b"})
+
+        # The second suite's call must reach the live instance, not the stale one.
+        second_browser.click.assert_called_once_with("#b")
+        assert first_browser.click.call_count == 1
+
+    def test_dispatcher_is_cached_for_the_same_live_browser(self) -> None:
+        """The dispatcher is still cached across dispatches to one live Browser."""
+        kw = ComputerUseKeywords()
+        browser = MagicMock()
+        with patch(
+            "robot.libraries.BuiltIn.BuiltIn.get_library_instance",
+            return_value=browser,
+        ):
+            kw.dispatch_computer_use_call("browser_click", {"selector": "#a"})
+            first = kw._get_dispatcher()
+            second = kw._get_dispatcher()
+        assert first is second
+        assert first.browser is browser
+
     def test_assert_tool_call_succeeded_passes_on_success(self) -> None:
         kw = ComputerUseKeywords()
         kw.assert_tool_call_succeeded({"success": True})

@@ -24,6 +24,9 @@ heuristic. The earlier ``src/rfc/*_keywords.py`` glob missed two live surfaces
 ``keywords.py``), and any library class not named ``*Keywords`` (e.g.
 ``rfc.harness_cli_kw.HarnessCliRunner``, ``rfc.dialog_recorder.DialogRecorder``).
 Deriving from imports also covers module keyword libraries (``Library rfc.graders``).
+A variable-substituted import (``Library ${LIB}``) binds only at Robot runtime and
+cannot be resolved statically, so it is rejected rather than silently skipped — an
+``rfc.*`` library loaded by variable can never slip past the guard uncounted (#257).
 
 Each resolved library — class or module — is enumerated for the exact keyword
 names Robot exposes at runtime, applying Robot's own discovery rules
@@ -65,17 +68,51 @@ _LIBRARY_IMPORT = re.compile(
     r"^\s*Library\s+(rfc\.[\w.]+)", re.IGNORECASE | re.MULTILINE
 )
 
+# A ``Library`` setting whose import path contains a Robot variable
+# (``${...}``/``@{...}``/``&{...}``/``%{...}``) — a *variable-substituted* import.
+# Robot binds these at runtime, so the path (and thus the library) is unknown
+# statically. Commented-out lines (``# Library ...``) and prose that merely
+# mentions the word never match, exactly as for the static-import regex, because
+# ``^\s*Library`` anchors to an active setting. Captured to reject, not resolve
+# (#257).
+_VARIABLE_LIBRARY_IMPORT = re.compile(
+    r"^\s*Library\s+(\S*[$@&%]\{[^}]*\}\S*)", re.IGNORECASE | re.MULTILINE
+)
+
 
 def _parse_library_imports(robot_dir: Path = _ROBOT_DIR) -> set[str]:
     """Return the distinct ``rfc.*`` library import paths across the suite tree.
 
     Scans every ``.robot`` suite and ``.resource`` file (suites import libraries
     directly and via shared resources) for ``Library rfc...`` settings.
+
+    A **variable-substituted** import (``Library ${LIB}``) binds only at Robot
+    runtime, so the guard cannot see which library it loads and would under-cover
+    that library's keyword surface — the exact #152/#208 blind spot this guard
+    exists to close. Such imports are therefore rejected with a ``ValueError``
+    naming each offending file (#257) rather than silently skipped; resolving the
+    variable is deliberately out of scope. No suite uses one today, so this fires
+    only the day one is introduced, making the coverage gap a conscious decision.
     """
     paths: set[str] = set()
+    variable_imports: list[str] = []
     for path in (*robot_dir.rglob("*.robot"), *robot_dir.rglob("*.resource")):
         text = path.read_text(encoding="utf-8")
         paths.update(match.group(1) for match in _LIBRARY_IMPORT.finditer(text))
+        variable_imports.extend(
+            f"  {path.relative_to(robot_dir)}: Library {match.group(1)}"
+            for match in _VARIABLE_LIBRARY_IMPORT.finditer(text)
+        )
+    if variable_imports:
+        raise ValueError(
+            "Keyword-surface guard found variable-substituted Library import(s) it "
+            "cannot resolve. Robot binds these at runtime, so the guard is blind to "
+            "the rfc.* keyword surface they load and would silently under-cover it "
+            "(#257):\n"
+            + "\n".join(sorted(variable_imports))
+            + "\nRewrite as a static `Library rfc.<dotted.path>` so the guard sees "
+            "its surface, or extend the guard to resolve the variable."
+        )
     return paths
 
 
@@ -122,10 +159,18 @@ def _exposed_keyword_names(library: object) -> set[str]:
     else ``printable_name`` of the attribute. Operates on the class, not an
     instance, so libraries with required constructor arguments are covered without
     being instantiated.
+
+    A bare ``functools.partial`` attribute surfaces only from *module* libraries.
+    Class libraries are discovered via ``StaticKeywordCreator(avoid_properties=True)``
+    whose ``_pre_validate_method`` rejects any non-routine (a ``partial`` included)
+    before ``_validate_method`` runs; module libraries skip that pre-validation, so
+    only ``_validate_method`` — which admits a ``partial`` — applies. The guard
+    replicates that split rather than admitting partials everywhere (#211).
     """
     auto_keywords = getattr(library, "ROBOT_AUTO_KEYWORDS", True)
+    is_module = inspect.ismodule(library)
     module_exports: set[str] | None = None
-    if inspect.ismodule(library):
+    if is_module:
         exports = getattr(library, "__all__", None)
         if exports is not None:
             module_exports = set(exports)
@@ -152,10 +197,16 @@ def _exposed_keyword_names(library: object) -> set[str]:
         if not included:
             continue
         # Exclusion: properties / non-routines are not keywords, and @not_keyword
-        # opts a public method back out.
+        # opts a public method back out. Robot's non-routine handling differs by
+        # library kind (see docstring): a bare ``functools.partial`` is admitted
+        # only from a module library; a class library's ``_pre_validate_method``
+        # rejects it (#211).
         if isinstance(attr, cached_property):
             continue
-        if not (inspect.isroutine(func) or isinstance(func, partial)):
+        if is_module:
+            if not (inspect.isroutine(func) or isinstance(func, partial)):
+                continue
+        elif not inspect.isroutine(func):
             continue
         if getattr(func, "robot_not_keyword", False):
             continue
@@ -325,6 +376,67 @@ def test_enumeration_matches_robot_discovery_across_shapes() -> None:
     }
 
 
+def _partial_target(*args: object) -> None:
+    """Plain function the ``functools.partial`` fidelity fixtures wrap (#211)."""
+
+
+class _PartialFixtureKeywords:
+    """Fixture pinning Robot's exclusion of a bare class-level ``functools.partial``.
+
+    Class libraries are discovered via ``StaticKeywordCreator(avoid_properties=True)``,
+    whose ``_pre_validate_method`` rejects any non-routine attribute — a bare
+    ``partial`` included — so Robot does NOT expose it. The attribute names mirror
+    the issue's evidence (``Normal`` kept, ``Part`` dropped).
+    """
+
+    part = partial(_partial_target, "x")
+
+    def normal(self) -> None:
+        """A plain undecorated public method — a live keyword."""
+
+
+def test_class_level_partial_excluded_matching_robot_discovery() -> None:
+    """A bare class-level ``functools.partial`` is NOT a keyword (#211).
+
+    Robot builds class libraries with ``StaticKeywordCreator(avoid_properties=True)``;
+    its ``_pre_validate_method`` rejects the non-routine ``partial`` before
+    ``_validate_method`` runs, so the partial never surfaces. The guard previously
+    admitted it via an unconditional ``isinstance(func, partial)`` clause — the
+    over-inclusion this pins closed.
+    """
+    from robot.running.testlibraries import TestLibrary
+
+    robot_names = {
+        kw.name for kw in TestLibrary.from_class(_PartialFixtureKeywords).keywords
+    }
+    assert _exposed_keyword_names(_PartialFixtureKeywords) == robot_names
+    assert robot_names == {"Normal"}
+    assert "Part" not in robot_names
+
+
+def test_module_level_partial_included_matching_robot_discovery() -> None:
+    """A module-level ``functools.partial`` IS a keyword, unlike a class one (#211).
+
+    Module libraries use ``StaticKeywordCreator`` WITHOUT ``avoid_properties``, so
+    Robot skips ``_pre_validate_method`` and only ``_validate_method`` runs, which
+    admits a ``partial``. Pinning both directions keeps the class-vs-module split
+    faithful: dropping partial handling outright would silently drop a real module
+    keyword — the #152 under-inclusion class this guard exists to prevent.
+    """
+    import types
+
+    from robot.running.testlibraries import TestLibrary
+
+    module = types.ModuleType("_partial_fixture_module")
+    module.normal = _partial_target  # type: ignore[attr-defined]
+    module.part = partial(_partial_target, "x")  # type: ignore[attr-defined]
+    module.__all__ = ["normal", "part"]  # type: ignore[attr-defined]
+
+    robot_names = {kw.name for kw in TestLibrary.from_module(module).keywords}
+    assert _exposed_keyword_names(module) == robot_names
+    assert robot_names == {"Normal", "Part"}
+
+
 class _AutoKeywordsOffKeywords:
     """Fixture for the ``ROBOT_AUTO_KEYWORDS = False`` opt-in path.
 
@@ -491,23 +603,79 @@ def test_parse_library_imports_strips_aliases_and_excludes_noise(
     }
 
 
-def test_parse_library_imports_skips_variable_substituted_imports(
+def test_parse_library_imports_flags_variable_substituted_imports(
     tmp_path: Path,
 ) -> None:
-    """A ``Library ${VAR}`` import resolves at runtime and is NOT captured.
+    """A ``Library ${VAR}`` import is rejected loudly, never silently skipped (#257).
 
-    This is a documented limitation, not an accident: the guard sees only
-    statically-written ``rfc.<dotted.path>`` imports. No suite in the tree uses a
-    variable-substituted ``rfc.*`` library today (grep is empty), so the gap is
-    latent — but if one is ever added it would be invisible to this guard, so this
-    test pins the current behaviour to make that a conscious future decision.
+    Robot binds a variable-substituted ``Library`` path at runtime, so the guard
+    cannot see which ``rfc.*`` library it loads and would under-cover its keyword
+    surface — the exact #152/#208 blind-spot class the guard exists to close. No
+    suite uses one today (grep is empty), so this is a latent gap; the guard raises
+    rather than resolving the variable (variable resolution is deliberately out of
+    scope), turning the invisible gap into a conscious decision. The error names
+    each offending file and import so the fix is obvious.
     """
+    import pytest
+
     _write_suite(
         tmp_path,
         "var.robot",
         "*** Settings ***\nLibrary    ${LIB}\nLibrary    ${PKG}.keywords.LLMKeywords\n",
     )
-    assert _parse_library_imports(tmp_path) == set()
+    with pytest.raises(ValueError, match="variable-substituted Library import") as exc:
+        _parse_library_imports(tmp_path)
+    message = str(exc.value)
+    assert "var.robot" in message
+    assert "${LIB}" in message
+    assert "${PKG}.keywords.LLMKeywords" in message
+
+
+def test_parse_library_imports_ignores_commented_or_prose_variable_imports(
+    tmp_path: Path,
+) -> None:
+    """Commented-out or prose ``Library ${VAR}`` mentions must not trip the guard.
+
+    Only a real, active variable-substituted import is a blind spot; a comment or a
+    documentation string that merely contains the words is inert — exactly as for
+    static imports (pinned by the alias/noise test) — so the reject path must not
+    fire on them and static imports in the same file still parse.
+    """
+    _write_suite(
+        tmp_path,
+        "commented.robot",
+        "*** Settings ***\n"
+        "Documentation    Do not use Library ${LEGACY} here\n"
+        "# Library    ${OLD_LIB}\n"
+        "    # Library    ${INDENTED}\n"
+        "Library    rfc.graders\n",
+    )
+    assert _parse_library_imports(tmp_path) == {"rfc.graders"}
+
+
+def test_guard_fails_when_a_suite_uses_a_variable_substituted_import(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: the whole guard fails on a variable-substituted import (#257).
+
+    ``collect_keyword_surface`` is the surface the CI gate compares; a variable
+    ``Library`` import must break it (via the parser) rather than contribute an
+    invisible, empty surface that keeps the snapshot green while a rename in the
+    variable-loaded library slips through.
+    """
+    import pytest
+
+    _write_suite(
+        tmp_path,
+        "uses_var.robot",
+        "*** Settings ***\n"
+        "Library    ${DYNAMIC_LIB}\n"
+        "*** Test Cases ***\n"
+        "Smoke\n"
+        "    Log    hi\n",
+    )
+    with pytest.raises(ValueError, match="variable-substituted Library import"):
+        collect_keyword_surface(robot_dir=tmp_path)
 
 
 def test_resolve_library_raises_on_unresolvable_import() -> None:
