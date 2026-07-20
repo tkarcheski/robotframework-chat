@@ -25,6 +25,7 @@ from robot.libraries.BuiltIn import BuiltIn  # type: ignore
 
 from . import __version__
 from .base_listener import BaseListener
+from .commit_graph import walk_commit_graph
 from .cost_estimator import estimate_cost, load_pricing_table
 from .git_metadata import collect_ci_metadata
 from .harness_cli import active_session_id
@@ -54,6 +55,12 @@ from .test_database import (
     TestRunArtifact,
     build_result_artifacts,
 )
+
+
+# How many recent ancestors of HEAD to (re)capture into the commit_graph
+# table on each run. Keeps the deployed git-history view fresh between full
+# backfills without walking the entire DAG every suite.
+COMMIT_GRAPH_INCREMENTAL_DEPTH = 50
 
 
 def resolve_session_id(robot_variable: Optional[str]) -> str:
@@ -318,6 +325,7 @@ class DbListener(BaseListener):
             db = self._get_db()
             run_id = db.add_test_run(run)
             self._last_run_id = run_id
+            self._capture_commit_graph(db)
 
             # Record the source path immediately so Superset drill-down can
             # show where the XML lives even before close() compresses it.
@@ -363,6 +371,22 @@ class DbListener(BaseListener):
             error_msg = f"DbListener: FAILED to archive results: {e}"
             logger.warn(error_msg)
             logger.console(error_msg)
+
+    def _capture_commit_graph(self, db: TestDatabase) -> None:
+        """Best-effort: refresh the commit_graph table with HEAD's recent DAG.
+
+        Fully self-contained — a missing git binary, a detached checkout, or a
+        DB hiccup must never fail the result archive, so every error is
+        swallowed and logged (skip-and-log, per the optional-dependency
+        contract). Full history is loaded by the ``commit-graph-backfill``
+        entry point; this just keeps the deployed view current.
+        """
+        try:
+            nodes = walk_commit_graph(ref="HEAD", limit=COMMIT_GRAPH_INCREMENTAL_DEPTH)
+            if nodes:
+                db.upsert_commit_nodes(nodes)
+        except Exception as e:  # noqa: BLE001 - never fail the archive on this
+            logger.warn(f"DbListener: commit-graph capture skipped: {e}")
 
     def close(self) -> None:
         """Read output.xml after Robot has flushed it and update the DB row.

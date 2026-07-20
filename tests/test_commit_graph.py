@@ -136,3 +136,56 @@ class TestCommitGraphDataLayer:
         db = TestDatabase(db_path=str(tmp_path / "t.db"))
         assert db.upsert_commit_nodes([]) == 0
         assert db.get_commit_graph_nodes() == []
+
+
+class TestBackfill:
+    def test_backfill_populates_from_git(self, tmp_path: Path) -> None:
+        from rfc.commit_graph import backfill_commit_graph
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+        git("init", "-q")
+        git("config", "user.email", "ada@example.com")
+        git("config", "user.name", "Ada")
+        (repo / "a.txt").write_text("one")
+        git("add", ".")
+        git("commit", "-q", "-m", "first")
+        (repo / "a.txt").write_text("two")
+        git("commit", "-q", "-am", "second")
+
+        db = TestDatabase(db_path=str(tmp_path / "t.db"))
+        count = backfill_commit_graph(db, cwd=str(repo))
+        assert count == 2
+        assert db.get_table_row_count("commit_graph") == 2
+        assert db.get_table_row_count("commit_edges") == 1  # second -> first
+
+
+class TestIncrementalCapture:
+    """DbListener._capture_commit_graph is best-effort: it upserts on the
+    happy path and swallows every error so it can never fail a run archive."""
+
+    def _listener(self):  # type: ignore[no-untyped-def]
+        from rfc.db_listener import DbListener
+
+        return DbListener()
+
+    def test_capture_upserts_walked_nodes(self, monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+        nodes = [CommitGraphNode(sha="aaa", subject="root")]
+        monkeypatch.setattr("rfc.db_listener.walk_commit_graph", lambda **kw: nodes)
+        db = TestDatabase(db_path=str(tmp_path / "t.db"))
+        self._listener()._capture_commit_graph(db)
+        assert db.get_table_row_count("commit_graph") == 1
+
+    def test_capture_swallows_walk_errors(self, monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+        def boom(**kw: object) -> list:
+            raise RuntimeError("git exploded")
+
+        monkeypatch.setattr("rfc.db_listener.walk_commit_graph", boom)
+        db = TestDatabase(db_path=str(tmp_path / "t.db"))
+        # Must not raise — the archive path depends on this being harmless.
+        self._listener()._capture_commit_graph(db)
+        assert db.get_table_row_count("commit_graph") == 0

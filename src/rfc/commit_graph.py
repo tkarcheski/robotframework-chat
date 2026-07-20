@@ -17,10 +17,12 @@ not a repo) degrade to an empty list rather than raising, matching the
 skip-and-log contract for optional/external dependencies.
 """
 
+import argparse
+import os
 import subprocess
 from typing import List, Optional
 
-from .test_database import CommitGraphNode
+from .test_database import CommitGraphNode, TestDatabase
 
 # ASCII unit/record separators. git commit metadata never contains 0x1f/0x1e,
 # so a subject with spaces, pipes, commas or other punctuation still parses
@@ -112,3 +114,51 @@ def walk_commit_graph(
     elif all_refs:
         args.append("--all")
     return parse_commit_log(_run_git(args, cwd=cwd, timeout=timeout))
+
+
+def backfill_commit_graph(
+    db: TestDatabase,
+    *,
+    limit: Optional[int] = None,
+    cwd: Optional[str] = None,
+) -> int:
+    """Walk full history (all branches) into the commit_graph table.
+
+    Idempotent — safe to re-run. Returns the number of commits upserted.
+    """
+    nodes = walk_commit_graph(all_refs=True, limit=limit, cwd=cwd)
+    return db.upsert_commit_nodes(nodes)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry point: ``python -m rfc.commit_graph`` (see ``make
+    commit-graph-backfill``). Scans the repo's git history into the
+    commit_graph / commit_edges tables for Superset to visualize.
+    """
+    parser = argparse.ArgumentParser(
+        description="Backfill the commit_graph table from git history."
+    )
+    parser.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL"),
+        help="Target database (defaults to $DATABASE_URL).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Cap commits walked (default: full history).",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.database_url:
+        parser.error("no database: pass --database-url or set DATABASE_URL")
+
+    db = TestDatabase(database_url=args.database_url)
+    count = backfill_commit_graph(db, limit=args.limit)
+    print(f"commit_graph: upserted {count} commit(s) from git history")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - thin CLI wrapper
+    raise SystemExit(main())
