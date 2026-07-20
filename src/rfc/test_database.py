@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -99,6 +99,27 @@ class TestResult:
     wall_seconds: float = 0.0
     cost_usd: float = 0.0
     id: int = -1
+
+
+@dataclass
+class CommitGraphNode:
+    """One commit in the git DAG.
+
+    ``parent_shas`` carries the edges — a commit with two parents is a merge.
+    Lands in the ``commit_graph`` table (one row per commit) and is normalised
+    into ``commit_edges`` (one row per parent) so Superset can render the tree.
+    Concrete defaults only (never ``Optional``): a root commit records an empty
+    parent list, not NULL.
+    """
+
+    sha: str
+    parent_shas: List[str] = field(default_factory=list)
+    author: str = ""
+    author_email: str = ""
+    commit_timestamp: str = ""
+    subject: str = ""
+    refs: str = ""
+    is_merge: bool = False
 
 
 @dataclass
@@ -261,6 +282,17 @@ class _Backend(abc.ABC):
     @abc.abstractmethod
     def update_output_xml(self, run_id: int, output_xml_gz: bytes) -> None: ...
 
+    @abc.abstractmethod
+    def upsert_commit_nodes(self, nodes: List["CommitGraphNode"]) -> int: ...
+
+    @abc.abstractmethod
+    def get_commit_graph_nodes(
+        self, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]: ...
+
+    @abc.abstractmethod
+    def get_commit_edges(self) -> List[Dict[str, Any]]: ...
+
 
 class _SQLiteBackend(_Backend):
     """SQLite backend using the stdlib sqlite3 module."""
@@ -336,10 +368,32 @@ class _SQLiteBackend(_Backend):
         family TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS commit_graph (
+        sha TEXT PRIMARY KEY,
+        parent_shas TEXT DEFAULT '',
+        author TEXT DEFAULT '',
+        author_email TEXT DEFAULT '',
+        commit_timestamp TEXT DEFAULT '',
+        subject TEXT DEFAULT '',
+        refs TEXT DEFAULT '',
+        is_merge INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS commit_edges (
+        child_sha TEXT NOT NULL,
+        parent_sha TEXT NOT NULL,
+        parent_index INTEGER DEFAULT 0,
+        PRIMARY KEY (child_sha, parent_sha)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_test_runs_model ON test_runs(model_name);
     CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_test_runs_suite ON test_runs(test_suite);
     CREATE INDEX IF NOT EXISTS idx_test_results_run_id ON test_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_commit_graph_timestamp
+        ON commit_graph(commit_timestamp);
+    CREATE INDEX IF NOT EXISTS idx_commit_edges_parent
+        ON commit_edges(parent_sha);
     """
 
     _VIEW_SQL = (
@@ -640,6 +694,77 @@ class _SQLiteBackend(_Backend):
             ).fetchone()
             return int(row[0]) if row else 0
 
+    def upsert_commit_nodes(self, nodes: List["CommitGraphNode"]) -> int:
+        if not nodes:
+            return 0
+        with sqlite3.connect(self.db_path) as conn:
+            for n in nodes:
+                conn.execute(
+                    """
+                    INSERT INTO commit_graph
+                    (sha, parent_shas, author, author_email,
+                     commit_timestamp, subject, refs, is_merge)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(sha) DO UPDATE SET
+                        parent_shas = excluded.parent_shas,
+                        author = excluded.author,
+                        author_email = excluded.author_email,
+                        commit_timestamp = excluded.commit_timestamp,
+                        subject = excluded.subject,
+                        refs = excluded.refs,
+                        is_merge = excluded.is_merge
+                    """,
+                    (
+                        n.sha,
+                        " ".join(n.parent_shas),
+                        n.author,
+                        n.author_email,
+                        n.commit_timestamp,
+                        n.subject,
+                        n.refs,
+                        1 if n.is_merge else 0,
+                    ),
+                )
+                # Re-derive this commit's edges: delete then re-insert so a
+                # history rewrite (rebase/amend) can't leave stale parents.
+                conn.execute("DELETE FROM commit_edges WHERE child_sha = ?", (n.sha,))
+                for idx, parent in enumerate(n.parent_shas):
+                    conn.execute(
+                        """
+                        INSERT INTO commit_edges
+                        (child_sha, parent_sha, parent_index)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(child_sha, parent_sha) DO UPDATE SET
+                            parent_index = excluded.parent_index
+                        """,
+                        (n.sha, parent, idx),
+                    )
+            return len(nodes)
+
+    def get_commit_graph_nodes(
+        self, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        sql = (
+            "SELECT sha, parent_shas, author, author_email, commit_timestamp, "
+            "subject, refs, is_merge FROM commit_graph "
+            "ORDER BY commit_timestamp DESC"
+        )
+        params: tuple[Any, ...] = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (limit,)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+    def get_commit_edges(self) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT child_sha, parent_sha, parent_index FROM commit_edges"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
 
 class _SQLAlchemyBackend(_Backend):
     """PostgreSQL backend using SQLAlchemy."""
@@ -878,6 +1003,31 @@ class _SQLAlchemyBackend(_Backend):
             Column("family", Text),
         )
 
+        # Git DAG: one row per commit (parents give the edges), normalised
+        # into commit_edges so Superset can render the tree.
+        self._commit_graph = Table(
+            "commit_graph",
+            self.metadata,
+            Column("sha", Text, primary_key=True),
+            Column("parent_shas", Text, server_default=text("''")),
+            Column("author", Text, server_default=text("''")),
+            Column("author_email", Text, server_default=text("''")),
+            Column("commit_timestamp", Text, server_default=text("''")),
+            Column("subject", Text, server_default=text("''")),
+            Column("refs", Text, server_default=text("''")),
+            Column("is_merge", Boolean, server_default=text("false")),
+            Index("idx_commit_graph_timestamp", "commit_timestamp"),
+        )
+
+        self._commit_edges = Table(
+            "commit_edges",
+            self.metadata,
+            Column("child_sha", Text, primary_key=True),
+            Column("parent_sha", Text, primary_key=True),
+            Column("parent_index", Integer, server_default=text("0")),
+            Index("idx_commit_edges_parent", "parent_sha"),
+        )
+
     def _run_migrations(self) -> None:
         for sql in self._PG_MIGRATIONS:
             try:
@@ -1079,6 +1229,64 @@ class _SQLAlchemyBackend(_Backend):
             result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))  # noqa: S608
             return int(result.scalar() or 0)
 
+    def upsert_commit_nodes(self, nodes: List["CommitGraphNode"]) -> int:
+        if not nodes:
+            return 0
+        # Dialect-agnostic upsert: delete-then-insert per commit inside one
+        # transaction. Idempotent, and a rewritten commit's edges can't go
+        # stale because they are rebuilt from the current parent list.
+        with self.engine.begin() as conn:
+            for n in nodes:
+                conn.execute(
+                    self._commit_graph.delete().where(self._commit_graph.c.sha == n.sha)
+                )
+                conn.execute(
+                    self._commit_graph.insert().values(
+                        sha=n.sha,
+                        parent_shas=" ".join(n.parent_shas),
+                        author=n.author,
+                        author_email=n.author_email,
+                        commit_timestamp=n.commit_timestamp,
+                        subject=n.subject,
+                        refs=n.refs,
+                        is_merge=bool(n.is_merge),
+                    )
+                )
+                conn.execute(
+                    self._commit_edges.delete().where(
+                        self._commit_edges.c.child_sha == n.sha
+                    )
+                )
+                if n.parent_shas:
+                    conn.execute(
+                        self._commit_edges.insert(),
+                        [
+                            {
+                                "child_sha": n.sha,
+                                "parent_sha": parent,
+                                "parent_index": idx,
+                            }
+                            for idx, parent in enumerate(n.parent_shas)
+                        ],
+                    )
+            return len(nodes)
+
+    def get_commit_graph_nodes(
+        self, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            query = self._commit_graph.select().order_by(
+                self._commit_graph.c.commit_timestamp.desc()
+            )
+            if limit is not None:
+                query = query.limit(limit)
+            return [dict(row._mapping) for row in conn.execute(query)]
+
+    def get_commit_edges(self) -> List[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            result = conn.execute(self._commit_edges.select())
+            return [dict(row._mapping) for row in result]
+
 
 class TestDatabase:
     """Facade that selects the correct backend at construction time.
@@ -1162,3 +1370,14 @@ class TestDatabase:
 
     def get_table_row_count(self, table_name: str) -> int:
         return self._backend.get_table_row_count(table_name)
+
+    def upsert_commit_nodes(self, nodes: List[CommitGraphNode]) -> int:
+        return self._backend.upsert_commit_nodes(nodes)
+
+    def get_commit_graph_nodes(
+        self, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        return self._backend.get_commit_graph_nodes(limit)
+
+    def get_commit_edges(self) -> List[Dict[str, Any]]:
+        return self._backend.get_commit_edges()
