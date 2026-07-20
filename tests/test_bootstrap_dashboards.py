@@ -31,6 +31,8 @@ from bootstrap_dashboards import (  # noqa: E402
     STATUS_COLORS,
     _CHART_DEFS,
     _FILTER_CONFIGS,
+    _GIT_HISTORY_CHART_DEFS,
+    _GIT_HISTORY_LAYOUT_SECTIONS,
     _LAYOUT_SECTIONS,
     _TABLE_DDL,
     _VIRTUAL_DATASETS,
@@ -130,6 +132,9 @@ class TestVirtualDatasets:
         "coverage_timeseries",
         "coverage_by_module",
         "coverage_by_commit",
+        # Git History dashboard (commit DAG + bisect view)
+        "commit_graph_decorated",
+        "commit_dag_edges",
     }
 
     def test_all_expected_keys_present(self) -> None:
@@ -149,7 +154,13 @@ class TestVirtualDatasets:
 
     def test_all_sql_references_core_tables(self) -> None:
         """Every SQL references at least one of the core tables."""
-        core_tables = {"TEST_RUNS", "TEST_RESULTS", "COVERAGE_REPORTS"}
+        core_tables = {
+            "TEST_RUNS",
+            "TEST_RESULTS",
+            "COVERAGE_REPORTS",
+            "COMMIT_GRAPH",
+            "COMMIT_EDGES",
+        }
         for key, sql in _VIRTUAL_DATASETS.items():
             sql_upper = sql.upper()
             found = any(t in sql_upper for t in core_tables)
@@ -2474,3 +2485,40 @@ class TestScoreboardPostgresValidity:
         # Split semantics on the production backend: the mixed cell becomes a
         # pure Tier-A sub-cell (token row only) and a Tier-B sub-cell.
         assert cells == {("A", 1), ("B", 1)}
+
+
+# ---------------------------------------------------------------------------
+# Git History dashboard (commit DAG + bisect view)
+# ---------------------------------------------------------------------------
+
+
+class TestGitHistoryDashboard:
+    """Structural guards for the Git History dashboard defs."""
+
+    def test_ddl_creates_commit_tables(self) -> None:
+        ddl = _TABLE_DDL.upper()
+        assert "CREATE TABLE IF NOT EXISTS COMMIT_GRAPH" in ddl
+        assert "CREATE TABLE IF NOT EXISTS COMMIT_EDGES" in ddl
+
+    def test_chart_datasets_exist(self) -> None:
+        """Every Git History chart points at a defined virtual dataset."""
+        for chart in _GIT_HISTORY_CHART_DEFS:
+            assert chart["datasource_id_key"] in _VIRTUAL_DATASETS, (
+                f"{chart['slice_name']} references unknown dataset "
+                f"{chart['datasource_id_key']}"
+            )
+
+    def test_layout_names_match_chart_defs(self) -> None:
+        """Every chart referenced in the layout is defined (and vice versa)."""
+        defined = {c["slice_name"] for c in _GIT_HISTORY_CHART_DEFS}
+        laid_out = {
+            chart["name"]
+            for section in _GIT_HISTORY_LAYOUT_SECTIONS
+            for chart in section["charts"]
+        }
+        assert laid_out == defined
+
+    def test_chart_defs_have_required_fields(self) -> None:
+        required = {"slice_name", "viz_type", "datasource_id_key", "params"}
+        for chart in _GIT_HISTORY_CHART_DEFS:
+            assert required <= set(chart), f"{chart} missing required keys"
