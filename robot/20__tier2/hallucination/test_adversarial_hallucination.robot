@@ -12,7 +12,7 @@ Variables         variables/adversarial_prompts.yaml
 Default Tags      hallucination    adversarial    tier:2    verify:llm
 
 Test Timeout      100 minutes
-Test Tags         axis:model
+Test Tags         axis:model    gold
 
 *** Test Cases ***
 Internet History With Fabricated TCP/IP Date
