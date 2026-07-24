@@ -10,6 +10,7 @@ from .exceptions import EmptyLLMResponseError, ModelNotReadyError
 from .grader import Grader
 from .llm_client import (
     as_ollama,
+    create_judge_provider,
     create_provider,
     resolve_timeout,
     unwrap_provider,
@@ -31,7 +32,11 @@ class LLMKeywords:
     ):
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
-        self.grader = Grader(self.client)
+        self.grader = Grader(
+            create_judge_provider(
+                self.client, timeout=timeout, max_retries=int(max_retries)
+            )
+        )
         self._hide_thinking: bool = (
             hide_thinking.lower() not in ("false", "0", "no")
             if isinstance(hide_thinking, str)

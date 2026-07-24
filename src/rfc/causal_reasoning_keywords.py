@@ -11,7 +11,7 @@ from robot.api import logger
 from robot.api.deco import keyword
 
 from .grader import Grader
-from .llm_client import create_provider, resolve_timeout
+from .llm_client import create_judge_provider, create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 
 # Anchored to the start of the first line; an optional single-word label
@@ -71,7 +71,11 @@ class CausalReasoningKeywords:
     ) -> None:
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
-        self.grader = Grader(self.client)
+        self.grader = Grader(
+            create_judge_provider(
+                self.client, timeout=timeout, max_retries=int(max_retries)
+            )
+        )
 
     # ------------------------------------------------------------------
     # Tier 1: deterministic verdict extraction

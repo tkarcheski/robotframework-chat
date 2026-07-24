@@ -7,7 +7,7 @@ from robot.api import logger
 from robot.api.deco import keyword
 
 from .grader import Grader
-from .llm_client import create_provider, resolve_timeout
+from .llm_client import create_judge_provider, create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 from .thinking import parse_thinking
 
@@ -52,7 +52,11 @@ class HallucinationKeywords:
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2):
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
-        self.grader = Grader(self.client)
+        self.grader = Grader(
+            create_judge_provider(
+                self.client, timeout=timeout, max_retries=int(max_retries)
+            )
+        )
 
     def _extract_references(self, text: str) -> Dict[str, List[str]]:
         """Extract URLs, ISBNs, DOIs, arXiv IDs, legal citations, and UN resolutions."""

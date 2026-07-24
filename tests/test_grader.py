@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from rfc.exceptions import GraderUnavailableError
 from rfc.grader import Grader
 from rfc.models import GradeResult
 
@@ -36,24 +37,27 @@ class TestGrader:
         assert result.score == 0.0
 
     def test_grade_invalid_json(self):
+        # A judge that cannot emit a verdict is an instrument outage, so the
+        # test skips rather than blaming the model under test (see
+        # tests/test_gold_judge.py for the full contract).
         client = MagicMock()
         client.generate.return_value = "not valid json"
         grader = Grader(client)
-        with pytest.raises(ValueError, match="invalid JSON"):
+        with pytest.raises(GraderUnavailableError):
             grader.grade("q", "e", "a")
 
     def test_grade_missing_score_field(self):
         client = MagicMock()
         client.generate.return_value = '{"reason": "x"}'
         grader = Grader(client)
-        with pytest.raises(ValueError, match="missing required fields"):
+        with pytest.raises(GraderUnavailableError):
             grader.grade("q", "e", "a")
 
     def test_grade_missing_reason_field(self):
         client = MagicMock()
         client.generate.return_value = '{"score": 1}'
         grader = Grader(client)
-        with pytest.raises(ValueError, match="missing required fields"):
+        with pytest.raises(GraderUnavailableError):
             grader.grade("q", "e", "a")
 
     def test_grade_empty_question(self):
@@ -156,16 +160,19 @@ class TestGraderThinkRetry:
     def test_no_retry_when_think_already_false(self):
         client = _ThinkingGraderClient()
         client.think = False  # already disabled; retrying can't help
-        with pytest.raises(ValueError, match="invalid JSON"):
+        with pytest.raises(GraderUnavailableError):
             # think=False path returns valid JSON in the fake, so force empty:
             client.generate = lambda prompt: "<think>still nothing</think>"  # type: ignore[method-assign]
             Grader(client).grade("q", "e", "a")
 
     def test_client_without_think_attr_does_not_retry(self):
         client = _NoThinkClient("<think>no verdict</think>")
-        with pytest.raises(ValueError, match="invalid JSON"):
+        with pytest.raises(GraderUnavailableError):
             Grader(client).grade("q", "e", "a")
-        assert client.calls == 1  # no second attempt
+        # One call per unparseable-verdict attempt and no more: a client with no
+        # `think` toggle never takes the think-disabled retry within an attempt.
+        assert client.calls == 2
+        assert not hasattr(client, "think")
 
     def test_think_restored_even_if_retry_raises(self):
         client = _ThinkingGraderClient()

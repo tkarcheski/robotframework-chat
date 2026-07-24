@@ -198,3 +198,43 @@ class MissingProviderConfigError(RFCSkipError):
             f"{variable} environment variable must be set "
             f"when using the {provider} provider."
         )
+
+
+# ── Grading / judge ──────────────────────────────────────────────────
+
+
+class GraderUnavailableError(RFCSkipError):
+    """Raised when the LLM judge cannot produce a usable verdict.
+
+    A judge that emits unparseable JSON has told us nothing about the answer,
+    so recording a FAIL would attribute a measurement outage to the model under
+    test. The grader retries once first; this is the give-up path, and it skips
+    so the result is visibly absent rather than silently wrong.
+    """
+
+    def __init__(self, judge_model: str, raw: str = "") -> None:
+        self.judge_model = judge_model
+        self.raw = raw
+        snippet = f" Raw output: {raw!r}" if raw else ""
+        super().__init__(
+            f"Judge {judge_model!r} did not return a usable verdict after a "
+            f"retry.{snippet} Marking test as skipped."
+        )
+
+
+class SelfGradingConfigError(RFCSkipError):
+    """Raised when the configured judge is the model under test.
+
+    Self-grading makes an A/B incomparable: each arm applies its own standard,
+    and a degraded arm judges its own degraded answers. Refusing loudly beats
+    grading anyway, so a misconfigured run skips instead of producing numbers
+    nobody can trust.
+    """
+
+    def __init__(self, model: str) -> None:
+        self.model = model
+        super().__init__(
+            f"GOLD_JUDGE_MODEL is {model!r}, the same model under test "
+            f"(DEFAULT_MODEL). A model may not grade its own answers. "
+            f"Set GOLD_JUDGE_MODEL to a different model."
+        )
