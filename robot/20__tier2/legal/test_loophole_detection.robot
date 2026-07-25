@@ -46,7 +46,7 @@ Detect Arbitration Venue And Cost Imbalance
 
 Batch Loophole Detection - All Scenarios
     [Documentation]    Can the LLM detect all loophole types across the full agreement in batch?
-    [Tags]    batch    template
+    [Tags]    batch    template    stress
     FOR    ${scenario}    IN    @{LOOPHOLE_SCENARIOS}
         Run Loophole Scenario    ${scenario}
     END

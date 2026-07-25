@@ -99,6 +99,36 @@ def create_provider(provider: str = "", **kwargs: Any) -> LLMProvider:
     )
 
 
+def create_judge_provider(fallback: "LLMProvider", **kwargs: Any) -> "LLMProvider":
+    """Return the pinned judge client, or *fallback* when no judge is configured.
+
+    Grading is a measurement instrument, so it must not vary with the thing being
+    measured. When ``GOLD_JUDGE_MODEL`` is set, every arm of a comparison is graded
+    by that one frozen model at temperature 0 with JSON-mode responses; when it is
+    unset, callers keep their historical client so non-gate suites are unaffected.
+
+    Raises:
+        SelfGradingConfigError: If the judge is the model under test.
+    """
+    judge_model = os.getenv("GOLD_JUDGE_MODEL", "").strip()
+    if not judge_model:
+        return fallback
+
+    arm_model = os.getenv("DEFAULT_MODEL", "").strip()
+    if judge_model.casefold() == arm_model.casefold():
+        from .exceptions import SelfGradingConfigError
+
+        raise SelfGradingConfigError(judge_model)
+
+    return create_provider(
+        os.getenv("GOLD_JUDGE_PROVIDER", "ollama"),
+        model=judge_model,
+        temperature=0.0,
+        response_format="json",
+        **kwargs,
+    )
+
+
 def _create_direct_provider(provider: str, kwargs: Dict[str, Any]) -> "LLMProvider":
     """Construct the concrete direct-path provider client (ollama/openai/vllm).
 

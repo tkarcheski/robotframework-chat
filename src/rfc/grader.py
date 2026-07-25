@@ -1,10 +1,12 @@
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 from robot.api import logger
 
 from . import __version__
+from .exceptions import GraderUnavailableError
 from .models import GradeResult
 from .prompt_registry import sha256_hex
 from .rfc_data import emit_rfc_data
@@ -28,6 +30,10 @@ GRADER_PROMPT_ID = "grader.default_judge"
 # to the package version so it is never a stale hand-maintained constant (a version
 # nobody bumps is merely decorative); when grading code changes, the release bumps.
 GRADER_VERSION = __version__
+
+# One retry before giving up: judge JSON-mode hiccups are transient, but a
+# second failure is an outage, not noise worth grinding on.
+_JUDGE_ATTEMPTS = 2
 
 _GRADER_PROMPT_ENV = "RFC_GRADER_PROMPT"
 _GRADER_PROMPT_PATH = (
@@ -135,26 +141,47 @@ class Grader:
         )
         prompt = "\n" + body
 
-        raw = self._grade_generate(prompt)
-        last_metrics = getattr(self.llm, "last_metrics", None)
-        if isinstance(last_metrics, dict) and last_metrics:
-            emit_rfc_data("llm_metrics", json.dumps(last_metrics))
+        # A judge that returns garbage has measured nothing, so its output is
+        # retried once and then skipped — never scored. Recording a FAIL there
+        # would blame the model under test for a broken instrument.
+        raw = ""
+        for attempt in range(_JUDGE_ATTEMPTS):
+            raw = self._grade_generate(prompt)
+            last_metrics = getattr(self.llm, "last_metrics", None)
+            if isinstance(last_metrics, dict) and last_metrics:
+                emit_rfc_data("llm_metrics", json.dumps(last_metrics))
 
+            verdict = self._parse_verdict(raw)
+            if verdict is not None:
+                return verdict
+            if attempt + 1 < _JUDGE_ATTEMPTS:
+                logger.warn(
+                    "Judge did not return parseable JSON; retrying once before "
+                    f"skipping. Raw output: {raw!r}"
+                )
+
+        raise GraderUnavailableError(getattr(self.llm, "model", "unknown"), raw)
+
+    @staticmethod
+    def _parse_verdict(raw: str) -> Optional[GradeResult]:
+        """Return the judge's verdict, or ``None`` when its output is unusable."""
         # Extract JSON from response (handle thinking tags, markdown, etc.)
-        json_text = extract_json(raw)
+        try:
+            parsed = json.loads(extract_json(raw))
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+        if not isinstance(parsed, dict):
+            return None
+        if "score" not in parsed or "reason" not in parsed:
+            return None
 
         try:
-            parsed = json.loads(json_text)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Grader returned invalid JSON: {raw}") from e
+            score = float(parsed["score"])
+        except (TypeError, ValueError):
+            return None
 
-        if "score" not in parsed or "reason" not in parsed:
-            raise ValueError(f"Grader JSON missing required fields: {parsed}")
-
-        return GradeResult(
-            score=float(parsed["score"]),
-            reason=str(parsed["reason"]),
-        )
+        return GradeResult(score=score, reason=str(parsed["reason"]))
 
     def _grade_generate(self, prompt: str) -> str:
         """Generate the grader verdict, retrying once with think disabled.

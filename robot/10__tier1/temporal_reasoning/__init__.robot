@@ -11,3 +11,9 @@ Documentation     Temporal Reasoning test suite.
 ...               of its response, with no LLM used as a grader.
 Resource          ../../resources/llm_setup.resource
 Suite Setup       Verify LLM Available
+
+# platinum: the highest-signal gate suite. Grading is fully deterministic (no
+# judge), prompts are short, and the base model passes some tests outright while
+# failing others — so a change can show up as either a gain or a regression. A
+# suite everything already passes can only ever look worse.
+Test Tags         gold    platinum

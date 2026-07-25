@@ -12,7 +12,7 @@ Variables         ../../variables/numerical_facts.yaml
 Default Tags      hallucination    numerical    tier:2    verify:llm
 
 Test Timeout      100 minutes
-Test Tags         axis:model
+Test Tags         axis:model    gold
 
 *** Test Cases ***
 Speed Of Light In Meters Per Second

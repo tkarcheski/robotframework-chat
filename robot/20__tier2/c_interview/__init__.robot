@@ -10,4 +10,4 @@ Resource          ../../resources/llm_setup.resource
 Suite Setup       Verify LLM Available
 Suite Teardown    Log    Finished C Interview Question Suite
 
-Test Tags         c-interview    tier:2    verify:llm
+Test Tags         c-interview    tier:2    verify:llm    gold

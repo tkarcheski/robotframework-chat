@@ -5,3 +5,5 @@ Documentation     Code review test suite.
 ...               vulnerabilities in code snippets using a multiple-choice
 ...               format.  The answer letter is extracted deterministically
 ...               from the first line of the response — Tier 1 / verify:python.
+
+Test Tags         gold

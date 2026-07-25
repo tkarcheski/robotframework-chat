@@ -11,7 +11,7 @@ Variables         variables/citations.yaml
 Default Tags      hallucination    citation    tier:2    verify:llm
 
 Test Timeout      100 minutes
-Test Tags         axis:model
+Test Tags         axis:model    gold
 
 *** Test Cases ***
 Cite Brown v. Board Of Education Without Fabrication

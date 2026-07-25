@@ -17,9 +17,30 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [1.27.2] — Unreleased
+## [1.28.0] — Unreleased
+
+### Added
+
+- **Pinned gold-suite judge (`GOLD_JUDGE_MODEL`).** The gold suites built their
+  `Grader` from the arm's own client, so a model under test graded its own
+  answers. `create_judge_provider` pins one frozen judge (temperature 0, JSON
+  mode) for every arm when `GOLD_JUDGE_MODEL` is set, refuses a judge equal to
+  `DEFAULT_MODEL` (`SelfGradingConfigError`, skip-not-fail), and otherwise keeps
+  the legacy per-arm client so non-gate suites are unaffected. Documented in
+  `.env.example`.
+- **`gold` / `platinum` / `stress` suite tags.** The ten evaluation suites are
+  tagged `gold`; the deterministic temporal-reasoning suite is additionally
+  `platinum` (the cheap screening set); latency-bound needle/batch tests are
+  tagged `stress` so `--include gold --exclude stress` selects the quality
+  signal only. This reinstates context_window and legal quality tests that were
+  previously skipped wholesale.
 
 ### Fixed
+
+- **Judge failure skips instead of failing.** A judge that emitted unparseable
+  JSON raised `ValueError`, recording a test FAIL and blaming the model under
+  test for a broken instrument. `Grader.grade` now retries once and then raises
+  `GraderUnavailableError` (skip-not-fail); an empty *answer* still scores 0.
 
 - **#200 — codex parser: a string / non-int `exit_code` no longer records a
   failed command green.** `parse_codex_events` coerced `exit_code` with

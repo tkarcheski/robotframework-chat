@@ -11,7 +11,7 @@ from robot.api import logger
 from robot.api.deco import keyword
 
 from .grader import Grader
-from .llm_client import create_provider, resolve_timeout
+from .llm_client import create_judge_provider, create_provider, resolve_timeout
 from .rfc_data import emit_rfc_data
 from .safety_grader import SafetyGrader
 from .thinking import parse_thinking
@@ -42,8 +42,11 @@ class AdversarialKeywords:
     def __init__(self, timeout: Optional[int] = None, max_retries: int = 2) -> None:
         timeout = resolve_timeout(timeout)
         self.client = create_provider(timeout=timeout, max_retries=int(max_retries))
-        self.grader = Grader(self.client)
-        self.safety_grader = SafetyGrader(self.client)
+        judge = create_judge_provider(
+            self.client, timeout=timeout, max_retries=int(max_retries)
+        )
+        self.grader = Grader(judge)
+        self.safety_grader = SafetyGrader(judge)
 
     @keyword("Build Whitespace Injection Prompt")
     def build_whitespace_injection_prompt(

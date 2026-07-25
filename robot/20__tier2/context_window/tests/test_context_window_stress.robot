@@ -19,7 +19,7 @@ Default Tags      context_window    tier:2    verify:llm
 Test Timeout      100 minutes
 
 Suite Setup       Set Suite Variable    ${CONTEXT_WINDOW}    ${CONTEXT_WINDOW}
-Test Tags         axis:model
+Test Tags         axis:model    gold
 
 *** Variables ***
 ${CONTEXT_WINDOW}    8192
@@ -38,21 +38,21 @@ Needle Retrieval Floor Test — 25% Fill, End Position
 Needle Retrieval at 50% Fill — End Position
     [Documentation]    Moderate fill: baseline degradation test.
     ...                Emits metrics but does not hard-assert.
-    [Tags]    tier:2    verify:llm    degradation
+    [Tags]    tier:2    verify:llm    degradation    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    50    end    ${CONTEXT_WINDOW}
     END
 
 Needle Retrieval at 75% Fill — End Position
     [Documentation]    High fill: expect increasing retrieval difficulty.
-    [Tags]    tier:2    verify:llm    degradation
+    [Tags]    tier:2    verify:llm    degradation    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    75    end    ${CONTEXT_WINDOW}
     END
 
 Needle Retrieval at 95% Fill — End Position
     [Documentation]    Extreme fill: stress test at near-maximum context.
-    [Tags]    tier:2    verify:llm    extreme
+    [Tags]    tier:2    verify:llm    extreme    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    95    end    ${CONTEXT_WINDOW}
     END
@@ -60,7 +60,7 @@ Needle Retrieval at 95% Fill — End Position
 Needle Position Effect — 50% Fill, Start Position
     [Documentation]    Test positional effect: needle at start of context.
     ...                Baseline for "lost in the middle" comparison.
-    [Tags]    tier:2    verify:llm    position
+    [Tags]    tier:2    verify:llm    position    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    50    start    ${CONTEXT_WINDOW}
     END
@@ -68,28 +68,28 @@ Needle Position Effect — 50% Fill, Start Position
 Needle Position Effect — 50% Fill, Middle Position
     [Documentation]    Test positional effect: needle in middle of context.
     ...                Research suggests degradation here in long contexts.
-    [Tags]    tier:2    verify:llm    position
+    [Tags]    tier:2    verify:llm    position    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    50    middle    ${CONTEXT_WINDOW}
     END
 
 Needle Position Effect — 75% Fill, Start Position
     [Documentation]    High fill + start position: control for position study.
-    [Tags]    tier:2    verify:llm    position
+    [Tags]    tier:2    verify:llm    position    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    75    start    ${CONTEXT_WINDOW}
     END
 
 Needle Position Effect — 75% Fill, Middle Position
     [Documentation]    High fill + middle position: expect worst-case degradation.
-    [Tags]    tier:2    verify:llm    position
+    [Tags]    tier:2    verify:llm    position    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    75    middle    ${CONTEXT_WINDOW}
     END
 
 Needle Position Effect — 75% Fill, End Position
     [Documentation]    High fill + end position: recency effect baseline.
-    [Tags]    tier:2    verify:llm    position
+    [Tags]    tier:2    verify:llm    position    stress
     FOR    ${case}    IN    @{NEEDLE_CASES}
         ${result}=    Probe Needle At Fill Level    ${case}    75    end    ${CONTEXT_WINDOW}
     END

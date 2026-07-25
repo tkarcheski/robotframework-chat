@@ -5,3 +5,5 @@ Documentation     Structured information extraction test suite.
 ...               from unstructured text: named entities, key-value pairs, and
 ...               lists of entities.  All verification is deterministic Python
 ...               string matching (Tier 1 / verify:python).
+
+Test Tags         gold

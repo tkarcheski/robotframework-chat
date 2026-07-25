@@ -11,7 +11,10 @@ Documentation     Quantization Degradation Tests
 
 Resource          quantization.resource
 
-Test Tags         quantization    degradation    tier:2    verify:llm    axis:model
+# gold marks this suite as part of the frozen evaluation set, but it is never a
+# gate pool: it compares two fleet quantization tags to each other, so it does
+# not measure one model arm against another.
+Test Tags         quantization    degradation    tier:2    verify:llm    axis:model    gold
 
 Test Timeout      250 minutes
 
