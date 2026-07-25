@@ -17,6 +17,28 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.29.0] — 2026-07-25
+
+### Added
+
+- **Canary session-degradation suite (`axis:model`, tier:4) + engine.** A
+  "canary" pins one standing instruction on a session — *include the token
+  `<name>` in every reply* — then drives a long multi-turn conversation and
+  records how many turns / response tokens / wall-clock the session survives
+  before the model first drops the token (the degradation point; first-miss
+  policy). The engine (`rfc.canary`) is responder-agnostic: the live LLM-session
+  responder lives in `rfc.canary_keywords.SessionCanaryKeywords`, and the same
+  engine is meant to back a future `axis:harness` leg (a coding-agent harness
+  session as the responder) with no engine change. New Robot keywords: `Run
+  Canary Session`, `Default Canary Prompts`, `Run Scripted Canary Session`,
+  `Canary Response Hits`, `Session Should Not Degrade`, `Session Should Degrade
+  At Turn`. Two suites: the deterministic `robot/10__tier1/canary` logic suite
+  (`axis:none`, scripted responses, no model — always green in CI) and the live
+  `robot/40__tier4/canary` measurement suite (opt-in via `CANARY_LIVE=1`,
+  registered in `config/local_models.yaml` for the per-model sweep). Per-turn
+  and summary metrics are emitted as `RFC_DATA` for the spine. Deterministic
+  twins: `tests/test_canary.py`, `tests/test_canary_keywords.py`.
+
 ## [1.28.0] — Unreleased
 
 ### Added
