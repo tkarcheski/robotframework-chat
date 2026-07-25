@@ -161,6 +161,11 @@ test_suites:
     description: "GAIA-style tool-use tests for LLM tool selection and invocation"
     timeout_seconds: 300
 
+  - name: "canary-session"
+    path: "robot/40__tier4/canary/"
+    description: "Canary session-degradation: turns/tokens/wall-clock to the first dropped standing-instruction token (needs CANARY_LIVE=1)"
+    timeout_seconds: 36000
+
   - name: "json-schema"
     path: "robot/20__tier2/json_schema/"
     description: "JSON schema validation with retry logic and parse failure rate measurement"

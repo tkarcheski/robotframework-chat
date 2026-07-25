@@ -268,6 +268,16 @@ test_suites:
     path: "robot/20__tier2/context_window/tests"
     description: "Context window degradation testing — needle-in-haystack retrieval at increasing fill levels and positions"
 
+  canary-logic:
+    label: "Canary Degradation Logic"
+    path: "robot/10__tier1/canary"
+    description: "Deterministic tier:1 (axis:none) logic tests for the canary session-degradation engine (rfc.canary): whole-word token hit detection, first-miss stop, and the full hit/miss curve, driven by scripted responses (no model). Deterministic twin: tests/test_canary.py."
+
+  canary-session:
+    label: "Canary Session Degradation"
+    path: "robot/40__tier4/canary"
+    description: "LIVE tier:4 (axis:model) canary session-degradation measurement: pins a standing 'echo this token every reply' instruction on a real model session, drives many turns, and records turns/tokens/wall-clock to the first dropped token (the degradation point). Opt-in via CANARY_LIVE=1; the model-sweep follow-up fans it across every model. The same responder-agnostic engine backs a future axis:harness leg."
+
   causal-reasoning:
     label: "Causal Reasoning"
     path: "robot/20__tier2/causal_reasoning"
@@ -455,6 +465,11 @@ ci:
       path: "robot/40__tier4/harness_matrix/"
       output_dir: "results/harness_matrix"
       tags: ["agentic", "coding-agent"]
+
+    robot-canary-session-tests:
+      path: "robot/40__tier4/canary/"
+      output_dir: "results/canary"
+      tags: ["ollama"]
 
     robot-causal-reasoning-tests:
       path: "robot/20__tier2/causal_reasoning/"

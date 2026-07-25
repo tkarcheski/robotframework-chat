@@ -38,6 +38,7 @@ Build Filled Prompt
 Build Homoglyph Injection Prompt
 Build Tool Prompt
 Build Whitespace Injection Prompt
+Canary Response Hits
 Check Adversarial Summary
 Check Approval Status
 Check Docker Setup
@@ -71,6 +72,7 @@ Create Code Execution Container
 Create Configurable Container
 Create Harness Workspace
 Create Listener Workspace
+Default Canary Prompts
 Delete Dialog Recording
 Detect System Leakage
 Develop Patent Strategy
@@ -176,6 +178,7 @@ Restore LLM Model
 Run Agent Task
 Run Agentic Injection Test Case
 Run Calibration Test Case
+Run Canary Session
 Run Coding Agent Scenario
 Run Demographic Parity Test
 Run Dialog Fixture Suite
@@ -192,6 +195,7 @@ Run Prompt N Times
 Run Quantization Comparison
 Run ReAct Loop
 Run Sandboxed Coding Scenario
+Run Scripted Canary Session
 Run Should Do Positive Work
 Run Should Not Contain Forbidden Commands
 Run Skill Test Case
@@ -203,6 +207,8 @@ Sandbox Tests Should Pass
 Save LLM Model
 Save Model Metadata Yaml
 Score Instruction Compliance Batch
+Session Should Degrade At Turn
+Session Should Not Degrade
 Set Goal
 Set Interaction State
 Set LLM Endpoint
