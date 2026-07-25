@@ -55,6 +55,7 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         code-quality-check code-quality-coverage code-quality-audit live-leg-gate \
         docker-up docker-down docker-restart docker-logs bootstrap \
         cache-flush sync-metrics superset-sanitize superset-export superset-import superset-diagnose \
+        commit-graph-backfill \
         model-cards \
         opencode-audit-markdown \
         build-check docker-build-app docker-test-app version
@@ -317,6 +318,9 @@ superset-export: ## Export Superset dashboards + DB dump to backups/ (timestampe
 
 superset-diagnose: ## Diagnose Superset database connectivity and data pipeline
 	uv run python scripts/diagnose_superset_db.py
+
+commit-graph-backfill: ## Backfill the commit_graph table from git history (git-history viz)
+	uv run python -m rfc.commit_graph
 
 superset-import: ## Import Superset dashboards from ZIP: make superset-import FILE=backups/export.zip
 	$(COMPOSE) cp $(FILE) superset:/tmp/superset_import.zip

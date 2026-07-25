@@ -193,6 +193,33 @@ CREATE INDEX IF NOT EXISTS idx_coverage_reports_timestamp
 CREATE INDEX IF NOT EXISTS idx_coverage_reports_git_commit
     ON coverage_reports(git_commit);
 
+-- Git commit DAG for the Git History dashboard. One row per commit, with
+-- parents normalised into commit_edges (child then parent). Kept in sync
+-- with rfc.test_database (the canonical schema) and populated by
+-- rfc.commit_graph (make commit-graph-backfill plus per-run capture).
+CREATE TABLE IF NOT EXISTS commit_graph (
+    sha VARCHAR(64) PRIMARY KEY,
+    parent_shas TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    author_email TEXT NOT NULL DEFAULT '',
+    commit_timestamp TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
+    refs TEXT NOT NULL DEFAULT '',
+    is_merge BOOLEAN NOT NULL DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS commit_edges (
+    child_sha VARCHAR(64) NOT NULL,
+    parent_sha VARCHAR(64) NOT NULL,
+    parent_index INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (child_sha, parent_sha)
+);
+
+CREATE INDEX IF NOT EXISTS idx_commit_graph_timestamp
+    ON commit_graph(commit_timestamp);
+CREATE INDEX IF NOT EXISTS idx_commit_edges_parent
+    ON commit_edges(parent_sha);
+
 CREATE OR REPLACE VIEW test_results_full AS
 SELECT
     tr.id AS result_id,
@@ -567,6 +594,48 @@ _VIRTUAL_DATASETS: dict[str, str] = {
         WHERE module_name = ''
         ORDER BY timestamp DESC
         LIMIT 50
+    """,
+    # Git History: commits decorated with the pass/fail of the test runs that
+    # ran at that exact commit (test_runs.git_commit = commit_graph.sha). Feeds
+    # the commit table and the pass-rate-by-commit bar (the visual bisect).
+    "commit_graph_decorated": """
+        SELECT
+            cg.sha,
+            LEFT(cg.sha, 8) AS short_sha,
+            cg.subject,
+            cg.author,
+            cg.refs,
+            cg.is_merge,
+            cg.commit_timestamp,
+            NULLIF(cg.commit_timestamp, '')::timestamptz AS committed_at,
+            COALESCE(SUM(r.passed), 0) AS passed,
+            COALESCE(SUM(r.failed), 0) AS failed,
+            COALESCE(SUM(r.total_tests), 0) AS total_tests,
+            COUNT(DISTINCT r.id) AS run_count,
+            ROUND(
+                100.0 * SUM(r.passed) / NULLIF(SUM(r.total_tests), 0), 1
+            ) AS pass_rate_pct
+        FROM commit_graph cg
+        LEFT JOIN test_runs r ON r.git_commit = cg.sha
+        GROUP BY cg.sha, cg.subject, cg.author, cg.refs, cg.is_merge,
+                 cg.commit_timestamp
+        ORDER BY cg.commit_timestamp DESC
+    """,
+    # Git History: the DAG edge list (child -> parent) with short SHAs and
+    # subjects, for the interim native Graph chart. The custom git-lane plugin
+    # (robotframework-superset) consumes the same shape.
+    "commit_dag_edges": """
+        SELECT
+            e.child_sha,
+            e.parent_sha,
+            LEFT(e.child_sha, 8) AS child_short,
+            LEFT(e.parent_sha, 8) AS parent_short,
+            e.parent_index,
+            c.subject AS child_subject,
+            p.subject AS parent_subject
+        FROM commit_edges e
+        LEFT JOIN commit_graph c ON c.sha = e.child_sha
+        LEFT JOIN commit_graph p ON p.sha = e.parent_sha
     """,
 }
 
@@ -2623,6 +2692,7 @@ def bootstrap() -> None:
         _create_agentic_datasets(db_id)
         _create_agentic_dashboard(db_id)
         _create_harness_scoreboard_dashboard(db_id)
+        _create_git_history_dashboard(db_id)
 
     log.info("Bootstrap complete.")
 
@@ -3247,6 +3317,193 @@ def _create_harness_scoreboard_dashboard(db_id: int) -> None:
     superset_db.session.add(dashboard)
     superset_db.session.commit()
     log.info(f"Created dashboard: Harness Scoreboard (id={dashboard.id})")
+
+
+# ---------------------------------------------------------------------------
+# Git History Dashboard — the commit DAG + pass/fail decoration (bisect view)
+# ---------------------------------------------------------------------------
+# Phase 2 (interim, stock viz types): a native Graph chart scaffolds the DAG
+# while the custom git-lane plugin (robotframework-superset) is built. The
+# commit table and pass-rate-by-commit bar are the pragmatic wins that fit
+# stock Superset — the bar IS the visual bisect (scan for where green flips
+# to red across the commit axis).
+_GIT_HISTORY_CHART_DEFS: list[dict[str, Any]] = [
+    {
+        # INTERIM SCAFFOLD: stock ECharts Graph renders nodes+edges as a
+        # force-directed network, not true git lanes. Replaced by the custom
+        # git-lane viz plugin in Phase 3; kept so the DAG data is visible now.
+        "slice_name": "Commit DAG (interim)",
+        "viz_type": "graph_chart",
+        "datasource_id_key": "commit_dag_edges",
+        "params": {
+            "source": "child_short",
+            "target": "parent_short",
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "edges",
+            },
+            "row_limit": 5000,
+        },
+    },
+    {
+        "slice_name": "Pass Rate by Commit",
+        "viz_type": "echarts_timeseries_bar",
+        "datasource_id_key": "commit_graph_decorated",
+        "params": {
+            "metrics": [
+                {
+                    "expressionType": "SQL",
+                    "sqlExpression": "MAX(pass_rate_pct)",
+                    "label": "Pass Rate %",
+                },
+            ],
+            "x_axis": "committed_at",
+            "time_column": "committed_at",
+            "granularity_sqla": "committed_at",
+            "y_axis_bounds": [0, 100],
+        },
+    },
+    {
+        "slice_name": "Commit History",
+        "viz_type": "table",
+        "datasource_id_key": "commit_graph_decorated",
+        "params": {
+            "columns": [
+                "commit_timestamp",
+                "short_sha",
+                "subject",
+                "author",
+                "is_merge",
+                "run_count",
+                "passed",
+                "failed",
+                "pass_rate_pct",
+            ],
+            "order_desc": True,
+            "row_limit": 500,
+        },
+    },
+]
+
+_GIT_HISTORY_LAYOUT_SECTIONS: list[dict[str, Any]] = [
+    {
+        "label": "Commit DAG",
+        "charts": [
+            {"name": "Commit DAG (interim)", "width": 12, "height": 60},
+        ],
+    },
+    {
+        "label": "Regression / Bisect",
+        "charts": [
+            {"name": "Pass Rate by Commit", "width": 12, "height": 50},
+        ],
+    },
+    {
+        "label": "Commits",
+        "charts": [
+            {"name": "Commit History", "width": 12, "height": 60},
+        ],
+    },
+]
+
+
+def _create_git_history_dashboard(db_id: int) -> None:
+    """Create charts and the Git History dashboard (commit DAG + bisect view).
+
+    Self-contained equivalent of _create_charts_and_dashboard, keyed on its
+    own datasets (commit_graph_decorated, commit_dag_edges) and slug so it
+    upserts independently of the other dashboards.
+    """
+    from superset import db as superset_db  # type: ignore[attr-defined]
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
+
+    dataset_keys = {"commit_graph_decorated", "commit_dag_edges"}
+    datasets: dict[str, int] = {}
+    for table_name in dataset_keys:
+        ds = (
+            superset_db.session.query(SqlaTable)
+            .filter_by(table_name=table_name, database_id=db_id)
+            .first()
+        )
+        if ds:
+            datasets[table_name] = ds.id
+
+    if not datasets:
+        log.warning("Git History: no commit-graph datasets found; skipping.")
+        return
+
+    chart_id_map: dict[str, int] = {}
+    for chart_def in _GIT_HISTORY_CHART_DEFS:
+        ds_key = chart_def["datasource_id_key"]
+        if ds_key not in datasets:
+            log.warning(
+                f"Skipping chart '{chart_def['slice_name']}': "
+                f"dataset '{ds_key}' not found."
+            )
+            continue
+
+        slice_name = chart_def["slice_name"]
+        existing = (
+            superset_db.session.query(Slice).filter_by(slice_name=slice_name).first()
+        )
+        if existing:
+            chart_id_map[slice_name] = existing.id
+            log.info(f"Chart already exists: {slice_name}")
+            continue
+
+        chart = Slice(
+            slice_name=slice_name,
+            viz_type=chart_def["viz_type"],
+            datasource_id=datasets[ds_key],
+            datasource_type="table",
+            params=json.dumps(chart_def["params"]),
+        )
+        superset_db.session.add(chart)
+        superset_db.session.commit()
+        chart_id_map[slice_name] = chart.id
+        log.info(f"Created chart: {slice_name} (id={chart.id})")
+
+    position = _build_sectioned_position_json(
+        _GIT_HISTORY_LAYOUT_SECTIONS, "Git History", chart_id_map
+    )
+    metadata = {
+        "native_filter_configuration": [],
+        "chart_configuration": {},
+        "cross_filters_enabled": True,
+    }
+
+    slug = "git-history"
+    existing_dash = superset_db.session.query(Dashboard).filter_by(slug=slug).first()
+    if existing_dash:
+        existing_dash.position_json = json.dumps(position)
+        existing_dash.json_metadata = json.dumps(metadata)
+        existing_dash.slices = [
+            superset_db.session.query(Slice).get(cid)
+            for cid in chart_id_map.values()
+            if superset_db.session.query(Slice).get(cid)
+        ]
+        superset_db.session.commit()
+        log.info(f"Updated dashboard: Git History (id={existing_dash.id})")
+        return
+
+    dashboard = Dashboard(
+        dashboard_title="Git History",
+        slug=slug,
+        published=True,
+        position_json=json.dumps(position),
+        json_metadata=json.dumps(metadata),
+    )
+    dashboard.slices = [
+        superset_db.session.query(Slice).get(cid)
+        for cid in chart_id_map.values()
+        if superset_db.session.query(Slice).get(cid)
+    ]
+    superset_db.session.add(dashboard)
+    superset_db.session.commit()
+    log.info(f"Created dashboard: Git History (id={dashboard.id})")
 
 
 if __name__ == "__main__":
