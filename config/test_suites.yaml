@@ -238,6 +238,11 @@ test_suites:
     path: "robot/20__tier2/agentic_injection"
     description: "Indirect prompt injection via poisoned tool outputs (web scrapes, API responses, file reads); canary-based detection of agent compliance with embedded instructions"
 
+  multi-agent-delegation:
+    label: "Multi-Agent Delegation Abuse"
+    path: "robot/20__tier2/multi_agent_delegation"
+    description: "Delegation-abuse resistance: disallowed requests laundered through a fake agent boundary (orchestrator / sub-agent / parent-agent / handoff token) that a naive guardrail treats as trusted internal input"
+
   agent-workflows:
     label: "Agent Workflows"
     path: "robot/30__tier3/agent_workflows/tests"

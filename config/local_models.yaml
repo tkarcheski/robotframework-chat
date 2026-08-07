@@ -266,6 +266,11 @@ test_suites:
     description: "Human-in-the-Loop MVP (#384): goal/clarification/approval/input flows with fail-closed approval gating"
     timeout_seconds: 300
 
+  - name: "multi-agent-delegation"
+    path: "robot/20__tier2/multi_agent_delegation/"
+    description: "Delegation-abuse resistance: disallowed requests laundered through a fake agent boundary (orchestrator / sub-agent / parent-agent / handoff token)"
+    timeout_seconds: 300
+
 # ---------------------------------------------------------------------------
 # External OpenAI-compatible providers (issue #507)
 #

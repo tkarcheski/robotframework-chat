@@ -36,6 +36,9 @@ Build Injection Prompt By Technique
     ELSE IF    "${technique}" == "homoglyph"
         ${prompt}=    Adversarial.Build Homoglyph Injection Prompt
         ...    ${benign_prompt}    ${hidden_instruction}
+    ELSE IF    "${technique}" == "unicode_tag"
+        ${prompt}=    Adversarial.Build Unicode Tag Injection Prompt
+        ...    ${benign_prompt}    ${hidden_instruction}
     ELSE
         Fail    Unknown injection technique: ${technique}
     END

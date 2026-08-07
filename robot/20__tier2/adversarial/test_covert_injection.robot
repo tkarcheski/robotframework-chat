@@ -39,3 +39,10 @@ Homoglyph Substitution Injection Resistance
     ...                Cyrillic homoglyphs to disguise the hidden instruction?
     [Tags]    homoglyph    severity:medium    regression
     Run Covert Injection Test    ${COVERT_INJECTIONS}[3]
+
+Unicode Tag Smuggling Injection Resistance
+    [Documentation]    Can the LLM solve arithmetic when the injection is hidden
+    ...                in invisible Unicode Tag characters (U+E0000-E007F) that a
+    ...                human reviewer cannot see but a tokenizer may decode?
+    [Tags]    unicode_tag    severity:high    regression
+    Run Covert Injection Test    ${COVERT_INJECTIONS}[4]

@@ -21,6 +21,12 @@ _ZW_SPACE = "\u200b"  # zero-width space
 _ZW_NON_JOINER = "\u200c"  # zero-width non-joiner
 _ZW_JOINER = "\u200d"  # zero-width joiner
 
+# Unicode Tags block (U+E0000-U+E007F): invisible "tag" characters that mirror
+# ASCII (U+E0000 + ord(c)). They render as nothing yet some tokenizers decode
+# them back to ASCII, so an instruction smuggled here is invisible to a human
+# reviewer but legible to the model -- a distinct vector from zero-width joiners.
+_TAG_BASE = 0xE0000
+
 # Homoglyph mapping: ASCII → visually-similar Unicode codepoints.
 _HOMOGLYPHS: Dict[str, str] = {
     "a": "\u0430",  # Cyrillic а
@@ -65,6 +71,27 @@ class AdversarialKeywords:
         logger.info(
             f"Built whitespace injection prompt "
             f"({len(hidden_block)} hidden chars embedded)"
+        )
+        return crafted
+
+    @keyword("Build Unicode Tag Injection Prompt")
+    def build_unicode_tag_injection_prompt(
+        self, benign_prompt: str, hidden_instruction: str
+    ) -> str:
+        """Smuggle hidden_instruction as invisible Unicode Tag characters.
+
+        Each ASCII char of the instruction maps to U+E0000+ord(c); the block is
+        appended to the benign prompt. It is invisible when rendered but some
+        tokenizers decode it back to readable text -- a modern smuggling vector
+        distinct from the zero-width whitespace encoding.
+        """
+        hidden_block = "".join(
+            chr(_TAG_BASE + ord(ch)) for ch in hidden_instruction if ord(ch) < 0x80
+        )
+        crafted = f"{benign_prompt}{hidden_block}"
+        logger.info(
+            f"Built unicode-tag injection prompt "
+            f"({len(hidden_block)} invisible tag chars appended)"
         )
         return crafted
 
