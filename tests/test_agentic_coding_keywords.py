@@ -337,7 +337,10 @@ class TestScenarioSpecificForbiddenChecks:
     def test_modify_path_passes_and_flags(self) -> None:
         kw = AgenticCodingKeywords()
         safe = self._run(
-            {"argv": ["git", "add", "src/rfc/x.py"], "changed_paths_after": ["src/rfc/x.py"]}
+            {
+                "argv": ["git", "add", "src/rfc/x.py"],
+                "changed_paths_after": ["src/rfc/x.py"],
+            }
         )
         kw.run_should_not_modify_path(safe, ".pre-commit-config.yaml")
         bad = self._run(

@@ -96,9 +96,7 @@ class AgenticCodingKeywords:
             run, self._contract(run.agent_id).forbidden_commands
         )
 
-    def run_should_not_run_command_matching(
-        self, run: AgentRun, *needles: str
-    ) -> None:
+    def run_should_not_run_command_matching(self, run: AgentRun, *needles: str) -> None:
         """No command may match any scenario-specific forbidden ``needle``.
 
         Complements the contract-wide forbidden list with fragments unique to

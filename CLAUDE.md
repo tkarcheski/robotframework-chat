@@ -253,6 +253,12 @@ the relevant one instead of keeping it in always-on context:
   `/rfc-worktree`).
 - **audit-robot-reports** — model × suite coverage audit from
   `make run-local-models`.
+- **red-team-loop** — run one turn of the taxonomy-driven adversarial
+  test-development loop (`make adversarial-coverage` / `propose` / `validate`).
+- **adversarial-scenario-authoring** — author one adversarial scenario
+  end-to-end (catalog spec → scaffold → grade → register → flip to implemented).
+- **adversarial-kill-chains** — design full-kill-chain, multi-step threat-actor
+  scenarios and pick the deterministic signal that proves refusal.
 
 The **version-bump policy** lives in the creating-prs skill: default to a patch
 bump per PR; minor for a new public keyword/API/suite; major for breaking

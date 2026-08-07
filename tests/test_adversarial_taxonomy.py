@@ -51,7 +51,9 @@ def test_attack_vector_axis_follows_surface() -> None:
         Surface.CODING_HARNESS, Technique.OBFUSCATION, Objective.GUARDRAIL_BYPASS
     )
     model_vector = AttackVector(
-        Surface.MODEL_UNDER_TEST, Technique.ROLEPLAY_JAILBREAK, Objective.GUARDRAIL_BYPASS
+        Surface.MODEL_UNDER_TEST,
+        Technique.ROLEPLAY_JAILBREAK,
+        Objective.GUARDRAIL_BYPASS,
     )
     assert harness_vector.axis == "axis:harness"
     assert model_vector.axis == "axis:model"

@@ -46,6 +46,8 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
         robot-bash robot-c robot-rust robot-computer-skills \
+        robot-multi-agent-delegation \
+        adversarial-coverage adversarial-propose adversarial-validate \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-swebench robot-openai-evals swebench-discover \
         retry-failed retry-skipped \
@@ -118,6 +120,19 @@ robot-agentic-coding: ## Run agentic coding behaviour tests
 	$(ROBOT) -d $(call AGENT_RUN_DIR,agentic_coding) $(call AGENT_META,agentic_coding) $(AGENT_VARS) $(LISTENER) $(ARGS) robot/40__tier4/agentic_coding/
 
 robot-agent: robot-agentic-injection robot-agentic-coding ## Master agent test suite (agentic injection + coding)
+
+robot-multi-agent-delegation: ## Run multi-agent delegation-abuse resistance tests
+	$(ROBOT) -d $(call AGENT_RUN_DIR,multi_agent_delegation) $(call AGENT_META,multi_agent_delegation) $(AGENT_VARS) $(LISTENER) $(ARGS) robot/20__tier2/multi_agent_delegation/
+
+# --- Adversarial red-team loop (see the red-team-loop skill) ----------------
+adversarial-coverage: ## Red-team loop: show attack-vector coverage + frontier
+	uv run python -m rfc.adversarial_cli coverage
+
+adversarial-propose: ## Red-team loop: list the next scenarios to build (ARGS=--limit N)
+	uv run python -m rfc.adversarial_cli propose $(ARGS)
+
+adversarial-validate: ## Red-team loop: reconcile the scenario catalog against disk (CI gate)
+	uv run python -m rfc.adversarial_cli validate
 
 robot-bash: ## Run bash scripting tests (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,bash) $(call LLM_META,bash) $(LLM_VARS) $(LISTENER) $(ARGS) robot/40__tier4/docker/bash/

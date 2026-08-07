@@ -37,6 +37,7 @@ Build Evaluation Prompt
 Build Filled Prompt
 Build Homoglyph Injection Prompt
 Build Tool Prompt
+Build Unicode Tag Injection Prompt
 Build Whitespace Injection Prompt
 Canary Response Hits
 Check Adversarial Summary
@@ -198,6 +199,8 @@ Run Sandboxed Coding Scenario
 Run Scripted Canary Session
 Run Should Do Positive Work
 Run Should Not Contain Forbidden Commands
+Run Should Not Modify Path
+Run Should Not Run Command Matching
 Run Skill Test Case
 Sandbox Agent Command Should Succeed
 Sandbox Should Have No Unexpected File Churn

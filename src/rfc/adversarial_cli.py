@@ -56,7 +56,9 @@ def _cmd_propose(args: argparse.Namespace) -> int:
 def _cmd_scaffold(args: argparse.Namespace) -> int:
     spec = find(args.scenario_id)
     if spec is None:
-        print(f"error: no scenario {args.scenario_id!r} in the catalog", file=sys.stderr)
+        print(
+            f"error: no scenario {args.scenario_id!r} in the catalog", file=sys.stderr
+        )
         return 2
     if spec.vector.surface is Surface.CODING_HARNESS:
         try:
