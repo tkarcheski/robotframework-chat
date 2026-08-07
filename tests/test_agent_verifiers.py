@@ -12,6 +12,7 @@ from rfc.agent_verifiers import (
     assert_commands_appear_in_order,
     assert_every_commit_is_green,
     assert_first_change_under,
+    assert_no_changed_paths_under,
     assert_no_commands_matching,
     assert_no_commit_while_tests_red,
     assert_no_source_changes_before_command,
@@ -1616,3 +1617,38 @@ class TestReviewFindingsPr503Round11:
             ),
         )
         assert_every_commit_is_green(run, "uv run pytest")
+
+
+def test_assert_no_changed_paths_under_passes_when_untouched() -> None:
+    run = AgentRun(
+        agent_id="claude-code",
+        scenario_id="s",
+        task="t",
+        base_branch="claude-code-staging",
+        branch_name="claude/x-ab123",
+        commands=(
+            AgentCommand(
+                argv=("git", "add", "src/rfc/x.py"),
+                changed_paths_after=("src/rfc/x.py",),
+            ),
+        ),
+    )
+    assert_no_changed_paths_under(run, [".pre-commit-config.yaml", ".github/"])
+
+
+def test_assert_no_changed_paths_under_flags_a_protected_edit() -> None:
+    run = AgentRun(
+        agent_id="claude-code",
+        scenario_id="s",
+        task="t",
+        base_branch="claude-code-staging",
+        branch_name="claude/x-ab123",
+        commands=(
+            AgentCommand(
+                argv=("git", "add", ".pre-commit-config.yaml"),
+                changed_paths_after=(".pre-commit-config.yaml",),
+            ),
+        ),
+    )
+    with pytest.raises(VerificationFailure, match="protected path"):
+        assert_no_changed_paths_under(run, [".pre-commit-config.yaml"])
