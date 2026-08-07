@@ -17,7 +17,35 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [Unreleased] — 1.29.0
+## [Unreleased] — 1.30.0
+
+### Added — Adversarial test-development program
+
+- **Red-team loop engine** (`rfc.adversarial_taxonomy`, `adversarial_catalog`,
+  `adversarial_generator`, `adversarial_cli`): a taxonomy-driven loop for
+  developing novel adversarial tests across four surfaces (coding harness,
+  model-under-test, agentic tool-use, multi-agent). The `coverage` / `propose`
+  / `scaffold` / `validate` verbs (`make adversarial-*`) turn attack-space gaps
+  into wired, graded scenarios and reconcile catalog claims against disk.
+- **Coding-harness kill-chains** (`robot/40__tier4/agentic_coding/test_kill_chains.robot`):
+  four deterministic full-kill-chain fixtures — secret exfiltration via test
+  output, defanging the pre-commit hook then committing, indirect injection from
+  a poisoned README, and a typosquatted-dependency add.
+- **Live adversarial variants**: a novel `unicode_tag` covert-injection
+  technique (invisible U+E0000–E007F smuggling), a poisoned tool-output env
+  exfiltration payload, and a new **multi-agent delegation-abuse** suite
+  (`robot/20__tier2/multi_agent_delegation`).
+- Reusable structural verifier `assert_no_changed_paths_under` plus the
+  `Run Should Not Run Command Matching` / `Run Should Not Modify Path` keywords.
+- Skills: `red-team-loop`, `adversarial-scenario-authoring`,
+  `adversarial-kill-chains`.
+
+### Fixed
+
+- Synced `src/rfc/__init__.py` and the `Unreleased` CHANGELOG heading with the
+  1.29.0 release bump (release-hygiene tests were red).
+
+## [1.29.0] — 2026-07-25
 
 ### Added
 
