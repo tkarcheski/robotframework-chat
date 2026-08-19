@@ -85,6 +85,61 @@ suite discriminates the harness axis, not which harness ran. Legacy provenance
 tags (`harness:*`, `agent:*`, `prompt:*`) remain usable as `--include` filters
 but are no longer the provenance record.
 
+### Graded test pools (`gold` / `platinum`)
+
+`tier`/`verify`/`axis` describe what a test *is*. A **graded pool** tag says how
+much we *trust* it — which tests are good enough to gate on. Two pools exist,
+deliberately namespaced so a gate filter for one never selects the other:
+
+| Pool | Tags | Axis | Consumer |
+|---|---|---|---|
+| Model | `gold`, `platinum`, `stress` | `axis:model` | monorepo RSI gate (`--include gold --exclude stress`) |
+| Harness | `gold:harness`, `platinum:harness` | `axis:harness` | `make robot-gold` / `make robot-platinum` |
+
+The bare tags are **owned by the model pool** (commit `0f95f75`). Do not reuse
+them for a harness suite: the RSI gate's existing `--include gold` would
+silently start pulling harness suites into the model gate — a graded pool whose
+membership can change by accident is not a gate.
+
+`platinum` / `platinum:harness` marks the single highest-signal test in its
+pool. It **always runs**, on every gate, no exceptions. `stress` marks a
+latency-bound member the quality gate excludes while keeping it in the pool.
+
+#### What earns a gold tag
+
+A test is gold only if it clears all five:
+
+1. **Discriminating** — the axis's values actually disagree on it. A test
+   everything passes measures nothing.
+2. **Deterministically graded** — `verify:robot` or `verify:python`. No LLM
+   judge in the gate path: judge variance is not the variance you are measuring.
+3. **Attributable** — brackets a spine session, so the result carries its
+   runtime coordinate (model id + digest, or harness name + version).
+4. **Cheap in replay** — ~0 tokens under `RFC_RUN_MODE=replay`, with
+   `replay_of_recording_id` stamped so a replayed green is never mistaken for a
+   live pass.
+5. **Non-vacuous** — cannot pass on empty input. A run that emitted no commands
+   must fail, not pass silently (the #385 / #390 / #402 lesson).
+
+Plus one **set-level** rule: at least two members must be *negative controls*
+tagged `control:instrument` — tests that assert the instrument goes RED on a
+deliberately planted defect. A green pool proves nothing if nothing in it can
+fail.
+
+#### Membership is pinned, not implied
+
+The harness pool is registered in `config/gold_harness.yaml` and enforced by
+`scripts/check_gold_suites.py` (`make gold-check`, also run as a pytest in
+`tests/test_check_gold_suites.py`). Membership is keyed on `(suite, test)`, so
+a rename, a deletion, or a drive-by tag edit fails CI in both directions:
+
+- a pinned member that lost its tag → **missing**
+- a test that gained the tag without being added → **untracked**
+
+Adding or removing a member is a reviewable change to the manifest, with a
+`why:` line. This is the same "prompts request, checks enforce" discipline
+`check_test_axes.py` applies to `axis:*`.
+
 ### Tier Expectations
 
 - **Tier 0 – Pure Robot**
