@@ -36,6 +36,7 @@ Start Session
 Start Writes Sidecar And Open DB Row
     [Documentation]    ``start`` creates the sidecar and an agentic_harnesses
     ...                row that is still open (no ended_at / outcome).
+    [Tags]    gold:harness
     ${session_id}=    Start Session
     ${row}=    Harness.Get Harness Row    ${WS}    ${session_id}
     Should Be Equal    ${row}[session_id]    ${session_id}
@@ -47,6 +48,7 @@ Start Writes Sidecar And Open DB Row
 Sidecar Survives Across Processes
     [Documentation]    ``status`` in a fresh process reads the sidecar written
     ...                by ``start`` in an earlier process.
+    [Tags]    gold:harness
     ${session_id}=    Start Session
     ${status}=    Harness.Run Harness Command    ${WS}    status
     Should Be Equal As Integers    ${status}[rc]    0
