@@ -5,6 +5,7 @@ one when the task calls for it:
 
 - `agents.md` — architecture, code style, and the agent contract.
 - `testing.md` — grading tiers and test rules.
+- `writing.md` — how to write docs here (plain-first, scannable).
 - `rfcs/` — public RFCs (RFC-001 declares the monorepo → mirror relationship).
 
 Hands-on, step-by-step playbooks (converting tests, creating tier:0 / tier:1
