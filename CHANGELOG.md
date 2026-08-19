@@ -48,6 +48,17 @@ Provenance notes:
   criteria a gold member must clear, the set-level negative-control rule, and
   why the two pools are namespaced apart.
 
+- **`ai/writing.md` — the plain-first docs standard.** One rule: a tired reader
+  on their phone gets the point in 10 seconds. Seven rules (answer first, one
+  idea per line, short words, say what breaks, structure is navigation, no
+  hedging, end with the gap), a before/after, and explicit non-goals — it is not
+  dumbing down, not banning detail, and not for code comments. Written in its
+  own style. Applied to `CLAUDE.md`, `ai/agents.md` and `ai/testing.md`, each of
+  which now opens with a **Plain version** block; every rule and command in the
+  originals is preserved (verified mechanically). New PR-template checklist line
+  keeps touched docs to the standard. Convert the rest **when you touch them** —
+  a docs-only sweep PR is hard to review and easy to get wrong.
+
 ### Fixed
 
 - **Red baseline: version and changelog invariants.** The 1.29.0 bump left

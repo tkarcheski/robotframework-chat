@@ -1,16 +1,27 @@
-# Claude — Grading Tiers & Test Rules
+# Grading tiers & test rules
 
-**Audience:** AI agents and humans maintaining tests
-**Authority:** Owner-confirmed decisions from spec review
-**Last updated:** 2026-03-01
+**Plain version — every test answers four questions:**
 
-## Fundamental Rule
+| Tag | Question | Example |
+|---|---|---|
+| `tier:*` | How hard is it to check? | `tier:0` pure Robot → `tier:4` Docker sandbox |
+| `verify:*` | Who decides pass/fail? | `verify:python` code → `verify:llms` judge panel |
+| `axis:*` | What one variable does it discriminate? | `axis:model` / `axis:harness` / `axis:prompt` / `axis:none` |
+| `gold*` | Do we trust it enough to gate on? | `gold`, `platinum`, `gold:harness`, `platinum:harness` |
 
-All tests are verified by Robot Framework. Every test must have Robot or Python checks. No test exists without a verification mechanism.
+**Audience:** agents and humans maintaining tests.
+**Authority:** owner-confirmed decisions from spec review.
+Docs style: [writing.md](writing.md).
 
-- Deterministic checks live in Robot keywords (e.g. `Should Be Equal`, regex).
-- Python-backed keywords are allowed but must surface pass/fail back into Robot.
-- LLMs never decide pass/fail alone; their outputs are graded by Robot or Python logic.
+## The fundamental rule
+
+**No test exists without a verification mechanism.** Robot Framework verifies
+everything; every test carries a Robot or Python check.
+
+- Deterministic checks live in Robot keywords (`Should Be Equal`, regex).
+- Python-backed keywords are fine — but must surface pass/fail back into Robot.
+- **LLMs never decide pass/fail alone.** Their output gets graded by Robot or
+  Python logic.
 
 ## Grading Tiers
 
