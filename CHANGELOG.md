@@ -17,6 +17,56 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.30.0] — Unreleased
+
+### Added
+
+- **Graded harness test pool: `gold:harness` / `platinum:harness` (epic #702).**
+  The `axis:model` scoreboard has had a graded quality standard since `0f95f75`
+  (14 `gold` suites, one `platinum`, gated with `--include gold --exclude
+  stress`); the `axis:harness` side had none, with 62 harness test cases weighted
+  equally. Ten harness tests are now tagged `gold:harness`, with `Opencode
+  Honors The Harness Contract` additionally `platinum:harness` (the always-run
+  test: cheapest live leg, free in replay, deterministically graded,
+  session-bracketed, and load-bearing for every other harness number).
+  Deliberately namespaced: the bare `gold`/`platinum` tags stay owned by the
+  model pool, so the monorepo RSI gate's `--include gold` is unaffected.
+- **`control:instrument` tag.** Marks a *negative control*: a test asserting the
+  instrument goes RED on a deliberately planted defect. Applied to the six
+  scripted sandbox variants that assert a failure surfaces. A green pool proves
+  nothing if nothing in it can fail, so the gold pool must contain at least two.
+- **`config/gold_harness.yaml` + `scripts/check_gold_suites.py`
+  (`make gold-check`).** The pool is pinned by `(suite, test)` and mechanically
+  enforced in both directions: a pinned member that lost its tag fails as
+  *missing*, a test that gained the tag without being registered fails as
+  *untracked*. Closes the #702 H6 finding: the model pool's `gold` tag appeared
+  in no document and no checker, so a rename could silently shrink the gate with
+  no signal anywhere. Deterministic twin: `tests/test_check_gold_suites.py`.
+- **`make robot-gold` / `make robot-platinum`.** Run the trusted harness set, or
+  just the always-run test.
+- **`ai/testing.md` § Graded test pools.** Documents both pools, the five
+  criteria a gold member must clear, the set-level negative-control rule, and
+  why the two pools are namespaced apart.
+
+- **`ai/writing.md`, the plain-first docs standard.** One rule: a tired reader
+  on their phone gets the point in 10 seconds. Seven rules (answer first, one
+  idea per line, short words, say what breaks, structure is navigation, no
+  hedging, no em dashes, end with the gap), a before/after, and explicit
+  non-goals. It is not
+  dumbing down, not banning detail, and not for code comments. Written in its
+  own style. Applied to `CLAUDE.md`, `ai/agents.md` and `ai/testing.md`, each of
+  which now opens with a **Plain version** block; every rule and command in the
+  originals is preserved (verified mechanically). New PR-template checklist line
+  keeps touched docs to the standard. Convert the rest **when you touch them**,
+  a docs-only sweep PR is hard to review and easy to get wrong.
+
+### Fixed
+
+- **Red baseline: version and changelog invariants.** The 1.29.0 bump left
+  `src/rfc/__init__.py` at 1.28.0 and stamped the CHANGELOG heading with a date
+  instead of the `Unreleased` marker, failing two `tests/test_release.py` checks
+  on `claude-code-staging`.
+
 ## [1.29.0] — 2026-07-25
 
 ### Added

@@ -1,0 +1,107 @@
+# Graded harness test pool: the `gold:harness` / `platinum:harness` registry
+#
+# Epic #702, Part 2. This file is the single source of truth for which
+# `axis:harness` tests are trusted enough to gate on. `scripts/check_gold_suites.py`
+# enforces it: a member that is renamed, deleted, or untagged fails CI, and so
+# does a test that acquires the tag without being added here.
+#
+# Why namespaced tags: the bare `gold` / `platinum` tags belong to the
+# `axis:model` RSI gate pool (commit 0f95f75). Reusing them for harness suites
+# would make the monorepo's existing `--include gold` filter silently pull
+# harness suites into the model gate. `gold:harness` keeps the two pools apart.
+#
+#   make robot -- --include gold:harness       # the trusted harness set
+#   make robot -- --include platinum:harness   # the one that always runs
+#
+# A test earns `gold:harness` only by clearing all five criteria (see
+# ai/testing.md § Graded test pools):
+#   1. Discriminating:   harnesses actually disagree on it
+#   2. Deterministic:    verify:robot or verify:python; no LLM judge in the gate
+#   3. Attributable:     brackets a spine session (harness name + version)
+#   4. Cheap in replay:  ~0 tokens under RFC_RUN_MODE=replay
+#   5. Non-vacuous:      cannot pass on empty input
+#
+# Adding or removing a member is a reviewable change to THIS file, never a
+# drive-by tag edit.
+
+# At least this many gold members must carry `control:instrument`: negative
+# controls that assert the instrument goes RED on a planted defect (#702 H7).
+# A green pool proves nothing if nothing in it can fail.
+min_instrument_controls: 2
+
+# The single always-run test. Cheapest live leg (local Ollama, no external
+# egress), free in replay so it runs on every push, deterministically graded
+# through `agent_verifiers`, session-bracketed, and load-bearing: if it is red
+# the harness contract itself is broken and every other harness number in the
+# repo is suspect.
+platinum:
+  suite: robot/40__tier4/harness_matrix/harness_matrix.robot
+  test: Opencode Honors The Harness Contract
+
+gold:
+  # --- cross-harness conformance (the axis itself) -------------------------
+  - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
+    test: Opencode Honors The Harness Contract
+    why: Platinum. The one conformance cell that runs free on every push.
+
+  - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
+    test: Absent Optional Harness Skips Its Leg Without Failing
+    why: >-
+      False-green guard. An absent CLI must SKIP, never vacuously pass. The
+      #385 / #390 / #402 failure mode, held in place by a test.
+
+  - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
+    test: Repeats Yield A Complete Within-Harness Reliability Sample
+    why: >-
+      The only variance-aware harness test. One sample is an anecdote; the
+      scoreboard needs a spread before it can call a cell moved.
+
+  - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
+    test: Comparison Mode Records The Battery Per Harness
+    why: Proves the per-harness comparison record is actually written, not implied.
+
+  # --- provenance spine (attributability, criterion 3) ---------------------
+  - suite: robot/10__tier1/harness/test_harness_cli.robot
+    test: Start Writes Sidecar And Open DB Row
+    why: >-
+      Root of provenance. No session row means no attributable result, and an
+      unattributable result is not a comparison signal at all.
+
+  - suite: robot/10__tier1/harness/test_harness_cli.robot
+    test: Sidecar Survives Across Processes
+    why: >-
+      Cross-process attribution. A multi-hour sweep spans many processes; if
+      the sidecar does not survive, its later results detach from the session.
+
+  - suite: robot/10__tier1/harness/test_agentic_harness_listener_integration.robot
+    test: Listener Persists Metric Rows Per Test Case
+    why: The measurement plumbing itself. No rows, no scoreboard.
+
+  - suite: robot/10__tier1/harness/test_agentic_harness_listener_integration.robot
+    test: No Harness Session Means No Rows
+    why: >-
+      No phantom attribution. Rows written without a session are worse than no
+      rows: they look like data and cannot be traced to a coordinate.
+
+  # --- negative controls (H7) ----------------------------------------------
+  - suite: robot/40__tier4/agentic_coding/tests/test_sandboxed.robot
+    test: Naive Refactor Surfaces Hidden Regression
+    control: instrument
+    why: >-
+      Negative control. A planted hidden-contract break must surface as a
+      failing post-run suite; if it does not, every green cell is meaningless.
+
+  - suite: robot/40__tier4/agentic_coding/tests/test_sandboxed.robot
+    test: Signature-Widening Patch Surfaces Public API Regression
+    control: instrument
+    why: >-
+      The strongest control in the set: the VISIBLE tests pass, so only the
+      hidden public-API contract catches the regression. It proves the
+      instrument sees past the obvious signal.
+
+# Runners-up, evaluated and deliberately left out, recorded so the next
+# review does not re-litigate them from scratch:
+#   - Claude Code Refuses To Force Push To Main (safety; overlaps the contract legs)
+#   - Quadratic Refactor Surfaces Performance Regression (third control; two suffice)
+#   - Unreachable Database Never Fails The Run (skip-and-log; not discriminating)
+#   - Local Patch Bypassing The Interface Surfaces Hidden Consumer Regression

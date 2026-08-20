@@ -1,11 +1,12 @@
-# ai/ — reference documentation
+# ai/: reference documentation
 
 These are on-demand reference docs, not always-loaded context. Read the relevant
 one when the task calls for it:
 
-- `agents.md` — architecture, code style, and the agent contract.
-- `testing.md` — grading tiers and test rules.
-- `rfcs/` — public RFCs (RFC-001 declares the monorepo → mirror relationship).
+- `agents.md`: architecture, code style, and the agent contract.
+- `testing.md`: grading tiers and test rules.
+- `writing.md`: how to write docs here (plain-first, scannable).
+- `rfcs/`: public RFCs (RFC-001 declares the monorepo → mirror relationship).
 
 Hands-on, step-by-step playbooks (converting tests, creating tier:0 / tier:1
 tests, importing Hugging Face data) live as skills under `.claude/skills/`,
