@@ -1,10 +1,10 @@
-# CLAUDE.md — how to work in this repo
+# CLAUDE.md: how to work in this repo
 
 **Plain version:**
 
 - This repo tests LLMs and coding agents like software. Robot Framework runs the
   tests, Python does the logic, results go to SQL and Superset.
-- **Ask before you build.** Broad task → 2–4 multiple-choice questions first.
+- **Ask before you build.** Broad task → 2-4 multiple-choice questions first.
 - **Test first, always.** Failing pytest → code → refactor.
 - **Red CI blocks everything.** No exceptions, including failures you inherited.
 - **One branch per session**, off `claude-code-staging`, never `main`.
@@ -35,7 +35,7 @@ Specific and unambiguous ("fix this typo") → just do it.
 
 ## Questions
 
-Ask 2–4 **multiple-choice** questions before acting on anything ambiguous.
+Ask 2-4 **multiple-choice** questions before acting on anything ambiguous.
 Concrete options, not open-ended prompts.
 
 **Ask when:**
@@ -49,8 +49,8 @@ Concrete options, not open-ended prompts.
 **Don't ask when:** the prompt is specific, unambiguous, and scoped to one file
 or function. Just do it.
 
-**New idea from the owner** — a feature or epic not yet on the board? Default
-first move is a clarification round: 3–4 decision-shaping questions (scope,
+**New idea from the owner**: a feature or epic not yet on the board? Default
+first move is a clarification round: 3-4 decision-shaping questions (scope,
 consumers, priorities, constraints). Iterate until the owner confirms clarity or
 says to proceed with defaults. *Then* dispatch work.
 
@@ -65,14 +65,14 @@ could be better, say so and propose the change.
 
 Repo health check before any code:
 
-**1. Branch** — one branch per session, one session per feature.
+**1. Branch**: one branch per session, one session per feature.
 
 ```bash
 git fetch origin claude-code-staging
 git checkout -b claude/<short-description>-<random5> origin/claude-code-staging
 ```
 
-**2. Pre-check** — fix or ask before building on a broken baseline.
+**2. Pre-check**: fix or ask before building on a broken baseline.
 
 ```bash
 uv run --extra dev --extra superset --extra swebench pytest
@@ -81,7 +81,7 @@ make code-quality-check
 make robot-dryrun
 ```
 
-**3. Scan for staleness** — open issues touching the same area, `TODO`/`FIXME`/
+**3. Scan for staleness**: open issues touching the same area, `TODO`/`FIXME`/
 dead code in files you'll touch. Flag findings to the user (fix now / defer /
 ignore).
 
@@ -104,7 +104,7 @@ ignore).
 
 ## Pre-commit verification
 
-Run **all four** before every commit — no exceptions unless the user says to
+Run **all four** before every commit. No exceptions unless the user says to
 skip a step.
 
 ```bash
@@ -144,7 +144,7 @@ Multiple agents work this repo at once, so:
   git rebase origin/claude-code-staging
   ```
 - **Always rebase onto `claude-code-staging`**, never `main`.
-- **Small, atomic commits** — each independently reviewable, bisectable, and
+- **Small, atomic commits**: each independently reviewable, bisectable, and
   green on its own.
 - **Never commit `uv.lock`.** It's gitignored. `uv sync` regenerates it;
   `pyproject.toml` pins exact versions and is the source of truth.
@@ -155,18 +155,18 @@ Multiple agents work this repo at once, so:
 
 ### Red CI is an absolute blocker
 
-**Never merge — or recommend merging — anything with failing tests or checks.**
+**Never merge (or recommend merging) anything with failing tests or checks.**
 
 - Never call a PR "ready" before **every** check has run and passed.
 - **"Pre-existing failure" is not an excuse.** A red baseline blocks new work:
   fix it, or get the owner's explicit deferral, before building on it.
 - Applies to generated PRs too (mirror publishes, automation). A publish PR with
-  failing checks gets fixed at source and regenerated — never merged.
+  failing checks gets fixed at source and regenerated, never merged.
 
 ### Code layout
 
-- `src/rfc/` — the single source of truth for all Python.
-- `robot/` — the single home for all Robot Framework tests.
+- `src/rfc/`: the single source of truth for all Python.
+- `robot/`: the single home for all Robot Framework tests.
 - Type hints required on all new Python. mypy must pass.
 - **Never use `Optional` for database dataclass fields.** Use concrete defaults.
 - Use `RETURN` (not `[Return]`) in Robot keywords.
@@ -174,18 +174,18 @@ Multiple agents work this repo at once, so:
 ### Test tagging
 
 - Every Robot test: exactly one `tier:*` and one `verify:*`.
-- Every Robot suite: exactly one **`axis:*`** — `axis:model` / `axis:harness` /
-  `axis:prompt` / `axis:none` — naming the single variable it discriminates. A
+- Every Robot suite: exactly one **`axis:*`**: `axis:model` / `axis:harness` /
+  `axis:prompt` / `axis:none`, naming the single variable it discriminates. A
   discriminating test varies exactly one axis.
 - A suite importing an LLM or harness keyword library may **not** claim
   `axis:none`. `check_test_axes.py` enforces this.
 - Graded pools (`gold`, `platinum`, `gold:harness`, `platinum:harness`,
-  `control:instrument`) are pinned and enforced — see `ai/testing.md`
+  `control:instrument`) are pinned and enforced. See `ai/testing.md`
   § Graded test pools and `make gold-check`.
 
 ### Provenance: unattributable results don't count
 
-Every runtime-bound axis goes in the spine for the run — model (id + digest),
+Every runtime-bound axis goes in the spine for the run: model (id + digest),
 prompt (id + content hash), harness (name + version), sampling params, grader
 version.
 
@@ -196,8 +196,8 @@ scoreboard ignores it.
 
 - New Robot suites → `config/test_suites.yaml` (the canonical registry every
   suite appears in).
-- **Model-parameterized** suites — the ones an `axis:model` sweep runs
-  (`make run-local-models`) — additionally → `config/local_models.yaml`, the
+- **Model-parameterized** suites: the ones an `axis:model` sweep runs
+  (`make run-local-models`) also go in `config/local_models.yaml`, the
   model-sweep / routing registry (see `ai/testing.md`).
 - `local_models.yaml` membership is a *superset* of `axis:model` (it also
   carries provider/routing entries), so suites on other axes are **not**
@@ -206,7 +206,7 @@ scoreboard ignores it.
 ### Optional dependencies: skip and log, don't hard-fail
 
 A CLI depending on an optional service (LLM endpoint, optional DB table, network
-resource) skips the affected unit — one model, one suite, one metric — with a
+resource) skips the affected unit (one model, one suite, one metric) with a
 clear log message, and continues.
 
 Hard-fail only when the work genuinely cannot proceed (e.g. the primary DB URL
@@ -219,20 +219,20 @@ Always print a final summary of what was skipped and why.
 ## Foundation-green gate
 
 **Owner-ordered 2026-07-15: no new work dispatches while any current-foundation
-suite is red.** The strict form of the red-baseline rule — fix the reds first,
+suite is red.** The strict form of the red-baseline rule: fix the reds first,
 add nothing new until every suite is 100% green.
 
 - **Three surfaces, all green.** The monorepo (core + ops suites on `main`), the
   public robotframework-chat mirror's CI, and open-tolkein's suite on its
-  `baseline` branch (its default — it has no `main`). All three, before any new
+  `baseline` branch (its default, since it has no `main`). All three, before any new
   work starts.
 - **Blocked means everything but red-fixes.** While red exists anywhere, the
-  only permitted fleet work is fixing those reds — plus an explicit in-session
+  only permitted fleet work is fixing those reds, plus an explicit in-session
   human-owner instruction to do specific work despite the gate (not the standing
   loop dispatch, not a CEO-layer dispatch). Review cycles on already-built
   non-red-fix PRs pause.
   - Reviewing, signing off on, and merging the red-fix PRs **is** permitted
-    red-fix work — otherwise the dual-sign-off gate would deadlock its own
+    red-fix work. Otherwise the dual-sign-off gate would deadlock its own
     escape path.
 - **A pending fix still blocks.** A red whose dual-signed fix only awaits the
   owner's merge keeps the fleet off new work until that merge lands and green is
@@ -261,7 +261,7 @@ Part of the workflow, not a separate activity.
 | Trigger | Scope |
 |---------|-------|
 | After completing a feature | Refactor only the code you touched |
-| After a version bump | Broader cleanup — dead code, naming, structure |
+| After a version bump | Broader cleanup: dead code, naming, structure |
 | Session startup scan | Flag dead code and staleness to the user |
 | Spotted during work | **Ask first.** Don't silently clean up nearby code |
 
@@ -271,11 +271,11 @@ Dead code removal: always ask (remove / leave / add a TODO).
 
 ## Monitoring & dashboards
 
-CI is GitHub Actions — `gh run list`, `gh pr checks <number>`.
+CI is GitHub Actions: `gh run list`, `gh pr checks <number>`.
 
 Test results archive to SQL and render in Superset (see `ai/agents.md`).
 
-Superset health checks — for dashboard outages and PM sweeps:
+Superset health checks, for dashboard outages and PM sweeps:
 
 ```bash
 docker compose ps --all                              # stopped/unhealthy services
@@ -322,7 +322,7 @@ annotated list is in `.env.example`.
 
 **Get this wrong and every test reports `FAILED` on a timeout.**
 
-`.env` is git-ignored — it never leaves your machine.
+`.env` is git-ignored. It never leaves your machine.
 
 ### Minimum config
 
@@ -343,27 +343,27 @@ cp .env.example .env
 Local `.env` only. Never in issues, PRs, logs, or the public mirror.
 
 - **`OPENAI_API_KEY`** and the other provider keys (`OPENROUTER_API_KEY`,
-  `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GOOGLE_AI_STUDIO_API_KEY`) — billable
+  `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `GOOGLE_AI_STUDIO_API_KEY`) are billable
   secrets. Leave blank to skip that provider (the harness skip-and-logs).
-- **`POSTGRES_PASSWORD`** / `DATABASE_URL` — change `changeme` before any shared
+- **`POSTGRES_PASSWORD`** / `DATABASE_URL`: change `changeme` before any shared
   or networked deployment.
-- **`SUPERSET_SECRET_KEY`**, `SUPERSET_ADMIN_PASSWORD` — replace the
+- **`SUPERSET_SECRET_KEY`**, `SUPERSET_ADMIN_PASSWORD`: replace the
   placeholders.
 - **`OLLAMA_ENDPOINT`** isn't a secret on a trusted LAN, but an Ollama server is
-  **unauthenticated** — never bind it to a public interface.
+  **unauthenticated**, so never bind it to a public interface.
 
 ### The two timeouts must agree
 
 **Invariant: `Test Timeout` >= `OLLAMA_TIMEOUT`.**
 
-1. **`OLLAMA_TIMEOUT`** (env, default **5400s / 90 min**) — HTTP read budget for
+1. **`OLLAMA_TIMEOUT`** (env, default **5400s / 90 min**): HTTP read budget for
    *one* `generate()` call, cold model load included. Exceeded → surfaces as
    `requests.exceptions.ReadTimeout`.
-2. **Robot `Test Timeout`** (per suite, in `*** Settings ***`) — wall-clock for
+2. **Robot `Test Timeout`** (per suite, in `*** Settings ***`): wall-clock for
    the *whole* test, which may make several LLM calls.
 
 Get it backwards and Robot aborts the test as `FAILED` while the HTTP client is
-still legitimately waiting on the model — it looks like "every test timed out"
+still legitimately waiting on the model. It looks like "every test timed out"
 even though the model would have answered.
 
 Suite `Test Timeout` values are sized as a multiple of the 90-min HTTP budget
@@ -375,10 +375,10 @@ either.
 | Hardware | `DEFAULT_MODEL` | `OLLAMA_TIMEOUT` |
 |---|---|---|
 | Workstation GPU (24GB+) | `qwen3:32b` | `5400` (default) |
-| Consumer GPU (8–16GB) | `qwen3:8b` or `qwen3:14b` | `5400` |
-| CPU-only / laptop | `qwen3:4b` / `phi3:latest` | `5400`, prefer tier:0–1 suites |
+| Consumer GPU (8-16GB) | `qwen3:8b` or `qwen3:14b` | `5400` |
+| CPU-only / laptop | `qwen3:4b` / `phi3:latest` | `5400`, prefer tier:0-1 suites |
 
-**Every test fails on timeout?** The model is too big for the box — that's not
+**Every test fails on timeout?** The model is too big for the box. That's not
 the timeout's fault. Drop to a smaller `DEFAULT_MODEL` first; raising the
 timeout only makes you wait longer to fail.
 

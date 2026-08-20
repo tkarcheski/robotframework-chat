@@ -1,6 +1,6 @@
-"""Tests for scripts/check_gold_suites.py — the graded-pool membership guard.
+"""Tests for scripts/check_gold_suites.py: the graded-pool membership guard.
 
-Issue #702 (H6): ``gold`` / ``platinum`` shipped as convention only — 14 suite
+Issue #702 (H6): ``gold`` / ``platinum`` shipped as convention only: 14 suite
 files carry the tag and nothing under ``ai/``, ``scripts/`` or ``.github/``
 mentions it, so a rename or deletion silently shrinks the gate pool. This guard
 makes the ``gold:harness`` / ``platinum:harness`` pool mechanical, the way
@@ -74,7 +74,7 @@ class TestMembershipDrift:
         assert any("Gamma" in v for v in violations)
 
     def test_renamed_test_reports_both_sides(self) -> None:
-        """A rename is a deletion plus an addition — both must surface."""
+        """A rename is a deletion plus an addition. Both must surface."""
         tests, manifest = _healthy()
         tests[1] = _test("Beta Renamed", suite=_OTHER)
         violations = evaluate_gold_pool(tests, manifest)

@@ -1,4 +1,4 @@
-# Graded harness test pool — the `gold:harness` / `platinum:harness` registry
+# Graded harness test pool: the `gold:harness` / `platinum:harness` registry
 #
 # Epic #702, Part 2. This file is the single source of truth for which
 # `axis:harness` tests are trusted enough to gate on. `scripts/check_gold_suites.py`
@@ -15,16 +15,16 @@
 #
 # A test earns `gold:harness` only by clearing all five criteria (see
 # ai/testing.md § Graded test pools):
-#   1. Discriminating   — harnesses actually disagree on it
-#   2. Deterministic    — verify:robot or verify:python; no LLM judge in the gate
-#   3. Attributable     — brackets a spine session (harness name + version)
-#   4. Cheap in replay  — ~0 tokens under RFC_RUN_MODE=replay
-#   5. Non-vacuous      — cannot pass on empty input
+#   1. Discriminating:   harnesses actually disagree on it
+#   2. Deterministic:    verify:robot or verify:python; no LLM judge in the gate
+#   3. Attributable:     brackets a spine session (harness name + version)
+#   4. Cheap in replay:  ~0 tokens under RFC_RUN_MODE=replay
+#   5. Non-vacuous:      cannot pass on empty input
 #
 # Adding or removing a member is a reviewable change to THIS file, never a
 # drive-by tag edit.
 
-# At least this many gold members must carry `control:instrument` — negative
+# At least this many gold members must carry `control:instrument`: negative
 # controls that assert the instrument goes RED on a planted defect (#702 H7).
 # A green pool proves nothing if nothing in it can fail.
 min_instrument_controls: 2
@@ -47,7 +47,7 @@ gold:
   - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
     test: Absent Optional Harness Skips Its Leg Without Failing
     why: >-
-      False-green guard. An absent CLI must SKIP, never vacuously pass — the
+      False-green guard. An absent CLI must SKIP, never vacuously pass. The
       #385 / #390 / #402 failure mode, held in place by a test.
 
   - suite: robot/40__tier4/harness_matrix/harness_matrix.robot
@@ -75,7 +75,7 @@ gold:
 
   - suite: robot/10__tier1/harness/test_agentic_harness_listener_integration.robot
     test: Listener Persists Metric Rows Per Test Case
-    why: The measurement plumbing itself — no rows, no scoreboard.
+    why: The measurement plumbing itself. No rows, no scoreboard.
 
   - suite: robot/10__tier1/harness/test_agentic_harness_listener_integration.robot
     test: No Harness Session Means No Rows
@@ -99,7 +99,7 @@ gold:
       hidden public-API contract catches the regression. It proves the
       instrument sees past the obvious signal.
 
-# Runners-up — evaluated and deliberately left out, recorded so the next
+# Runners-up, evaluated and deliberately left out, recorded so the next
 # review does not re-litigate them from scratch:
 #   - Claude Code Refuses To Force Push To Main (safety; overlaps the contract legs)
 #   - Quadratic Refactor Surfaces Performance Regression (third control; two suffice)

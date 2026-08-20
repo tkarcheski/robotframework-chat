@@ -2,7 +2,7 @@
 """CI guard: the graded ``gold:harness`` / ``platinum:harness`` pool is intact.
 
 Issue #702 (H6). The ``axis:model`` side of the scoreboard has carried a graded
-quality standard since ``0f95f75`` — 14 suites tagged ``gold``, one ``platinum``,
+quality standard since ``0f95f75``: 14 suites tagged ``gold``, one ``platinum``,
 and a gate that runs ``--include gold --exclude stress``. That standard was
 convention only: the tag appeared in no document and no checker, so renaming or
 deleting a member silently shrank the gate pool with no signal anywhere. A gate
@@ -10,7 +10,7 @@ whose membership can change by accident is not a gate.
 
 This guard makes the harness-side pool mechanical, a sibling to
 ``check_test_axes.py`` (axis tags), ``check_battery_scenarios.py`` and
-``check_agent_signoffs.py`` — "prompts request, checks enforce" (ai/GIT.md).
+``check_agent_signoffs.py``: "prompts request, checks enforce" (ai/GIT.md).
 
 Two pools, deliberately namespaced (#702 Part 2). The bare ``gold`` /
 ``platinum`` tags stay owned by the ``axis:model`` RSI gate; reusing them for
@@ -29,13 +29,13 @@ Five checks, all decidable from the Robot source (no live model, no DB):
      from satisfying each other.
   2. **Platinum is unique, pinned, and inside gold.** Exactly one test carries
      ``platinum:harness``; it is the manifest's; and it also carries
-     ``gold:harness`` — platinum is the top of the gold pool, not a parallel one.
+     ``gold:harness``. Platinum is the top of the gold pool, not a parallel one.
   3. **Deterministic grading.** Every gold member is ``verify:robot`` or
      ``verify:python``. An LLM judge in the gate path puts judge variance into a
      harness number (#702 gold criterion 2).
   4. **On the harness axis.** Every gold member carries ``axis:harness``.
   5. **Negative controls present.** At least ``min_instrument_controls`` members
-     carry ``control:instrument`` — tests that assert the instrument goes RED on
+     carry ``control:instrument``: tests that assert the instrument goes RED on
      a planted defect (#702 H7). A green scoreboard cell means nothing if the
      instrument cannot fail.
 
@@ -58,7 +58,7 @@ from pathlib import Path
 import yaml
 from robot.api import TestSuite
 
-#: Repo root — this file lives at ``scripts/``.
+#: Repo root. This file lives at ``scripts/``.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ROBOT_ROOT = REPO_ROOT / "robot"
 DEFAULT_MANIFEST = REPO_ROOT / "config" / "gold_harness.yaml"
@@ -82,7 +82,7 @@ TestKey = tuple[str, str]
 class GradedTest:
     """One Robot test case's graded-pool facts, tags fully resolved.
 
-    ``tags`` includes everything Robot itself resolves — per-test ``[Tags]``
+    ``tags`` includes everything Robot itself resolves: per-test ``[Tags]``
     plus ``Test Tags`` / ``Force Tags`` / ``Default Tags`` cascaded from the
     suite and from any ancestor ``__init__.robot``.
     """
@@ -119,7 +119,7 @@ def collect_graded_tests(root: Path | str = DEFAULT_ROBOT_ROOT) -> list[GradedTe
     """Return every test under ``root`` that carries a graded harness tag.
 
     Robot's own model resolves tag inheritance, so a ``Test Tags`` line on an
-    ancestor ``__init__.robot`` is seen here exactly as it will be at run time —
+    ancestor ``__init__.robot`` is seen here exactly as it will be at run time,
     the guard can never disagree with ``--include`` about who is in the pool.
     """
     root = Path(root)
@@ -177,7 +177,7 @@ def evaluate_gold_pool(tests: list[GradedTest], manifest: GoldManifest) -> list[
     for extra in sorted(gold_keys - manifest.gold):
         violations.append(
             f"{_fmt(extra)}: carries {GOLD_TAG!r} but is not pinned in the "
-            "manifest — add it (with a rationale) or drop the tag"
+            "manifest. Add it (with a rationale) or drop the tag"
         )
 
     # 2. Platinum: unique, pinned, and a gold member.
@@ -196,8 +196,8 @@ def evaluate_gold_pool(tests: list[GradedTest], manifest: GoldManifest) -> list[
             )
         if GOLD_TAG not in test.tags:
             violations.append(
-                f"{test}: carries {PLATINUM_TAG!r} without {GOLD_TAG!r} — "
-                "platinum is the top of the gold pool, not a parallel pool"
+                f"{test}: carries {PLATINUM_TAG!r} without {GOLD_TAG!r}. "
+                "Platinum is the top of the gold pool, not a parallel pool"
             )
     if not platinum_tests and manifest.platinum in by_key:
         violations.append(
@@ -212,7 +212,7 @@ def evaluate_gold_pool(tests: list[GradedTest], manifest: GoldManifest) -> list[
             violations.append(
                 f"{test}: gold requires deterministic grading "
                 f"({' or '.join(sorted(DETERMINISTIC_VERIFY_TAGS))}), found "
-                f"{', '.join(styles)} — judge variance is not harness variance"
+                f"{', '.join(styles)}. Judge variance is not harness variance"
             )
         if AXIS_TAG not in test.tags:
             violations.append(f"{test}: gold harness members must carry {AXIS_TAG!r}")
@@ -222,8 +222,8 @@ def evaluate_gold_pool(tests: list[GradedTest], manifest: GoldManifest) -> list[
     if len(controls) < manifest.min_instrument_controls:
         violations.append(
             f"gold pool carries {len(controls)} {CONTROL_TAG!r} test(s), "
-            f"expected at least {manifest.min_instrument_controls} — without "
-            "negative controls a green pool never proves the instrument can go red"
+            f"expected at least {manifest.min_instrument_controls}. Without "
+            "negative controls, a green pool never proves the instrument can go red"
         )
 
     return violations

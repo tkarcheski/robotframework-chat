@@ -6,11 +6,11 @@ Everything below serves that.
 
 This applies to READMEs, `ai/` docs, epic and issue bodies, PR descriptions,
 config file headers, and module docstrings. Code comments explaining *why* a
-line exists are exempt — those are for the person reading that line.
+line exists are exempt. Those are for the person reading that line.
 
 ---
 
-## The 7 rules
+## The 8 rules
 
 ### 1. Answer first. Then explain.
 
@@ -24,7 +24,7 @@ consider how the RSI gate selects suites…"
 
 ### 2. One idea per line.
 
-Break the paragraph. White space is not wasted space — it's how a scanning eye
+Break the paragraph. White space is not wasted space. It's how a scanning eye
 finds the handle.
 
 ### 3. Short words. Concrete nouns.
@@ -50,13 +50,31 @@ scoreboard.**"
 
 ### 5. Structure is navigation.
 
-Headers, tables, bullets — so someone can jump straight to their bit.
+Headers, tables, bullets, so someone can jump straight to their bit.
 
 Emoji as *anchors*, not decoration. One per item, and only when the list is
 long enough that people need to find their place in it. A 3-item list doesn't
 need them.
 
-### 6. No hedging, no throat-clearing.
+### 6. No em dashes.
+
+Use a period, a colon, a comma, or brackets. Whichever one you'd have picked if
+the em dash weren't available.
+
+They read as machine-generated, and usually they're papering over a sentence
+that wanted to be two.
+
+❌ "The listener writes a row per test - no rows means nothing on the
+scoreboard." *(with an em dash)*
+
+✅ "The listener writes a row per test. No rows means nothing on the
+scoreboard."
+
+En dashes go too. Ranges use a plain hyphen: `8-16GB`, `tier:0-1`.
+
+Enforced by `tests/test_docs_style.py`.
+
+### 7. No hedging, no throat-clearing.
 
 Cut: "it's worth noting", "arguably", "in some sense", "as previously
 mentioned", "please be aware that".
@@ -64,16 +82,16 @@ mentioned", "please be aware that".
 If you're genuinely unsure, say **"unverified"** or **"guess:"** and move on.
 That's information. Hedging is noise.
 
-### 7. End with the gap.
+### 8. End with the gap.
 
 What's still missing, still broken, still unknown. This is usually the most
-useful part of the whole document — and the part that gets left out.
+useful part of the whole document, and the part that gets left out.
 
 ---
 
 ## The shape
 
-Long or complex doc? Open with a **Plain version** block: 3–6 lines, no jargon,
+Long or complex doc? Open with a **Plain version** block: 3-6 lines, no jargon,
 that answers "what is this and why do I care."
 
 Then the detail underneath, for whoever needs it.
@@ -85,7 +103,7 @@ The plain version is not a summary you write last. It's the thing you write
 
 ## Before / after
 
-**Before** — technically correct, unreadable:
+**Before**: technically correct, unreadable:
 
 > The `control:instrument` tag identifies test cases which assert that the
 > verification instrumentation correctly surfaces a deliberately introduced
@@ -104,7 +122,7 @@ Same facts. One is 34 words of fog, the other is 26 words you can act on.
 
 ## What this is not
 
-- **Not dumbing down.** Precision goes up, not down — vague words are what make
+- **Not dumbing down.** Precision goes up, not down: vague words are what make
   docs long. "It handles errors gracefully" is longer *and* says less than
   "on a timeout it retries once, then skips the model."
 - **Not banning detail.** Put the detail below the plain version, where the

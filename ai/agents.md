@@ -1,4 +1,4 @@
-# ai/agents.md — the contribution contract
+# ai/agents.md: the contribution contract
 
 **Plain version:**
 
@@ -17,11 +17,11 @@ Docs style: [writing.md](writing.md).
 
 ## Core philosophy
 
-1. **LLMs are software — test them like software.** Same CI, versioning, and
+1. **LLMs are software: test them like software.** Same CI, versioning, and
    regression discipline as any code.
 2. **Determinism before intelligence.** Machine-verifiable evaluation first;
    fuzzy scoring only on a solid deterministic foundation.
-3. **Constrained grading.** Graders return structured data only — scores,
+3. **Constrained grading.** Graders return structured data only: scores,
    categories, pass/fail. **No prose from the evaluation layer.**
 4. **Modular by design.** New providers, graders, test types, and output formats
    plug in without rewriting core.
@@ -40,7 +40,7 @@ Docs style: [writing.md](writing.md).
 1. **Failing test first** (red) → minimal code (green) → refactor.
 2. **Quality checks before committing:** `make code-quality-check` and
    `pre-commit run --all-files`.
-3. **Commit format:** `<type>: <summary>` — `test:`, `feat:`, `fix:`,
+3. **Commit format:** `<type>: <summary>`: `test:`, `feat:`, `fix:`,
    `refactor:`, `docs:`, `chore:`.
 4. **Validate what the user hands you** before acting on it:
    - Check paths against the layout rules below
@@ -59,13 +59,13 @@ Docs style: [writing.md](writing.md).
 
 ### Layout
 
-- `src/rfc/` — single source of truth for all Python.
-- `robot/` — single home for all Robot test suites.
+- `src/rfc/`: single source of truth for all Python.
+- `robot/`: single home for all Robot test suites.
 - **Never duplicate logic outside these two directories.**
 
 ### Branching
 
-Feature branches off `claude-code-staging` — the integration branch, **not**
+Feature branches off `claude-code-staging`, the integration branch, **not**
 `main`. Rebase onto it before pushing.
 
 ---
@@ -114,7 +114,7 @@ _leading_underscore = "private"
 def ask_llm(self, prompt: str) -> str:
     ...
 
-# Error handling — always chain the cause
+# Error handling: always chain the cause
 except json.JSONDecodeError as e:
     raise ValueError(f"Invalid JSON: {raw}") from e
 ```
@@ -172,13 +172,13 @@ Robot Framework Test
 └─> Results ── Robot HTML reports, SQL history, Superset dashboards
 ```
 
-**CI:** GitHub Actions in `.github/workflows/` — `robot-tests.yml` (lint,
+**CI:** GitHub Actions in `.github/workflows/`: `robot-tests.yml` (lint,
 pytest, Robot dry-run, robot tests), `docker-publish.yml` (Docker image),
 `pypi-publish.yml` (PyPI on `v*` tags).
 
 **All executable logic stays in Makefile targets** so it runs identically in CI
 and locally. To change what a job does, edit the Makefile (or the scripts it
-wraps) — **not** the workflow YAML.
+wraps), **not** the workflow YAML.
 
 ---
 
@@ -204,7 +204,7 @@ Schema, queries, maintenance: [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.m
 
 ## Docker testing
 
-Container profiles live in `robot/resources/container_profiles.resource` —
+Container profiles live in `robot/resources/container_profiles.resource`:
 MINIMAL / STANDARD / PERFORMANCE / NETWORKED / OLLAMA_CPU.
 
 ```robot
@@ -226,9 +226,9 @@ Container`, `Docker.Execute Python In Container`, `Docker.Stop Container`,
 
 **Two that save you pain:**
 
-- `Docker.Find Available Port` — use it instead of hardcoding. LLM containers
-  allocate from 11434–11500.
-- `Docker.Stop Container By Name` — use unique, timestamped container names.
+- `Docker.Find Available Port`: use it instead of hardcoding. LLM containers
+  allocate from 11434-11500.
+- `Docker.Stop Container By Name`: use unique, timestamped container names.
 
 **Dependencies:** Docker daemon (container tests), Ollama endpoint (LLM tests,
 default `http://localhost:11434`), Python 3.11+.
@@ -237,13 +237,13 @@ default `http://localhost:11434`), Python 3.11+.
 
 ## Agent workflow capture
 
-For tests exercising multi-turn agent behaviour — messages, tool calls, state
+For tests exercising multi-turn agent behaviour: messages, tool calls, state
 evolution:
 
 | Piece | Module | Does |
 |---|---|---|
 | Library | `rfc.agent_workflow_keywords.AgentWorkflowKeywords` | The Robot surface |
-| Tracker | `rfc.agent_interaction_tracker.AgentInteractionTracker` | Builds an immutable `AgentWorkflow` — frozen interactions, tool calls, results |
+| Tracker | `rfc.agent_interaction_tracker.AgentInteractionTracker` | Builds an immutable `AgentWorkflow`: frozen interactions, tool calls, results |
 | Validator | `rfc.tool_call_validator.ToolCallValidator` | Enforces schema, ordering, result expectations |
 | Memory | `rfc.agent_memory_manager.MemoryManager` | Sliding-window short-term, vector long-term, schema-checked persistent |
 | Listener | `rfc.agent_workflow_listener.AgentWorkflowListener` | Persists the `agent_workflow` RFC_DATA payload at end-of-test |
