@@ -17,7 +17,7 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
-## [1.29.0] — 2026-07-25
+## [1.29.0] — Unreleased
 
 ### Added
 
