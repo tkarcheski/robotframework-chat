@@ -54,7 +54,7 @@ Opencode Honors The Harness Contract
     [Documentation]    The cheap leg: opencode + local Ollama runs the fixture
     ...                through the keywords and its AgentRun passes the shared
     ...                verifier assertions.
-    [Tags]    harness:opencode
+    [Tags]    harness:opencode    gold:harness    platinum:harness
     Skip Unless Harness Available    opencode
     ${ws}=    New Matrix Workspace
     Start Harness Session    tool=opencode    workspace=${ws}[path]
@@ -106,7 +106,7 @@ Comparison Mode Records The Battery Per Harness
     ...                head-to-head needs a SECOND fixed-local harness (see the
     ...                rfc.harness_comparison docstring); this proves the recorder
     ...                writes pairable opencode rows. The McNemar gate is S4/#220.
-    [Tags]    comparison    harness:opencode
+    [Tags]    comparison    harness:opencode    gold:harness
     Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${ws}=    New Matrix Workspace
@@ -134,7 +134,7 @@ Repeats Yield A Complete Within-Harness Reliability Sample
     ...                the repeat index (model + harness held constant). Extends the
     ...                comparison smoke above (N=1) to a variance-bearing N; the
     ...                deterministic twin is ``tests/test_harness_comparison.py``.
-    [Tags]    comparison    harness:opencode
+    [Tags]    comparison    harness:opencode    gold:harness
     Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${ws}=    New Matrix Workspace
@@ -157,7 +157,7 @@ Absent Optional Harness Skips Its Leg Without Failing
     ...                a skipped leg -- no exception, no failure row. A runner that
     ...                aborted the whole battery on the absent leg would fail here.
     ...                Restricting to the absent path also keeps this leg token-free.
-    [Tags]    comparison    harness:claude-code
+    [Tags]    comparison    harness:claude-code    gold:harness
     Skip In Replay Mode
     Skip Unless Harness Available    opencode
     ${claude_available}=    Harness Is Available    claude-code

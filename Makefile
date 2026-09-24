@@ -44,7 +44,8 @@ AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown
 
 .PHONY: help install update \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
-        robot-review robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
+        robot-review robot-gold robot-platinum gold-check \
+        robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
         robot-bash robot-c robot-rust robot-computer-skills \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-swebench robot-openai-evals swebench-discover \
@@ -150,6 +151,15 @@ robot-dryrun: ## Validate all Robot tests (dry run, no execution)
 
 robot-review: ## Check tag compliance in output.xml (run after robot-dryrun)
 	uv run python scripts/robot_review.py
+
+gold-check: ## Verify the gold:harness / platinum:harness pool matches its manifest
+	uv run python scripts/check_gold_suites.py
+
+robot-gold: ## Run the trusted harness set (gold:harness)
+	$(ROBOT) --include gold:harness -d results/$(VERSION)/gold $(AGENT_VARS) $(ARGS) robot/
+
+robot-platinum: ## Run the single always-run harness test (platinum:harness)
+	$(ROBOT) --include platinum:harness -d results/$(VERSION)/platinum $(AGENT_VARS) $(ARGS) robot/
 
 retry-failed: ## Re-run failed tests from results/$(VERSION)/ using --rerunfailed
 	@for xml in $$(find results/$(VERSION)/ -name output.xml -not -path '*/combined/*' -not -path '*/dryrun/*'); do \

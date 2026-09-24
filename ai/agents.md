@@ -1,65 +1,78 @@
-# Agent Instructions for robotframework-chat
+# ai/agents.md: the contribution contract
 
-A Robot Framework-based test harness for systematically testing LLMs.
-Test results are archived to SQL and visualized in Apache Superset dashboards.
+**Plain version:**
 
-This is the contribution contract for agents and humans. Grading tiers and
-test rules live in [testing.md](testing.md); always-loaded workflow rules live
-in the repo-root `CLAUDE.md`.
+- This repo tests LLMs and coding agents the way you'd test any software:
+  inputs, outputs, regressions, CI.
+- **Robot Framework orchestrates. Python implements.** Never the other way round.
+- **Every run is archived.** Listeners are always on; if it ran, it's in SQL.
+- **Deterministic checks first.** Fuzzy LLM scoring only on top of that.
+- Python lives in `src/rfc/`. Robot tests live in `robot/`. Nowhere else.
+
+This is the contract for agents *and* humans. Tiers and test rules:
+[testing.md](testing.md). Always-loaded workflow rules: repo-root `CLAUDE.md`.
+Docs style: [writing.md](writing.md).
 
 ---
 
-## Core Philosophy
+## Core philosophy
 
-1. **LLMs are software — test them like software.** Input, output, regressions:
-   they get the same CI, versioning, and regression discipline as any code.
+1. **LLMs are software: test them like software.** Same CI, versioning, and
+   regression discipline as any code.
 2. **Determinism before intelligence.** Machine-verifiable evaluation first;
-   fuzzy scoring only on top of a solid deterministic foundation.
-3. **Constrained grading.** Graders return structured data only — scores,
-   categories, pass/fail. No prose from the evaluation layer.
-4. **Modular by design.** New providers, graders, test types, and output
-   formats plug in without rewriting core.
-5. **Robot Framework as the orchestration layer.** Robot handles lifecycle,
-   sequencing, and reporting — Python handles implementation.
-6. **Every test run is archived.** Listeners are always active; results flow to
-   SQL. If it ran, it's queryable.
-7. **CI-native, regression-focused.** If it can't run unattended, it's not done.
+   fuzzy scoring only on a solid deterministic foundation.
+3. **Constrained grading.** Graders return structured data only: scores,
+   categories, pass/fail. **No prose from the evaluation layer.**
+4. **Modular by design.** New providers, graders, test types, and output formats
+   plug in without rewriting core.
+5. **Robot orchestrates, Python implements.** Robot handles lifecycle,
+   sequencing, and reporting.
+6. **Every test run is archived.** Listeners always active, results flow to SQL.
+   If it ran, it's queryable.
+7. **CI-native.** If it can't run unattended, it's not done.
 
 ---
 
-## Agent Contract
+## The contract
 
-**Rules:**
-1. Write failing test first (red), implement minimal code (green), refactor.
-2. Run quality checks before committing: `make code-quality-check` and
+### Do
+
+1. **Failing test first** (red) → minimal code (green) → refactor.
+2. **Quality checks before committing:** `make code-quality-check` and
    `pre-commit run --all-files`.
-3. Commit format: `<type>: <summary>` — types `test:`, `feat:`, `fix:`,
+3. **Commit format:** `<type>: <summary>`: `test:`, `feat:`, `fix:`,
    `refactor:`, `docs:`, `chore:`.
-4. Validate user-provided input before acting on it: check paths against the
-   layout rules below, verify referenced files/symbols exist, read shell
-   commands for dangerous operations before running them, and flag requests
-   that contradict decisions recorded here or in `testing.md`. When you catch a
-   mistake, say so and propose the corrected version — never silently "fix" it.
+4. **Validate what the user hands you** before acting on it:
+   - Check paths against the layout rules below
+   - Verify referenced files/symbols actually exist
+   - Read shell commands for dangerous operations before running them
+   - Flag requests contradicting decisions recorded here or in `testing.md`
 
-**Prohibited:**
-- Skipping tests, committing failing code, or bypassing pre-commit / Makefile
-  quality checks.
-- Bundling unrelated changes or mixing formatting with logic.
-- Committing `uv.lock` or any other generated lockfile (it is gitignored).
+   Caught a mistake? **Say so and propose the correction.** Never silently
+   "fix" it.
 
-**Layout rules:**
-- `src/rfc/` is the single source of truth for all Python code.
-- `robot/` is the single home for all Robot Framework test suites.
-- Never duplicate logic outside these directories.
+### Don't
 
-**Branching:** feature branches from `claude-code-staging` (the integration
-branch — not `main`); rebase onto it before pushing.
+- Skip tests, commit failing code, or bypass pre-commit / Makefile checks.
+- Bundle unrelated changes, or mix formatting with logic.
+- Commit `uv.lock` or any other generated lockfile (gitignored).
+
+### Layout
+
+- `src/rfc/`: single source of truth for all Python.
+- `robot/`: single home for all Robot test suites.
+- **Never duplicate logic outside these two directories.**
+
+### Branching
+
+Feature branches off `claude-code-staging`, the integration branch, **not**
+`main`. Rebase onto it before pushing.
 
 ---
 
 ## Commands
 
-`make help` lists every target. The ones used constantly:
+`make help` lists everything. These are the ones you'll actually use:
 
 ```bash
 make install               # uv sync (dev + superset extras)
@@ -67,20 +80,23 @@ uv run pytest              # Python unit tests
 make code-quality-check    # lint (ruff) + typecheck (mypy) + coverage
 pre-commit run --all-files # final gate: yaml, json, whitespace, ruff, mypy
 make robot-dryrun          # validate all Robot suites parse
-make robot                 # run all Robot suites (also robot-math, robot-docker, robot-safety)
-uv run robot -d results -t "Test Name" robot/path/tests/file.robot   # one test
+make robot                 # all Robot suites (also robot-math, robot-docker, robot-safety)
 make docker-up             # PostgreSQL + Redis + Superset stack
 make import RESULTS_DIR=results/   # import output.xml into the DB
+
+# One test:
+uv run robot -d results -t "Test Name" robot/path/tests/file.robot
 ```
 
-When debugging, start at the foundation and work up: fix Robot test failures
-before looking at Docker or CI; fix code-quality failures before pipelines.
+**Debugging order: foundation up.** Fix Robot test failures before looking at
+Docker or CI. Fix code-quality failures before pipelines.
 
 ---
 
-## Code Style
+## Code style
 
-**Python:**
+### Python
+
 ```python
 # Imports: stdlib, third-party, local
 import json
@@ -98,12 +114,13 @@ _leading_underscore = "private"
 def ask_llm(self, prompt: str) -> str:
     ...
 
-# Error handling
+# Error handling: always chain the cause
 except json.JSONDecodeError as e:
     raise ValueError(f"Invalid JSON: {raw}") from e
 ```
 
-**Robot Framework:**
+### Robot Framework
+
 ```robot
 *** Settings ***
 Documentation     Clear description
@@ -123,10 +140,10 @@ Custom Keyword
     RETURN    ${result}    # Use RETURN, not [Return]
 ```
 
-- Use `RETURN` (not the deprecated `[Return]`).
-- Every test carries exactly one `tier:*` and one `verify:*` tag; every suite
-  declares one `axis:*` tag (see `testing.md`).
-- Use `Suite Setup` / `Suite Teardown` for container lifecycle.
+- `RETURN`, never the deprecated `[Return]`.
+- Every test: exactly one `tier:*` and one `verify:*`. Every suite: one `axis:*`
+  (see `testing.md`).
+- `Suite Setup` / `Suite Teardown` for container lifecycle.
 - Variables: `${scalar}`, `@{list}`, `&{dict}`.
 
 ---
@@ -155,17 +172,19 @@ Robot Framework Test
 └─> Results ── Robot HTML reports, SQL history, Superset dashboards
 ```
 
-CI runs on GitHub Actions (`.github/workflows/`): `robot-tests.yml` (lint,
+**CI:** GitHub Actions in `.github/workflows/`: `robot-tests.yml` (lint,
 pytest, Robot dry-run, robot tests), `docker-publish.yml` (Docker image),
-`pypi-publish.yml` (PyPI on `v*` tags). All executable logic stays in Makefile
-targets so it runs identically in CI and locally — edit the Makefile (or the
-scripts it wraps), not the workflow YAML, to change what a job does.
+`pypi-publish.yml` (PyPI on `v*` tags).
+
+**All executable logic stays in Makefile targets** so it runs identically in CI
+and locally. To change what a job does, edit the Makefile (or the scripts it
+wraps), **not** the workflow YAML.
 
 ---
 
-## Listeners & Database
+## Listeners & database
 
-All three listeners are attached by the Makefile targets and CI:
+All three attach automatically via the Makefile targets and CI:
 
 | Listener | Purpose |
 |----------|---------|
@@ -173,18 +192,20 @@ All three listeners are attached by the Makefile targets and CI:
 | `rfc.git_metadata_listener.GitMetaData` | Adds CI metadata to Robot output |
 | `rfc.ollama_timestamp_listener.OllamaTimestampListener` | Timestamps Ollama keyword calls; saves `ollama_timestamps.json` |
 
-Results are stored in PostgreSQL; `DATABASE_URL` must be set in the
-environment or `.env` (e.g. `postgresql://rfc:changeme@localhost:5433/rfc`).
-SQLite is used only by test fixtures. Schema, queries, and maintenance:
-[../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md) (path relative to the
-published `ai/` location); environment variables: `.env.example`.
+Results land in PostgreSQL. **`DATABASE_URL` must be set** in the environment or
+`.env` (e.g. `postgresql://rfc:changeme@localhost:5433/rfc`). SQLite is used
+only by test fixtures.
+
+Schema, queries, maintenance: [../docs/TEST_DATABASE.md](../docs/TEST_DATABASE.md)
+(path relative to the published `ai/` location). Environment variables:
+`.env.example`.
 
 ---
 
-## Docker Testing
+## Docker testing
 
-Container profiles live in `robot/resources/container_profiles.resource`
-(MINIMAL / STANDARD / PERFORMANCE / NETWORKED / OLLAMA_CPU).
+Container profiles live in `robot/resources/container_profiles.resource`:
+MINIMAL / STANDARD / PERFORMANCE / NETWORKED / OLLAMA_CPU.
 
 ```robot
 *** Settings ***
@@ -199,31 +220,33 @@ Test Code Generation
     Should Be Equal As Integers    ${result}[exit_code]    0
 ```
 
-Key keywords: `Docker.Create Configurable Container`, `Docker.Execute In
+**Key keywords:** `Docker.Create Configurable Container`, `Docker.Execute In
 Container`, `Docker.Execute Python In Container`, `Docker.Stop Container`,
-`Docker.Get Container Metrics`, `Docker.Find Available Port` (use it instead
-of hardcoding ports; LLM containers allocate from 11434–11500), `Docker.Stop
-Container By Name` (use unique, timestamped container names).
+`Docker.Get Container Metrics`.
 
-Dependencies: Docker daemon (container tests), Ollama endpoint (LLM tests,
+**Two that save you pain:**
+
+- `Docker.Find Available Port`: use it instead of hardcoding. LLM containers
+  allocate from 11434-11500.
+- `Docker.Stop Container By Name`: use unique, timestamped container names.
+
+**Dependencies:** Docker daemon (container tests), Ollama endpoint (LLM tests,
 default `http://localhost:11434`), Python 3.11+.
 
 ---
 
-## Agent Workflow Capture
+## Agent workflow capture
 
-For tests that exercise multi-turn agent behavior (messages, tool calls,
-state evolution):
+For tests exercising multi-turn agent behaviour: messages, tool calls, state
+evolution:
 
-- Library: `rfc.agent_workflow_keywords.AgentWorkflowKeywords`
-- Tracker: `rfc.agent_interaction_tracker.AgentInteractionTracker` builds an
-  immutable `AgentWorkflow` with frozen interactions, tool calls, and results.
-- Validator: `rfc.tool_call_validator.ToolCallValidator` enforces schema,
-  ordering, and result expectations.
-- Memory: `rfc.agent_memory_manager.MemoryManager` — sliding-window short-term,
-  vector long-term, schema-checked persistent storage.
-- Listener: `rfc.agent_workflow_listener.AgentWorkflowListener` persists the
-  `agent_workflow` RFC_DATA payload at end-of-test.
+| Piece | Module | Does |
+|---|---|---|
+| Library | `rfc.agent_workflow_keywords.AgentWorkflowKeywords` | The Robot surface |
+| Tracker | `rfc.agent_interaction_tracker.AgentInteractionTracker` | Builds an immutable `AgentWorkflow`: frozen interactions, tool calls, results |
+| Validator | `rfc.tool_call_validator.ToolCallValidator` | Enforces schema, ordering, result expectations |
+| Memory | `rfc.agent_memory_manager.MemoryManager` | Sliding-window short-term, vector long-term, schema-checked persistent |
+| Listener | `rfc.agent_workflow_listener.AgentWorkflowListener` | Persists the `agent_workflow` RFC_DATA payload at end-of-test |
 
-Example tests: `robot/30__tier3/agent_workflows/tests/`; suite guide:
-`robot/30__tier3/agent_workflows/README.md`.
+Example tests: `robot/30__tier3/agent_workflows/tests/`.
+Suite guide: `robot/30__tier3/agent_workflows/README.md`.

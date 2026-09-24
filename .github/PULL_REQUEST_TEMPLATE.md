@@ -75,6 +75,7 @@
 - [ ] Self-reviewed diff — no scope creep, no debug prints
 - [ ] Changes comply with `ai/agents.md` contract
 - [ ] Changes comply with `ai/testing.md` tier rules
+- [ ] Docs touched by this PR follow `ai/writing.md` (plain version first, scannable)
 - [ ] New Robot tests have `tier:*` and `verify:*` tags
 - [ ] No unresolved `TODO`/`FIXME` in changed files
 - [ ] Type hints on all new Python code

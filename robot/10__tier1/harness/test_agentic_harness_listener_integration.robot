@@ -40,6 +40,7 @@ Listener Persists Metric Rows Per Test Case
     [Documentation]    The core #431 contract: a run with N emitting tests
     ...                yields tokens_in / tokens_out / latency_ms rows for
     ...                each test, keyed to the harness session_id.
+    [Tags]    gold:harness
     ${session_id}=    Listener.Start Harness Session    ${WS}
     Listener.Write Inner Suite    ${WS}    metrics    metrics    metrics
     Run Suite With Listener
@@ -87,6 +88,7 @@ Unreachable Database Never Fails The Run
 No Harness Session Means No Rows
     [Documentation]    Without ``rfc harness start`` there is no sidecar; the
     ...                listener warns and persists nothing, and the run passes.
+    [Tags]    gold:harness
     Listener.Write Inner Suite    ${WS}    metrics
     Run Suite With Listener
     ${total}=    Listener.Count All Metric Rows    ${WS}
