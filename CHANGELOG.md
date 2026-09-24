@@ -68,6 +68,7 @@ Provenance notes:
   on `claude-code-staging`.
 
 ## [1.29.0] — 2026-07-25
+## [1.29.0] — Unreleased
 
 ### Added
 
