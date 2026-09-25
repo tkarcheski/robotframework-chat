@@ -50,6 +50,9 @@ Repository = "https://github.com/tkarcheski/robotframework-chat"
 Issues = "https://github.com/tkarcheski/robotframework-chat/issues"
 
 [project.optional-dependencies]
+hardware-eval = [
+    "tokenizers>=0.21",
+]
 playwright = [
     "robotframework-browser>=18.0.0",
     "markdownify>=0.14.1",

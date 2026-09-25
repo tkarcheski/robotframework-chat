@@ -32,6 +32,30 @@ discovery:
 # and model via --variable overrides.
 # ---------------------------------------------------------------------------
 test_suites:
+  - name: "hardware-engineering"
+    path: "robot/10__tier1/hardware_engineering/hardware.robot"
+    description: "Public UNO/Fire hardware tasks; requires HW_EVAL_LIVE=1"
+    timeout_seconds: 108000
+    privacy: public
+
+  - name: "hardware-context"
+    path: "robot/10__tier1/hardware_engineering/context.robot"
+    description: "Long context opt-in via HW_CONTEXT_SWEEP=1; exact tokenizers required"
+    timeout_seconds: 604800
+    privacy: public
+
+  - name: "hardware-computer-use"
+    path: "robot/10__tier1/hardware_engineering/computer_use.robot"
+    description: "Live model-driven sandbox browser; requires playwright extra"
+    timeout_seconds: 345600
+    privacy: public
+
+  - name: "hardware-evaluation-gate"
+    path: "robot/10__tier1/hardware_engineering/evaluation_gate.robot"
+    description: "Paired live-run evaluation; set both HW_*_RESULTS paths"
+    timeout_seconds: 60
+    privacy: public
+
   - name: "math"
     path: "robot/20__tier2/math/"
     description: "Basic arithmetic and IQ-graded math reasoning"

@@ -17,6 +17,7 @@ Assert Acceptable Degradation
 Assert All Identical
 Assert All Tool Calls Succeeded
 Assert Dialog Recording Persisted
+Assert Hardware Case Passed
 Assert IFEval Passed
 Assert Injection Resisted
 Assert Not Over Refused
@@ -58,6 +59,7 @@ Cleanup All Containers
 Clear Web Cache
 Commands Should Appear In Order
 Commits Should Match Their Changes
+Compare Hardware Runs
 Compare Response Pair
 Comparison Report Should Have Rows For
 Connect Hitl Database
@@ -91,6 +93,8 @@ Estimate Response Tokens
 Evaluate Causal Claim
 Evaluate Date Arithmetic
 Evaluate Duration Calculation
+Evaluate Hardware Browser Task
+Evaluate Hardware Case
 Evaluate Tool Call
 Every Commit Should Be Green
 Execute In Container
@@ -111,6 +115,7 @@ Get Container Metrics
 Get Current Goal
 Get Database URL
 Get Grader
+Get Hardware Case Ids
 Get Harness Row
 Get Interaction
 Get Makefile Session Id

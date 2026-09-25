@@ -42,7 +42,7 @@ VAR_BASE    = --variable SESSION_ID:$(SESSION_ID)
 LLM_VARS    = $(VAR_BASE)
 AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown-harness)
 
-.PHONY: help install update \
+.PHONY: help install update robot-hardware robot-hardware-context robot-hardware-browser hardware-evaluation-gate \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review robot-gold robot-platinum gold-check \
         robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
@@ -96,6 +96,18 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 #   make robot ARGS="--include axis:harness"
 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
+
+robot-hardware: ## Public hardware design/review evals (opt-in HW_EVAL_LIVE=1)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-engineering) $(LISTENER) $(call LLM_META,hardware-engineering) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/hardware.robot
+
+robot-hardware-context: ## Long hardware context matrix (opt-in HW_CONTEXT_SWEEP=1)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-context) $(LISTENER) $(call LLM_META,hardware-context) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/context.robot
+
+robot-hardware-browser: ## Model-driven local browser tasks (requires playwright extra)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-computer-use) $(LISTENER) $(call LLM_META,hardware-computer-use) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/computer_use.robot
+
+hardware-evaluation-gate: ## Compare HW_BASELINE_RESULTS and HW_CANDIDATE_RESULTS; no deployment
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-evaluation-gate) $(LISTENER) $(call LLM_META,hardware-evaluation-gate) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/evaluation_gate.robot
 
 robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,math) $(call LLM_META,math) $(LLM_VARS) $(LISTENER) $(ARGS) robot/20__tier2/math/
