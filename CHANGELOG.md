@@ -40,6 +40,8 @@ Provenance notes:
 
 - The approval-expiry test now uses an injected clock rather than racing a
   50 ms wall-clock deadline. Production approval behavior is unchanged.
+- Keep the optional SQLAlchemy dependency on the 2.0 line while mypy is pinned
+  to 1.10; SQLAlchemy 2.1 type directives otherwise break fresh-install CI.
 
 ## [1.30.0] — Unreleased
 

@@ -58,7 +58,8 @@ playwright = [
     "markdownify>=0.14.1",
 ]
 superset = [
-    "sqlalchemy>=2.0",
+    # SQLAlchemy 2.1's type directives require a newer mypy than our 1.10 pin.
+    "sqlalchemy>=2.0,<2.1",
     "psycopg2-binary>=2.9",
 ]
 swebench = [
