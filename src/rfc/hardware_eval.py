@@ -303,6 +303,62 @@ def score_answer(case: dict[str, Any], answer: Any) -> dict[str, Any]:
     }
 
 
+def verify_token_usage(
+    local_tokens: int | None,
+    metrics: dict[str, Any],
+    context_limit: int,
+    output_limit: int,
+) -> bool:
+    """Conservatively reject missing usage, possible truncation and output caps.
+
+    Server input usage includes its chat wrapper; it must not be smaller than
+    exact local prompt-text tokens. Providers with incompatible/cache-only
+    counters remain unverified rather than silently passing the gate.
+    """
+    prompt = metrics.get("prompt_eval_count")
+    output = metrics.get("eval_count")
+    return bool(
+        type(context_limit) is int
+        and type(output_limit) is int
+        and output_limit > 0
+        and type(local_tokens) is int
+        and metrics.get("finish_reason") == "stop"
+        and local_tokens > 0
+        and type(prompt) is int
+        and prompt >= local_tokens
+        and type(output) is int
+        and 0 < output < output_limit
+        and context_limit > 0
+        and prompt + output_limit <= context_limit
+    )
+
+
+def verified_call_accounting(row: dict[str, Any]) -> bool:
+    """Recheck recorded usage instead of trusting an imported verification flag."""
+    calls = row.get("calls")
+    sampling = row.get("sampling")
+    limit = row.get("context_tokens") or row.get("effective_context_tokens")
+    output_limit = sampling.get("max_tokens") if isinstance(sampling, dict) else None
+    return (
+        type(limit) is int
+        and type(output_limit) is int
+        and isinstance(calls, list)
+        and bool(calls)
+        and all(
+            isinstance(call, dict)
+            and call.get("token_count_verified") is True
+            and isinstance(call.get("server_metrics"), dict)
+            and verify_token_usage(
+                call.get("local_input_tokens"),
+                call["server_metrics"],
+                limit,
+                output_limit,
+            )
+            for call in calls
+        )
+    )
+
+
 def complete_runtime(runtime: Any) -> bool:
     """Require explicit serving settings; two equally incomplete rows cannot qualify."""
     return (
@@ -579,6 +635,7 @@ def compare_runs(
                 or not runtime_complete
                 or not checks_complete
                 or not sampling_complete
+                or not verified_call_accounting(row)
                 or not scores_match_checks
                 or not critical_matches
                 or not pass_matches

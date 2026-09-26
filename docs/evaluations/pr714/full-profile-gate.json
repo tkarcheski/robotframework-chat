@@ -8,5 +8,5 @@
   ],
   "paired_cases": 0,
   "profile_sha256": "8831527702469249e4f701dbeff367e5240561079d854a5c22d329bd66d1c736",
-  "scope": "Historical combined profile: coordinates covered, but mixed harness revisions and missing explicit JSON-constraint and complete serving metadata prevent current gate eligibility. A uniform-revision rerun is pending; original scores and metadata are unchanged."
+  "scope": "Historical combined profile: coordinates covered, but mixed harness revisions and missing explicit JSON-constraint and complete serving/completion metadata prevent current gate eligibility. A uniform-revision rerun is pending; original scores and metadata are unchanged."
 }

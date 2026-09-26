@@ -274,6 +274,17 @@ def row(case_id="a", **overrides):
         "unsafe_actions": 0,
         "schema_valid": True,
         "token_count_verified": True,
+        "calls": [
+            {
+                "local_input_tokens": 100,
+                "server_metrics": {
+                    "prompt_eval_count": 112,
+                    "eval_count": 20,
+                    "finish_reason": "stop",
+                },
+                "token_count_verified": True,
+            }
+        ],
     }
     result.update(overrides)
     if "sampling" not in overrides:

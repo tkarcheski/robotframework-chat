@@ -710,3 +710,35 @@ def test_matching_incomplete_serving_settings_cannot_qualify(field, bad):
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
     del old["runtime_manifest"][field]
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("output_limit", [16384, 20000])
+def test_matching_output_budget_exceeding_context_is_incomplete(output_limit):
+    old = row()
+    old["sampling"]["max_tokens"] = output_limit
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_every_browser_call_must_fit_prompt_plus_reserved_output():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row("a:browser", sources_observed=True, report_saved=True, accuracy=1.0)
+    required = {("a:browser", 16384, "middle", 0)}
+
+    def verdict():
+        return compare_paired(
+            [old], [copy.deepcopy(old)], required, synthetic_benchmark()
+        )["verdict"]
+
+    second = copy.deepcopy(old["calls"][0])
+    second["server_metrics"]["prompt_eval_count"] = 16384 - 2048 + 1
+    old["calls"].append(second)
+    assert verdict() == "incomplete"
+    second["server_metrics"]["prompt_eval_count"] -= 1
+    assert verdict() == "eligible"
+
+
+@pytest.mark.parametrize("calls", [None, [], {}, [None], [{}]])
+def test_verification_flag_without_call_accounting_cannot_qualify(calls):
+    old = row(calls=calls)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"

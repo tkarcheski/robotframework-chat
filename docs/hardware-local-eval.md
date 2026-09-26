@@ -292,3 +292,10 @@ creating output directories.
 Grader `hardware-v2` requires the declared top-level explanation string as well
 as the answer list. Its contents remain subject to human review, not a prose
 quality score. Legacy scores retain their original grader identity.
+
+The comparison rechecks every recorded call with the same token-usage verifier
+used during inference: positive local/server input usage, a normal stop below
+the output cap, and server prompt tokens plus the reserved output budget within
+the configured context. An imported `token_count_verified: true` flag alone
+cannot establish this. Browser turns are checked individually; missing call
+usage remains incomplete evidence.

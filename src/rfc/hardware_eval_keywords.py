@@ -31,6 +31,7 @@ from .hardware_eval import (
     load_benchmark,
     parse_answer,
     score_answer,
+    verify_token_usage,
 )
 from .llm_client import create_provider, unwrap_provider
 from .openai_client import OpenAIClient
@@ -110,33 +111,6 @@ def token_counter(path: str) -> tuple[Callable[[str], int] | None, str]:
     return lambda text: len(
         tokenizer.encode(text, add_special_tokens=False).ids
     ), identity
-
-
-def verify_token_usage(
-    local_tokens: int | None,
-    metrics: dict[str, Any],
-    context_limit: int,
-    output_limit: int,
-) -> bool:
-    """Conservatively reject missing usage, possible truncation and output caps.
-
-    Server input usage includes its chat wrapper; it must not be smaller than
-    exact local prompt-text tokens. Providers with incompatible/cache-only
-    counters remain unverified rather than silently passing the gate.
-    """
-    prompt = metrics.get("prompt_eval_count")
-    output = metrics.get("eval_count")
-    return bool(
-        type(local_tokens) is int
-        and metrics.get("finish_reason") == "stop"
-        and local_tokens > 0
-        and type(prompt) is int
-        and prompt >= local_tokens
-        and type(output) is int
-        and 0 < output < output_limit
-        and context_limit > 0
-        and prompt + output_limit <= context_limit
-    )
 
 
 class HardwareEvalKeywords:
