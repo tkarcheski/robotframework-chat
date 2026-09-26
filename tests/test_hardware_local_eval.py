@@ -10,6 +10,7 @@ from scripts.hardware_local_eval import (
     allocated_context,
     command,
     expected_coordinates,
+    managed_environment,
     terminate,
     verify_coverage,
 )
@@ -62,6 +63,16 @@ def test_decimal_million_budget_has_explicit_native_allocation_padding():
     assert allocated_context(1000000) == 1000192
     assert allocated_context(262144) == 262144
     assert cmd[cmd.index("--ctx-size") + 1] == "1000192"
+
+
+def test_managed_memory_is_explicit_and_never_mutates_parent_environment():
+    inherited = {"GGML_CUDA_ENABLE_UNIFIED_MEMORY": "1", "EXAMPLE": "retained"}
+    plain = managed_environment(False, inherited)
+    managed = managed_environment(True, {"EXAMPLE": "retained"})
+    assert "GGML_CUDA_ENABLE_UNIFIED_MEMORY" not in plain
+    assert managed["GGML_CUDA_ENABLE_UNIFIED_MEMORY"] == "1"
+    assert plain["EXAMPLE"] == managed["EXAMPLE"] == "retained"
+    assert inherited["GGML_CUDA_ENABLE_UNIFIED_MEMORY"] == "1"
 
 
 def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():

@@ -8,6 +8,7 @@ or interpretation of allocation success as long-context model quality.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import datetime
 import hashlib
 import json
@@ -184,6 +185,32 @@ def allocated_context(context):
     return ((context + 255) // 256) * 256
 
 
+def managed_environment(enabled, inherited):
+    """Scope CUDA managed allocation to the child, with no ambient opt-in."""
+    env = dict(inherited)
+    key = "GGML_CUDA_ENABLE_UNIFIED_MEMORY"
+    if enabled:
+        env[key] = "1"
+    else:
+        env.pop(key, None)
+    return env
+
+
+def managed_capabilities():
+    driver = ctypes.CDLL("libcuda.so.1")
+    if driver.cuInit(0) != 0:
+        raise RuntimeError("CUDA driver initialization failed")
+    result = {}
+    # CUDA driver enums from cuda.h; device 0 is also the runner's single GPU.
+    for name, attribute in (("managed_memory", 83), ("concurrent_managed_access", 89)):
+        value = ctypes.c_int()
+        status = driver.cuDeviceGetAttribute(ctypes.byref(value), attribute, 0)
+        result[name] = {"status": status, "value": value.value}
+        if status != 0 or value.value != 1:
+            raise RuntimeError(f"CUDA device does not support {name}")
+    return result
+
+
 def command(args, model, context):
     cmd = [
         args.server,
@@ -296,6 +323,8 @@ def run_cell(args, model, context, version):
     }
     if args.constrain_json:
         runtime["output_constraint"] = {"type": "object"}
+    if args.unified_memory:
+        runtime["cuda_managed_memory"] = True
     manifest = {
         "model": model,
         "context": context,
@@ -309,9 +338,11 @@ def run_cell(args, model, context, version):
         "status": "starting",
         "suites": {},
     }
+    if args.unified_memory:
+        manifest["managed_memory_capabilities"] = managed_capabilities()
     path = folder / "manifest.json"
     path.write_text(json.dumps(manifest, indent=2))
-    env = os.environ.copy()
+    env = managed_environment(args.unified_memory, os.environ)
     env.update(
         {
             "PYTHONPATH": str(ROOT / "src"),
@@ -506,6 +537,11 @@ def main():
     parser.add_argument("--cpu-ffn-layers", type=int, default=0)
     parser.add_argument("--cpu-moe-layers", type=int, default=0)
     parser.add_argument(
+        "--unified-memory",
+        action="store_true",
+        help="Request process-scoped CUDA managed allocations; separate matched experiment",
+    )
+    parser.add_argument(
         "--constrain-json",
         action="store_true",
         help="Constrain native decoding to a JSON object; treat as a separate matched experiment",
@@ -537,7 +573,19 @@ def main():
     if not args.execute:
         print(
             json.dumps(
-                [command(args, m, c) for c in args.contexts for m in models], indent=2
+                [
+                    {
+                        "context_budget": c,
+                        "allocated_context": allocated_context(c),
+                        "command": command(args, m, c),
+                        "managed_memory": args.unified_memory,
+                        "request_json_constraint": args.constrain_json,
+                        "output_tokens": args.output_tokens,
+                    }
+                    for c in args.contexts
+                    for m in models
+                ],
+                indent=2,
             )
         )
         return

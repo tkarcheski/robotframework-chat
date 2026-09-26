@@ -159,3 +159,23 @@ this llama.cpp build. The context-suite coordinate still sizes the input pack.
 For example, the 1,000,000-token budget requests a 1,000,192-token server
 allocation, verifies that exact served value, and records it as effective context.
 No context reduction or eviction is enabled.
+
+### CUDA managed allocation for larger capacity probes
+
+`--unified-memory` explicitly sets `GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` only in the
+owned child process. The runner checks CUDA managed-memory and concurrent-access
+capabilities, records them with the runtime factor, and keeps its available-RAM
+reserve checks active. Without this flag it removes an inherited opt-in from the
+child, so an ambient setting cannot silently change the experiment. No system VM,
+swap, service, or other process configuration is changed.
+
+The installed native backend uses `cudaMallocManaged` on this path; the local
+RTX 4090 reports both required capabilities. This permits a separate capacity
+experiment where CUDA can migrate pages between device and system memory.
+It does not establish usable latency, correct long-context answers, or completed
+inference. Run a matched smaller-context bridge before interpreting a larger
+managed-memory result. Keep quantization, allocation mode, and CPU placement
+explicit when comparing arms.
+
+Dry plans include the command, test budget, rounded allocation, output budget,
+JSON-constraint setting and managed-memory setting; they do not launch a server.
