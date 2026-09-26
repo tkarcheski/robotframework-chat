@@ -94,6 +94,12 @@ def test_omitted_check_maps_cannot_pass():
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
 
 
+@pytest.mark.parametrize("flag", ["false", "true", 1])
+def test_token_verification_requires_boolean_true(flag):
+    old = row(token_count_verified=flag)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
 def test_partial_question_coverage_cannot_pass():
     old = row()
     new = copy.deepcopy(old)

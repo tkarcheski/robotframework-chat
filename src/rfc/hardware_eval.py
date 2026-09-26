@@ -369,7 +369,7 @@ def compare_runs(
                 row.get("status") != "completed"
                 or row.get("live") is not True
                 or not row.get("model_digest")
-                or not row.get("token_count_verified")
+                or row.get("token_count_verified") is not True
                 or not runtime_complete
                 or not checks_complete
                 or not row.get("weights_format")

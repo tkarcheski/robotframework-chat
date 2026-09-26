@@ -60,6 +60,22 @@ actual input tokens on both tokenizers. They are not full-length input figures.
 Larger contexts and follow-up product/browser experiments are still being
 evaluated. No 1M inference claim is made in this checkpoint.
 
+## Complete original required profile
+
+The independent profile is now complete: **102 token-verified rows per model**
+(54 short, 12 browser, 36 repeated 16K context). Qwen3.6 passed 39/102 rows;
+Qwen3.8 passed 63/102. The paired gate is nevertheless **blocked**: the candidate
+has remaining question regressions and critical/schema failures. Aggregate pass
+counts do not establish replacement eligibility. [Full gate result](full-profile-gate.json).
+
+The repeated context arm used 4096 output tokens: both models retained 100% fact
+accuracy, while mean exact-citation accuracy was 14.58% for Qwen3.6 and 83.33% for
+Qwen3.8. Full passes were 3/36 versus 24/36. The citation delta's case-cluster
+interval is [31.25, 100.00] percentage points across only three task clusters.
+[Repeated-context details](context-16k-three-trial-summary.json). This remains a
+narrow evidence-selection finding. Each paired coordinate has matching settings;
+short and browser/context suites use their separately reported output budgets.
+
 ## Model-driven browser tasks at 16K allocation
 
 All four tasks ran three trials per model with a 4096-token output budget. All
