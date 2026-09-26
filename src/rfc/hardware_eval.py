@@ -95,9 +95,18 @@ def document_text(doc: dict[str, Any]) -> str:
     )
 
 
+def browser_document_text(doc: dict[str, Any]) -> str:
+    """Expected markdown from the sandbox's fixed document page."""
+    return (
+        "Hardware evaluation sandbox[Catalog](/) | [Report](/report)\n\n```\n"
+        + document_text(doc)
+        + "```"
+    )
+
+
 def complete_document_observation(doc: dict[str, Any], output: str) -> bool:
-    """Require the entire trusted source block within the browser's wrapper."""
-    return document_text(doc).rstrip("\n") in output
+    """Require the whole trusted page, allowing only outer whitespace changes."""
+    return output.strip() == browser_document_text(doc).strip()
 
 
 def _distractor(index: int, seed: int) -> str:

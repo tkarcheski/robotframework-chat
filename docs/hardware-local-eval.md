@@ -339,9 +339,12 @@ digest and each call digest. A completed final answer requires one more call
 than the action trace; other terminal outcomes retain one trace entry per call.
 The gate also replays trace observations through the sandbox allowlist and page
 state: a document is observed only after a successful read on that document
-whose output contains the entire trusted source block (metadata, body and closing
-marker). A document ID alone or an altered/truncated body cannot establish a
-read. The live tracker uses the same check. Typing replaces the report field, and a successful Save records that text.
+whose entire output matches the sandbox's fixed markdown page, including its
+navigation wrapper and trusted source block (metadata, body and closing marker).
+Only outer whitespace is normalized. Added instructions, an altered wrapper,
+a document ID alone, or an altered/truncated body cannot establish a read. The
+live tracker uses the same check. Typing replaces the report field, and a
+successful Save records that text.
 Navigation resets report state. The derived read/save flags, observed document
 list, action/error counts and terminal status must agree with the row, and the
 saved JSON must match its final answer. This checks internal artifact consistency;

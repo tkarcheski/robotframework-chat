@@ -13,7 +13,7 @@ from rfc.hardware_eval import (
     browser_task_prompt,
     browser_history_prompt,
     digest,
-    document_text,
+    browser_document_text,
     build_pack,
     compare_runs as _compare_paired,
     load_benchmark,
@@ -384,7 +384,7 @@ def row(case_id="a", benchmark_fixture=None, **overrides):
             action(
                 "browser_read_markdown",
                 {},
-                document_text(benchmark["documents"][doc_id]),
+                browser_document_text(benchmark["documents"][doc_id]),
             )
         if result.get("report_saved") is True:
             action("browser_new_page", {"url": "sandbox:/report"})
