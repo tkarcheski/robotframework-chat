@@ -37,9 +37,9 @@ failed the strict exact evidence-set rubric. Do not interpret that as a factual
 engineering error. Per-case values and uncertainty are in
 [short-4k-summary.json](short-4k-summary.json).
 
-## First context exploration at 4K allocation
+## Initial context exploration: 4K, 8K and 16K
 
-Three original cases × four evidence positions × one trial, on each model:
+Three original cases × four evidence positions × one trial, on each model, at each allocation. The 4K and 8K results were identical:
 
 | Measure | Qwen3.6-35B-A3B | Qwen3.8-27B |
 |---|---:|---:|
@@ -47,12 +47,12 @@ Three original cases × four evidence positions × one trial, on each model:
 | Mean fact accuracy | 100% | 100% |
 | Mean exact evidence-set accuracy | 22.92% | 83.33% |
 
-All 24 rows completed with verified token counts. The difference is **citation
+All 72 rows across the three allocations completed with verified token counts. At 16K, fact accuracy remained 100% on both models. Qwen3.6 citation accuracy fell to 8.33% (1/12 full passes); Qwen3.8 remained at 83.33% (8/12). The difference is **citation
 selection under distractors**, not factual-answer accuracy. The citation delta
 is +60.42 points, with a [31.25, 75.00] case-cluster bootstrap interval, but there
 are only **three independent task clusters**. This exploratory result is narrow;
 it does not establish general model superiority or full-profile eligibility.
-Details: [context-4k-summary.json](context-4k-summary.json).
+Details: [4K](context-4k-summary.json), [8K](context-8k-summary.json), and [16K](context-16k-summary.json).
 
 The 4K context figure is a total allocation with output/wrapper reserve, not a
 4,096-token input. Exact actual token counts remain in the raw result rows.

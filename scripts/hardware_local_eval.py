@@ -20,7 +20,61 @@ import sys
 import time
 import urllib.request
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def expected_coordinates(args, suite, context):
+    """Derive required coverage independently of whatever Robot manages to write."""
+    root = ROOT / "robot/10__tier1/hardware_engineering/fixtures"
+    if args.trials < 1:
+        raise ValueError("At least one trial is required")
+    if suite == "context":
+        known = {
+            c["id"] for c in yaml.safe_load((root / "cases.yaml").read_text())["cases"]
+        }
+        cases = sorted(known) if args.cases == "all" else args.cases.split(",")
+        positions = args.positions.split(",")
+        if not set(cases) <= known or len(set(cases)) != len(cases):
+            raise ValueError("Unknown or duplicate context cases")
+        if not set(positions) <= {"start", "middle", "end", "spread"} or len(
+            set(positions)
+        ) != len(positions):
+            raise ValueError("Unknown or duplicate evidence positions")
+        return {
+            (case, context, position, trial)
+            for case in cases
+            for position in positions
+            for trial in range(args.trials)
+        }
+    if suite == "product":
+        root /= "product"
+    profile = yaml.safe_load((root / "gate_profile.yaml").read_text())
+    mode = "browser" if suite == "browser" else "text"
+    groups = [
+        g for g in profile["groups"] if g["mode"] == mode and g["contexts"] == [0]
+    ]
+    if not groups:
+        raise ValueError(f"No independent coverage profile for {suite}")
+    return {
+        (case + (":browser" if mode == "browser" else ""), 0, position, trial)
+        for group in groups
+        for case in group["cases"]
+        for position in group["positions"]
+        for trial in range(args.trials)
+    }
+
+
+def verify_coverage(rows, required):
+    coordinates = [
+        (r.get("case_id"), r.get("context_tokens"), r.get("position"), r.get("trial"))
+        for r in rows
+    ]
+    if len(coordinates) != len(set(coordinates)) or set(coordinates) != required:
+        raise RuntimeError(
+            "Incomplete suite coverage: missing, unexpected or duplicate coordinates"
+        )
 
 
 def api(base, route):
@@ -106,6 +160,12 @@ def command(args, model, context):
         "-lv",
         "4",
     ]
+    if args.kv_placement == "cpu":
+        cmd += ["--no-kv-offload"]
+    if args.cpu_ffn_layers:
+        cmd += ["--n-cpu-ffn", str(args.cpu_ffn_layers)]
+    if args.cpu_moe_layers:
+        cmd += ["--n-cpu-moe", str(args.cpu_moe_layers)]
     native_context = model["native_context"]
     if context > native_context:
         cmd += [
@@ -153,6 +213,9 @@ def run_cell(args, model, context, version):
         else f"yarn-{math.ceil(context / model['native_context'])}",
         "kv_cache_dtype": args.kv,
         "gpu_layers": args.gpu_layers,
+        "kv_placement": args.kv_placement,
+        "cpu_ffn_layers": args.cpu_ffn_layers,
+        "cpu_moe_layers": args.cpu_moe_layers,
         "parallel": 1,
         "n_batch": 512,
         "n_ubatch": 128,
@@ -256,6 +319,7 @@ def run_cell(args, model, context, version):
             manifest["status"] = "running"
             path.write_text(json.dumps(manifest, indent=2))
             for suite in args.suites:
+                required = expected_coordinates(args, suite, context)
                 suite_path = {
                     "short": "hardware.robot",
                     "product": "product.robot",
@@ -327,6 +391,7 @@ def run_cell(args, model, context, version):
                     ),
                     flush=True,
                 )
+                verify_coverage(rows, required)
                 if not rows or any(r["status"] != "completed" for r in rows):
                     raise RuntimeError(
                         "Incomplete suite; inspect archived rows before expanding sweep"
@@ -367,6 +432,9 @@ def main():
     )
     parser.add_argument("--gpu-layers", type=int, default=999)
     parser.add_argument("--kv", default="f16", choices=["f16", "q8_0", "q4_0"])
+    parser.add_argument("--kv-placement", choices=["gpu", "cpu"], default="gpu")
+    parser.add_argument("--cpu-ffn-layers", type=int, default=0)
+    parser.add_argument("--cpu-moe-layers", type=int, default=0)
     parser.add_argument("--port", type=int, default=8892)
     parser.add_argument("--min-ram-gib", type=int, default=24)
     parser.add_argument("--min-free-gpu-mib", type=int, default=20000)
@@ -378,6 +446,9 @@ def main():
     args.output = args.output.resolve()
     args.reference_tokenizer = args.reference_tokenizer.resolve()
     models = json.loads(args.models.read_text())
+    for context in args.contexts:
+        for suite in args.suites:
+            expected_coordinates(args, suite, context)
     if not args.execute:
         print(
             json.dumps(

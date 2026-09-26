@@ -70,8 +70,11 @@ The default context subset has three cases and four evidence positions. Increase
 trials to three for the checked-in 16K gate profile. Browser history needs a
 larger allocation than a short task; test it separately at 16K or above. Continue
 32K → 64K → 128K → 262K → 524K → 1M only after checking capacity, token accounting,
-answers and resource usage at the preceding step. `--kv` and `--gpu-layers` expose
-separate memory factors; changing them requires matched arms and a fresh output.
+answers and resource usage at the preceding step. `--kv`, `--gpu-layers`,
+`--kv-placement`, `--cpu-ffn-layers` and `--cpu-moe-layers` expose separate
+cache/weight placement factors; changing them requires matched arms and a fresh
+output. Requested case/position/trial coverage is checked against an independent
+profile before a cell can complete; a nonempty partial result file cannot pass.
 
 Each model/context directory preserves its command, runtime manifest, served
 context properties, GPU allocation, model-load time, Robot artifacts, model
