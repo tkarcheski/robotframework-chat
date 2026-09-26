@@ -109,3 +109,22 @@ negative and infrastructure controls unless there is evidence they no longer
 serve that purpose. Mark `skip:low-value` only after examining multiple model
 arms and context conditions, and state the evidence/replacement. Do not retune
 answers, discard failures, or select tasks to force a preferred model to win.
+
+### Input allocation and output budget
+
+`HW_MAX_CONTEXT` is the declared server allocation and is archived as
+`effective_context_tokens`. A smaller context sweep coordinate sizes its input
+package; it does not resize an OpenAI-compatible server. The runner verifies the
+native server allocation before each cell. Transports supporting per-request
+context receive that same declared allocation.
+
+`--output-tokens` (default 2048) sets `HW_OUTPUT_TOKENS`, the request limit and
+reserved output space; it is recorded in each row's held-fixed sampling metadata.
+Use a fresh paired run when changing this limit. An output hitting the limit
+remains unverified and stops expansion, even if its partial text looks correct.
+
+The first 16K product pilot reached the 2048-token output limit on six Qwen3.8
+responses and stopped before its second model arm or browser tests. It is archived
+under `results/pr714/product-browser-16k/` and is not a paired comparison. A fresh
+product run uses a 4096-token output budget. Leading prose outside the requested
+JSON remains a schema failure; we do not repair model output for the gate.

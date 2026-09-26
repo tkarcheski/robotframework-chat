@@ -91,6 +91,9 @@ class HardwareEvalKeywords:
         self.output = Path(output) if output else None
         self.client = client
         self.injected = client is not None
+        self.output_reserve = int(os.getenv("HW_OUTPUT_TOKENS", str(OUTPUT_RESERVE)))
+        if self.output_reserve < 1:
+            raise ValueError("HW_OUTPUT_TOKENS must be positive")
 
     def _output(self) -> Path:
         if self.output is None:
@@ -139,7 +142,7 @@ class HardwareEvalKeywords:
             "sampling": {
                 "temperature": 0.0,
                 "seed": trial,
-                "max_tokens": OUTPUT_RESERVE,
+                "max_tokens": self.output_reserve,
             },
             "reference_tokenizer": "",
             "model_tokenizer": "",
@@ -176,7 +179,7 @@ class HardwareEvalKeywords:
         if self.client is None:
             self.client = create_provider(
                 temperature=0.0,
-                max_tokens=OUTPUT_RESERVE,
+                max_tokens=self.output_reserve,
                 max_retries=0,
                 response_format="json",
             )
@@ -223,7 +226,11 @@ class HardwareEvalKeywords:
         browser: Any = None
         try:
             cap = int(os.getenv("HW_MAX_CONTEXT", "0"))
-            row["effective_context_tokens"] = context or cap
+            # The sweep coordinate sizes the input package. HW_MAX_CONTEXT
+            # declares the server allocation, also requested from transports
+            # that support per-request context. OpenAI-compatible servers ignore
+            # num_ctx, so never pretend the input coordinate resized them.
+            row["effective_context_tokens"] = cap
             if context and (not cap or context > cap):
                 row["status"] = "unsupported_context"
                 raise RFCSkipError(
@@ -236,7 +243,7 @@ class HardwareEvalKeywords:
             # Keep generation wrapped, but configure the actual request client.
             request_client = unwrap_provider(self.client)
             request_client.seed = trial
-            request_client.num_ctx = context or cap or None
+            request_client.num_ctx = cap or None
             reference_count, row["reference_tokenizer"] = token_counter(
                 os.getenv("HW_REFERENCE_TOKENIZER", "")
             )
@@ -264,6 +271,7 @@ class HardwareEvalKeywords:
                     counter=reference_count,
                     position=position,
                     seed=trial,
+                    output_reserve=self.output_reserve,
                 )
                 prompt = pack.pop("prompt")
                 row.update(pack)
@@ -278,7 +286,7 @@ class HardwareEvalKeywords:
                 if (
                     local is not None
                     and cap
-                    and local + OUTPUT_RESERVE + 256 > (context or cap)
+                    and local + self.output_reserve + 256 > (context or cap)
                 ):
                     raise RFCSkipError(
                         "Exact model token count exceeds configured context budget"
@@ -293,7 +301,7 @@ class HardwareEvalKeywords:
                         "server_metrics": metrics,
                         "latency_ms": (time.perf_counter() - call_start) * 1000,
                         "token_count_verified": verify_token_usage(
-                            local, metrics, context or cap, OUTPUT_RESERVE
+                            local, metrics, context or cap, self.output_reserve
                         ),
                     }
                 )

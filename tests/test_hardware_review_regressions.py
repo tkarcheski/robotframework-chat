@@ -35,7 +35,7 @@ def test_sampling_reaches_wrapped_transport(tmp_path, monkeypatch):
 def test_short_run_effective_context_is_held_fixed():
     assert (
         compare_runs(
-            [row(effective_context_tokens=4096)], [row(effective_context_tokens=8192)]
+            [row(effective_context_tokens=16384)], [row(effective_context_tokens=8192)]
         )["verdict"]
         == "incomplete"
     )
@@ -70,3 +70,57 @@ def test_equal_aggregate_scores_do_not_hide_question_regression():
     new["checks"]["one"]["correct"] = False
     new["checks"]["two"]["correct"] = True
     assert compare_runs([old], [new])["verdict"] == "blocked"
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [
+        None,
+        {},
+        [],
+        {"q": {}},
+        {"q": {"correct": 1, "citation_correct": True}},
+        {"q": None},
+    ],
+)
+def test_missing_or_malformed_checks_cannot_pass(checks):
+    old = row(checks=checks)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_omitted_check_maps_cannot_pass():
+    old = row()
+    del old["checks"]
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_partial_question_coverage_cannot_pass():
+    old = row()
+    new = copy.deepcopy(old)
+    del old["checks"]["q0"]
+    assert compare_runs([old], [new])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("cap", [32768, 65536])
+def test_long_pack_records_server_allocation_not_input_coordinate(
+    tmp_path, monkeypatch, cap
+):
+    from rfc.openai_client import OpenAIClient
+
+    monkeypatch.setenv("HW_MAX_CONTEXT", str(cap))
+    monkeypatch.setattr(
+        "rfc.hardware_eval_keywords.token_counter",
+        lambda path: (len, "test-character-counter"),
+    )
+    case = load_benchmark(FIXTURES)["cases"]["uno-current-budget"]
+    client = OpenAIClient(api_key="test", model="test", base_url="http://127.0.0.1")
+    monkeypatch.setattr(
+        client, "generate", lambda prompt: json.dumps(gold_answer(case))
+    )
+    lib = HardwareEvalKeywords(
+        str(FIXTURES), str(tmp_path), client=_ConsoleFeedProvider(client)
+    )
+    result = lib.evaluate_hardware_case("uno-current-budget", context_tokens=16384)
+    assert result["context_tokens"] == 16384
+    assert result["effective_context_tokens"] == cap
+    assert client.num_ctx == cap

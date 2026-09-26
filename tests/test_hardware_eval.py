@@ -229,6 +229,14 @@ def row(case_id="a", **overrides):
         "token_count_verified": True,
     }
     result.update(overrides)
+    if "checks" not in overrides:
+        result["checks"] = {
+            f"q{i}": {
+                "correct": i < result["accuracy"] * 4,
+                "citation_correct": i < result["citation_accuracy"] * 4,
+            }
+            for i in range(4)
+        }
     return result
 
 

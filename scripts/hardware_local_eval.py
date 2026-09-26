@@ -256,6 +256,7 @@ def run_cell(args, model, context, version):
             "HW_WEIGHTS_FORMAT": model["quant"],
             "HW_MAX_CONTEXT": str(context),
             "HW_TRIALS": str(args.trials),
+            "HW_OUTPUT_TOKENS": str(args.output_tokens),
             "HW_MODEL_TOKENIZER": model["tokenizer"],
             "HW_REFERENCE_TOKENIZER": str(args.reference_tokenizer),
             "HW_RUNTIME_MANIFEST": json.dumps(runtime),
@@ -425,6 +426,7 @@ def main():
         default=["short"],
     )
     parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--output-tokens", type=int, default=2048)
     parser.add_argument("--positions", default="start,middle,end,spread")
     parser.add_argument(
         "--cases",
@@ -446,6 +448,12 @@ def main():
     args.output = args.output.resolve()
     args.reference_tokenizer = args.reference_tokenizer.resolve()
     models = json.loads(args.models.read_text())
+    if args.output_tokens < 1 or any(
+        c <= args.output_tokens + 256 for c in args.contexts
+    ):
+        parser.error(
+            "Contexts must leave input space beyond the positive output budget"
+        )
     for context in args.contexts:
         for suite in args.suites:
             expected_coordinates(args, suite, context)

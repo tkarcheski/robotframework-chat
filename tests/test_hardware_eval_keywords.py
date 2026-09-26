@@ -55,6 +55,28 @@ def test_mocked_model_never_claims_live_or_deployment_evidence(tmp_path):
     assert (tmp_path / result["artifact"] / "response.txt").exists()
 
 
+def test_output_budget_is_requested_and_archived(tmp_path, monkeypatch):
+    monkeypatch.setenv("HW_OUTPUT_TOKENS", "4096")
+    monkeypatch.setenv("HW_EVAL_LIVE", "1")
+    monkeypatch.setenv("RFC_RUN_MODE", "measure")
+    monkeypatch.setenv("ANSWER_CACHE_ENABLED", "0")
+    client = MagicMock(model="test", last_metrics={})
+    client.generate.return_value = '{"answers":[]}'
+    factory = MagicMock(return_value=client)
+    monkeypatch.setattr("rfc.hardware_eval_keywords.create_provider", factory)
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path))
+    result = lib.evaluate_hardware_case("uno-current-budget")
+    assert factory.call_args.kwargs["max_tokens"] == 4096
+    assert result["sampling"]["max_tokens"] == 4096
+    assert result["output_reserve"] == 4096
+
+
+def test_nonpositive_output_budget_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("HW_OUTPUT_TOKENS", "0")
+    with pytest.raises(ValueError, match="positive"):
+        HardwareEvalKeywords(str(FIXTURES), str(tmp_path))
+
+
 def test_trial_parameters_reach_nested_provider_wrappers(tmp_path, monkeypatch):
     class ReadThroughProvider:
         """Match provider wrappers that delegate reads, not writes."""

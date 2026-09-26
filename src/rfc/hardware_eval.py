@@ -345,6 +345,21 @@ def compare_runs(
         ):
             result["reasons"].append("mixed_model_identity")
         for row in rows:
+            checks = row.get("checks")
+            checks_complete = (
+                isinstance(checks, dict)
+                and bool(checks)
+                and all(
+                    isinstance(question, str)
+                    and bool(question)
+                    and isinstance(check, dict)
+                    and all(
+                        type(check.get(field)) is bool
+                        for field in ("correct", "citation_correct")
+                    )
+                    for question, check in checks.items()
+                )
+            )
             runtime = row.get("runtime_manifest")
             runtime_complete = isinstance(runtime, dict) and all(
                 runtime.get(key)
@@ -356,6 +371,7 @@ def compare_runs(
                 or not row.get("model_digest")
                 or not row.get("token_count_verified")
                 or not runtime_complete
+                or not checks_complete
                 or not row.get("weights_format")
                 or row.get("weights_format") == "unspecified"
                 or type(row.get("effective_context_tokens")) is not int
@@ -386,6 +402,12 @@ def compare_runs(
             new = by_key[1][key]
             if any(old.get(k) != new.get(k) for k in held_fixed):
                 result["reasons"].append("comparison_coordinates_changed")
+            if (
+                isinstance(old.get("checks"), dict)
+                and isinstance(new.get("checks"), dict)
+                and old["checks"].keys() != new["checks"].keys()
+            ):
+                result["reasons"].append("question_coverage_mismatch")
     if result["reasons"]:
         result["reasons"] = sorted(set(result["reasons"]))
         return result
@@ -393,8 +415,8 @@ def compare_runs(
     regressions = []
     for key, old in by_key[0].items():
         new = by_key[1][key]
-        old_checks = old.get("checks", {})
-        new_checks = new.get("checks", {})
+        old_checks = old["checks"]
+        new_checks = new["checks"]
         question_regressed = any(
             check.get(field) is True
             and new_checks.get(question, {}).get(field) is not True
