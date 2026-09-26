@@ -43,6 +43,95 @@ def test_gpu_guard_accepts_headroom_on_every_reported_device():
     verify_gpu_headroom("100, 23000, 0\n200, 22000, 0\n", 20000)
 
 
+def test_cpu_sampling_never_invokes_nvidia_tooling(monkeypatch):
+    import os
+    from scripts import hardware_local_eval as runner
+
+    monkeypatch.setattr(runner, "capture", lambda command: pytest.fail("GPU probe"))
+    state = runner.sample(os.getpid(), include_gpu=False)
+    assert state["gpu"] is None
+    assert state["available_ram"] > 0
+    assert "process_status" in state
+
+
+def test_cpu_only_cell_starts_without_gpu_probes(tmp_path, monkeypatch):
+    from scripts import hardware_local_eval as runner
+
+    args = settings()
+    args.gpu_layers = 0
+    args.output = tmp_path
+    args.min_ram_gib = 0
+    args.min_free_gpu_mib = 20000
+    args.unified_memory = False
+    args.trials = 1
+    args.output_tokens = 2048
+    args.reference_tokenizer = tmp_path / "tokenizer.json"
+    args.cases = "all"
+    args.positions = "spread"
+    args.timeout = 60
+    args.suites = []  # Exercise startup/attestation without submitting inference.
+    model = dict(
+        name="base",
+        id="base",
+        path="base.gguf",
+        native_context=262144,
+        sha256="a" * 64,
+        quant="Q4_K_M",
+        tokenizer="tokenizer.json",
+    )
+
+    class FreePort:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def connect_ex(self, address):
+            return 1
+
+    class Server:
+        pid = 12345
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout):
+            return 0
+
+    def capture(command):
+        assert command[0] == "git", "CPU launch must not probe NVIDIA tooling"
+        return "test-revision"
+
+    def launch(command, **kwargs):
+        assert command[command.index("--device") + 1] == "none"
+        assert "--no-kv-offload" in command
+        return Server()
+
+    monkeypatch.setattr(runner.socket, "socket", lambda: FreePort())
+    monkeypatch.setattr(runner, "capture", capture)
+    monkeypatch.setattr(runner.subprocess, "Popen", launch)
+    monkeypatch.setattr(
+        runner,
+        "api",
+        lambda base, route: {
+            "/health": {"status": "ok"},
+            "/v1/models": {"data": [{"id": "base"}]},
+            "/props": {"default_generation_settings": {"n_ctx": 4096}},
+        }[route],
+    )
+    runner.run_cell(args, model, 4096, "test-version")
+    manifest = json.loads((tmp_path / "base-4096/manifest.json").read_text())
+    assert manifest["status"] == "completed"
+    assert manifest["baseline"]["gpu"] is None
+    assert manifest["gpu_processes"] is None
+    assert manifest["runtime"]["kv_placement"] == "cpu"
+    assert manifest["gpu_allocation_verification"] == "not performed: gpu_layers=0"
+
+
 @pytest.mark.parametrize("busy_second_gpu", [False, True])
 def test_owned_launch_overrides_adapter_and_checks_all_gpus(
     tmp_path, monkeypatch, busy_second_gpu
@@ -84,7 +173,7 @@ def test_owned_launch_overrides_adapter_and_checks_all_gpus(
     monkeypatch.setattr(
         runner,
         "sample",
-        lambda: {
+        lambda **kwargs: {
             "available_ram": 10 * 1024**3,
             "gpu": "100, 23000, 0\n200, "
             + ("100" if busy_second_gpu else "22000")

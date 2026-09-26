@@ -153,7 +153,7 @@ def capture(command):
     ).strip()
 
 
-def sample(pid=None):
+def sample(pid=None, *, include_gpu=True):
     memory = {
         line.split(":")[0]: int(line.split()[1]) * 1024
         for line in Path("/proc/meminfo").read_text().splitlines()
@@ -163,12 +163,16 @@ def sample(pid=None):
         "available_ram": memory["MemAvailable"],
         "swap_used": memory["SwapTotal"] - memory["SwapFree"],
     }
-    result["gpu"] = capture(
-        [
-            "nvidia-smi",
-            "--query-gpu=memory.used,memory.free,utilization.gpu",
-            "--format=csv,noheader,nounits",
-        ]
+    result["gpu"] = (
+        capture(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.used,memory.free,utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ]
+        )
+        if include_gpu
+        else None
     )
     if pid:
         try:
@@ -272,7 +276,9 @@ def command(args, model, context):
         "-lv",
         "4",
     ]
-    if args.kv_placement == "cpu":
+    if not args.gpu_layers:
+        cmd += ["--device", "none"]
+    if args.kv_placement == "cpu" or not args.gpu_layers:
         cmd += ["--no-kv-offload"]
     if args.cpu_ffn_layers:
         cmd += ["--n-cpu-ffn", str(args.cpu_ffn_layers)]
@@ -328,10 +334,11 @@ def run_cell(args, model, context, version):
             raise RuntimeError(
                 f"Port {args.port} is occupied; refusing to reuse another server"
             )
-    baseline = sample()
+    baseline = sample(include_gpu=bool(args.gpu_layers))
     if baseline["available_ram"] < args.min_ram_gib * 1024**3:
         raise RuntimeError("Insufficient RAM reserve before launch")
-    verify_gpu_headroom(baseline["gpu"], args.min_free_gpu_mib)
+    if args.gpu_layers:
+        verify_gpu_headroom(baseline["gpu"], args.min_free_gpu_mib)
     cmd = command(args, model, context)
     runtime = {
         "engine": "Unsloth native llama.cpp",
@@ -341,7 +348,7 @@ def run_cell(args, model, context, version):
         else f"yarn-{math.ceil(allocated_context(context) / model['native_context'])}",
         "kv_cache_dtype": args.kv,
         "gpu_layers": args.gpu_layers,
-        "kv_placement": args.kv_placement,
+        "kv_placement": args.kv_placement if args.gpu_layers else "cpu",
         "cpu_ffn_layers": args.cpu_ffn_layers,
         "cpu_moe_layers": args.cpu_moe_layers,
         "parallel": 1,
@@ -440,12 +447,16 @@ def run_cell(args, model, context, version):
                 )
             if not any(x["id"] == model["id"] for x in manifest["models"]["data"]):
                 raise RuntimeError("Wrong model alias served")
-            manifest["gpu_processes"] = capture(
-                [
-                    "nvidia-smi",
-                    "--query-compute-apps=pid,used_gpu_memory",
-                    "--format=csv,noheader,nounits",
-                ]
+            manifest["gpu_processes"] = (
+                capture(
+                    [
+                        "nvidia-smi",
+                        "--query-compute-apps=pid,used_gpu_memory",
+                        "--format=csv,noheader,nounits",
+                    ]
+                )
+                if args.gpu_layers
+                else None
             )
             if args.gpu_layers and not gpu_allocation_established(
                 manifest["gpu_processes"],
@@ -495,7 +506,7 @@ def run_cell(args, model, context, version):
                         run, env=env, stdout=output, stderr=subprocess.STDOUT, cwd=ROOT
                     )
                     while runner.poll() is None:
-                        state = sample(server.pid)
+                        state = sample(server.pid, include_gpu=bool(args.gpu_layers))
                         telemetry.write(json.dumps(state) + "\n")
                         telemetry.flush()
                         if state["available_ram"] < args.min_ram_gib * 1024**3:
@@ -639,6 +650,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
+    if args.unified_memory and not args.gpu_layers:
+        parser.error("CUDA managed memory requires nonzero GPU layers")
     if len(set(args.contexts)) != len(args.contexts) or len(set(args.suites)) != len(
         args.suites
     ):

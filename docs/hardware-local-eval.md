@@ -219,3 +219,7 @@ adapter identity `none`, overriding any inherited `HW_ADAPTER_ID`. Its headroom
 guard checks every GPU reported by `nvidia-smi` before launch and rejects missing
 or nonnumeric memory readings. This is conservative: devices hidden from CUDA
 are also checked, so a busy hidden device can prevent a run.
+CPU-only runs (`--gpu-layers 0`) skip GPU probes and headroom checks, force
+`--device none` and CPU KV placement, and retain RAM/process telemetry. GPU
+telemetry is recorded as null. Combining CPU-only mode with CUDA managed
+allocation is rejected before launch.
