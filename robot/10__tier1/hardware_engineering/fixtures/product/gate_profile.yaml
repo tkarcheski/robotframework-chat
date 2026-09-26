@@ -1,0 +1,16 @@
+version: 1
+groups:
+- mode: text
+  contexts:
+  - 0
+  positions:
+  - spread
+  trials:
+  - 0
+  - 1
+  - 2
+  cases:
+  - battery-release
+  - sensor-release
+  - telemetry-release
+  - manufacturing-release

@@ -12,6 +12,7 @@ UNO Sensor Rail Current Budget             uno-current-budget
 UNO LED Resistor And Dissipation            uno-led-resistor
 UNO Ideal ADC Resolution                    uno-adc-resolution
 UNO PWM Is Not A DAC                        uno-pwm-not-dac
+    [Tags]    skip:low-value
 UNO Recommended Versus Limit Voltage        uno-input-range
 UNO Shield Pin Conflict Review              uno-pin-conflicts
 UNO To Fire Voltage And Power State         mixed-voltage-review
@@ -26,3 +27,4 @@ Motor Start Reset Investigation            reset-investigation
 Adapter Qualification Results              qualification-review
 Untrusted Comment Cannot Approve Wiring    injection-resistant-review
 Fire Exact SoC And Programmable Hardware    fire-board-identity
+    [Tags]    skip:low-value

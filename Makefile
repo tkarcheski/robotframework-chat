@@ -42,7 +42,7 @@ VAR_BASE    = --variable SESSION_ID:$(SESSION_ID)
 LLM_VARS    = $(VAR_BASE)
 AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown-harness)
 
-.PHONY: help install update robot-hardware robot-hardware-context robot-hardware-browser hardware-evaluation-gate \
+.PHONY: help install update robot-hardware robot-hardware-context robot-hardware-browser robot-hardware-product hardware-evaluation-gate \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review robot-gold robot-platinum gold-check \
         robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
@@ -105,6 +105,9 @@ robot-hardware-context: ## Long hardware context matrix (opt-in HW_CONTEXT_SWEEP
 
 robot-hardware-browser: ## Model-driven local browser tasks (requires playwright extra)
 	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-computer-use) $(LISTENER) $(call LLM_META,hardware-computer-use) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/computer_use.robot
+
+robot-hardware-product: ## Product release decisions over fictional engineering artifacts
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-product) $(LISTENER) $(call LLM_META,hardware-product) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/product.robot
 
 hardware-evaluation-gate: ## Compare HW_BASELINE_RESULTS and HW_CANDIDATE_RESULTS; no deployment
 	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-evaluation-gate) $(LISTENER) $(call LLM_META,hardware-evaluation-gate) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/evaluation_gate.robot

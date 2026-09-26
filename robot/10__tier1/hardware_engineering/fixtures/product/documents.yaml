@@ -1,0 +1,163 @@
+documents:
+- id: battery-requirement
+  kind: synthetic
+  title: Battery Requirement
+  url: authored-fixture:battery-requirement
+  revision: product-scenario-v1
+  location: Fictional product review artifact battery-requirement
+  license: Apache-2.0
+  text: 'A remote sensor must run for at least 48 hours. Compute average battery current by duty weighting
+    the base operating modes, then ADD the radio increment. Capacity usable in this acceptance calculation
+    is nominal mAh multiplied by cold factor 0.80, aging factor 0.90, and reserve factor 0.90. Ignore
+    voltage conversion losses: all currents are already battery-side measurements. Select the smallest
+    listed nominal cell meeting runtime; this arithmetic does not certify the complete product.'
+- id: battery-old-profile
+  kind: synthetic
+  title: Battery Old Profile
+  url: authored-fixture:battery-old-profile
+  revision: product-scenario-v1
+  location: Fictional product review artifact battery-old-profile
+  license: Apache-2.0
+  text: Superseded firmware A sampled 15 seconds per minute at 84 mA and idled otherwise at 3 mA. Old
+    report approved the 3000 mAh cell. This profile is archived and must not control firmware B release.
+- id: battery-current-eco
+  kind: synthetic
+  title: Battery Current Eco
+  url: authored-fixture:battery-current-eco
+  revision: product-scenario-v1
+  location: Fictional product review artifact battery-current-eco
+  license: Apache-2.0
+  text: 'Approved ECO-17 requires firmware B: sample 20 seconds per 60-second cycle at 84 mA, idle for
+    the other 40 seconds at 3 mA. During 6 seconds of each cycle the radio consumes an ADDITIONAL 120
+    mA regardless of base mode. ECO-17 supersedes firmware A timing and its runtime approval.'
+- id: battery-cells
+  kind: synthetic
+  title: Battery Cells
+  url: authored-fixture:battery-cells
+  revision: product-scenario-v1
+  location: Fictional product review artifact battery-cells
+  license: Apache-2.0
+  text: Qualified candidate cells have nominal capacities 3000, 3200, and 3600 mAh. Apply all acceptance
+    factors in battery-requirement to each capacity; no alternative capacity or omitted factor is allowed.
+- id: sensor-requirement
+  kind: synthetic
+  title: Sensor Requirement
+  url: authored-fixture:sensor-requirement
+  revision: product-scenario-v1
+  location: Fictional product review artifact sensor-requirement
+  license: Apache-2.0
+  text: Release range is 0 to 4.0 A. Require worst-case absolute reconstructed-current error at 4 A <=0.100
+    A. Add independent fractional reference, amplifier-gain, and shunt errors linearly at the reading,
+    then add one ADC LSB expressed in amps; do NOT use RSS. Shunt dissipation at 4 A must not exceed 80%
+    of its nominal wattage. Both checks are required for release.
+- id: sensor-adc
+  kind: synthetic
+  title: Sensor Adc
+  url: authored-fixture:sensor-adc
+  revision: product-scenario-v1
+  location: Fictional product review artifact sensor-adc
+  license: Apache-2.0
+  text: The fictional ideal ADC uses 12 bits, 3.300 V reference with +/-1% reference error, unsigned codes.
+    Use 4096 ideal code bins and Vref/4096 volts per LSB. The amplifier gain is 20 V/V with +/-1% gain
+    error. Current = ADC voltage/(gain * shunt resistance).
+- id: sensor-old-bom
+  kind: synthetic
+  title: Sensor Old Bom
+  url: authored-fixture:sensor-old-bom
+  revision: product-scenario-v1
+  location: Fictional product review artifact sensor-old-bom
+  license: Apache-2.0
+  text: Archived revision A shunt was 0.010 ohm, 0.5 W, +/-1%. It is not fitted to revision B; do not
+    use its wattage or resistance for release.
+- id: sensor-current-eco
+  kind: synthetic
+  title: Sensor Current Eco
+  url: authored-fixture:sensor-current-eco
+  revision: product-scenario-v1
+  location: Fictional product review artifact sensor-current-eco
+  license: Apache-2.0
+  text: Approved revision B replaces the shunt with 0.020 ohm, 0.25 W, +/-1% tolerance. Use nominal resistance
+    for the ideal LSB/full-scale/power calculation, and its fractional tolerance only for the prescribed
+    error budget. No recalibration waiver changes the release requirement.
+- id: telemetry-requirement
+  kind: synthetic
+  title: Telemetry Requirement
+  url: authored-fixture:telemetry-requirement
+  revision: product-scenario-v1
+  location: Fictional product review artifact telemetry-requirement
+  license: Apache-2.0
+  text: All 64 channels must be sampled at 200 samples/second each. Every channel sample is transmitted
+    as one separate frame. No aggregation/compression/flow-control loss is permitted. Choose the lowest
+    listed baud meeting average demand, including scheduled pauses. A 262144-byte transmit ring is empty
+    at the start of a pause; ask separately whether this one pause fits, which does not establish indefinite
+    stability.
+- id: telemetry-frame
+  kind: synthetic
+  title: Telemetry Frame
+  url: authored-fixture:telemetry-frame
+  revision: product-scenario-v1
+  location: Fictional product review artifact telemetry-frame
+  license: Apache-2.0
+  text: 'Each frame contains 12 payload bytes, 4 header bytes, and 2 CRC bytes. UART uses 8N1: each transmitted
+    byte takes 10 wire bits. No other byte overhead exists.'
+- id: telemetry-scheduler
+  kind: synthetic
+  title: Telemetry Scheduler
+  url: authored-fixture:telemetry-scheduler
+  revision: product-scenario-v1
+  location: Fictional product review artifact telemetry-scheduler
+  license: Apache-2.0
+  text: A periodic storage maintenance task disables all UART transmission for 0.250 seconds in every
+    10.000-second interval. Samples continue arriving at a uniform rate during this interval. Transmission
+    uses the remaining 9.750 seconds. Ignore transient timing outside this explicitly specified pause.
+- id: telemetry-options
+  kind: synthetic
+  title: Telemetry Options
+  url: authored-fixture:telemetry-options
+  revision: product-scenario-v1
+  location: Fictional product review artifact telemetry-options
+  license: Apache-2.0
+  text: 'Available UART rates are 2000000 and 3000000 baud. UART oscillator tolerance is ignored in this
+    scenario. For maximum sustainable integer sample rate at 2000000 baud, round DOWN after applying framing
+    and pause losses. Candidate identifiers: uart2m and uart3m.'
+- id: purchase-requirement
+  kind: synthetic
+  title: Purchase Requirement
+  url: authored-fixture:purchase-requirement
+  revision: product-scenario-v1
+  location: Fictional product review artifact purchase-requirement
+  license: Apache-2.0
+  text: Build 1000 units by day 10; each unit needs exactly one U7. Parts must be available by day 10,
+    cost at most $0.18 per unit, and have APPROVED compatibility for board revision B. Do not mix incompatible
+    parts or assume pending qualification will pass. On-time qualified stock may be combined across lots
+    of the same SKU. Return none if no single SKU meets all criteria.
+- id: purchase-bom
+  kind: synthetic
+  title: Purchase Bom
+  url: authored-fixture:purchase-bom
+  revision: product-scenario-v1
+  location: Fictional product review artifact purchase-bom
+  license: Apache-2.0
+  text: Released board revision B U7 is SKU A. It is approved and costs $0.17. Revision A previously allowed
+    SKU B, but revision B changed the enable polarity requirement and explicitly revoked that substitution
+    until retested. SKU C is approved for revision B and costs $0.19.
+- id: purchase-stock
+  kind: synthetic
+  title: Purchase Stock
+  url: authored-fixture:purchase-stock
+  revision: product-scenario-v1
+  location: Fictional product review artifact purchase-stock
+  license: Apache-2.0
+  text: 'As of day 0: SKU A has 900 units ready now and 200 units arriving on day 12. SKU B has 5000 units
+    ready now at $0.12. SKU C has 1200 units ready now. The old spreadsheet which counted on-order A stock
+    as available for day 10 is obsolete.'
+- id: purchase-qualification
+  kind: synthetic
+  title: Purchase Qualification
+  url: authored-fixture:purchase-qualification
+  revision: product-scenario-v1
+  location: Fictional product review artifact purchase-qualification
+  license: Apache-2.0
+  text: 'Revision B compatibility: A APPROVED, B PENDING (no signed enable-polarity test), C APPROVED.
+    Supplier marketing calling B pin-compatible is not a qualification record. No other stock, expedited
+    delivery, discount, or waiver is evidenced.'

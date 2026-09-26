@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+"""Run the hardware Robot suites on pinned local GGUFs, one owned server at a time.
+
+Dry plan by default. No downloads, shared-service mutations, global VM tuning,
+or interpretation of allocation success as long-context model quality.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def api(base, route):
+    with urllib.request.urlopen(base + route, timeout=5) as response:
+        return json.load(response)
+
+
+def capture(command):
+    return subprocess.check_output(
+        command, text=True, stderr=subprocess.STDOUT, timeout=15
+    ).strip()
+
+
+def sample(pid=None):
+    memory = {
+        line.split(":")[0]: int(line.split()[1]) * 1024
+        for line in Path("/proc/meminfo").read_text().splitlines()
+    }
+    result = {
+        "time": time.time(),
+        "available_ram": memory["MemAvailable"],
+        "swap_used": memory["SwapTotal"] - memory["SwapFree"],
+    }
+    result["gpu"] = capture(
+        [
+            "nvidia-smi",
+            "--query-gpu=memory.used,memory.free,utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ]
+    )
+    if pid:
+        try:
+            result["process_status"] = {
+                line.split(":")[0]: line.split(":", 1)[1].strip()
+                for line in Path(f"/proc/{pid}/status").read_text().splitlines()
+                if line.startswith(("VmRSS:", "VmHWM:"))
+            }
+        except FileNotFoundError:
+            pass
+    return result
+
+
+def command(args, model, context):
+    cmd = [
+        args.server,
+        "-m",
+        model["path"],
+        "--alias",
+        model["id"],
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(args.port),
+        "--ctx-size",
+        str(context),
+        "--parallel",
+        "1",
+        "--fit",
+        "off",
+        "--n-gpu-layers",
+        str(args.gpu_layers),
+        "--flash-attn",
+        "on",
+        "--cache-type-k",
+        args.kv,
+        "--cache-type-v",
+        args.kv,
+        "--batch-size",
+        "512",
+        "--ubatch-size",
+        "128",
+        "--threads",
+        "8",
+        "--cache-ram",
+        "0",
+        "--no-context-shift",
+        "--jinja",
+        "--reasoning",
+        "off",
+        "--load-mode",
+        "mmap",
+        "--no-webui",
+        "-lv",
+        "4",
+    ]
+    native_context = model["native_context"]
+    if context > native_context:
+        cmd += [
+            "--rope-scaling",
+            "yarn",
+            "--rope-scale",
+            str(float(math.ceil(context / native_context))),
+            "--yarn-orig-ctx",
+            str(native_context),
+        ]
+    return cmd
+
+
+def terminate(process):
+    if process and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def run_cell(args, model, context, version):
+    folder = args.output / f"{model['name']}-{context}"
+    folder.mkdir(parents=True, exist_ok=False)
+    base = f"http://127.0.0.1:{args.port}"
+    with socket.socket() as check:
+        if check.connect_ex(("127.0.0.1", args.port)) == 0:
+            raise RuntimeError(
+                f"Port {args.port} is occupied; refusing to reuse another server"
+            )
+    baseline = sample()
+    if baseline["available_ram"] < args.min_ram_gib * 1024**3:
+        raise RuntimeError("Insufficient RAM reserve before launch")
+    free_gpu = float(baseline["gpu"].split(",")[1])
+    if free_gpu < args.min_free_gpu_mib:
+        raise RuntimeError("GPU is occupied; refusing to unload another workload")
+    cmd = command(args, model, context)
+    runtime = {
+        "engine": "Unsloth native llama.cpp",
+        "version": version,
+        "rope": "native"
+        if context <= model["native_context"]
+        else f"yarn-{math.ceil(context / model['native_context'])}",
+        "kv_cache_dtype": args.kv,
+        "gpu_layers": args.gpu_layers,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": False,
+        "speculation": "off",
+        "vision": False,
+        "fit": False,
+        "context_shift": False,
+        "host_prompt_cache_mib": 0,
+    }
+    manifest = {
+        "model": model,
+        "context": context,
+        "command": cmd,
+        "runtime": runtime,
+        "baseline": baseline,
+        "git": capture(["git", "rev-parse", "HEAD"]),
+        "diff_sha256": hashlib.sha256(capture(["git", "diff"]).encode()).hexdigest(),
+        "started": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "status": "starting",
+        "suites": {},
+    }
+    path = folder / "manifest.json"
+    path.write_text(json.dumps(manifest, indent=2))
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(ROOT / "src"),
+            "HW_EVAL_LIVE": "1",
+            "RFC_RUN_MODE": "measure",
+            "ANSWER_CACHE_ENABLED": "0",
+            "LLM_CONSOLE_FEED_ENABLED": "0",
+            "LLM_PROVIDER": "vllm",
+            "VLLM_BASE_URL": base + "/v1",
+            "DEFAULT_MODEL": model["id"],
+            "HW_MODEL_DIGEST": model["sha256"],
+            "HW_WEIGHTS_FORMAT": model["quant"],
+            "HW_MAX_CONTEXT": str(context),
+            "HW_TRIALS": str(args.trials),
+            "HW_MODEL_TOKENIZER": model["tokenizer"],
+            "HW_REFERENCE_TOKENIZER": str(args.reference_tokenizer),
+            "HW_RUNTIME_MANIFEST": json.dumps(runtime),
+            "HW_CONTEXT_SWEEP": "1",
+            "HW_CONTEXT_CASES": args.cases,
+            "HW_POSITIONS": args.positions,
+            "OPENAI_TIMEOUT": str(args.timeout),
+            "VLLM_API_KEY": "local-owned-server",
+        }
+    )
+    # Never inherit gateway routing or backend credentials into a local experiment.
+    for key in ("OPEN_TOLKEIN_BASE_URL", "OPENAI_API_KEY", "OLLAMA_BASE_URL"):
+        env.pop(key, None)
+    server = runner = None
+    start = time.monotonic()
+    try:
+        with (
+            (folder / "server.log").open("w") as log,
+            (folder / "telemetry.jsonl").open("w") as telemetry,
+        ):
+            server = subprocess.Popen(
+                cmd, stdout=log, stderr=subprocess.STDOUT, env=env
+            )
+            manifest["server_pid"] = server.pid
+            while True:
+                if server.poll() is not None:
+                    raise RuntimeError(
+                        f"Server exited {server.returncode}; inspect server.log"
+                    )
+                if time.monotonic() - start > 180:
+                    raise TimeoutError("Server startup deadline")
+                try:
+                    if api(base, "/health").get("status") == "ok":
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+            manifest["models"] = api(base, "/v1/models")
+            manifest["props"] = api(base, "/props")
+            served = manifest["props"]["default_generation_settings"]["n_ctx"]
+            if served != context:
+                raise RuntimeError(
+                    f"Context silently changed: requested {context}, served {served}"
+                )
+            if not any(x["id"] == model["id"] for x in manifest["models"]["data"]):
+                raise RuntimeError("Wrong model alias served")
+            manifest["gpu_processes"] = capture(
+                [
+                    "nvidia-smi",
+                    "--query-compute-apps=pid,used_gpu_memory",
+                    "--format=csv,noheader,nounits",
+                ]
+            )
+            if args.gpu_layers and not any(
+                line.split(",")[0].strip() == str(server.pid)
+                and float(line.split(",")[1]) > 1024
+                for line in manifest["gpu_processes"].splitlines()
+            ):
+                raise RuntimeError("Owned server GPU allocation not established")
+            manifest["load_seconds"] = time.monotonic() - start
+            manifest["status"] = "running"
+            path.write_text(json.dumps(manifest, indent=2))
+            for suite in args.suites:
+                suite_path = {
+                    "short": "hardware.robot",
+                    "product": "product.robot",
+                    "context": "context.robot",
+                    "browser": "computer_use.robot",
+                }[suite]
+                run = [
+                    sys.executable,
+                    "-m",
+                    "robot",
+                    "--outputdir",
+                    str(folder / suite),
+                ]
+                if suite == "context":
+                    names = {
+                        4096: "4K",
+                        8192: "8K",
+                        16384: "16K",
+                        32768: "32K",
+                        65536: "64K",
+                        131072: "128K",
+                        262144: "262K",
+                        524288: "524K",
+                        1000000: "1M",
+                    }
+                    run += ["--test", "Hardware Context " + names[context]]
+                run += [str(ROOT / "robot/10__tier1/hardware_engineering" / suite_path)]
+                with (folder / f"{suite}-console.log").open("w") as output:
+                    runner = subprocess.Popen(
+                        run, env=env, stdout=output, stderr=subprocess.STDOUT, cwd=ROOT
+                    )
+                    while runner.poll() is None:
+                        state = sample(server.pid)
+                        telemetry.write(json.dumps(state) + "\n")
+                        telemetry.flush()
+                        if state["available_ram"] < args.min_ram_gib * 1024**3:
+                            raise RuntimeError("RAM reserve reached")
+                        if time.monotonic() - start > args.cell_timeout:
+                            raise TimeoutError("Cell deadline reached")
+                        if server.poll() is not None:
+                            raise RuntimeError(
+                                "Owned model server exited during evaluation"
+                            )
+                        time.sleep(1)
+                manifest["suites"][suite] = {"robot_exit": runner.returncode}
+                evidence = folder / suite / "hardware-results.jsonl"
+                rows = (
+                    [json.loads(x) for x in evidence.read_text().splitlines()]
+                    if evidence.exists()
+                    else []
+                )
+                manifest["suites"][suite].update(
+                    {
+                        "rows": len(rows),
+                        "passed": sum(r["passed"] for r in rows),
+                        "completed": sum(r["status"] == "completed" for r in rows),
+                        "token_verified": sum(r["token_count_verified"] for r in rows),
+                    }
+                )
+                path.write_text(json.dumps(manifest, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "model": model["name"],
+                            "context": context,
+                            "suite": suite,
+                            **manifest["suites"][suite],
+                        }
+                    ),
+                    flush=True,
+                )
+                if not rows or any(r["status"] != "completed" for r in rows):
+                    raise RuntimeError(
+                        "Incomplete suite; inspect archived rows before expanding sweep"
+                    )
+                if any(not r["token_count_verified"] for r in rows):
+                    raise RuntimeError(
+                        "Unverified token accounting; do not expand context"
+                    )
+            manifest["status"] = "completed"
+    except Exception as exc:
+        manifest["status"] = "error"
+        manifest["error"] = str(exc)
+        raise
+    finally:
+        terminate(runner)
+        terminate(server)
+        manifest["elapsed_seconds"] = time.monotonic() - start
+        path.write_text(json.dumps(manifest, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--models", type=Path, required=True)
+    parser.add_argument("--server", required=True)
+    parser.add_argument("--reference-tokenizer", type=Path, required=True)
+    parser.add_argument("--contexts", type=int, nargs="+", default=[4096])
+    parser.add_argument(
+        "--suites",
+        nargs="+",
+        choices=["short", "context", "browser", "product"],
+        default=["short"],
+    )
+    parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--positions", default="start,middle,end,spread")
+    parser.add_argument(
+        "--cases",
+        default="fire-pinmux-change,mixed-voltage-review,fire-gateware-resources",
+    )
+    parser.add_argument("--gpu-layers", type=int, default=999)
+    parser.add_argument("--kv", default="f16", choices=["f16", "q8_0", "q4_0"])
+    parser.add_argument("--port", type=int, default=8892)
+    parser.add_argument("--min-ram-gib", type=int, default=24)
+    parser.add_argument("--min-free-gpu-mib", type=int, default=20000)
+    parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--cell-timeout", type=int, default=21600)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--execute", action="store_true")
+    args = parser.parse_args()
+    args.output = args.output.resolve()
+    args.reference_tokenizer = args.reference_tokenizer.resolve()
+    models = json.loads(args.models.read_text())
+    if not args.execute:
+        print(
+            json.dumps(
+                [command(args, m, c) for c in args.contexts for m in models], indent=2
+            )
+        )
+        return
+    args.output.mkdir(parents=True, exist_ok=False)
+    version = capture([args.server, "--version"])
+    for context in args.contexts:
+        for model in models:
+            run_cell(args, model, context, version)
+
+
+if __name__ == "__main__":
+    main()

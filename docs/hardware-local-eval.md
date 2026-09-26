@@ -1,0 +1,108 @@
+# Local hardware model evaluation
+
+`scripts/hardware_local_eval.py` runs the PR hardware Robot suites against one
+owned native llama.cpp process at a time. It uses local Hugging Face GGUF weights;
+it does not start Ollama, change Studio's resident model, download weights, or
+change global memory settings. Coordinate exclusive GPU ownership before running.
+
+Create a private JSON manifest (keep model files and outputs under `results/`):
+
+```json
+[
+  {
+    "name": "baseline",
+    "id": "unsloth/Qwen3.6-35B-A3B-GGUF",
+    "path": "/absolute/path/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "verified SHA256 of this file",
+    "revision": "pinned Hugging Face revision",
+    "quant": "UD-Q4_K_M",
+    "tokenizer": "/absolute/path/baseline-tokenizer.json",
+    "native_context": 262144
+  }
+]
+```
+
+Add one entry per arm. Verify the SHA256 values before executing; the manifest
+records operator-supplied identities and is not a cryptographic server attestation.
+Pin model/tokenizer revisions and keep the same reference tokenizer across arms.
+The requested context is the **total allocation**, including 2,048 output tokens
+and 256 wrapper-reserve tokens. Actual prompt counts are in each result row.
+
+Use an isolated project environment with the `hardware-eval` and `playwright`
+extras. Initialize Chromium with `rfbrowser init chromium` before browser tasks.
+Point `PLAYWRIGHT_BROWSERS_PATH` at a project-local directory during installation
+and execution when using a private browser cache.
+
+```bash
+# First print the exact server commands. Execution requires --execute.
+python scripts/hardware_local_eval.py \
+  --models results/models.json \
+  --server /absolute/path/to/unsloth/llama.cpp/build/bin/llama-server \
+  --reference-tokenizer /absolute/path/reference-tokenizer.json \
+  --contexts 4096 --suites short --trials 3 \
+  --output results/hardware-short-4k
+```
+
+For the installed Unsloth binary, both its `build/bin` directory and the installed
+NVIDIA runtime library directory may need to be in `LD_LIBRARY_PATH`. Prefer the
+binary beside its backend libraries. The runner verifies an allocation belonging
+to its own PID in `nvidia-smi`; a server that silently falls back to CPU does not
+produce a GPU benchmark.
+
+The defaults use full weight offload, f16 KV, one slot, 512/128 batches, eight
+threads, reasoning off, no speculative draft model, no vision projector, no host
+prompt cache, no automatic fit and no context shifting. The model's native
+context comes from the manifest. Above that length the command explicitly adds
+YaRN with an integer scale covering the allocation. This is an experimental
+extension setting, **not proof of quality or support at that length**.
+
+Start the context ladder after examining short-task results:
+
+```bash
+python scripts/hardware_local_eval.py \
+  --models results/models.json --server /absolute/path/to/llama-server \
+  --reference-tokenizer /absolute/path/reference-tokenizer.json \
+  --contexts 4096 8192 16384 --suites context --trials 1 \
+  --output results/hardware-context-initial --execute
+```
+
+The default context subset has three cases and four evidence positions. Increase
+trials to three for the checked-in 16K gate profile. Browser history needs a
+larger allocation than a short task; test it separately at 16K or above. Continue
+32K → 64K → 128K → 262K → 524K → 1M only after checking capacity, token accounting,
+answers and resource usage at the preceding step. `--kv` and `--gpu-layers` expose
+separate memory factors; changing them requires matched arms and a fresh output.
+
+Each model/context directory preserves its command, runtime manifest, served
+context properties, GPU allocation, model-load time, Robot artifacts, model
+prompts/responses, server log, and sampled memory telemetry. The server is stopped
+in `finally`; no unrelated process is signalled. Occupied ports, insufficient
+initial GPU headroom, RAM reserve violations, process failure, incomplete rows or
+unverified token accounting stop expansion. These guards are sampled and do not
+provide a hard cgroup memory limit. Inspect the failure before retrying in a new
+output directory. Wrong model answers remain completed failures and do not stop
+collection of the other cases.
+
+## Comparing results
+
+```bash
+python scripts/summarize_hardware_eval.py \
+  results/short/baseline-4096/short/hardware-results.jsonl \
+  results/short/candidate-4096/short/hardware-results.jsonl \
+  --output results/paired-short-summary.json
+```
+
+The summary separates fact accuracy, exact evidence-set accuracy, full-case
+passes and latency. It rejects unequal coverage, changed paired coordinates and
+incomplete/token-unverified runs. It bootstraps **case IDs**, keeping repetitions
+and positions together, because repeated greedy trials are not independent
+samples. Its practical-improvement indicator requires at least ten percentage
+points and a positive lower bound in the case-cluster bootstrap interval. This
+small public regression set cannot establish general model superiority; the
+summary does not replace the independent full-profile gate.
+
+A case that every model passes is a ceiling-effect candidate. Keep safety,
+negative and infrastructure controls unless there is evidence they no longer
+serve that purpose. Mark `skip:low-value` only after examining multiple model
+arms and context conditions, and state the evidence/replacement. Do not retune
+answers, discard failures, or select tasks to force a preferred model to win.

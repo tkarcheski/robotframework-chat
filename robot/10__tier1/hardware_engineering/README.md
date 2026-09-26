@@ -244,3 +244,26 @@ HW_BROWSER_SMOKE=1 uv run --extra playwright pytest tests/test_hardware_browser.
 Unit-test oracles are deliberately marked non-live and cannot satisfy the
 comparison gate. Run real model endpoints before drawing any model-quality
 conclusion.
+
+## Local Unsloth runs and product release tasks
+
+See [the native local runner](../../../docs/hardware-local-eval.md) for isolated
+Hugging Face/Unsloth execution, process ownership, provenance, context scaling
+and paired reporting. Run `make robot-hardware-product` for four additional
+product decisions in `fixtures/product`: battery runtime after a firmware ECO,
+current-sensor error and thermal margins, sustained UART throughput with pauses,
+and qualified component sourcing by a build deadline. These are explicitly
+fictional project artifacts with deterministic acceptance criteria; they do not
+claim physical board or real supplier validation. Their separate fixture identity
+preserves comparability of the original 18-task benchmark. Their independent
+`fixtures/product/gate_profile.yaml` requires all four cases and three trials.
+
+The short PWM lookup and board-identity lookup have `skip:low-value` tags after
+both target models answered them correctly on all three local 4K short trials.
+This is a narrow finding about discrimination between these two quantized models,
+not evidence that the knowledge is universally trivial. Safety, abstention,
+negative and injection controls remain active. Use `--skip skip:low-value` for a
+focused exploration; the original full-profile gate still requires those rows,
+so a focused run alone cannot satisfy that historical profile. Their prior
+measurements are retained in the results report. Product tasks add interacting
+constraints in place of further isolated lookups.
