@@ -439,7 +439,9 @@ def run_cell(args, model, context, version):
             ):
                 raise RuntimeError("Owned server GPU allocation not established")
             manifest["gpu_allocation_verification"] = (
-                "owned CUDA process and native GPU offload buffers; managed pages may migrate"
+                "not performed: gpu_layers=0"
+                if not args.gpu_layers
+                else "owned CUDA process and native GPU offload buffers; managed pages may migrate"
                 if args.unified_memory
                 else "owned CUDA process above 1024 MiB resident allocation"
             )

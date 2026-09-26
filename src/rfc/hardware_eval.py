@@ -344,6 +344,17 @@ def compare_runs(
             != 1
         ):
             result["reasons"].append("mixed_model_identity")
+        if (
+            len(
+                {
+                    r.get("model_tokenizer")
+                    for r in rows
+                    if isinstance(r.get("model_tokenizer"), str)
+                }
+            )
+            != 1
+        ):
+            result["reasons"].append("mixed_or_missing_model_tokenizer")
         for row in rows:
             checks = row.get("checks")
             checks_complete = (
@@ -409,7 +420,17 @@ def compare_runs(
                     isinstance(row.get(key), str)
                     and len(row[key]) == 64
                     and all(c in "0123456789abcdef" for c in row[key])
-                    for key in ("prompt_sha256", "fixture_sha256", "harness_version")
+                    for key in (
+                        "prompt_sha256",
+                        "fixture_sha256",
+                        "harness_version",
+                        "model_tokenizer",
+                        *(
+                            ("reference_tokenizer",)
+                            if row.get("context_tokens", 0)
+                            else ()
+                        ),
+                    )
                 )
                 and isinstance(row.get("grader_version"), str)
                 and bool(row["grader_version"].strip())
@@ -430,6 +451,13 @@ def compare_runs(
                 or not scores_match_checks
                 or not critical_matches
                 or not provenance_complete
+                or (
+                    str(row.get("case_id", "")).endswith(":browser")
+                    and any(
+                        type(row.get(flag)) is not bool
+                        for flag in ("passed", "sources_observed", "report_saved")
+                    )
+                )
                 or not isinstance(row.get("adapter_id"), str)
                 or not row.get("adapter_id", "").strip()
                 or not row.get("weights_format")
@@ -488,6 +516,13 @@ def compare_runs(
             or new["accuracy"] < old["accuracy"]
             or new["citation_accuracy"] < old["citation_accuracy"]
             or question_regressed
+            or (
+                str(new["case_id"]).endswith(":browser")
+                and any(
+                    new[flag] is not True
+                    for flag in ("passed", "sources_observed", "report_saved")
+                )
+            )
             or (old.get("passed") is True and new.get("passed") is not True)
             or any(
                 old.get(flag) is True and new.get(flag) is not True

@@ -357,10 +357,6 @@ class HardwareEvalKeywords:
                         json.dumps(trace, indent=2), encoding="utf-8"
                     )
                     row.update(result)
-                    if not result["passed"]:
-                        # Browser success requires final state and observations,
-                        # not just a lucky technically correct final answer.
-                        row["critical_failures"] = max(1, row["critical_failures"])
             row["calls"] = calls
             row["token_count_verified"] = bool(calls) and all(
                 c["token_count_verified"] for c in calls

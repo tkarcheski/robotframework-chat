@@ -207,7 +207,8 @@ def row(case_id="a", **overrides):
         "fixture_sha256": "b" * 64,
         "grader_version": "v1",
         "harness_version": "c" * 64,
-        "reference_tokenizer": "abc",
+        "reference_tokenizer": "d" * 64,
+        "model_tokenizer": "e" * 64,
         "sampling": {"temperature": 0.0, "seed": 0, "max_tokens": 2048},
         "runtime_manifest": {
             "engine": "vllm",

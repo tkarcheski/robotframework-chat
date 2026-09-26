@@ -224,3 +224,82 @@ def test_harness_identity_includes_transitive_module_names_and_contents(tmp_path
     assert changed != initial
     module.rename(tmp_path / "thinking.py")
     assert harness_digest(tmp_path) != changed
+
+
+@pytest.mark.parametrize("field", ["reference_tokenizer", "model_tokenizer"])
+@pytest.mark.parametrize("identity", [None, "", "not-a-hash"])
+def test_tokenizer_identities_are_required_for_long_context(field, identity):
+    old = row(**{field: identity})
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_model_tokenizer_must_be_stable_within_each_arm():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [row(trial=0), row(trial=1, model_tokenizer="f" * 64)]
+    required = {("a", 16384, "middle", trial) for trial in [0, 1]}
+    assert (
+        compare_paired(rows, copy.deepcopy(rows), required)["verdict"] == "incomplete"
+    )
+
+
+def test_distinct_models_may_use_distinct_tokenizers():
+    assert (
+        compare_runs([row()], [row(model_tokenizer="f" * 64)])["verdict"] == "eligible"
+    )
+
+
+def test_browser_workflow_failure_blocks_even_when_baseline_also_failed():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row(
+        case_id="a:browser",
+        accuracy=1.0,
+        passed=False,
+        sources_observed=True,
+        report_saved=False,
+    )
+    assert (
+        compare_paired(
+            [old], [copy.deepcopy(old)], {("a:browser", 16384, "middle", 0)}
+        )["verdict"]
+        == "blocked"
+    )
+
+
+def test_browser_row_keeps_question_failures_separate_from_workflow(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    import rfc.hardware_eval_keywords as keywords
+
+    case = load_benchmark(FIXTURES)["cases"]["uno-current-budget"]
+    grade = score_answer(case, gold_answer(case))
+    assert grade["critical_failures"] == 0
+    original_import = keywords.importlib.import_module
+    monkeypatch.setattr(
+        keywords.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(Browser=MagicMock)
+        if name == "Browser"
+        else original_import(name),
+    )
+    monkeypatch.setattr(keywords, "HardwareSandbox", MagicMock())
+    monkeypatch.setattr(
+        keywords,
+        "run_browser_agent",
+        lambda *args: {
+            **grade,
+            "passed": False,
+            "sources_observed": True,
+            "report_saved": False,
+            "unsafe_actions": 0,
+            "trace": [],
+        },
+    )
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=Mock(model="test"))
+    result = lib.evaluate_hardware_browser_task("uno-current-budget")
+    assert result["passed"] is False
+    assert result["report_saved"] is False
+    assert result["critical_failures"] == 0

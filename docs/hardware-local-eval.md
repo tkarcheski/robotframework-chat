@@ -197,3 +197,11 @@ placement documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/04-
 Total GPU/RAM telemetry and completed inference remain separate measurements.
 The initial managed pilot stopped at this old residency check before any scored
 request; its failure artifacts are retained.
+
+Each token-verified row must identify its model tokenizer by SHA256; the identity
+must remain constant within a model arm. Long-context rows also require the
+reference-tokenizer hash used to size the input. Different model arms may use
+different model tokenizers. Browser question-level critical counts remain the
+counts derived from question checks; missing evidence reads or saved reports
+block the workflow gate separately. CPU-only launches explicitly record that
+GPU allocation verification was not performed.

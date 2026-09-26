@@ -86,6 +86,29 @@ retry. Both arms used the same cache setting within each experiment; changing
 cache precision is a runtime factor, not a model-quality improvement.
 [Capacity, token counts and sampled memory](context-128k-capacity.json).
 
+## 262K with managed memory
+
+Both models completed the matched 128K managed-memory bridge, then three cases
+each at 262,144 allocated tokens. All six 262K rows are token-verified, with actual inputs of 259,772–259,827
+tokens. Qwen3.8 retained 100% factual accuracy; Qwen3.6 averaged 91.67%. In the
+final gateware resource case, Qwen3.6 incorrectly reported that simultaneous
+operation was feasible. The other two cases remained factually correct. The
+8.33-point difference has a case-cluster interval of [0, 25] points over only
+three tasks, so it does not establish a broad quality improvement. Strict full
+passes remain 0/3 for Qwen3.6 and 2/3 for Qwen3.8.
+[Paired 262K results](context-262k-managed-summary.json).
+
+This experiment explicitly enabled process-scoped CUDA managed allocation with
+Q4 KV cache. Managed buffers may migrate between GPU and host memory; full GPU
+layer offload is not a claim that every page stayed resident in VRAM. Qwen3.6
+reached the GPU's physical capacity, while available RAM remained above the
+24 GiB reserve. A read-only observation during that arm showed zram use and no
+disk-swap use; no system memory settings were changed by this evaluation.
+[The consolidated capacity ladder](context-capacity-ladder.json) includes actual
+token ranges, runtime factors, memory samples, and both failed startup attempts.
+The failed first managed pilot was a runner verification error before inference,
+not a model-quality failure. 524K and 1M inference remain outstanding here.
+
 ## What the citation gap actually measures
 
 Inspecting the responses exposed an important limitation: Qwen3.6 often cites
