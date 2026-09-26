@@ -208,7 +208,9 @@ def main() -> None:
         raise SystemExit(1)
 
     if result.return_code:
-        print(f"Merge failed (rebot exit {result.return_code}); inspect the errors above.")
+        print(
+            f"Merge failed (rebot exit {result.return_code}); inspect the errors above."
+        )
         raise SystemExit(result.return_code)
 
     print()

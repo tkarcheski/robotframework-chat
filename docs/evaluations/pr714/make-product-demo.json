@@ -1,0 +1,694 @@
+{
+  "scope": "Bounded one-trial Make demonstration of four fictional product decisions per model, frozen source f381fe9. Separate from the complete original 102-coordinate profile. The product promotion profile requires three trials; two Qwen3.6 outputs are also truncated. Do not claim complete comparable product evidence.",
+  "robot_output_dirs": {
+    "baseline": "results/1.31.0/unsloth_Qwen3.6-35B-A3B-GGUF/hardware-product/dev1/6b5ac619f2d8493088b7743f44161d22",
+    "candidate": "results/1.31.0/unsloth_Qwen3.8-27B-GGUF/hardware-product/dev1/5146244ce5b242fd8264142580f0dfdc"
+  },
+  "baseline": [
+    {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "case_id": "battery-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": false,
+      "accuracy": 0.0,
+      "citation_accuracy": 0.0,
+      "checks": {
+        "average_ma": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "old_cell_passes": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "runtime_3000_h": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "selected_mah": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "usable_3000_mah": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        }
+      },
+      "token_count_verified": false,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 23597.444899147376,
+      "artifact": "hardware-battery-release-text-0-spread-0",
+      "answer": {},
+      "calls": [
+        {
+          "local_input_tokens": 804,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 4096,
+            "eval_count": 4096,
+            "finish_reason": "length",
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 816,
+            "prompt_tokens": 816,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 4912
+          },
+          "token_count_verified": false
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "case_id": "sensor-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": true,
+      "accuracy": 0.5,
+      "citation_accuracy": 0.6666666666666666,
+      "checks": {
+        "error_a": {
+          "citation_correct": true,
+          "correct": false,
+          "critical": false
+        },
+        "full_scale_a": {
+          "citation_correct": true,
+          "correct": false,
+          "critical": false
+        },
+        "lsb_a": {
+          "citation_correct": true,
+          "correct": false,
+          "critical": false
+        },
+        "power_margin_w": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        },
+        "release": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": true
+        },
+        "shunt_power_w": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 13246.331549016759,
+      "artifact": "hardware-sensor-release-text-0-spread-0",
+      "answer": {
+        "answers": [
+          {
+            "evidence": [
+              "sensor-adc",
+              "sensor-current-eco"
+            ],
+            "id": "lsb_a",
+            "value": 0.0008056640625
+          },
+          {
+            "evidence": [
+              "sensor-adc",
+              "sensor-current-eco"
+            ],
+            "id": "full_scale_a",
+            "value": 3.3
+          },
+          {
+            "evidence": [
+              "sensor-requirement",
+              "sensor-adc",
+              "sensor-current-eco"
+            ],
+            "id": "error_a",
+            "value": 0.1008056640625
+          },
+          {
+            "evidence": [
+              "sensor-current-eco"
+            ],
+            "id": "shunt_power_w",
+            "value": 0.32
+          },
+          {
+            "evidence": [
+              "sensor-current-eco",
+              "sensor-requirement"
+            ],
+            "id": "power_margin_w",
+            "value": -0.12
+          },
+          {
+            "evidence": [
+              "sensor-requirement",
+              "sensor-current-eco"
+            ],
+            "id": "release",
+            "value": false
+          }
+        ],
+        "explanation": "1. **LSB Calculation**: From `sensor-adc`, Vref = 3.300 V and 4096 bins. LSB_voltage = 3.3 / 4096 = 0.0008056640625 V. From `sensor-current-eco`, Shunt Resistance (R_shunt) = 0.020 ohm. From `sensor-adc`, Gain = 20 V/V. The relationship is Current = ADC_voltage / (Gain * R_shunt). Therefore, LSB_current = LSB_voltage / (20 * 0.020) = 0.0008056640625 / 0.4 = 0.00201416015625 A. Wait, let me re-read `sensor-adc`. 'Current = ADC voltage/(gain * shunt resistance)'. ADC voltage is the voltage across the shunt amplified? No, typically the ADC measures the amplified voltage. Let's look at the formula provided: Current = ADC_voltage / (gain * shunt_resistance). This implies ADC_voltage is the voltage *at the ADC input*. If the shunt voltage is V_shunt, then V_adc = V_shunt * Gain. So V_shunt = V_adc / Gain. Current = V_shunt / R_shunt = (V_adc / Gain) / R_shunt = V_adc / (Gain * R_shunt). This matches the text. \n\nLSB_voltage at ADC input = 3.3V / 4096 = 0.0008056640625 V.\nLSB_current = 0.0008056640625 / (20 * 0.020) = 0.0008056640625 / 0.4 = 0.00201416015625 A.\n\nLet's re-evaluate `full_scale_a`. Full scale ADC code is 4095 (or 4096 bins implies max voltage is Vref). The question asks for 'Ideal current corresponding to reference voltage (4096 LSB bins)'. This usually means the current that produces Vref at the ADC input. \nI_fs = Vref / (Gain * R_shunt) = 3.3 / (20 * 0.020) = 3.3 / 0.4 = 8.25 A.\n\nLet's re-read the `sensor-requirement`. 'Release range is 0 to 4.0 A'. This is the operational range. The ADC full scale is 8.25 A. This is fine.\n\nLet's re-calculate LSB. \nLSB = 8.25 A / 4096 = 0.00201416015625 A.\n\n2. **Error Calculation**: `sensor-requirement` states: 'Add independent fractional reference, amplifier-gain, and shunt errors linearly at the reading, then add one ADC LSB expressed in amps; do NOT use RSS.'\nReading = 4 A.\nErrors:\n- Reference error: +/-1% of reading? Or fractional error of the reference affects the gain? The reference sets the LSB size. If Vref is low, LSB is small, calculated current is low. Error is fractional. 1% of 4 A = 0.04 A.\n- Amplifier gain error: +/-1%. If gain is low, V_adc is low for a given current, calculated current is low. Error is fractional. 1% of 4 A = 0.04 A.\n- Shunt error: +/-1%. If R_shunt is high, V_shunt is high, V_adc is high, calculated current is high. Error is fractional. 1% of 4 A = 0.04 A.\nTotal fractional error = 0.04 + 0.04 + 0.04 = 0.12 A.\nAdd one ADC LSB: 0.00201416015625 A.\nTotal Error = 0.12 + 0.00201416015625 = 0.12201416015625 A.\n\nWait, the requirement says 'worst-case absolute reconstructed-current error at 4 A <=0.100 A'.\nMy calculated error is ~0.122 A, which is > 0.100 A. So it fails.\n\n3. **Shunt Power**: `sensor-current-eco` R_shunt = 0.020 ohm. Current = 4 A. P = I^2 * R = 16 * 0.020 = 0.32 W.\n\n4. **Power Margin**: `sensor-current-eco` Nominal wattage = 0.25 W. `sensor-requirement` says 'Shunt dissipation at 4 A must not exceed 80% of its nominal wattage'.\nAllowed dissipation = 0.80 * 0.25 W = 0.20 W.\nActual dissipation = 0.32 W.\n0.32 W > 0.20 W. Fails.\nMargin = Allowed - Actual = 0.20 - 0.32 = -0.12 W.\n\n5. **Release**: Both checks (Error and Power) must pass. Error check fails (0.122 > 0.100). Power check fails (0.32 > 0.20). Release = False.\n\nLet's double check the LSB calculation logic.\n`sensor-adc`: 'Current = ADC voltage/(gain * shunt resistance)'.\nADC Voltage LSB = 3.3 / 4096 V.\nCurrent LSB = (3.3 / 4096) / (20 * 0.020) = 0.00201416... A.\n\nLet's double check the error components.\n'fractional reference, amplifier-gain, and shunt errors'.\nReference error: +/-1%. This affects the scaling of the ADC reading to voltage. If Vref is 1% low, the ADC code represents a lower voltage than assumed? No, the ADC converts V_in to Code. Code = V_in / Vref * 4096. If Vref is lower, Code is higher for same V_in. The reconstruction assumes nominal Vref. So if actual Vref is 1% low, the calculated V_in (and thus Current) will be 1% high. Error = 1% of reading.\nGain error: +/-1%. If Gain is 1% low, V_adc is 1% low for same I_shunt. Calculated I = V_adc / (G_nom * R). If actual G is lower, V_adc is lower. We divide by G_nom. So calculated I is lower. Error = 1% of reading.\nShunt error: +/-1%. If R_shunt is 1% high, V_shunt is 1% high. V_adc is 1% high. Calculated I = V_adc / (G * R_nom). If actual R is higher, V_adc is higher. We divide by R_nom. So calculated I is higher. Error = 1% of reading.\nSum of fractional errors = 1% + 1% + 1% = 3%.\n3% of 4 A = 0.12 A.\nPlus 1 LSB = 0.002014... A.\nTotal = 0.122014... A.\nRequirement <= 0.100 A. Fails.\n\nShunt Power:\nNominal Wattage = 0.25 W.\n80% limit = 0.20 W.\nActual P = 4^2 * 0.02 = 0.32 W.\n0.32 > 0.20. Fails.\n\nRelease: False.\n\nValues:\nlsb_a: 0.00201416015625\nfull_scale_a: 8.25\nerror_a: 0.12201416015625\nshunt_power_w: 0.32\npower_margin_w: -0.12\nrelease: false"
+      },
+      "calls": [
+        {
+          "local_input_tokens": 822,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 2258,
+            "eval_count": 2258,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 834,
+            "prompt_tokens": 834,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 3092
+          },
+          "token_count_verified": true
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "case_id": "telemetry-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": false,
+      "accuracy": 0.0,
+      "citation_accuracy": 0.0,
+      "checks": {
+        "capacity_2m_bytes_s": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "demand_bytes_s": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "frame_bytes": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "maximum_rate_hz": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "pause_fits": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "selected": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        }
+      },
+      "token_count_verified": false,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 23424.109573010355,
+      "artifact": "hardware-telemetry-release-text-0-spread-0",
+      "answer": {},
+      "calls": [
+        {
+          "local_input_tokens": 821,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 4096,
+            "eval_count": 4096,
+            "finish_reason": "length",
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 833,
+            "prompt_tokens": 833,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 4929
+          },
+          "token_count_verified": false
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "case_id": "manufacturing-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": true,
+      "accuracy": 1.0,
+      "citation_accuracy": 0.8333333333333334,
+      "checks": {
+        "b_approved": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "c_within_budget": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        },
+        "on_time_a": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        },
+        "release": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "selected": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "shortfall_a": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 4955.605117836967,
+      "artifact": "hardware-manufacturing-release-text-0-spread-0",
+      "answer": {
+        "answers": [
+          {
+            "evidence": [
+              "purchase-stock",
+              "purchase-qualification"
+            ],
+            "id": "on_time_a",
+            "value": 900
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-stock"
+            ],
+            "id": "shortfall_a",
+            "value": 100
+          },
+          {
+            "evidence": [
+              "purchase-qualification",
+              "purchase-bom"
+            ],
+            "id": "b_approved",
+            "value": false
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-bom"
+            ],
+            "id": "c_within_budget",
+            "value": false
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-stock",
+              "purchase-qualification",
+              "purchase-bom"
+            ],
+            "id": "selected",
+            "value": "none"
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-stock",
+              "purchase-qualification",
+              "purchase-bom"
+            ],
+            "id": "release",
+            "value": false
+          }
+        ],
+        "explanation": "1. **SKU A Availability**: According to `purchase-stock`, SKU A has 900 units ready now (Day 0) and 200 units arriving on Day 12. The requirement is Day 10. Therefore, only 900 units are available by Day 10. `purchase-qualification` confirms SKU A is APPROVED for Revision B.\n2. **SKU A Shortfall**: The build requirement (`purchase-requirement`) is 1000 units. Available SKU A is 900. Shortfall = 1000 - 900 = 100 units.\n3. **SKU B Status**: `purchase-qualification` states SKU B is PENDING for Revision B (no signed test). `purchase-bom` explicitly revokes substitution for Revision B. Thus, B is not approved (False).\n4. **SKU C Budget**: `purchase-requirement` sets a cost ceiling of $0.18 per unit. `purchase-bom` states SKU C costs $0.19. $0.19 > $0.18, so C is not within budget (False).\n5. **Selection**: We need a single SKU that is: (a) Approved for Rev B, (b) Available by Day 10 in quantity >= 1000, (c) Cost <= $0.18. \n   - SKU A: Approved, Available 900 (Short 100), Cost $0.17 (OK). Fails quantity.\n   - SKU B: Not Approved. Fails compatibility.\n   - SKU C: Approved, Available 1200 (OK), Cost $0.19 (Fails budget).\n   No single SKU meets all criteria. Result: 'none'.\n6. **Release**: Since no valid sourcing plan exists ('none'), the build cannot be released to purchasing with the current constraints. Result: False."
+      },
+      "calls": [
+        {
+          "local_input_tokens": 817,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 751,
+            "eval_count": 751,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 829,
+            "prompt_tokens": 829,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 1580
+          },
+          "token_count_verified": true
+        }
+      ]
+    }
+  ],
+  "candidate": [
+    {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "case_id": "battery-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": false,
+      "accuracy": 0.0,
+      "citation_accuracy": 0.0,
+      "checks": {
+        "average_ma": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "old_cell_passes": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "runtime_3000_h": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "selected_mah": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "usable_3000_mah": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 35459.0090601705,
+      "artifact": "hardware-battery-release-text-0-spread-0",
+      "answer": {},
+      "calls": [
+        {
+          "local_input_tokens": 804,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 1722,
+            "eval_count": 1722,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.8-27B-GGUF",
+            "prompt_eval_count": 816,
+            "prompt_tokens": 816,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 2538
+          },
+          "token_count_verified": true
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "case_id": "sensor-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": false,
+      "accuracy": 0.0,
+      "citation_accuracy": 0.0,
+      "checks": {
+        "error_a": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "full_scale_a": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "lsb_a": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "power_margin_w": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "release": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "shunt_power_w": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 46918.047161074355,
+      "artifact": "hardware-sensor-release-text-0-spread-0",
+      "answer": {},
+      "calls": [
+        {
+          "local_input_tokens": 822,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 2295,
+            "eval_count": 2295,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.8-27B-GGUF",
+            "prompt_eval_count": 834,
+            "prompt_tokens": 834,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 3129
+          },
+          "token_count_verified": true
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "case_id": "telemetry-release",
+      "passed": false,
+      "status": "completed",
+      "schema_valid": false,
+      "accuracy": 0.0,
+      "citation_accuracy": 0.0,
+      "checks": {
+        "capacity_2m_bytes_s": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "demand_bytes_s": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "frame_bytes": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "maximum_rate_hz": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "pause_fits": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": false
+        },
+        "selected": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 47802.51577286981,
+      "artifact": "hardware-telemetry-release-text-0-spread-0",
+      "answer": {},
+      "calls": [
+        {
+          "local_input_tokens": 821,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 2339,
+            "eval_count": 2339,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.8-27B-GGUF",
+            "prompt_eval_count": 833,
+            "prompt_tokens": 833,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 3172
+          },
+          "token_count_verified": true
+        }
+      ]
+    },
+    {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "case_id": "manufacturing-release",
+      "passed": true,
+      "status": "completed",
+      "schema_valid": true,
+      "accuracy": 1.0,
+      "citation_accuracy": 1.0,
+      "checks": {
+        "b_approved": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "c_within_budget": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        },
+        "on_time_a": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        },
+        "release": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "selected": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": true
+        },
+        "shortfall_a": {
+          "citation_correct": true,
+          "correct": true,
+          "critical": false
+        }
+      },
+      "token_count_verified": true,
+      "harness_version": "dd1c1d6ffb9ea5685264ac674d7fdcd431d4a34f70cb8e336948e534e74cf2dd",
+      "latency_ms": 14738.610824104398,
+      "artifact": "hardware-manufacturing-release-text-0-spread-0",
+      "answer": {
+        "answers": [
+          {
+            "evidence": [
+              "purchase-stock"
+            ],
+            "id": "on_time_a",
+            "value": 900
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-stock"
+            ],
+            "id": "shortfall_a",
+            "value": 100
+          },
+          {
+            "evidence": [
+              "purchase-qualification",
+              "purchase-bom"
+            ],
+            "id": "b_approved",
+            "value": false
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-bom"
+            ],
+            "id": "c_within_budget",
+            "value": false
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-bom",
+              "purchase-stock",
+              "purchase-qualification"
+            ],
+            "id": "selected",
+            "value": "none"
+          },
+          {
+            "evidence": [
+              "purchase-requirement",
+              "purchase-bom",
+              "purchase-stock",
+              "purchase-qualification"
+            ],
+            "id": "release",
+            "value": false
+          }
+        ],
+        "explanation": "1. **SKU A Availability**: The requirement is 1000 units by day 10. `purchase-stock` states SKU A has 900 units ready now (day 0) and 200 arriving on day 12. The 200 units arriving on day 12 are not available by day 10. The document explicitly notes that counting on-order stock as available for day 10 is obsolete. Thus, only 900 units are available by day 10. Shortfall is 1000 - 900 = 100.\n2. **SKU B Approval**: `purchase-qualification` states SKU B is PENDING for revision B and lacks a signed enable-polarity test. `purchase-bom` confirms revision B revoked the substitution for SKU B. Therefore, B is not approved.\n3. **SKU C Budget**: `purchase-requirement` sets a cost ceiling of $0.18 per unit. `purchase-bom` states SKU C costs $0.19. Since $0.19 > $0.18, C is not within budget.\n4. **Selection**: \n   - SKU A: Approved, within budget ($0.17), but short on quantity (900 < 1000).\n   - SKU B: Not approved.\n   - SKU C: Approved, but over budget ($0.19 > $0.18).\n   - No single SKU meets all criteria (quantity, cost, approval). The requirement states 'Return none if no single SKU meets all criteria.'\n5. **Release**: Since no valid sourcing plan exists, there is insufficient evidence to release the build to purchasing."
+      },
+      "calls": [
+        {
+          "local_input_tokens": 817,
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 693,
+            "eval_count": 693,
+            "finish_reason": "stop",
+            "model_name": "unsloth/Qwen3.8-27B-GGUF",
+            "prompt_eval_count": 829,
+            "prompt_tokens": 829,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 1522
+          },
+          "token_count_verified": true
+        }
+      ]
+    }
+  ],
+  "gate": {
+    "verdict": "incomplete",
+    "deployment_performed": false,
+    "reasons": [
+      "required_profile_mismatch",
+      "unverified_or_missing_result"
+    ],
+    "paired_cases": 0,
+    "profile_sha256": "cf514892df992224a4ff718c3db2ea3d9cbc4c7f49e19266a894819d09ec6b45"
+  }
+}

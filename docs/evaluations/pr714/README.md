@@ -284,7 +284,23 @@ report editor, saving, and verification of the saved state:
 
 ## Product pilot at 16K allocation
 
-The fresh pilot reserved 4096 output tokens and ran all four product cases three
+The **fresh Make demo at `f381fe9`** ran one trial of each product task per model
+with 4096 output tokens. Qwen3.8 passed manufacturing (1/4 strict passes); its
+other three responses contained prose outside the required JSON. All four
+completed with verified tokens. Qwen3.6 passed 0/4: battery and telemetry hit
+the output cap, sensor had wrong numeric fields, and manufacturing had correct
+facts but an extra citation. Its two normal completions are token-verified.
+
+The public product Make gate reports **incomplete**: this bounded demo has one
+trial rather than the independent profile's three, and two outputs are
+unverified. Repeating known greedy failures adds no independent quality evidence,
+so no further product sweep follows this demo. This is separate from the complete
+102-coordinate main comparison. [Recorded outcomes and gate](make-product-demo.json)
+preserve the failures without repairing JSON or numeric values.
+
+The historical three-trial pilot follows for comparison of workflow limitations:
+
+That pilot reserved 4096 output tokens and ran all four product cases three
 times per model. Qwen3.8 produced 12/12 token-verified rows and 3/12 strict passes.
 Qwen3.6 produced 6/12 token-verified rows and 0/12 strict passes: battery and
 telemetry responses reached the output limit. The paired gate correctly returns
