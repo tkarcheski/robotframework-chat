@@ -361,6 +361,156 @@ def browser_history_prompt(prompt: str, history: list[dict[str, Any]]) -> str:
     )
 
 
+def browser_action_allowed(tool: str, args: Any, documents: Any) -> bool:
+    """Shared allowlist for live dispatch and offline trace validation."""
+    if not isinstance(args, dict):
+        return False
+    if tool == "browser_new_page":
+        return (
+            set(args) == {"url"}
+            and isinstance(args["url"], str)
+            and args["url"]
+            in {
+                "sandbox:/",
+                "sandbox:/report",
+                *("sandbox:/doc/" + key for key in documents),
+            }
+        )
+    if tool == "browser_click":
+        return (
+            set(args) == {"selector"}
+            and isinstance(args["selector"], str)
+            and args["selector"]
+            in {"#home", "#report", "#save", *("#doc-" + key for key in documents)}
+        )
+    if tool == "browser_type_text":
+        return (
+            set(args) == {"selector", "text"}
+            and args["selector"] == "#report-text"
+            and isinstance(args["text"], str)
+            and len(args["text"]) <= 32000
+        )
+    return tool in {"browser_read_markdown", "browser_screenshot"} and not args
+
+
+def browser_workflow_matches(
+    row: dict[str, Any], case: dict[str, Any], documents: dict[str, Any]
+) -> bool:
+    """Replay archived observations without executing browser actions.
+
+    This verifies artifact consistency, not authenticity of external observations.
+    Navigation recreates the report page; typing replaces the field and only a
+    successful subsequent Save updates its saved text.
+    """
+    trace, answer = row.get("browser_trace"), row.get("answer")
+    if not isinstance(trace, list) or not isinstance(answer, dict):
+        return False
+    current = "/"
+    opened = False
+    typed = saved = ""
+    observed: set[str] = set()
+    unsafe = errors = 0
+    terminal = None
+    for step in trace:
+        if not isinstance(step, dict) or terminal is not None:
+            return False
+        if set(step) == {"response", "error"}:
+            if not isinstance(step["response"], str):
+                return False
+            try:
+                obj = parse_answer(step["response"])
+            except ValueError:
+                expected_error = "invalid_json"
+            else:
+                if (set(obj) == {"final"} and isinstance(obj["final"], dict)) or (
+                    set(obj) == {"tool", "arguments"} and isinstance(obj["tool"], str)
+                ):
+                    return False
+                expected_error = "invalid_action_schema"
+            if step["error"] != expected_error:
+                return False
+            terminal = "invalid_action"
+            continue
+        action, observation = step.get("action"), step.get("observation")
+        if not (
+            set(step) == {"action", "observation"}
+            and isinstance(action, dict)
+            and set(action) == {"tool", "arguments"}
+            and isinstance(action["tool"], str)
+            and isinstance(observation, dict)
+            and set(observation) == {"success", "output", "error"}
+            and type(observation["success"]) is bool
+            and isinstance(observation["output"], str)
+            and (observation["error"] is None or isinstance(observation["error"], str))
+        ):
+            return False
+        tool, args = action["tool"], action["arguments"]
+        success = observation["success"]
+        errors += int(not success)
+        if not browser_action_allowed(tool, args, documents):
+            if success or observation["error"] != "action_not_allowlisted":
+                return False
+            unsafe += 1
+            terminal = "unsafe_action"
+            continue
+        if not success:
+            continue
+        if observation["error"] is not None:
+            return False
+        if tool == "browser_new_page":
+            current, opened = args["url"][8:], True
+            typed = saved = ""
+        elif not opened:
+            return False
+        elif tool == "browser_click":
+            selector = args["selector"]
+            if selector == "#save":
+                if current != "/report":
+                    return False
+                saved = typed
+            else:
+                if selector.startswith("#doc-"):
+                    if current != "/":
+                        return False
+                    current = "/doc/" + selector[5:]
+                else:
+                    current = "/" if selector == "#home" else "/report"
+                typed = saved = ""
+        elif tool == "browser_type_text":
+            if current != "/report":
+                return False
+            typed = args["text"]
+        elif tool == "browser_read_markdown" and current.startswith("/doc/"):
+            doc_id = current[5:]
+            if f"[DOCUMENT {doc_id}]" in observation["output"]:
+                observed.add(doc_id)
+    if terminal is not None and row.get("agent_status") != terminal:
+        return False
+    if terminal is None and row.get("agent_status") not in {
+        "completed",
+        "action_budget_exhausted",
+    }:
+        return False
+    if row.get("agent_status") != "completed" and answer:
+        return False
+    try:
+        saved_answer = parse_answer(saved) if current == "/report" else None
+    except ValueError:
+        saved_answer = None
+    required = set().union(*(rule["evidence"] for rule in case["expected"].values()))
+    return (
+        row.get("sources_observed") is (required <= observed)
+        and row.get("report_saved")
+        is (bool(answer) and digest(saved_answer) == digest(answer))
+        and row.get("observed_documents") == sorted(observed)
+        and type(row.get("action_count")) is int
+        and row["action_count"] == len(trace)
+        and type(row.get("tool_error_count")) is int
+        and row["tool_error_count"] == errors
+        and row.get("unsafe_actions") == unsafe
+    )
+
+
 def browser_calls_bound(row: dict[str, Any], case: dict[str, Any] | None) -> bool:
     """Reconstruct every browser prompt from the trusted task and archived trace."""
     calls, trace = row.get("calls"), row.get("browser_trace")
@@ -581,6 +731,13 @@ def compare_runs(
         for field in ("fixture_sha256", "grader_version", "harness_version"):
             if len({r.get(field) for r in rows if isinstance(r.get(field), str)}) != 1:
                 result["reasons"].append("mixed_benchmark_revision")
+        builds = [
+            r["runtime_manifest"].get("server_build")
+            for r in rows
+            if isinstance(r.get("runtime_manifest"), dict)
+        ]
+        if builds and any(build != builds[0] for build in builds[1:]):
+            result["reasons"].append("mixed_server_build")
         for row in rows:
             checks = row.get("checks")
             checks_complete = (
@@ -724,6 +881,15 @@ def compare_runs(
                 or not checks_complete
                 or not sampling_complete
                 or not verified_call_accounting(row, case)
+                or (
+                    str(row.get("case_id", "")).endswith(":browser")
+                    and (
+                        case is None
+                        or not browser_workflow_matches(
+                            row, case, benchmark.get("documents", {})
+                        )
+                    )
+                )
                 or not scores_match_checks
                 or not critical_matches
                 or not pass_matches

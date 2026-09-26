@@ -204,6 +204,10 @@ def test_real_browser_saves_report_with_scripted_instrument_control(
             assert result["sources_observed"]
             assert result["report_saved"]
             assert result["action_count"] == 10
+            from rfc.hardware_eval import browser_workflow_matches
+
+            result["browser_trace"] = result["trace"]
+            assert browser_workflow_matches(result, case, benchmark["documents"])
             assert list(tmp_path.glob("*.png"))
     finally:
         browser.close_browser()
@@ -264,3 +268,74 @@ def test_actual_agent_prompts_reconstruct_from_archived_trace(
     row["calls"] = calls[:1]
     row["browser_trace"] = []
     assert browser_calls_bound(row, case)
+
+
+def test_live_agent_workflow_matches_offline_trace_replay(
+    benchmark, browser, tmp_path, monkeypatch
+):
+    from rfc.hardware_eval import browser_workflow_matches
+
+    case = benchmark["cases"]["uno-current-budget"]
+    answer = gold_answer(case)
+    required = sorted(set().union(*(r["evidence"] for r in case["expected"].values())))
+    pages = iter("[DOCUMENT " + doc_id + "]" for doc_id in required)
+    browser.get_text.return_value = json.dumps(answer)
+    actions = []
+    for doc_id in required:
+        actions += [
+            {
+                "tool": "browser_new_page",
+                "arguments": {"url": "sandbox:/doc/" + doc_id},
+            },
+            {"tool": "browser_read_markdown", "arguments": {}},
+        ]
+    actions += [
+        {"tool": "browser_new_page", "arguments": {"url": "sandbox:/report"}},
+        {
+            "tool": "browser_type_text",
+            "arguments": {"selector": "#report-text", "text": json.dumps(answer)},
+        },
+        {"tool": "browser_click", "arguments": {"selector": "#save"}},
+        {"final": answer},
+    ]
+    stream = iter(actions)
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        monkeypatch.setattr(box.dispatcher, "_to_markdown", lambda html: next(pages))
+        result = run_browser_agent(case, box, lambda prompt: json.dumps(next(stream)))
+    assert result["passed"]
+    result["browser_trace"] = result["trace"]
+    assert browser_workflow_matches(result, case, benchmark["documents"])
+    result["answer"]["answers"][0]["value"] = "different final answer"
+    assert not browser_workflow_matches(result, case, benchmark["documents"])
+
+
+@pytest.mark.parametrize(
+    "ending,expected_status",
+    [
+        ("not json", "invalid_action"),
+        ('{"unexpected": true}', "invalid_action"),
+        ('{"tool": "execute_shell", "arguments": {}}', "unsafe_action"),
+        (
+            '{"tool": "browser_read_markdown", "arguments": {}}',
+            "action_budget_exhausted",
+        ),
+    ],
+)
+def test_failed_live_workflows_remain_consistent_evidence(
+    benchmark, browser, tmp_path, monkeypatch, ending, expected_status
+):
+    from rfc.hardware_eval import browser_workflow_matches
+
+    case = benchmark["cases"]["uno-current-budget"]
+    stream = iter(
+        ['{"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}}', ending]
+    )
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        monkeypatch.setattr(box.dispatcher, "_to_markdown", lambda html: "catalog")
+        result = run_browser_agent(
+            case, box, lambda prompt: next(stream), max_actions=2
+        )
+    assert result["agent_status"] == expected_status
+    assert not result["passed"]
+    result["browser_trace"] = result["trace"]
+    assert browser_workflow_matches(result, case, benchmark["documents"])

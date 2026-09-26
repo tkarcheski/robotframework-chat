@@ -17,6 +17,7 @@ from typing import Any, Callable
 from .agent_tool import new_tool_call
 from .computer_use_keywords import ComputerUseDispatcher, tool_result_to_dict
 from .hardware_eval import (
+    browser_action_allowed,
     browser_task_prompt,
     browser_history_prompt,
     document_text,
@@ -113,34 +114,7 @@ class HardwareSandbox:
         )
 
     def _allowed(self, tool: str, args: Any) -> bool:
-        if not isinstance(args, dict):
-            return False
-        if tool == "browser_new_page":
-            url = args.get("url")
-            return (
-                set(args) == {"url"}
-                and isinstance(url, str)
-                and url.startswith("sandbox:")
-                and self.render(url[8:]) is not None
-            )
-        if tool == "browser_click":
-            return (
-                set(args) == {"selector"}
-                and isinstance(args["selector"], str)
-                and args["selector"]
-                in (
-                    {"#home", "#report", "#save"}
-                    | {f"#doc-{k}" for k in self.documents}
-                )
-            )
-        if tool == "browser_type_text":
-            return (
-                set(args) == {"selector", "text"}
-                and args["selector"] == "#report-text"
-                and isinstance(args["text"], str)
-                and len(args["text"]) <= 32000
-            )
-        return tool in {"browser_read_markdown", "browser_screenshot"} and not args
+        return browser_action_allowed(tool, args, self.documents)
 
     def dispatch(self, tool: str, args: Any) -> dict[str, Any]:
         """Block unsafe intent before calling the browser, then archive evidence."""

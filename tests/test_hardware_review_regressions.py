@@ -203,9 +203,13 @@ def test_browser_workflow_regression_blocks_even_with_equal_answers(field):
         sources_observed=True,
         report_saved=True,
     )
-    new = copy.deepcopy(old)
-    new[field] = False
-    new["passed"] = False
+    new = row(
+        case_id="task:browser",
+        accuracy=1.0,
+        passed=False,
+        sources_observed=field != "sources_observed",
+        report_saved=field != "report_saved",
+    )
     from rfc.hardware_eval import compare_runs as compare_paired
 
     assert (
@@ -737,21 +741,8 @@ def test_every_browser_call_must_fit_prompt_plus_reserved_output():
             [old], [copy.deepcopy(old)], required, synthetic_benchmark()
         )["verdict"]
 
-    old["browser_trace"] = [
-        {
-            "action": {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
-            "observation": {"success": True, "output": "catalog", "error": None},
-        }
-    ]
-    second = copy.deepcopy(old["calls"][0])
-    second["prompt_sha256"] = digest(
-        browser_history_prompt(
-            browser_task_prompt(synthetic_benchmark()["cases"]["a"]),
-            old["browser_trace"],
-        )
-    )
+    second = old["calls"][-1]
     second["server_metrics"]["prompt_eval_count"] = 16384 - 2048 + 1
-    old["calls"].append(second)
     assert verdict() == "incomplete"
     second["server_metrics"]["prompt_eval_count"] -= 1
     assert verdict() == "eligible"
@@ -834,20 +825,6 @@ def test_browser_accounting_is_bound_to_reconstructed_history(corruption):
     from rfc.hardware_eval import compare_runs as compare_paired
 
     old = row("a:browser", accuracy=1, sources_observed=True, report_saved=True)
-    old["browser_trace"] = [
-        {
-            "action": {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
-            "observation": {"success": True, "output": "catalog", "error": None},
-        }
-    ]
-    second = copy.deepcopy(old["calls"][0])
-    second["prompt_sha256"] = digest(
-        browser_history_prompt(
-            browser_task_prompt(synthetic_benchmark()["cases"]["a"]),
-            old["browser_trace"],
-        )
-    )
-    old["calls"].append(second)
     # The actual JSONL writer sorts keys; reconstruction must survive that.
     old = json.loads(json.dumps(old, sort_keys=True))
     required = {("a:browser", 16384, "middle", 0)}
@@ -871,3 +848,130 @@ def test_browser_accounting_is_bound_to_reconstructed_history(corruption):
     else:
         old["agent_status"] = []
     assert verdict() == "incomplete"
+
+
+def test_pairwise_matching_builds_cannot_vary_between_profile_coordinates():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [row("a"), row("b")]
+    rows[1]["runtime_manifest"]["server_build"]["executable_sha256"] = "e" * 64
+    required = {("a", 16384, "middle", 0), ("b", 16384, "middle", 0)}
+    result = compare_paired(rows, copy.deepcopy(rows), required, synthetic_benchmark())
+    assert result["verdict"] == "incomplete"
+    assert "mixed_server_build" in result["reasons"]
+
+
+def test_catalog_only_trace_cannot_claim_read_and_saved_report():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row("a:browser", accuracy=1, sources_observed=True, report_saved=True)
+    old["browser_trace"] = [
+        {
+            "action": {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
+            "observation": {"success": True, "output": "catalog", "error": None},
+        }
+    ]
+    call = copy.deepcopy(old["calls"][0])
+    call["prompt_sha256"] = digest(
+        browser_history_prompt(
+            browser_task_prompt(synthetic_benchmark()["cases"]["a"]),
+            old["browser_trace"],
+        )
+    )
+    old["calls"] = [old["calls"][0], call]
+    result = compare_paired(
+        [old],
+        [copy.deepcopy(old)],
+        {("a:browser", 16384, "middle", 0)},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "no_read",
+        "wrong_document_marker",
+        "failed_read",
+        "no_save",
+        "save_before_type",
+        "wrong_saved_answer",
+        "report_reloaded",
+        "impossible_save",
+        "arbitrary_action",
+        "malformed_observation",
+        "unknown_step",
+        "wrong_observed_list",
+        "wrong_action_count",
+        "wrong_error_count",
+        "wrong_unsafe_count",
+    ],
+)
+def test_browser_workflow_rejects_inconsistent_trace_even_with_rebound_calls(
+    corruption,
+):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row("a:browser", accuracy=1, sources_observed=True, report_saved=True)
+    trace = old["browser_trace"]
+    if corruption == "no_read":
+        del trace[1]
+    elif corruption == "wrong_document_marker":
+        trace[1]["observation"]["output"] = "[DOCUMENT other]"
+    elif corruption == "failed_read":
+        trace[1]["observation"].update(success=False, error="read failed")
+        old["tool_error_count"] = 1
+    elif corruption == "no_save":
+        trace.pop()
+    elif corruption == "save_before_type":
+        trace[-2], trace[-1] = trace[-1], trace[-2]
+    elif corruption == "wrong_saved_answer":
+        trace[-2]["action"]["arguments"]["text"] = '{"different": true}'
+    elif corruption == "report_reloaded":
+        trace.append(copy.deepcopy(trace[2]))
+    elif corruption == "impossible_save":
+        trace[2]["action"]["arguments"]["url"] = "sandbox:/"
+    elif corruption == "arbitrary_action":
+        trace[0]["action"]["tool"] = "execute_shell"
+    elif corruption == "malformed_observation":
+        trace[0]["observation"]["success"] = 1
+    elif corruption == "unknown_step":
+        trace[0] = {"unrecognized": "step"}
+    elif corruption == "wrong_observed_list":
+        old["observed_documents"] = []
+    elif corruption == "wrong_action_count":
+        old["action_count"] += 1
+    elif corruption == "wrong_error_count":
+        old["tool_error_count"] += 1
+    else:
+        old["unsafe_actions"] += 1
+        old["passed"] = False
+    if corruption != "wrong_action_count":
+        old["action_count"] = len(trace)
+    prompt = browser_task_prompt(synthetic_benchmark()["cases"]["a"])
+    template = old["calls"][0]
+    old["calls"] = [
+        {
+            **copy.deepcopy(template),
+            "prompt_sha256": digest(browser_history_prompt(prompt, trace[:i])),
+        }
+        for i in range(len(trace) + 1)
+    ]
+    result = compare_paired(
+        [old],
+        [copy.deepcopy(old)],
+        {("a:browser", 16384, "middle", 0)},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == "incomplete"
+
+
+def test_uniform_serving_build_allows_context_specific_runtime():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [row("a"), row("b", context_tokens=32768, effective_context_tokens=32768)]
+    rows[1]["runtime_manifest"]["rope"] = "yarn-2"
+    required = {("a", 16384, "middle", 0), ("b", 32768, "middle", 0)}
+    result = compare_paired(rows, copy.deepcopy(rows), required, synthetic_benchmark())
+    assert result["verdict"] == "eligible"

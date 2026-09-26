@@ -309,7 +309,9 @@ contains the executable SHA256 and library names/SHA256 values; version text
 alone cannot identify a local rebuild. Unreadable build inputs fail the cell
 before inference. This is a startup snapshot, not attestation of libraries
 loaded later or cryptographic verification of imported artifacts. The live
-server and its build inputs must remain unchanged during a comparison.
+server and its build inputs must remain unchanged during a comparison. Each arm
+must use one serving build across the full profile, including separate short and
+context runs; context-dependent runtime settings can still vary by coordinate.
 Negative GPU, CPU-FFN and CPU-MoE layer counts fail CLI preflight, matching the
 runtime schema required by the artifact gate.
 
@@ -326,4 +328,11 @@ for history serialization. The gate reconstructs every call prompt from the
 trusted fixture task and the preceding trace entries, and checks both the task
 digest and each call digest. A completed final answer requires one more call
 than the action trace; other terminal outcomes retain one trace entry per call.
-Older rows are not backfilled with a new grader or trace.
+The gate also replays trace observations through the sandbox allowlist and page
+state: a document is observed only after a successful read on that document,
+typing replaces the report field, and a successful Save records that text.
+Navigation resets report state. The derived read/save flags, observed document
+list, action/error counts and terminal status must agree with the row, and the
+saved JSON must match its final answer. This checks internal artifact consistency;
+it does not authenticate externally supplied browser observations. Older rows
+are not backfilled with a new grader or trace.

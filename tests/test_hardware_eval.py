@@ -33,12 +33,14 @@ def synthetic_benchmark(questions=None):
     )
     return {
         "sha256": "b" * 64,
+        "documents": {"fixture-doc": {}},
         "cases": {
             case: {
                 "task": "Synthetic fixture task",
                 "questions": [{"id": q, "question": q} for q in questions],
                 "expected": {
-                    q: {"critical": critical} for q, critical in questions.items()
+                    q: {"critical": critical, "evidence": ["fixture-doc"]}
+                    for q, critical in questions.items()
                 },
             }
             for case in ("a", "b", "task")
@@ -303,12 +305,50 @@ def row(case_id="a", **overrides):
         prompt = browser_task_prompt(case)
         if "prompt_sha256" not in overrides:
             result["prompt_sha256"] = digest(prompt)
-        result.setdefault("browser_trace", [])
         result.setdefault("agent_status", "completed")
-        if "calls" not in overrides:
-            result["calls"][0]["prompt_sha256"] = digest(
-                browser_history_prompt(prompt, [])
+        answer = result.setdefault("answer", {"answers": [], "explanation": "fixture"})
+        trace = []
+
+        def action(tool, arguments, output=""):
+            trace.append(
+                {
+                    "action": {"tool": tool, "arguments": arguments},
+                    "observation": {"success": True, "output": output, "error": None},
+                }
             )
+
+        documents = sorted(
+            set().union(*(rule["evidence"] for rule in case["expected"].values()))
+        )
+        observed = documents if result.get("sources_observed") is True else []
+        for doc_id in observed:
+            action("browser_new_page", {"url": "sandbox:/doc/" + doc_id})
+            action("browser_read_markdown", {}, "[DOCUMENT " + doc_id + "]")
+        if result.get("report_saved") is True:
+            action("browser_new_page", {"url": "sandbox:/report"})
+            action(
+                "browser_type_text",
+                {"selector": "#report-text", "text": json.dumps(answer)},
+            )
+            action("browser_click", {"selector": "#save"})
+        result.setdefault("browser_trace", trace)
+        result.setdefault("observed_documents", observed)
+        result.setdefault("action_count", len(result["browser_trace"]))
+        result.setdefault("tool_error_count", 0)
+        if "calls" not in overrides:
+            template = result["calls"][0]
+            result["calls"] = [
+                {
+                    **copy.deepcopy(template),
+                    "prompt_sha256": digest(
+                        browser_history_prompt(prompt, result["browser_trace"][:i])
+                    ),
+                }
+                for i in range(
+                    len(result["browser_trace"])
+                    + int(result["agent_status"] == "completed")
+                )
+            ]
     elif "calls" not in overrides:
         result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
     if "sampling" not in overrides:
