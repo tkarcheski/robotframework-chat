@@ -360,6 +360,40 @@ def compare_runs(
                     for question, check in checks.items()
                 )
             )
+            sampling = row.get("sampling")
+            sampling_complete = (
+                isinstance(sampling, dict)
+                and type(sampling.get("seed")) is int
+                and type(row.get("trial")) is int
+                and row["trial"] >= 0
+                and sampling["seed"] == row["trial"]
+                and type(sampling.get("max_tokens")) is int
+                and sampling["max_tokens"] > 0
+                and type(sampling.get("temperature")) in (int, float)
+                and sampling["temperature"] >= 0
+                and (
+                    type(sampling["temperature"]) is int
+                    or math.isfinite(sampling["temperature"])
+                )
+            )
+            scores_match_checks = (
+                isinstance(checks, dict)
+                and checks_complete
+                and all(
+                    type(row.get(metric)) in (int, float)
+                    and 0 <= row[metric] <= 1
+                    and math.isclose(
+                        row[metric],
+                        sum(check[field] for check in checks.values()) / len(checks),
+                        rel_tol=0,
+                        abs_tol=1e-12,
+                    )
+                    for metric, field in (
+                        ("accuracy", "correct"),
+                        ("citation_accuracy", "citation_correct"),
+                    )
+                )
+            )
             runtime = row.get("runtime_manifest")
             runtime_complete = isinstance(runtime, dict) and all(
                 runtime.get(key)
@@ -372,15 +406,17 @@ def compare_runs(
                 or row.get("token_count_verified") is not True
                 or not runtime_complete
                 or not checks_complete
+                or not sampling_complete
+                or not scores_match_checks
+                or not isinstance(row.get("adapter_id"), str)
+                or not row.get("adapter_id", "").strip()
                 or not row.get("weights_format")
                 or row.get("weights_format") == "unspecified"
                 or type(row.get("effective_context_tokens")) is not int
                 or row.get("effective_context_tokens", 0) <= 0
                 or any(row.get(k) is None for k in coordinate + held_fixed)
                 or any(
-                    type(row.get(k)) not in (int, float)
-                    or not math.isfinite(row[k])
-                    or not 0 <= row[k] <= 1
+                    type(row.get(k)) not in (int, float) or not 0 <= row[k] <= 1
                     for k in ("accuracy", "citation_accuracy")
                 )
                 or any(

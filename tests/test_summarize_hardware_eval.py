@@ -30,6 +30,8 @@ def test_repetitions_remain_two_case_clusters():
     new = deepcopy(old)
     for r in new.values():
         r.update(model="candidate", accuracy=1.0, passed=True)
+        for check in r["checks"].values():
+            check["correct"] = True
     result = compare(old, new)
     assert result["paired_rows"] == 6
     assert result["independent_case_clusters"] == 2

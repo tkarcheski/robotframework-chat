@@ -229,6 +229,8 @@ def row(case_id="a", **overrides):
         "token_count_verified": True,
     }
     result.update(overrides)
+    if "sampling" not in overrides:
+        result["sampling"]["seed"] = result["trial"]
     if "checks" not in overrides:
         result["checks"] = {
             f"q{i}": {

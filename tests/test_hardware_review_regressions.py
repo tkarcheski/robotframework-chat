@@ -100,6 +100,35 @@ def test_token_verification_requires_boolean_true(flag):
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
 
 
+@pytest.mark.parametrize(
+    "sampling",
+    [
+        {},
+        {"temperature": 0, "seed": 1, "max_tokens": 2048},
+        {"temperature": "0", "seed": 0, "max_tokens": 2048},
+        {"temperature": 0, "seed": 0, "max_tokens": 0},
+        {"temperature": float("inf"), "seed": 0, "max_tokens": 2048},
+    ],
+)
+def test_sampling_attestation_is_complete_and_matches_trial(sampling):
+    old = row(sampling=sampling)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("field", ["accuracy", "citation_accuracy"])
+def test_aggregate_scores_cannot_contradict_question_checks(field):
+    old = row()
+    new = copy.deepcopy(old)
+    new[field] = 0.25 if field == "citation_accuracy" else 1.0
+    assert compare_runs([old], [new])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("adapter", [None, "", " "])
+def test_adapter_identity_must_be_explicit(adapter):
+    old = row(adapter_id=adapter)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
 def test_explicit_schema_reaches_wrapped_chat_transport(tmp_path, monkeypatch):
     from rfc.openai_client import OpenAIClient
 

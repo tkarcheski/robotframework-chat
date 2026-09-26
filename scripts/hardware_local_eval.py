@@ -179,6 +179,11 @@ def sample(pid=None):
     return result
 
 
+def allocated_context(context):
+    """Native llama.cpp pads allocations to 256 tokens; never reduce the budget."""
+    return ((context + 255) // 256) * 256
+
+
 def command(args, model, context):
     cmd = [
         args.server,
@@ -191,7 +196,7 @@ def command(args, model, context):
         "--port",
         str(args.port),
         "--ctx-size",
-        str(context),
+        str(allocated_context(context)),
         "--parallel",
         "1",
         "--fit",
@@ -294,6 +299,7 @@ def run_cell(args, model, context, version):
     manifest = {
         "model": model,
         "context": context,
+        "allocated_context": allocated_context(context),
         "command": cmd,
         "runtime": runtime,
         "baseline": baseline,
@@ -318,7 +324,7 @@ def run_cell(args, model, context, version):
             "DEFAULT_MODEL": model["id"],
             "HW_MODEL_DIGEST": model["sha256"],
             "HW_WEIGHTS_FORMAT": model["quant"],
-            "HW_MAX_CONTEXT": str(context),
+            "HW_MAX_CONTEXT": str(allocated_context(context)),
             "HW_TRIALS": str(args.trials),
             "HW_OUTPUT_TOKENS": str(args.output_tokens),
             "HW_JSON_OBJECT_CONSTRAINT": "1" if args.constrain_json else "0",
@@ -362,9 +368,9 @@ def run_cell(args, model, context, version):
             manifest["models"] = api(base, "/v1/models")
             manifest["props"] = api(base, "/props")
             served = manifest["props"]["default_generation_settings"]["n_ctx"]
-            if served != context:
+            if served != allocated_context(context):
                 raise RuntimeError(
-                    f"Context silently changed: requested {context}, served {served}"
+                    f"Context silently changed: allocated {allocated_context(context)}, served {served}"
                 )
             if not any(x["id"] == model["id"] for x in manifest["models"]["data"]):
                 raise RuntimeError("Wrong model alias served")

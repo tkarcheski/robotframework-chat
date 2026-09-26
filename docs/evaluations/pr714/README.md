@@ -60,6 +60,16 @@ actual input tokens on both tokenizers. They are not full-length input figures.
 Larger contexts and follow-up product/browser experiments are still being
 evaluated. No 1M inference claim is made in this checkpoint.
 
+## 32K and 64K exploration
+
+Three original cases, spread evidence, one trial per model and allocation, full
+GPU weights and f16 KV. All 12 rows completed with verified tokens; both models
+retained 100% fact accuracy at both levels. Full passes were 0/3 for Qwen3.6 and
+2/3 for Qwen3.8 at each level. Exact-citation accuracy was 0% versus 83.33%.
+[32K details](context-32k-summary.json), [64K details](context-64k-summary.json).
+The same narrow citation-selection distinction persists; three cases do not
+establish general model superiority. The separate 16K bridge also completed.
+
 ## Complete original required profile
 
 The independent profile is now complete: **102 token-verified rows per model**

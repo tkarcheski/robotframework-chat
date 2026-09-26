@@ -7,6 +7,7 @@ import json
 import pytest
 
 from scripts.hardware_local_eval import (
+    allocated_context,
     command,
     expected_coordinates,
     terminate,
@@ -50,6 +51,17 @@ def test_context_extension_is_explicit_and_recordable():
     assert cmd[cmd.index("--rope-scaling") + 1] == "yarn"
     assert cmd[cmd.index("--rope-scale") + 1] == "2.0"
     assert cmd[cmd.index("--yarn-orig-ctx") + 1] == "262144"
+
+
+def test_decimal_million_budget_has_explicit_native_allocation_padding():
+    cmd = command(
+        settings(),
+        {"path": "/weights/model.gguf", "id": "model", "native_context": 262144},
+        1000000,
+    )
+    assert allocated_context(1000000) == 1000192
+    assert allocated_context(262144) == 262144
+    assert cmd[cmd.index("--ctx-size") + 1] == "1000192"
 
 
 def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():

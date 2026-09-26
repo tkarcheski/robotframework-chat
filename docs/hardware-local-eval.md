@@ -153,3 +153,9 @@ chat API's nonempty `json_schema` response format, allowing the native template
 parser to account for that prefix. `HW_JSON_OBJECT_CONSTRAINT=1` enables the same
 request-level behavior in the Robot keyword and archives the schema in sampling
 metadata. The transport's ordinary JSON mode remains unchanged by default.
+
+Native allocations are explicitly rounded **up** to 256-token blocks, matching
+this llama.cpp build. The context-suite coordinate still sizes the input pack.
+For example, the 1,000,000-token budget requests a 1,000,192-token server
+allocation, verifies that exact served value, and records it as effective context.
+No context reduction or eviction is enabled.
