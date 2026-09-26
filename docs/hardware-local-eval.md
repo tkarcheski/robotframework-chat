@@ -223,3 +223,11 @@ CPU-only runs (`--gpu-layers 0`) skip GPU probes and headroom checks, force
 `--device none` and CPU KV placement, and retain RAM/process telemetry. GPU
 telemetry is recorded as null. Combining CPU-only mode with CUDA managed
 allocation is rejected before launch.
+
+Gate validation loads the trusted benchmark separately from result artifacts.
+Every row must match its fixture hash and its case's exact question IDs and
+critical flags, including browser cases. Matching omissions in both model arms
+cannot establish coverage. The core comparison API requires this benchmark;
+the Robot keyword supplies its loaded fixtures. The descriptive summary CLI
+uses the main fixtures by default; use `--fixtures PATH` for the product corpus
+or an archived fixture revision.

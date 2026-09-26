@@ -428,7 +428,9 @@ class HardwareEvalKeywords:
             for position in group["positions"]
             for trial in group["trials"]
         }
-        result = compare_runs(rows[0], rows[1], required_coordinates=required)
+        result = compare_runs(
+            rows[0], rows[1], required_coordinates=required, benchmark=self.benchmark
+        )
         result["profile_sha256"] = digest(profile)
         (self._output() / "hardware-gate.json").write_text(
             json.dumps(result, indent=2), encoding="utf-8"

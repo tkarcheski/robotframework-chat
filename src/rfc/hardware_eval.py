@@ -302,6 +302,7 @@ def compare_runs(
     baseline: list[dict[str, Any]],
     candidate: list[dict[str, Any]],
     required_coordinates: set[tuple[Any, ...]] | None = None,
+    benchmark: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fail-closed paired regression gate. This never trains or deploys anything.
 
@@ -329,6 +330,9 @@ def compare_runs(
     )
     if not baseline or not candidate or not required_coordinates:
         result["reasons"] = ["empty_run_or_missing_required_profile"]
+        return result
+    if benchmark is None:
+        result["reasons"] = ["missing_trusted_benchmark"]
         return result
     for rows in (baseline, candidate):
         keys = [tuple(r.get(k) for k in coordinate) for r in rows]
@@ -377,6 +381,23 @@ def compare_runs(
                     for question, check in checks.items()
                 )
             )
+            case_id = row.get("case_id")
+            case = benchmark["cases"].get(
+                case_id.removesuffix(":browser") if isinstance(case_id, str) else None
+            )
+            expected = case["expected"] if case else None
+            if (
+                row.get("fixture_sha256") != benchmark["sha256"]
+                or expected is None
+                or not isinstance(checks, dict)
+                or not checks_complete
+                or checks.keys() != expected.keys()
+                or any(
+                    checks[question]["critical"] is not rule.get("critical", False)
+                    for question, rule in expected.items()
+                )
+            ):
+                result["reasons"].append("benchmark_question_schema_mismatch")
             sampling = row.get("sampling")
             sampling_complete = (
                 isinstance(sampling, dict)

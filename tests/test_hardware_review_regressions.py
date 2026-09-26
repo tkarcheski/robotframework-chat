@@ -9,7 +9,14 @@ import pytest
 from rfc.hardware_eval import score_answer
 from rfc.hardware_eval_keywords import HardwareEvalKeywords
 from rfc.llm_client import _ConsoleFeedProvider
-from test_hardware_eval import FIXTURES, compare_runs, gold_answer, load_benchmark, row
+from test_hardware_eval import (
+    FIXTURES,
+    compare_runs,
+    gold_answer,
+    load_benchmark,
+    row,
+    synthetic_benchmark,
+)
 
 
 def test_sampling_reaches_wrapped_transport(tmp_path, monkeypatch):
@@ -69,7 +76,12 @@ def test_equal_aggregate_scores_do_not_hide_question_regression():
     new = copy.deepcopy(old)
     new["checks"]["one"]["correct"] = False
     new["checks"]["two"]["correct"] = True
-    assert compare_runs([old], [new])["verdict"] == "blocked"
+    assert (
+        compare_runs([old], [new], synthetic_benchmark({"one": False, "two": False}))[
+            "verdict"
+        ]
+        == "blocked"
+    )
 
 
 @pytest.mark.parametrize(
@@ -186,7 +198,9 @@ def test_browser_workflow_regression_blocks_even_with_equal_answers(field):
     from rfc.hardware_eval import compare_runs as compare_paired
 
     assert (
-        compare_paired([old], [new], {("task:browser", 16384, "middle", 0)})["verdict"]
+        compare_paired(
+            [old], [new], {("task:browser", 16384, "middle", 0)}, synthetic_benchmark()
+        )["verdict"]
         == "blocked"
     )
 
@@ -239,7 +253,10 @@ def test_model_tokenizer_must_be_stable_within_each_arm():
     rows = [row(trial=0), row(trial=1, model_tokenizer="f" * 64)]
     required = {("a", 16384, "middle", trial) for trial in [0, 1]}
     assert (
-        compare_paired(rows, copy.deepcopy(rows), required)["verdict"] == "incomplete"
+        compare_paired(rows, copy.deepcopy(rows), required, synthetic_benchmark())[
+            "verdict"
+        ]
+        == "incomplete"
     )
 
 
@@ -261,7 +278,10 @@ def test_browser_workflow_failure_blocks_even_when_baseline_also_failed():
     )
     assert (
         compare_paired(
-            [old], [copy.deepcopy(old)], {("a:browser", 16384, "middle", 0)}
+            [old],
+            [copy.deepcopy(old)],
+            {("a:browser", 16384, "middle", 0)},
+            synthetic_benchmark(),
         )["verdict"]
         == "blocked"
     )
@@ -314,7 +334,10 @@ def test_combined_profile_rejects_mixed_benchmark_revisions(field):
     rows = [row(trial=0), row(trial=1, **{field: "f" * 64})]
     required = {("a", 16384, "middle", trial) for trial in [0, 1]}
     assert (
-        compare_paired(rows, copy.deepcopy(rows), required)["verdict"] == "incomplete"
+        compare_paired(rows, copy.deepcopy(rows), required, synthetic_benchmark())[
+            "verdict"
+        ]
+        == "incomplete"
     )
 
 
@@ -362,3 +385,67 @@ def test_candidate_cannot_reclassify_critical_questions(accuracy):
     result = compare_runs([old], [new])
     assert result["verdict"] == "incomplete"
     assert "question_criticality_changed" in result["reasons"]
+
+
+@pytest.mark.parametrize("browser", [False, True])
+@pytest.mark.parametrize("corruption", ["omit", "add", "demote", "fixture_hash"])
+def test_both_artifacts_must_match_trusted_benchmark(tmp_path, browser, corruption):
+    benchmark = load_benchmark(FIXTURES)
+    case_id = "uno-current-budget"
+    case = benchmark["cases"][case_id]
+    result = row(
+        case_id=case_id + (":browser" if browser else ""),
+        fixture_sha256=benchmark["sha256"],
+        sources_observed=True,
+        report_saved=True,
+        **score_answer(case, gold_answer(case)),
+    )
+    profile = tmp_path / "profile.yaml"
+    profile.write_text(
+        json.dumps(
+            {
+                "groups": [
+                    {
+                        "mode": "browser" if browser else "text",
+                        "cases": [case_id],
+                        "contexts": [16384],
+                        "positions": ["middle"],
+                        "trials": [0],
+                    }
+                ]
+            }
+        )
+    )
+    artifact = tmp_path / "artifact.jsonl"
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=Mock())
+    artifact.write_text(json.dumps(result) + "\n")
+    assert (
+        lib.compare_hardware_runs(str(artifact), str(artifact), str(profile))["verdict"]
+        == "eligible"
+    )
+
+    critical = next(q for q, check in result["checks"].items() if check["critical"])
+    if corruption == "omit":
+        del result["checks"][critical]
+    elif corruption == "add":
+        result["checks"]["invented"] = {
+            "correct": True,
+            "citation_correct": True,
+            "critical": False,
+        }
+    elif corruption == "demote":
+        result["checks"][critical]["critical"] = False
+    else:
+        result["fixture_sha256"] = "f" * 64
+    # Both artifacts retain mutually consistent perfect aggregate scores.
+    artifact.write_text(json.dumps(result) + "\n")
+    gate = lib.compare_hardware_runs(str(artifact), str(artifact), str(profile))
+    assert gate["verdict"] == "incomplete"
+    assert "benchmark_question_schema_mismatch" in gate["reasons"]
+
+
+def test_core_gate_requires_benchmark_independent_of_artifacts():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    result = compare_paired([row()], [row()], {("a", 16384, "middle", 0)})
+    assert result["reasons"] == ["missing_trusted_benchmark"]

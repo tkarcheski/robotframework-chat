@@ -22,14 +22,40 @@ FIXTURES = (
 )
 
 
-def compare_runs(baseline, candidate):
-    return compare_paired(baseline, candidate, {("a", 16384, "middle", 0)})
+def synthetic_benchmark(questions=None):
+    """Independent synthetic answer schema for artifact-validation unit tests."""
+    questions = (
+        questions if questions is not None else {f"q{i}": False for i in range(4)}
+    )
+    return {
+        "sha256": "b" * 64,
+        "cases": {
+            case: {
+                "expected": {
+                    q: {"critical": critical} for q, critical in questions.items()
+                }
+            }
+            for case in ("a", "b", "task")
+        },
+    }
+
+
+def compare_runs(baseline, candidate, benchmark=None):
+    return compare_paired(
+        baseline,
+        candidate,
+        {("a", 16384, "middle", 0)},
+        benchmark if benchmark is not None else synthetic_benchmark(),
+    )
 
 
 def test_gate_requires_an_independent_coverage_manifest():
     assert compare_paired([row()], [row()])["verdict"] == "incomplete"
     required = {("a", 16384, "middle", 0), ("b", 16384, "middle", 0)}
-    assert compare_paired([row()], [row()], required)["verdict"] == "incomplete"
+    assert (
+        compare_paired([row()], [row()], required, synthetic_benchmark())["verdict"]
+        == "incomplete"
+    )
 
 
 @pytest.fixture
@@ -275,7 +301,12 @@ def test_regression_blocks_gate(change):
         baseline = row(accuracy=1.0)
         for question, check in candidate["checks"].items():
             baseline["checks"][question]["critical"] = check["critical"]
-    assert compare_runs([baseline], [candidate])["verdict"] == "blocked"
+    benchmark = (
+        synthetic_benchmark({f"q{i}": i == 3 for i in range(4)})
+        if "critical_failures" in change
+        else synthetic_benchmark()
+    )
+    assert compare_runs([baseline], [candidate], benchmark)["verdict"] == "blocked"
 
 
 @pytest.mark.parametrize(

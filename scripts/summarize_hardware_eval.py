@@ -14,7 +14,12 @@ from pathlib import Path
 import random
 import statistics
 
-from rfc.hardware_eval import compare_runs
+from rfc.hardware_eval import compare_runs, load_benchmark
+
+DEFAULT_FIXTURES = (
+    Path(__file__).resolve().parents[1]
+    / "robot/10__tier1/hardware_engineering/fixtures"
+)
 
 FIELDS = ("case_id", "context_tokens", "position", "trial")
 FIXED = (
@@ -40,10 +45,15 @@ def read(path):
     return by_key
 
 
-def compare(old, new):
+def compare(old, new, benchmark=None):
     if not old or old.keys() != new.keys():
         raise ValueError("Missing or unequal coverage")
-    gate = compare_runs(list(old.values()), list(new.values()), set(old))
+    gate = compare_runs(
+        list(old.values()),
+        list(new.values()),
+        set(old),
+        benchmark if benchmark is not None else load_benchmark(DEFAULT_FIXTURES),
+    )
     if gate["verdict"] == "incomplete":
         raise ValueError(f"Unverified comparison: {gate['reasons']}")
     cases = {}
@@ -115,8 +125,11 @@ def main():
     p.add_argument("baseline", type=Path)
     p.add_argument("candidate", type=Path)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     args = p.parse_args()
-    result = compare(read(args.baseline), read(args.candidate))
+    result = compare(
+        read(args.baseline), read(args.candidate), load_benchmark(args.fixtures)
+    )
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(
         json.dumps({k: v for k, v in result.items() if k not in ("cases",)}, indent=2)

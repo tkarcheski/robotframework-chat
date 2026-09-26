@@ -5,7 +5,7 @@ from copy import deepcopy
 import pytest
 
 from scripts.summarize_hardware_eval import compare
-from test_hardware_eval import row
+from test_hardware_eval import row, synthetic_benchmark
 
 
 def rows():
@@ -32,7 +32,7 @@ def test_repetitions_remain_two_case_clusters():
         r.update(model="candidate", accuracy=1.0, passed=True)
         for check in r["checks"].values():
             check["correct"] = True
-    result = compare(old, new)
+    result = compare(old, new, synthetic_benchmark())
     assert result["paired_rows"] == 6
     assert result["independent_case_clusters"] == 2
     assert result["metrics"]["accuracy"]["delta"] == 1
@@ -44,7 +44,7 @@ def test_changed_runtime_does_not_pass_as_model_only_comparison():
     new = deepcopy(old)
     next(iter(new.values()))["runtime_manifest"]["enable_thinking"] = True
     with pytest.raises(ValueError, match="Unverified comparison"):
-        compare(old, new)
+        compare(old, new, synthetic_benchmark())
 
 
 def test_incomplete_comparison_is_rejected():
@@ -52,4 +52,4 @@ def test_incomplete_comparison_is_rejected():
     new = deepcopy(old)
     new.pop(next(iter(new)))
     with pytest.raises(ValueError, match="coverage"):
-        compare(old, new)
+        compare(old, new, synthetic_benchmark())
