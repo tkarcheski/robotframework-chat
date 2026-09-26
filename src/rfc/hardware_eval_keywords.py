@@ -75,6 +75,7 @@ def dependency_manifest() -> dict[str, Any]:
 def harness_digest(root: Path) -> str:
     """Identify the full local implementation, including providers and tool execution."""
     runner = root.parent.parent / "scripts/hardware_local_eval.py"
+    makefile = root.parent.parent / "Makefile"
     return digest(
         {
             "version": __version__,
@@ -83,6 +84,9 @@ def harness_digest(root: Path) -> str:
             if runner.is_file()
             else None,
             "owned_runner": os.getenv("HW_RUNNER_SHA256", ""),
+            "makefile": hashlib.sha256(makefile.read_bytes()).hexdigest()
+            if makefile.is_file()
+            else None,
             "modules": {
                 str(path.relative_to(root)): hashlib.sha256(
                     path.read_bytes()
@@ -189,9 +193,34 @@ class HardwareEvalKeywords:
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, sort_keys=True, allow_nan=False) + "\n")
         emit_rfc_data("hardware_result", json.dumps(row, sort_keys=True))
-        logger.info(
-            f"Hardware evaluation {row['case_id']}: {row['status']}, passed={row['passed']}"
+        emit_rfc_data(
+            "grading_reason",
+            json.dumps(
+                {
+                    key: row.get(key)
+                    for key in (
+                        "case_id",
+                        "status",
+                        "accuracy",
+                        "citation_accuracy",
+                        "passed",
+                        "error_type",
+                    )
+                }
+            ),
         )
+        logger.info(
+            f"Hardware evaluation {row['case_id']}: {row['status']}, passed={row['passed']}",
+            also_console=True,
+        )
+        if row.get("artifact"):
+            logger.info(
+                f"Hardware evidence: {self._output() / row['artifact']}",
+                also_console=True,
+            )
+            (self._output() / row["artifact"] / "case-status.json").write_text(
+                json.dumps(row, sort_keys=True, allow_nan=False), encoding="utf-8"
+            )
 
     def _prepare_client(self) -> None:
         if self.injected:
@@ -319,6 +348,9 @@ class HardwareEvalKeywords:
                 row["prompt_sha256"] = digest(prompt)
             (folder / "prompt.txt").write_text(prompt, encoding="utf-8")
             calls: list[dict[str, Any]] = []
+            row["calls"] = calls
+            row["status"] = "running"
+            (folder / "case-status.json").write_text(json.dumps(row), encoding="utf-8")
 
             def generate(text: str) -> str:
                 local = model_count(text) if model_count else None
@@ -352,6 +384,8 @@ class HardwareEvalKeywords:
                 (folder / f"call-{len(calls):03d}-response.txt").write_text(
                     raw, encoding="utf-8"
                 )
+                emit_rfc_data("actual_answer", str(raw))
+                emit_rfc_data("llm_metrics", json.dumps(metrics))
                 return str(raw)
 
             if mode == "text":
@@ -391,12 +425,16 @@ class HardwareEvalKeywords:
             )
             row["status"] = "completed"
         except RFCSkipError:
-            if row["status"] == "not_started":
+            if row["status"] in {"not_started", "running"}:
                 row["status"] = (
                     "disabled"
                     if os.getenv("HW_EVAL_LIVE") != "1" and not self.injected
                     else "unavailable"
                 )
+            raise
+        except (KeyboardInterrupt, SystemExit) as exc:
+            row["status"] = "interrupted"
+            row["error_type"] = type(exc).__name__
             raise
         except Exception as exc:
             row["status"] = "error"

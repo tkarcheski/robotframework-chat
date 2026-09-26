@@ -4,6 +4,11 @@ from types import SimpleNamespace
 import io
 import json
 import hashlib
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
 
 import pytest
 
@@ -29,6 +34,62 @@ def settings():
         cpu_moe_layers=0,
         constrain_json=False,
     )
+
+
+@pytest.mark.parametrize("suite", ["short", "context", "browser", "product"])
+def test_native_runner_uses_make_preservation_contract(tmp_path, monkeypatch, suite):
+    from scripts import hardware_local_eval as runner
+
+    shutil.copyfile(runner.ROOT / "Makefile", tmp_path / "Makefile")
+    (tmp_path / ".env").write_text("LLM_PROVIDER=ollama\n")
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        runner, "makefile_session_id", lambda: "existing-harness-session"
+    )
+    command, output = runner.robot_make_run(suite, 4096, "unsloth/test-model")
+    plan = subprocess.check_output(
+        [*command, "--just-print"],
+        cwd=tmp_path,
+        env=runner.make_environment(
+            {**os.environ, "LLM_PROVIDER": "vllm", "LLM_RUN_DIR": "wrong"}
+        ),
+        text=True,
+    )
+    robot = shlex.split(plan.strip().splitlines()[-1])
+    assert (tmp_path / robot[robot.index("-d") + 1]) == output
+    listeners = [robot[i + 1] for i, value in enumerate(robot) if value == "--listener"]
+    assert "rfc.db_listener.DbListener" in listeners
+    assert "rfc.chat_log_listener.ChatLogListener" in listeners
+    assert "rfc.git_metadata_listener.GitMetaData" in listeners
+    assert "session_id:existing-harness-session" in robot
+    assert "run_id:" + output.name in robot
+    assert Path(robot[-1]).suffix == ".robot"
+    if suite == "context":
+        assert robot[robot.index("--test") + 1] == "Hardware Context 4K"
+    assert runner.robot_make_run(suite, 4096, "unsloth/test-model")[1] != output
+    provider = subprocess.check_output(
+        [
+            *command[:3],
+            "--eval=print-provider:;@echo $(LLM_PROVIDER)",
+            "print-provider",
+            "VERSION=test",
+            "SESSION_ID=test",
+        ],
+        cwd=tmp_path,
+        env=runner.make_environment({**os.environ, "LLM_PROVIDER": "vllm"}),
+        text=True,
+    )
+    assert provider.strip() == "vllm"
+
+
+@pytest.mark.parametrize(
+    "alias", ["model $(touch injected)", "model;false", "model\nother"]
+)
+def test_native_make_alias_cannot_be_interpreted_as_shell(alias):
+    from scripts import hardware_local_eval as runner
+
+    with pytest.raises(ValueError, match="shell-safe"):
+        runner.robot_make_run("short", 4096, alias)
 
 
 @pytest.mark.parametrize(

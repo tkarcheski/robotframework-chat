@@ -16,7 +16,9 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
+import signal
 from pathlib import Path
 import socket
 import subprocess
@@ -24,8 +26,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 import yaml
+
+from rfc import __version__
+from rfc.harness_cli import makefile_session_id
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -40,6 +46,79 @@ CONTEXT_NAMES = {
     524288: "524K",
     1000000: "1M",
 }
+
+
+def robot_make_run(suite, context, model_id):
+    """Use the normal Make listeners, metadata and preserved result layout."""
+    if not re.fullmatch(r"[A-Za-z0-9._/:-]+", model_id):
+        raise ValueError("Model alias must be a shell-safe Hugging Face identifier")
+    target, slug = {
+        "short": ("robot-hardware", "hardware-engineering"),
+        "product": ("robot-hardware-product", "hardware-product"),
+        "context": ("robot-hardware-context", "hardware-context"),
+        "browser": ("robot-hardware-browser", "hardware-computer-use"),
+    }[suite]
+    session_id = makefile_session_id()
+    run_id = uuid.uuid4().hex
+    model_slug = re.sub(r"[^A-Za-z0-9._-]", "_", model_id)
+    output = (
+        ROOT
+        / "results"
+        / __version__
+        / model_slug
+        / slug
+        / socket.gethostname()
+        / run_id
+    )
+    command = [
+        "make",
+        "--no-print-directory",
+        "--environment-overrides",
+        target,
+        "ROBOT=" + shlex.join([sys.executable, "-m", "robot"]),
+        "VERSION=" + __version__,
+        "SESSION_ID=" + session_id,
+        "RUN_ID=" + run_id,
+        "DEFAULT_MODEL=" + model_id,
+    ]
+    if suite == "context":
+        command.append(
+            "ARGS="
+            + shlex.join(
+                [
+                    "--test",
+                    "Hardware Context " + CONTEXT_NAMES[context],
+                ]
+            )
+        )
+    else:
+        command.append("ARGS=")
+    return command, output
+
+
+def make_environment(env):
+    """Keep owned provider settings above .env, without inheriting Make macros."""
+    make_variables = {
+        "MAKEFLAGS",
+        "MFLAGS",
+        "MAKEOVERRIDES",
+        "MAKELEVEL",
+        "LLM_RUN_DIR",
+        "AGENT_RUN_DIR",
+        "LLM_META",
+        "AGENT_META",
+        "LLM_VARS",
+        "AGENT_VARS",
+        "META_BASE",
+        "VAR_BASE",
+        "HOSTNAME",
+        "DEFAULT_MODEL_SLUG",
+        "MODEL_HARNESS_SLUG",
+        "LISTENER",
+        "DRYRUN_LISTENER",
+        "GRAYLOG_LISTENER",
+    }
+    return {key: value for key, value in env.items() if key not in make_variables}
 
 
 def file_sha256(path):
@@ -402,20 +481,26 @@ def gpu_allocation_established(processes, pid, managed, server_log):
     )
 
 
-def terminate(process):
+def terminate(process, process_group=False):
     if process and process.poll() is None:
-        process.terminate()
+        if process_group:
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
         try:
             process.wait(timeout=15)
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process_group:
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
             process.wait(timeout=5)
 
 
 def source_provenance(folder):
     """Archive staged and unstaged tracked changes; reject untracked run inputs."""
     git = ["git", "-C", str(ROOT)]
-    inputs = ["src", "robot", "scripts", "config", "pyproject.toml"]
+    inputs = ["src", "robot", "scripts", "config", "pyproject.toml", "Makefile"]
     untracked = capture(
         git
         + [
@@ -617,41 +702,34 @@ def run_cell(args, model, context, version):
             path.write_text(json.dumps(manifest, indent=2))
             for suite in args.suites:
                 required = expected_coordinates(args, suite, context)
-                suite_path = {
-                    "short": "hardware.robot",
-                    "product": "product.robot",
-                    "context": "context.robot",
-                    "browser": "computer_use.robot",
-                }[suite]
-                run = [
-                    sys.executable,
-                    "-m",
-                    "robot",
-                    "--outputdir",
-                    str(folder / suite),
-                ]
-                if suite == "context":
-                    run += ["--test", "Hardware Context " + CONTEXT_NAMES[context]]
-                run += [str(ROOT / "robot/10__tier1/hardware_engineering" / suite_path)]
-                with (folder / f"{suite}-console.log").open("w") as output:
-                    runner = subprocess.Popen(
-                        run, env=env, stdout=output, stderr=subprocess.STDOUT, cwd=ROOT
-                    )
-                    while runner.poll() is None:
-                        state = sample(server.pid, include_gpu=bool(args.gpu_layers))
-                        telemetry.write(json.dumps(state) + "\n")
-                        telemetry.flush()
-                        if state["available_ram"] < args.min_ram_gib * 1024**3:
-                            raise RuntimeError("RAM reserve reached")
-                        if time.monotonic() - start > args.cell_timeout:
-                            raise TimeoutError("Cell deadline reached")
-                        if server.poll() is not None:
-                            raise RuntimeError(
-                                "Owned model server exited during evaluation"
-                            )
-                        time.sleep(1)
-                manifest["suites"][suite] = {"robot_exit": runner.returncode}
-                evidence = folder / suite / "hardware-results.jsonl"
+                run, robot_output = robot_make_run(suite, context, model["id"])
+                manifest["suites"][suite] = {
+                    "command": run,
+                    "robot_output_dir": str(robot_output),
+                }
+                path.write_text(json.dumps(manifest, indent=2))
+                runner = subprocess.Popen(
+                    run,
+                    env=make_environment(env),
+                    stderr=subprocess.STDOUT,
+                    cwd=ROOT,
+                    start_new_session=True,
+                )
+                while runner.poll() is None:
+                    state = sample(server.pid, include_gpu=bool(args.gpu_layers))
+                    telemetry.write(json.dumps(state) + "\n")
+                    telemetry.flush()
+                    if state["available_ram"] < args.min_ram_gib * 1024**3:
+                        raise RuntimeError("RAM reserve reached")
+                    if time.monotonic() - start > args.cell_timeout:
+                        raise TimeoutError("Cell deadline reached")
+                    if server.poll() is not None:
+                        raise RuntimeError(
+                            "Owned model server exited during evaluation"
+                        )
+                    time.sleep(1)
+                manifest["suites"][suite]["make_exit"] = runner.returncode
+                evidence = robot_output / "hardware-results.jsonl"
                 rows = (
                     [json.loads(x) for x in evidence.read_text().splitlines()]
                     if evidence.exists()
@@ -692,7 +770,7 @@ def run_cell(args, model, context, version):
         manifest["error"] = str(exc)
         raise
     finally:
-        terminate(runner)
+        terminate(runner, process_group=True)
         terminate(server)
         manifest["elapsed_seconds"] = time.monotonic() - start
         path.write_text(json.dumps(manifest, indent=2))

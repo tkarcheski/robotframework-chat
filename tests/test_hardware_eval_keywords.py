@@ -105,6 +105,43 @@ def test_output_budget_is_requested_and_archived(tmp_path, monkeypatch):
     assert result["output_reserve"] == 4096
 
 
+def test_response_uses_standard_listener_fields(tmp_path, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "rfc.hardware_eval_keywords.emit_rfc_data", lambda k, v: events.append((k, v))
+    )
+    client = MagicMock(model="instrument-control", last_metrics={})
+    client.generate.return_value = '{"answers":[]}'
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=client)
+    result = lib.evaluate_hardware_case("uno-current-budget")
+    assert ("actual_answer", client.generate.return_value) in events
+    assert any(key == "grading_reason" for key, _ in events)
+    state = json.loads((tmp_path / result["artifact"] / "case-status.json").read_text())
+    assert state == json.loads(json.dumps(result))
+
+
+def test_interrupted_case_keeps_running_snapshot_prompt_and_terminal_row(tmp_path):
+    client = MagicMock(model="instrument-control", last_metrics={})
+
+    def interrupt(prompt):
+        state_file = next(tmp_path.glob("hardware-*/case-status.json"))
+        state = json.loads(state_file.read_text())
+        assert state["status"] == "running"
+        assert (state_file.parent / "prompt.txt").read_text() == prompt
+        raise KeyboardInterrupt()
+
+    client.generate.side_effect = interrupt
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=client)
+    with pytest.raises(KeyboardInterrupt):
+        lib.evaluate_hardware_case("uno-current-budget")
+    row = json.loads((tmp_path / "hardware-results.jsonl").read_text())
+    assert row["status"] == "interrupted"
+    assert not row["passed"]
+    assert (
+        json.loads((tmp_path / row["artifact"] / "case-status.json").read_text()) == row
+    )
+
+
 def test_nonpositive_output_budget_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setenv("HW_OUTPUT_TOKENS", "0")
     with pytest.raises(ValueError, match="positive"):

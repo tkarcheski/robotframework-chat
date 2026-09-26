@@ -69,6 +69,29 @@ make robot-hardware
 make robot-hardware-browser
 ```
 
+For managed local GGUF comparisons, use `make hardware-local-eval ARGS='...'`
+with the native runner's model manifest, tokenizer, context, and server options.
+It starts one owned native server and invokes these same `robot-hardware*`
+Make targets. Their standard listeners, database archive, metadata, and
+`results/<version>/<model>/<suite>/<host>/<run>/` directories are retained.
+Each suite gets a unique `RUN_ID` so repeated context runs preserve earlier logs,
+while `SESSION_ID` retains the active `rfc harness start` linkage. Normal Make
+commands default `RUN_ID` to `SESSION_ID` for compatibility.
+The runner's cell manifest links `robot_output_dir` and records `make_exit`;
+model failures remain in Robot's `output.xml`, `log.html`, and `report.html`.
+Use `make hardware-evaluation-gate` for the paired comparison. Private wrapper
+scripts are not required for execution or grading.
+
+Start with one live case before a sweep: select `--suites context --contexts
+4096 --cases fire-pinmux-change --positions spread --trials 1` in the native
+Make target's `ARGS`. The runner prints Make/Robot output as it happens.
+Each completed case prints its status and evidence directory, emits its actual
+response and metrics through the standard listeners, and appends its JSONL row.
+`case-status.json` and `prompt.txt` are written before inference; interrupted
+calls retain their evidence and a terminal `interrupted` record when Python can
+handle the interruption. An abrupt process kill can leave a `running` snapshot;
+that is incomplete evidence, never a completed answer.
+
 The same tasks run through the existing Ollama/OpenAI provider factory. A
 serving alias alone is not an immutable model identity. `HW_MODEL_DIGEST` is an
 operator-supplied identity and must be checked against the server/checkpoint;
