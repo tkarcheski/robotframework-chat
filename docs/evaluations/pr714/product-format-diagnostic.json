@@ -1,0 +1,346 @@
+{
+  "scope": "Post-hoc inspection, not replacement scores or an eligible comparison. Extract one fenced JSON object only when the original strict parser rejects the response. Never repair numeric values, citations, or truncated output. All cases and missing extracts are retained.",
+  "models": [
+    {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "cases": {
+        "battery-release": [
+          {
+            "trial": 0,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "242e06eaac8aac9b7cfb26589f14a3e9155cd17f5ab88cc603b4b7bd51b10508"
+          },
+          {
+            "trial": 1,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "242e06eaac8aac9b7cfb26589f14a3e9155cd17f5ab88cc603b4b7bd51b10508"
+          },
+          {
+            "trial": 2,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "242e06eaac8aac9b7cfb26589f14a3e9155cd17f5ab88cc603b4b7bd51b10508"
+          }
+        ],
+        "sensor-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "lsb_a": 0.0008056640625,
+              "full_scale_a": 3.3,
+              "error_a": 0.1008056640625,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "5bba925d8c41338673e219b861f228f7374ee8da43b83c90bf03e6509ac77d67"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "lsb_a": 0.0008056640625,
+              "full_scale_a": 3.3,
+              "error_a": 0.1008056640625,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "5bba925d8c41338673e219b861f228f7374ee8da43b83c90bf03e6509ac77d67"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "lsb_a": 0.0008056640625,
+              "full_scale_a": 3.3,
+              "error_a": 0.1008056640625,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "5bba925d8c41338673e219b861f228f7374ee8da43b83c90bf03e6509ac77d67"
+          }
+        ],
+        "telemetry-release": [
+          {
+            "trial": 0,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "8fc91e90f154cda9d59804bc1a1b708c1d41186cf6621be65a3a3631bd23cf84"
+          },
+          {
+            "trial": 1,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "8fc91e90f154cda9d59804bc1a1b708c1d41186cf6621be65a3a3631bd23cf84"
+          },
+          {
+            "trial": 2,
+            "token_verified": false,
+            "official_passed": false,
+            "extraction": "no complete extract",
+            "answer_values": null,
+            "response_sha256": "8fc91e90f154cda9d59804bc1a1b708c1d41186cf6621be65a3a3631bd23cf84"
+          }
+        ],
+        "manufacturing-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "5ea755b9c5f042e3e2ad75126101587edbbfc8b7c1314054d5608d947d2628b0"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "5ea755b9c5f042e3e2ad75126101587edbbfc8b7c1314054d5608d947d2628b0"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "5ea755b9c5f042e3e2ad75126101587edbbfc8b7c1314054d5608d947d2628b0"
+          }
+        ]
+      }
+    },
+    {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "cases": {
+        "battery-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "average_ma": 42,
+              "usable_3000_mah": 1944,
+              "runtime_3000_h": 46.2857,
+              "old_cell_passes": false,
+              "selected_mah": 3200
+            },
+            "response_sha256": "0433fb5178a7da8e01da6b50858b682200dee437c10a4c81cf38c138e5cd27fb"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "average_ma": 42,
+              "usable_3000_mah": 1944,
+              "runtime_3000_h": 46.2857,
+              "old_cell_passes": false,
+              "selected_mah": 3200
+            },
+            "response_sha256": "0433fb5178a7da8e01da6b50858b682200dee437c10a4c81cf38c138e5cd27fb"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "average_ma": 42,
+              "usable_3000_mah": 1944,
+              "runtime_3000_h": 46.2857,
+              "old_cell_passes": false,
+              "selected_mah": 3200
+            },
+            "response_sha256": "0433fb5178a7da8e01da6b50858b682200dee437c10a4c81cf38c138e5cd27fb"
+          }
+        ],
+        "sensor-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "lsb_a": 0.002014,
+              "full_scale_a": 8.25,
+              "error_a": 0.122014,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "a8c5c3ea12581d1d660ad3e2e4caf85dbceb9756bcd4f41d8181d3ece5f603fc"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "lsb_a": 0.002014,
+              "full_scale_a": 8.25,
+              "error_a": 0.122014,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "a8c5c3ea12581d1d660ad3e2e4caf85dbceb9756bcd4f41d8181d3ece5f603fc"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "lsb_a": 0.002014,
+              "full_scale_a": 8.25,
+              "error_a": 0.122014,
+              "shunt_power_w": 0.32,
+              "power_margin_w": -0.12,
+              "release": false
+            },
+            "response_sha256": "a8c5c3ea12581d1d660ad3e2e4caf85dbceb9756bcd4f41d8181d3ece5f603fc"
+          }
+        ],
+        "telemetry-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "frame_bytes": 18,
+              "demand_bytes_s": 230400,
+              "capacity_2m_bytes_s": 195000,
+              "maximum_rate_hz": 169,
+              "pause_fits": true,
+              "selected": "uart3m"
+            },
+            "response_sha256": "7a551b2ef31a6624a378cd39ead0db24f94eb0aeec96aed9deff29e3fc1c282b"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "frame_bytes": 18,
+              "demand_bytes_s": 230400,
+              "capacity_2m_bytes_s": 195000,
+              "maximum_rate_hz": 169,
+              "pause_fits": true,
+              "selected": "uart3m"
+            },
+            "response_sha256": "7a551b2ef31a6624a378cd39ead0db24f94eb0aeec96aed9deff29e3fc1c282b"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": false,
+            "extraction": "single fenced object extracted after strict-schema failure",
+            "answer_values": {
+              "frame_bytes": 18,
+              "demand_bytes_s": 230400,
+              "capacity_2m_bytes_s": 195000,
+              "maximum_rate_hz": 169,
+              "pause_fits": true,
+              "selected": "uart3m"
+            },
+            "response_sha256": "7a551b2ef31a6624a378cd39ead0db24f94eb0aeec96aed9deff29e3fc1c282b"
+          }
+        ],
+        "manufacturing-release": [
+          {
+            "trial": 0,
+            "token_verified": true,
+            "official_passed": true,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "9aaa166e8402d2db7f3609b7bd1ac91bf249e155843fe775f1348efb7e0e4a6d"
+          },
+          {
+            "trial": 1,
+            "token_verified": true,
+            "official_passed": true,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "9aaa166e8402d2db7f3609b7bd1ac91bf249e155843fe775f1348efb7e0e4a6d"
+          },
+          {
+            "trial": 2,
+            "token_verified": true,
+            "official_passed": true,
+            "extraction": "strict object",
+            "answer_values": {
+              "on_time_a": 900,
+              "shortfall_a": 100,
+              "b_approved": false,
+              "c_within_budget": false,
+              "selected": "none",
+              "release": false
+            },
+            "response_sha256": "9aaa166e8402d2db7f3609b7bd1ac91bf249e155843fe775f1348efb7e0e4a6d"
+          }
+        ]
+      }
+    }
+  ]
+}

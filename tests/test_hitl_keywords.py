@@ -155,14 +155,25 @@ class TestApprovals:
         with pytest.raises(HitlApprovalError):
             kw.ensure_action_approved(SESSION, ACTION, ARGS)
 
-    def test_expired_approval_fails_closed(self, kw):
+    def test_expired_approval_fails_closed(self, kw, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+
+        from rfc.hitl_gate import HitlApprovalGate
+
+        # Exercise the real gate with one controlled clock. A 50 ms expiry
+        # must not race disk scheduling before the approval is resolved.
+        clock = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
+        monkeypatch.setattr("rfc.hitl_keywords._utc_now", lambda: clock[0])
+        monkeypatch.setattr(
+            "rfc.hitl_keywords.HitlApprovalGate",
+            lambda db, session: HitlApprovalGate(db, session, now=lambda: clock[0]),
+        )
         aid = kw.request_human_approval(
             SESSION, "Roll out?", ACTION, ARGS, expires_in=0.05
         )
         kw.resolve_interaction(aid, "approved")
-        import time
-
-        time.sleep(0.1)
+        assert kw.is_action_approved(SESSION, ACTION, ARGS) is True
+        clock[0] += timedelta(seconds=0.1)
         assert kw.is_action_approved(SESSION, ACTION, ARGS) is False
 
 

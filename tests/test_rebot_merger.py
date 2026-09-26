@@ -215,6 +215,29 @@ class TestMergeOutputs:
 
 
 class TestRebotMergerMain:
+    def test_main_propagates_rebot_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        results = tmp_path / "results"
+        results.mkdir()
+        (results / "output.xml").write_text("invalid XML")
+        monkeypatch.setattr("src.rfc.rebot_merger._run_rebot", lambda args: 252)
+        monkeypatch.setattr(
+            "sys.argv",
+            ["rebot_merger", str(results), "--output-dir", str(tmp_path / "combined")],
+        )
+
+        with pytest.raises(SystemExit) as error:
+            main()
+
+        assert error.value.code == 252
+        output = capsys.readouterr().out
+        assert "Merge failed" in output
+        assert "Merge Complete" not in output
+
     def test_main_success(
         self,
         tmp_path: Path,

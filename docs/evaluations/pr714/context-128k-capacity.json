@@ -1,0 +1,258 @@
+{
+  "scope": "Three public cases, spread evidence, one greedy trial; capacity exploration, not general quality or full-profile eligibility. GPU includes desktop, sampled once per second.",
+  "cells": [
+    {
+      "context": 131072,
+      "allocated_context": 131072,
+      "status": "error",
+      "error": "Server exited 1; inspect server.log",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "load_seconds": null,
+      "elapsed_seconds": 4.62513125303667,
+      "suites": {},
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "source": "results/pr714/context-128k-q8/qwen36-131072/manifest.json",
+      "peak_total_gpu_mib": null,
+      "minimum_available_ram_bytes": null,
+      "rows": []
+    },
+    {
+      "context": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "load_seconds": 3.2499698689207435,
+      "elapsed_seconds": 310.4937165599549,
+      "suites": {
+        "context": {
+          "robot_exit": 1,
+          "rows": 3,
+          "passed": 2,
+          "completed": 3,
+          "token_verified": 3
+        }
+      },
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "source": "results/pr714/context-128k-q8/qwen38-131072/manifest.json",
+      "peak_total_gpu_mib": 21654.0,
+      "minimum_available_ram_bytes": 113876750336,
+      "rows": [
+        {
+          "case_id": "fire-pinmux-change",
+          "passed": true,
+          "accuracy": 1.0,
+          "citation_accuracy": 1.0,
+          "token_count_verified": true,
+          "latency_ms": 98470.21268494427,
+          "actual_input_tokens": 128708,
+          "server_prompt_tokens": 128720
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "passed": true,
+          "accuracy": 1.0,
+          "citation_accuracy": 1.0,
+          "token_count_verified": true,
+          "latency_ms": 101635.71698602755,
+          "actual_input_tokens": 128761,
+          "server_prompt_tokens": 128773
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "passed": false,
+          "accuracy": 1.0,
+          "citation_accuracy": 0.5,
+          "token_count_verified": true,
+          "latency_ms": 105838.42503395863,
+          "actual_input_tokens": 128755,
+          "server_prompt_tokens": 128767
+        }
+      ]
+    },
+    {
+      "context": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "load_seconds": 4.646359740989283,
+      "elapsed_seconds": 196.03731917403638,
+      "suites": {
+        "context": {
+          "robot_exit": 1,
+          "rows": 3,
+          "passed": 0,
+          "completed": 3,
+          "token_verified": 3
+        }
+      },
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "source": "results/pr714/context-128k-q4/qwen36-131072/manifest.json",
+      "peak_total_gpu_mib": 23586.0,
+      "minimum_available_ram_bytes": 113542070272,
+      "rows": [
+        {
+          "case_id": "fire-pinmux-change",
+          "passed": false,
+          "accuracy": 1.0,
+          "citation_accuracy": 0.0,
+          "token_count_verified": true,
+          "latency_ms": 63030.03779693972,
+          "actual_input_tokens": 128708,
+          "server_prompt_tokens": 128720
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "passed": false,
+          "accuracy": 1.0,
+          "citation_accuracy": 0.0,
+          "token_count_verified": true,
+          "latency_ms": 64113.0502729211,
+          "actual_input_tokens": 128761,
+          "server_prompt_tokens": 128773
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "passed": false,
+          "accuracy": 1.0,
+          "citation_accuracy": 0.0,
+          "token_count_verified": true,
+          "latency_ms": 63433.525901986286,
+          "actual_input_tokens": 128755,
+          "server_prompt_tokens": 128767
+        }
+      ]
+    },
+    {
+      "context": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "load_seconds": 3.231651491019875,
+      "elapsed_seconds": 300.26792630204,
+      "suites": {
+        "context": {
+          "robot_exit": 1,
+          "rows": 3,
+          "passed": 2,
+          "completed": 3,
+          "token_verified": 3
+        }
+      },
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "source": "results/pr714/context-128k-q4/qwen38-131072/manifest.json",
+      "peak_total_gpu_mib": 19606.0,
+      "minimum_available_ram_bytes": 114156097536,
+      "rows": [
+        {
+          "case_id": "fire-pinmux-change",
+          "passed": true,
+          "accuracy": 1.0,
+          "citation_accuracy": 1.0,
+          "token_count_verified": true,
+          "latency_ms": 95976.48754401598,
+          "actual_input_tokens": 128708,
+          "server_prompt_tokens": 128720
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "passed": true,
+          "accuracy": 1.0,
+          "citation_accuracy": 1.0,
+          "token_count_verified": true,
+          "latency_ms": 101131.99847296346,
+          "actual_input_tokens": 128761,
+          "server_prompt_tokens": 128773
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "passed": false,
+          "accuracy": 1.0,
+          "citation_accuracy": 0.75,
+          "token_count_verified": true,
+          "latency_ms": 98796.721420018,
+          "actual_input_tokens": 128755,
+          "server_prompt_tokens": 128767
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+answers:
+  battery-release:
+    average_ma:
+      value: 42
+      evidence:
+      - battery-current-eco
+      - battery-requirement
+    usable_3000_mah:
+      value: 1944
+      evidence:
+      - battery-requirement
+      - battery-cells
+    runtime_3000_h:
+      value: 46.285714285714285
+      evidence:
+      - battery-current-eco
+      - battery-requirement
+      - battery-cells
+      tolerance: 1.0e-06
+    old_cell_passes:
+      value: false
+      evidence:
+      - battery-current-eco
+      - battery-requirement
+      - battery-cells
+      critical: true
+    selected_mah:
+      value: 3200
+      evidence:
+      - battery-current-eco
+      - battery-requirement
+      - battery-cells
+      critical: true
+  sensor-release:
+    lsb_a:
+      value: 0.0020141601562499996
+      evidence:
+      - sensor-adc
+      - sensor-current-eco
+      tolerance: 1.0e-06
+    full_scale_a:
+      value: 8.249999999999998
+      evidence:
+      - sensor-adc
+      - sensor-current-eco
+      tolerance: 1.0e-06
+    error_a:
+      value: 0.12201416015625
+      evidence:
+      - sensor-requirement
+      - sensor-adc
+      - sensor-current-eco
+      tolerance: 1.0e-06
+    shunt_power_w:
+      value: 0.32
+      evidence:
+      - sensor-requirement
+      - sensor-current-eco
+      tolerance: 1.0e-06
+    power_margin_w:
+      value: -0.12
+      evidence:
+      - sensor-requirement
+      - sensor-current-eco
+      tolerance: 1.0e-06
+    release:
+      value: false
+      evidence:
+      - sensor-requirement
+      - sensor-adc
+      - sensor-current-eco
+      critical: true
+  telemetry-release:
+    frame_bytes:
+      value: 18
+      evidence:
+      - telemetry-frame
+    demand_bytes_s:
+      value: 230400
+      evidence:
+      - telemetry-requirement
+      - telemetry-frame
+    capacity_2m_bytes_s:
+      value: 195000
+      evidence:
+      - telemetry-frame
+      - telemetry-scheduler
+      - telemetry-options
+    maximum_rate_hz:
+      value: 169
+      evidence:
+      - telemetry-requirement
+      - telemetry-frame
+      - telemetry-scheduler
+      - telemetry-options
+    pause_fits:
+      value: true
+      evidence:
+      - telemetry-requirement
+      - telemetry-frame
+      - telemetry-scheduler
+    selected:
+      value: uart3m
+      evidence:
+      - telemetry-requirement
+      - telemetry-frame
+      - telemetry-scheduler
+      - telemetry-options
+      critical: true
+  manufacturing-release:
+    on_time_a:
+      value: 900
+      evidence:
+      - purchase-stock
+    shortfall_a:
+      value: 100
+      evidence:
+      - purchase-requirement
+      - purchase-stock
+    b_approved:
+      value: false
+      evidence:
+      - purchase-bom
+      - purchase-qualification
+      critical: true
+    c_within_budget:
+      value: false
+      evidence:
+      - purchase-requirement
+      - purchase-bom
+    selected:
+      value: none
+      evidence:
+      - purchase-requirement
+      - purchase-bom
+      - purchase-stock
+      - purchase-qualification
+      critical: true
+    release:
+      value: false
+      evidence:
+      - purchase-requirement
+      - purchase-bom
+      - purchase-stock
+      - purchase-qualification
+      critical: true

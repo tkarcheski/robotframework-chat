@@ -37,6 +37,7 @@ class OpenAIClient:
         num_ctx: Optional[int] = None,
         keep_alive: Optional[str] = None,
         response_format: Optional[str] = None,
+        json_schema: Optional[Dict[str, Any]] = None,
     ):
         if not base_url:
             base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -68,6 +69,14 @@ class OpenAIClient:
             raise ValueError(
                 f"response_format must be None or 'json', got {response_format!r}"
             )
+        if json_schema is not None and (
+            response_format != "json"
+            or not isinstance(json_schema, dict)
+            or not json_schema
+        ):
+            raise ValueError(
+                "json_schema requires response_format='json' and a nonempty object"
+            )
 
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -82,6 +91,7 @@ class OpenAIClient:
         self.num_ctx = num_ctx  # Not used by OpenAI, kept for protocol compliance
         self.keep_alive = keep_alive  # Not used by OpenAI, kept for protocol compliance
         self.response_format = response_format
+        self.json_schema = json_schema
         self.last_metrics: Optional[Dict[str, Any]] = None
 
     def generate(self, prompt: str) -> str:
@@ -115,6 +125,11 @@ class OpenAIClient:
             payload["top_k"] = self.top_k
         if self.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
+            if self.json_schema is not None:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": "response", "schema": self.json_schema},
+                }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -198,8 +213,10 @@ def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
     usage = data.get("usage", {})
     prompt_details = usage.get("prompt_tokens_details") or {}
     completion_details = usage.get("completion_tokens_details") or {}
+    choices = data.get("choices") or []
     return {
         "model_name": model,
+        "finish_reason": choices[0].get("finish_reason") if choices else None,
         "prompt_tokens": usage.get("prompt_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
         "total_tokens": usage.get("total_tokens"),

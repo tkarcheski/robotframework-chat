@@ -63,6 +63,31 @@ master_models:
 # CI jobs may group several suites (see ci.job_groups below).
 # ---------------------------------------------------------------------------
 test_suites:
+  hardware-engineering:
+    label: "Public Hardware Engineering"
+    path: "robot/10__tier1/hardware_engineering/hardware.robot"
+    description: "Arduino UNO and BeagleV-Fire source-grounded design and review tasks"
+
+  hardware-product:
+    label: "Hardware Product Release"
+    path: "robot/10__tier1/hardware_engineering/product.robot"
+    description: "Battery, sensor, telemetry and manufacturing release constraints"
+
+  hardware-context:
+    label: "Hardware Context Comparison"
+    path: "robot/10__tier1/hardware_engineering/context.robot"
+    description: "Opt-in exact-token context matrix, 4K through 1M, capability gated"
+
+  hardware-computer-use:
+    label: "Hardware Browser Tasks"
+    path: "robot/10__tier1/hardware_engineering/computer_use.robot"
+    description: "Model-driven local document browsing and verified report creation"
+
+  hardware-evaluation-gate:
+    label: "Hardware Evaluation Gate"
+    path: "robot/10__tier1/hardware_engineering/evaluation_gate.robot"
+    description: "Offline comparison of complete paired live results; no deployment"
+
   math:
     label: "Math Tests"
     path: "robot/20__tier2/math"

@@ -1,0 +1,92 @@
+{
+  "paired_rows": 3,
+  "independent_case_clusters": 3,
+  "baseline_model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+  "candidate_model": "unsloth/Qwen3.8-27B-GGUF",
+  "scope": "exploratory paired comparison, not full-profile eligibility",
+  "reasoning": false,
+  "cases": [
+    {
+      "case_id": "fire-gateware-resources",
+      "paired_rows": 1,
+      "baseline_accuracy": 0.75,
+      "candidate_accuracy": 1.0,
+      "delta_accuracy": 0.25,
+      "baseline_citation_accuracy": 0.0,
+      "candidate_citation_accuracy": 0.75,
+      "delta_citation_accuracy": 0.75,
+      "baseline_passed": 0,
+      "candidate_passed": 0,
+      "delta_passed": 0,
+      "baseline_latency_ms": 155491.27214192413,
+      "candidate_latency_ms": 254109.194476041,
+      "delta_latency_ms": 98617.92233411688
+    },
+    {
+      "case_id": "fire-pinmux-change",
+      "paired_rows": 1,
+      "baseline_accuracy": 1.0,
+      "candidate_accuracy": 1.0,
+      "delta_accuracy": 0.0,
+      "baseline_citation_accuracy": 0.0,
+      "candidate_citation_accuracy": 1.0,
+      "delta_citation_accuracy": 1.0,
+      "baseline_passed": 0,
+      "candidate_passed": 1,
+      "delta_passed": 1,
+      "baseline_latency_ms": 164301.1673699366,
+      "candidate_latency_ms": 251881.89877499826,
+      "delta_latency_ms": 87580.73140506167
+    },
+    {
+      "case_id": "mixed-voltage-review",
+      "paired_rows": 1,
+      "baseline_accuracy": 1.0,
+      "candidate_accuracy": 1.0,
+      "delta_accuracy": 0.0,
+      "baseline_citation_accuracy": 0.0,
+      "candidate_citation_accuracy": 1.0,
+      "delta_citation_accuracy": 1.0,
+      "baseline_passed": 0,
+      "candidate_passed": 1,
+      "delta_passed": 1,
+      "baseline_latency_ms": 159480.86938401684,
+      "candidate_latency_ms": 257270.33255901188,
+      "delta_latency_ms": 97789.46317499503
+    }
+  ],
+  "metrics": {
+    "accuracy": {
+      "baseline": 0.9166666666666666,
+      "candidate": 1.0,
+      "delta": 0.08333333333333333,
+      "case_cluster_bootstrap_95_percent": [
+        0.0,
+        0.25
+      ],
+      "practical_improvement_at_least_10pp_and_ci_above_zero": false
+    },
+    "citation_accuracy": {
+      "baseline": 0.0,
+      "candidate": 0.9166666666666666,
+      "delta": 0.9166666666666666,
+      "case_cluster_bootstrap_95_percent": [
+        0.75,
+        1.0
+      ],
+      "practical_improvement_at_least_10pp_and_ci_above_zero": true
+    },
+    "passed": {
+      "baseline": 0,
+      "candidate": 0.6666666666666666,
+      "delta": 0.6666666666666666,
+      "case_cluster_bootstrap_95_percent": [
+        0,
+        1
+      ],
+      "practical_improvement_at_least_10pp_and_ci_above_zero": false
+    }
+  },
+  "unanimous_full_pass_cases": [],
+  "note": "A unanimous pass is a ceiling-effect candidate, not automatic skip:low-value. Retain safety/negative controls and confirm across contexts/model arms before demotion. Intervals describe variation across this small public task set; no population/general superiority claim."
+}

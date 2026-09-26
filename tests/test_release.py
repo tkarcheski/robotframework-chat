@@ -55,6 +55,19 @@ class TestVersionConsistency:
         assert "build" in dep_names, "build package missing from dev dependencies"
         assert "twine" in dep_names, "twine package missing from dev dependencies"
 
+    def test_sqlalchemy_range_matches_pinned_typechecker(self) -> None:
+        """SQLAlchemy 2.1 uses directives unknown to the pinned mypy 1.10."""
+        from packaging.requirements import Requirement
+        from packaging.version import Version
+
+        data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        deps = data["project"]["optional-dependencies"]["superset"]
+        dependency = next(
+            Requirement(item) for item in deps if item.startswith("sqlalchemy")
+        )
+        assert Version("2.0.54") in dependency.specifier
+        assert Version("2.1.1") not in dependency.specifier
+
     def test_pyproject_has_urls(self) -> None:
         """pyproject.toml must have project.urls for PyPI listing."""
         data = tomllib.loads((ROOT / "pyproject.toml").read_text())

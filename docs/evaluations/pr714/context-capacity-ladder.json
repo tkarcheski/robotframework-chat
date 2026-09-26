@@ -1,0 +1,1570 @@
+{
+  "generated_at": "2026-09-26T15:31:46Z",
+  "scope": "Exploratory context capacity and answer checks. These cells use different cache, harness and placement factors; only matched arms within each experiment are comparable. Allocation alone is not inference quality. Pending or failed cells are not successful measurements.",
+  "telemetry_note": "GPU totals include the desktop and are sampled once per second. No model-only residency claim for managed allocations. Unrelated light host activity was not isolated; latency is not a dedicated-device performance benchmark.",
+  "cells": [
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 16384,
+      "allocated_context": 16384,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen36-16384/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "fa5c4f57e51b5fb2046e5d1bc31b97502ea16fbb",
+      "load_seconds": 4.613843696075492,
+      "elapsed_seconds": 101.3798900609836,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 1,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.08333333333333333,
+      "actual_input_tokens_range": [
+        14018,
+        14070
+      ],
+      "server_prompt_tokens_range": [
+        14030,
+        14082
+      ],
+      "sampled_peak_total_gpu_mib": 22958.0,
+      "sampled_minimum_available_ram_bytes": 114092429312,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 4096,
+      "allocated_context": 4096,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen36-4096/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "939a74fd70e647b4b3368080f208bfdf7781158d",
+      "load_seconds": 4.984972830978222,
+      "elapsed_seconds": 52.07847197703086,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.22916666666666666,
+      "actual_input_tokens_range": [
+        1708,
+        1763
+      ],
+      "server_prompt_tokens_range": [
+        1720,
+        1775
+      ],
+      "sampled_peak_total_gpu_mib": 22537.0,
+      "sampled_minimum_available_ram_bytes": 113984028672,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 8192,
+      "allocated_context": 8192,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen36-8192/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "939a74fd70e647b4b3368080f208bfdf7781158d",
+      "load_seconds": 4.604556206963025,
+      "elapsed_seconds": 63.77961950597819,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.22916666666666666,
+      "actual_input_tokens_range": [
+        5792,
+        5847
+      ],
+      "server_prompt_tokens_range": [
+        5804,
+        5859
+      ],
+      "sampled_peak_total_gpu_mib": 22801.0,
+      "sampled_minimum_available_ram_bytes": 114169470976,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 16384,
+      "allocated_context": 16384,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen38-16384/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "fa5c4f57e51b5fb2046e5d1bc31b97502ea16fbb",
+      "load_seconds": 3.329618431045674,
+      "elapsed_seconds": 194.91934310097713,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 8,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        14018,
+        14070
+      ],
+      "server_prompt_tokens_range": [
+        14030,
+        14082
+      ],
+      "sampled_peak_total_gpu_mib": 17830.0,
+      "sampled_minimum_available_ram_bytes": 114149683200,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 4096,
+      "allocated_context": 4096,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen38-4096/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "939a74fd70e647b4b3368080f208bfdf7781158d",
+      "load_seconds": 3.280596093973145,
+      "elapsed_seconds": 138.16680633090436,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 8,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        1708,
+        1763
+      ],
+      "server_prompt_tokens_range": [
+        1720,
+        1775
+      ],
+      "sampled_peak_total_gpu_mib": 16887.0,
+      "sampled_minimum_available_ram_bytes": 113925832704,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-initial",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 8192,
+      "allocated_context": 8192,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-initial/qwen38-8192/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "939a74fd70e647b4b3368080f208bfdf7781158d",
+      "load_seconds": 3.3992639939533547,
+      "elapsed_seconds": 148.21304085897282,
+      "rows_written": 12,
+      "rows_token_verified": 12,
+      "strict_passes": 8,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        5792,
+        5847
+      ],
+      "server_prompt_tokens_range": [
+        5804,
+        5859
+      ],
+      "sampled_peak_total_gpu_mib": 17329.0,
+      "sampled_minimum_available_ram_bytes": 114128953344,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "end",
+        "middle",
+        "spread",
+        "start"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 16384,
+      "allocated_context": 16384,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen36-16384/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 4.606312774005346,
+      "elapsed_seconds": 29.22535060311202,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        14018,
+        14070
+      ],
+      "server_prompt_tokens_range": [
+        14030,
+        14082
+      ],
+      "sampled_peak_total_gpu_mib": 22925.0,
+      "sampled_minimum_available_ram_bytes": 114296254464,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 32768,
+      "allocated_context": 32768,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen36-32768/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 4.618732573930174,
+      "elapsed_seconds": 50.60050667496398,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        30380,
+        30436
+      ],
+      "server_prompt_tokens_range": [
+        30392,
+        30448
+      ],
+      "sampled_peak_total_gpu_mib": 23250.0,
+      "sampled_minimum_available_ram_bytes": 113489657856,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 65536,
+      "allocated_context": 65536,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen36-65536/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 4.623198823072016,
+      "elapsed_seconds": 93.31504540203605,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        63132,
+        63187
+      ],
+      "server_prompt_tokens_range": [
+        63144,
+        63199
+      ],
+      "sampled_peak_total_gpu_mib": 23886.0,
+      "sampled_minimum_available_ram_bytes": 114166824960,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 16384,
+      "allocated_context": 16384,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen38-16384/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 3.2278039439115673,
+      "elapsed_seconds": 53.32701692299452,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        14018,
+        14070
+      ],
+      "server_prompt_tokens_range": [
+        14030,
+        14082
+      ],
+      "sampled_peak_total_gpu_mib": 17807.0,
+      "sampled_minimum_available_ram_bytes": 114235637760,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 32768,
+      "allocated_context": 32768,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen38-32768/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 3.2762722140178084,
+      "elapsed_seconds": 79.80462674505543,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        30380,
+        30436
+      ],
+      "server_prompt_tokens_range": [
+        30392,
+        30448
+      ],
+      "sampled_peak_total_gpu_mib": 18822.0,
+      "sampled_minimum_available_ram_bytes": 114224037888,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-32k-64k-native",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 65536,
+      "allocated_context": 65536,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-32k-64k-native/qwen38-65536/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "f16",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "0e2639602966b061e6ba30a8dbdfad1bba737327",
+      "load_seconds": 3.2758478509495035,
+      "elapsed_seconds": 140.8107546659885,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        63132,
+        63187
+      ],
+      "server_prompt_tokens_range": [
+        63144,
+        63199
+      ],
+      "sampled_peak_total_gpu_mib": 20878.0,
+      "sampled_minimum_available_ram_bytes": 114201808896,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-128k-q8",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "error",
+      "error": "Server exited 1; inspect server.log",
+      "source": "results/pr714/context-128k-q8/qwen36-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "f52980d98a6ed85d40d8b046ddfe7b7f9a043798",
+      "load_seconds": null,
+      "elapsed_seconds": 4.62513125303667,
+      "rows_written": 0,
+      "rows_token_verified": 0,
+      "strict_passes": 0,
+      "mean_fact_accuracy": null,
+      "mean_exact_citation_accuracy": null,
+      "actual_input_tokens_range": null,
+      "server_prompt_tokens_range": null,
+      "sampled_peak_total_gpu_mib": null,
+      "sampled_minimum_available_ram_bytes": null,
+      "sampled_maximum_swap_used_bytes": null,
+      "case_ids": [],
+      "positions": [],
+      "trials": []
+    },
+    {
+      "experiment": "context-128k-q8",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 65536,
+      "allocated_context": 65536,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-128k-q8/qwen36-65536/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "ca9e2a9422c742d5ec7544206cbfee1253957520",
+      "load_seconds": 4.619661033037119,
+      "elapsed_seconds": 94.32606879505329,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        63132,
+        63187
+      ],
+      "server_prompt_tokens_range": [
+        63144,
+        63199
+      ],
+      "sampled_peak_total_gpu_mib": 23402.0,
+      "sampled_minimum_available_ram_bytes": 114115022848,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-128k-q8",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-128k-q8/qwen38-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "ca9e2a9422c742d5ec7544206cbfee1253957520",
+      "load_seconds": 3.2499698689207435,
+      "elapsed_seconds": 310.4937165599549,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        128708,
+        128761
+      ],
+      "server_prompt_tokens_range": [
+        128720,
+        128773
+      ],
+      "sampled_peak_total_gpu_mib": 21654.0,
+      "sampled_minimum_available_ram_bytes": 113876750336,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-128k-q8",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 65536,
+      "allocated_context": 65536,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-128k-q8/qwen38-65536/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q8_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "ca9e2a9422c742d5ec7544206cbfee1253957520",
+      "load_seconds": 3.230749709997326,
+      "elapsed_seconds": 145.8103683339432,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.8333333333333334,
+      "actual_input_tokens_range": [
+        63132,
+        63187
+      ],
+      "server_prompt_tokens_range": [
+        63144,
+        63199
+      ],
+      "sampled_peak_total_gpu_mib": 19205.0,
+      "sampled_minimum_available_ram_bytes": 114237378560,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-128k-q4",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-128k-q4/qwen36-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "5bf18dd279fd22ac0e15d5ff0bf47aaa21d4f3b5",
+      "load_seconds": 4.646359740989283,
+      "elapsed_seconds": 196.03731917403638,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        128708,
+        128761
+      ],
+      "server_prompt_tokens_range": [
+        128720,
+        128773
+      ],
+      "sampled_peak_total_gpu_mib": 23586.0,
+      "sampled_minimum_available_ram_bytes": 113542070272,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-128k-q4",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-128k-q4/qwen38-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0
+      },
+      "source_commit": "5bf18dd279fd22ac0e15d5ff0bf47aaa21d4f3b5",
+      "load_seconds": 3.231651491019875,
+      "elapsed_seconds": 300.26792630204,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.9166666666666666,
+      "actual_input_tokens_range": [
+        128708,
+        128761
+      ],
+      "server_prompt_tokens_range": [
+        128720,
+        128773
+      ],
+      "sampled_peak_total_gpu_mib": 19606.0,
+      "sampled_minimum_available_ram_bytes": 114156097536,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-262k-managed",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "error",
+      "error": "Owned server GPU allocation not established",
+      "source": "results/pr714/context-262k-managed/qwen38-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "62d330fcbf7a4901d05e2604823763b51fed31ba",
+      "load_seconds": null,
+      "elapsed_seconds": 4.743428271031007,
+      "rows_written": 0,
+      "rows_token_verified": 0,
+      "strict_passes": 0,
+      "mean_fact_accuracy": null,
+      "mean_exact_citation_accuracy": null,
+      "actual_input_tokens_range": null,
+      "server_prompt_tokens_range": null,
+      "sampled_peak_total_gpu_mib": null,
+      "sampled_minimum_available_ram_bytes": null,
+      "sampled_maximum_swap_used_bytes": null,
+      "case_ids": [],
+      "positions": [],
+      "trials": []
+    },
+    {
+      "experiment": "context-262k-managed-retry",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-262k-managed-retry/qwen36-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "82962c1a13b055518e406f2664eba9fefca90d44",
+      "load_seconds": 6.067863233038224,
+      "elapsed_seconds": 197.83091743197292,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        128708,
+        128761
+      ],
+      "server_prompt_tokens_range": [
+        128720,
+        128773
+      ],
+      "sampled_peak_total_gpu_mib": 23642.0,
+      "sampled_minimum_available_ram_bytes": 114071875584,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-262k-managed-retry",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 262144,
+      "allocated_context": 262144,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-262k-managed-retry/qwen36-262144/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "dfb3670772ab64ae07b508af05b705e8f55211c9",
+      "load_seconds": 5.583219535066746,
+      "elapsed_seconds": 487.3491136759985,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 0.9166666666666666,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        259772,
+        259827
+      ],
+      "server_prompt_tokens_range": [
+        259784,
+        259839
+      ],
+      "sampled_peak_total_gpu_mib": 24044.0,
+      "sampled_minimum_available_ram_bytes": 90926895104,
+      "sampled_maximum_swap_used_bytes": 1248706560,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-262k-managed-retry",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 131072,
+      "allocated_context": 131072,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-262k-managed-retry/qwen38-131072/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "82962c1a13b055518e406f2664eba9fefca90d44",
+      "load_seconds": 4.223005431937054,
+      "elapsed_seconds": 301.6304978529224,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.9166666666666666,
+      "actual_input_tokens_range": [
+        128708,
+        128761
+      ],
+      "server_prompt_tokens_range": [
+        128720,
+        128773
+      ],
+      "sampled_peak_total_gpu_mib": 19692.0,
+      "sampled_minimum_available_ram_bytes": 113942220800,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-262k-managed-retry",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 262144,
+      "allocated_context": 262144,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-262k-managed-retry/qwen38-262144/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "native",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "82962c1a13b055518e406f2664eba9fefca90d44",
+      "load_seconds": 5.229544807923958,
+      "elapsed_seconds": 770.3913561980007,
+      "rows_written": 3,
+      "rows_token_verified": 3,
+      "strict_passes": 2,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.9166666666666666,
+      "actual_input_tokens_range": [
+        259772,
+        259827
+      ],
+      "server_prompt_tokens_range": [
+        259784,
+        259839
+      ],
+      "sampled_peak_total_gpu_mib": 22450.0,
+      "sampled_minimum_available_ram_bytes": 113144995840,
+      "sampled_maximum_swap_used_bytes": 0,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change",
+        "mixed-voltage-review"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-million-managed",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 524288,
+      "allocated_context": 524288,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-million-managed/qwen36-524288/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-2",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "load_seconds": 7.437999251997098,
+      "elapsed_seconds": 2144.6110385551583,
+      "rows_written": 2,
+      "rows_token_verified": 2,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.0,
+      "actual_input_tokens_range": [
+        521905,
+        521961
+      ],
+      "server_prompt_tokens_range": [
+        521917,
+        521973
+      ],
+      "sampled_peak_total_gpu_mib": 24044.0,
+      "sampled_minimum_available_ram_bytes": 87782346752,
+      "sampled_maximum_swap_used_bytes": 422293504,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-million-managed",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 1000000,
+      "allocated_context": 1000192,
+      "status": "error",
+      "error": "Cell deadline reached",
+      "source": "results/pr714/context-million-managed/qwen38-1000000/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-4",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "load_seconds": 17.252074372954667,
+      "elapsed_seconds": 21604.78952785791,
+      "rows_written": 1,
+      "rows_token_verified": 0,
+      "strict_passes": 0,
+      "mean_fact_accuracy": null,
+      "mean_exact_citation_accuracy": null,
+      "actual_input_tokens_range": null,
+      "server_prompt_tokens_range": null,
+      "sampled_peak_total_gpu_mib": 24044,
+      "sampled_minimum_available_ram_bytes": 75309236224,
+      "sampled_maximum_swap_used_bytes": 480481280,
+      "case_ids": [
+        "fire-pinmux-change"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-million-managed",
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "context_budget": 524288,
+      "allocated_context": 524288,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-million-managed/qwen38-524288/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-2",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "load_seconds": 13.2447975280229,
+      "elapsed_seconds": 7933.213392690057,
+      "rows_written": 2,
+      "rows_token_verified": 2,
+      "strict_passes": 1,
+      "mean_fact_accuracy": 1.0,
+      "mean_exact_citation_accuracy": 0.75,
+      "actual_input_tokens_range": [
+        521905,
+        521961
+      ],
+      "server_prompt_tokens_range": [
+        521917,
+        521973
+      ],
+      "sampled_peak_total_gpu_mib": 24044.0,
+      "sampled_minimum_available_ram_bytes": 85841252352,
+      "sampled_maximum_swap_used_bytes": 430051328,
+      "case_ids": [
+        "fire-gateware-resources",
+        "fire-pinmux-change"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    },
+    {
+      "experiment": "context-million-qwen36-continuation",
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "context_budget": 1000000,
+      "allocated_context": 1000192,
+      "status": "completed",
+      "error": null,
+      "source": "results/pr714/context-million-qwen36-continuation/qwen36-1000000/manifest.json",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-4",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "load_seconds": 9.656657031038776,
+      "elapsed_seconds": 12189.242082128068,
+      "rows_written": 2,
+      "rows_token_verified": 2,
+      "strict_passes": 0,
+      "mean_fact_accuracy": 0.875,
+      "mean_exact_citation_accuracy": 0,
+      "actual_input_tokens_range": [
+        997636,
+        997691
+      ],
+      "server_prompt_tokens_range": [
+        997648,
+        997703
+      ],
+      "sampled_peak_total_gpu_mib": 24101,
+      "sampled_minimum_available_ram_bytes": 83225169920,
+      "sampled_maximum_swap_used_bytes": 470900736,
+      "case_ids": [
+        "fire-pinmux-change",
+        "fire-gateware-resources"
+      ],
+      "positions": [
+        "spread"
+      ],
+      "trials": [
+        0
+      ]
+    }
+  ]
+}

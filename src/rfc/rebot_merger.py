@@ -92,8 +92,8 @@ def _run_rebot(args: list[str]) -> int:
     """Run rebot via subprocess and return exit code.
 
     Uses ``uv run rebot`` to ensure the correct environment.
-    The ``--nostatusrc`` flag is NOT used here so the caller
-    can detect merge failures.
+    ``merge_outputs`` supplies ``--nostatusrc`` so failed model tests do not
+    fail report generation. Rebot parsing and writing errors remain nonzero.
     """
     cmd = ["uv", "run", "rebot"] + args
     logger.info("Running: %s", " ".join(cmd))
@@ -206,6 +206,12 @@ def main() -> None:
     if result is None:
         print("No output.xml files found to merge.")
         raise SystemExit(1)
+
+    if result.return_code:
+        print(
+            f"Merge failed (rebot exit {result.return_code}); inspect the errors above."
+        )
+        raise SystemExit(result.return_code)
 
     print()
     print("=== Merge Complete ===")

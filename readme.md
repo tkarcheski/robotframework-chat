@@ -11,6 +11,11 @@ A Robot Framework-based test harness for systematically testing Large Language M
 
 ## Quick Start
 
+For source-grounded Arduino UNO and BeagleV-Fire comparisons, see the
+[hardware engineering evaluation guide](https://github.com/tkarcheski/robotframework-chat/blob/daffe0c2937db2b24e4f6cf1f47958adc59f0aa4/robot/10__tier1/hardware_engineering/README.md).
+It covers design/review questions, opt-in 16K-to-1M context tests, live sandbox
+browser tasks, and a non-deploying regression gate.
+
 ### Prerequisites
 
 - **Python 3.11+** and **astral-uv** for dependency management

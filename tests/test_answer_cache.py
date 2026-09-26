@@ -519,6 +519,7 @@ def test_hit_metrics_are_zero_cost_not_inherited():
     assert m["prompt_eval_count"] == 0
     assert m["total_duration_ns"] == 0
     assert m["eval_rate"] is None  # rate undefined, not fabricated
+    assert m["finish_reason"] is None  # no new generation to attest
 
 
 def test_hit_metrics_schema_matches_miss_schema():

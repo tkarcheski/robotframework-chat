@@ -17,6 +17,32 @@ Provenance notes:
   published here via a PR-mode mirror publisher (see the readme's
   Contributing section).
 
+## [1.31.0] - Unreleased
+
+### Added
+
+- Public Arduino UNO and BeagleV-Fire hardware engineering evaluations:
+  18 source-grounded tasks, exact-token context packs with opt-in 16K to 1M
+  budgets, four model-driven local browser tasks, and a fail-closed paired
+  regression gate. Public regression fixtures are not a secret holdout.
+- `HardwareEvalKeywords` public keywords: `Get Hardware Case Ids`,
+  `Evaluate Hardware Case`, `Evaluate Hardware Browser Task`,
+  `Assert Hardware Case Passed`, and `Compare Hardware Runs`.
+  These are additive; existing keyword signatures are unchanged.
+- Optional `hardware-eval` extra for pinned local tokenizer counting.
+  Browser tasks use the existing `playwright` extra.
+- Run commands, source attribution, frozen required coverage, per-call artifacts,
+  negative instrument controls and a real-Chromium scripted harness smoke test.
+  Model quality and 1M serving capacity still require live endpoint measurements.
+  Training is deferred to issue #712.
+
+### Fixed
+
+- The approval-expiry test now uses an injected clock rather than racing a
+  50 ms wall-clock deadline. Production approval behavior is unchanged.
+- Keep the optional SQLAlchemy dependency on the 2.0 line while mypy is pinned
+  to 1.10; SQLAlchemy 2.1 type directives otherwise break fresh-install CI.
+
 ## [1.30.0] — Unreleased
 
 ### Added

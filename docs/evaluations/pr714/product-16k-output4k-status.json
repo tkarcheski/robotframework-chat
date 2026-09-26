@@ -1,0 +1,114 @@
+{
+  "scope": "Incomplete paired product pilot; no eligibility or superiority claim",
+  "context_tokens": 16384,
+  "output_tokens": 4096,
+  "native_output_constraint": false,
+  "arms": {
+    "qwen36": {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "rows": 12,
+      "completed": 12,
+      "token_verified": 6,
+      "strict_passes": 0,
+      "cases": [
+        {
+          "case_id": "battery-release",
+          "trials": 3,
+          "schema_valid": 0,
+          "strict_passes": 0,
+          "token_verified": 0,
+          "output_limit_hits": 3,
+          "mean_official_fact_score": 0.0,
+          "mean_official_citation_score": 0.0
+        },
+        {
+          "case_id": "manufacturing-release",
+          "trials": 3,
+          "schema_valid": 3,
+          "strict_passes": 0,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 1.0,
+          "mean_official_citation_score": 0.8333333333333334
+        },
+        {
+          "case_id": "sensor-release",
+          "trials": 3,
+          "schema_valid": 3,
+          "strict_passes": 0,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 0.5,
+          "mean_official_citation_score": 0.6666666666666666
+        },
+        {
+          "case_id": "telemetry-release",
+          "trials": 3,
+          "schema_valid": 0,
+          "strict_passes": 0,
+          "token_verified": 0,
+          "output_limit_hits": 3,
+          "mean_official_fact_score": 0.0,
+          "mean_official_citation_score": 0.0
+        }
+      ]
+    },
+    "qwen38": {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "rows": 12,
+      "completed": 12,
+      "token_verified": 12,
+      "strict_passes": 3,
+      "cases": [
+        {
+          "case_id": "battery-release",
+          "trials": 3,
+          "schema_valid": 0,
+          "strict_passes": 0,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 0.0,
+          "mean_official_citation_score": 0.0
+        },
+        {
+          "case_id": "manufacturing-release",
+          "trials": 3,
+          "schema_valid": 3,
+          "strict_passes": 3,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 1.0,
+          "mean_official_citation_score": 1.0
+        },
+        {
+          "case_id": "sensor-release",
+          "trials": 3,
+          "schema_valid": 0,
+          "strict_passes": 0,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 0.0,
+          "mean_official_citation_score": 0.0
+        },
+        {
+          "case_id": "telemetry-release",
+          "trials": 3,
+          "schema_valid": 0,
+          "strict_passes": 0,
+          "token_verified": 3,
+          "output_limit_hits": 0,
+          "mean_official_fact_score": 0.0,
+          "mean_official_citation_score": 0.0
+        }
+      ]
+    }
+  },
+  "gate": {
+    "verdict": "incomplete",
+    "deployment_performed": false,
+    "reasons": [
+      "unverified_or_missing_result"
+    ],
+    "paired_cases": 0
+  }
+}

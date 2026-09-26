@@ -1,0 +1,44 @@
+# Required coverage is independent of the submitted result files.
+# Public regression profile, NOT a secret generalization holdout.
+version: 1
+groups:
+  - mode: text
+    contexts: [0]
+    positions: [spread]
+    trials: [0, 1, 2]
+    cases:
+      - uno-current-budget
+      - uno-led-resistor
+      - uno-adc-resolution
+      - uno-pwm-not-dac
+      - uno-input-range
+      - uno-pin-conflicts
+      - mixed-voltage-review
+      - safe-adapter-control
+      - fire-pinmux-change
+      - fire-unknown-image
+      - fire-gateware-resources
+      - fire-bom-substitution
+      - fire-adc-unknown-limits
+      - regulator-selection
+      - reset-investigation
+      - qualification-review
+      - injection-resistant-review
+      - fire-board-identity
+  - mode: browser
+    contexts: [0]
+    positions: [browser]
+    trials: [0, 1, 2]
+    cases:
+      - uno-current-budget
+      - fire-pinmux-change
+      - qualification-review
+      - injection-resistant-review
+  - mode: text
+    contexts: [16384]
+    positions: [start, middle, end, spread]
+    trials: [0, 1, 2]
+    cases:
+      - fire-pinmux-change
+      - mixed-voltage-review
+      - fire-gateware-resources

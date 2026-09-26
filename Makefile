@@ -26,15 +26,17 @@ export
 # SESSION_ID is fresh per `make` invocation; all suites chained in one invocation share it.
 HOSTNAME           := $(shell hostname)
 SESSION_ID         := $(shell uv run python -c "from rfc.harness_cli import makefile_session_id; print(makefile_session_id())")
+# Repeated suites can preserve distinct logs while sharing a harness session.
+RUN_ID             ?= $(SESSION_ID)
 DEFAULT_MODEL_SLUG := $(shell printf '%s' '$(or $(DEFAULT_MODEL),unknown-model)' | tr -c 'A-Za-z0-9._-' '_')
 MODEL_HARNESS_SLUG := $(shell printf '%s' '$(or $(MODEL_HARNESS),unknown-harness)' | tr -c 'A-Za-z0-9._-' '_')
 
 # Path layout: results/<rfc_version>/<model_or_harness>/<test_suite>/<hostname>/<session_id>/
 # LLM_* macros take a single arg ($1) — the test suite slug.
-LLM_RUN_DIR   = results/$(VERSION)/$(DEFAULT_MODEL_SLUG)/$(1)/$(HOSTNAME)/$(SESSION_ID)
-AGENT_RUN_DIR = results/$(VERSION)/$(MODEL_HARNESS_SLUG)/$(1)/$(HOSTNAME)/$(SESSION_ID)
+LLM_RUN_DIR   = results/$(VERSION)/$(DEFAULT_MODEL_SLUG)/$(1)/$(HOSTNAME)/$(RUN_ID)
+AGENT_RUN_DIR = results/$(VERSION)/$(MODEL_HARNESS_SLUG)/$(1)/$(HOSTNAME)/$(RUN_ID)
 
-META_BASE   = --metadata rfc_version:$(VERSION) --metadata hostname:$(HOSTNAME) --metadata session_id:$(SESSION_ID)
+META_BASE   = --metadata rfc_version:$(VERSION) --metadata hostname:$(HOSTNAME) --metadata session_id:$(SESSION_ID) --metadata run_id:$(RUN_ID)
 LLM_META    = $(META_BASE) --metadata model_name:$(or $(DEFAULT_MODEL),unknown-model) --metadata test_suite:$(1)
 AGENT_META  = $(META_BASE) --metadata model_harness:$(or $(MODEL_HARNESS),unknown-harness) --metadata test_suite:$(1)
 
@@ -42,7 +44,7 @@ VAR_BASE    = --variable SESSION_ID:$(SESSION_ID)
 LLM_VARS    = $(VAR_BASE)
 AGENT_VARS  = $(VAR_BASE) --variable MODEL_HARNESS:$(or $(MODEL_HARNESS),unknown-harness)
 
-.PHONY: help install update \
+.PHONY: help install update hardware-local-eval robot-hardware robot-hardware-context robot-hardware-browser robot-hardware-product hardware-evaluation-gate \
         robot robot-math robot-accounting robot-docker robot-safety robot-superset robot-multilingual robot-dryrun \
         robot-review robot-gold robot-platinum gold-check \
         robot-graylog graylog-up graylog-down graylog-logs graylog-demo graylog-doctor \
@@ -96,6 +98,24 @@ update: ## Fetch, pull latest changes, and sync dependencies (stashes untracked 
 #   make robot ARGS="--include axis:harness"
 
 robot: robot-math robot-accounting robot-docker robot-safety ## Run all Robot Framework test suites
+
+hardware-local-eval: ## Run pinned native models through the normal hardware Make targets (ARGS required)
+	uv run python scripts/hardware_local_eval.py $(ARGS)
+
+robot-hardware: ## Public hardware design/review evals (opt-in HW_EVAL_LIVE=1)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-engineering) $(LISTENER) $(call LLM_META,hardware-engineering) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/hardware.robot
+
+robot-hardware-context: ## Long hardware context matrix (opt-in HW_CONTEXT_SWEEP=1)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-context) $(LISTENER) $(call LLM_META,hardware-context) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/context.robot
+
+robot-hardware-browser: ## Model-driven local browser tasks (requires playwright extra)
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-computer-use) $(LISTENER) $(call LLM_META,hardware-computer-use) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/computer_use.robot
+
+robot-hardware-product: ## Product release decisions over fictional engineering artifacts
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-product) $(LISTENER) $(call LLM_META,hardware-product) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/product.robot
+
+hardware-evaluation-gate: ## Compare HW_BASELINE_RESULTS and HW_CANDIDATE_RESULTS; no deployment
+	$(ROBOT) -d $(call LLM_RUN_DIR,hardware-evaluation-gate) $(LISTENER) $(call LLM_META,hardware-evaluation-gate) $(LLM_VARS) $(ARGS) robot/10__tier1/hardware_engineering/evaluation_gate.robot
 
 robot-math: ## Run math tests (Robot Framework)
 	$(ROBOT) -d $(call LLM_RUN_DIR,math) $(call LLM_META,math) $(LLM_VARS) $(LISTENER) $(ARGS) robot/20__tier2/math/

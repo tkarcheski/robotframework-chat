@@ -422,6 +422,7 @@ def _cache_hit_metrics(model: Optional[str]) -> Dict[str, Any]:
     return {
         "model_name": model,
         "cache_hit": True,
+        "finish_reason": None,
         "total_duration_ns": 0,
         "load_duration_ns": 0,
         "prompt_eval_count": 0,
