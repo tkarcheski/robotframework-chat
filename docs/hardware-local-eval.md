@@ -23,10 +23,13 @@ Create a private JSON manifest (keep model files and outputs under `results/`):
 ```
 
 Add one entry per arm. Preflight validates all declared fields, positive native
-context, weight-file presence, and loadable model/reference tokenizer files
-before output creation or server probing. Dry plans validate metadata without
-requiring downloaded files. Verify the SHA256 values before executing; the manifest
-records operator-supplied identities and is not a cryptographic server attestation.
+context, the actual SHA256 of every weight file, and loadable model/reference
+tokenizer files before output creation or server probing. Hashing streams the
+weights without loading each file into RAM. A stale or incorrect declared
+digest aborts execution; accepted digests are normalized to lowercase. Dry
+plans validate metadata without requiring downloaded files or hashing weights.
+This verifies local files at preflight, not remote-server attestation. Keep the
+weight files unchanged for the full run.
 Pin model/tokenizer revisions and keep the same reference tokenizer across arms.
 The requested context is the **total allocation**, including 2,048 output tokens
 and 256 wrapper-reserve tokens. Actual prompt counts are in each result row.

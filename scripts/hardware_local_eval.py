@@ -42,12 +42,14 @@ CONTEXT_NAMES = {
 }
 
 
+def file_sha256(path):
+    """Stream large weights and build inputs without loading them into RAM."""
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def server_build_identity(pid, proc_root=Path("/proc")):
     """Hash the owned executable and its currently mapped shared libraries."""
-
-    def sha256(path):
-        with path.open("rb") as stream:
-            return hashlib.file_digest(stream, "sha256").hexdigest()
 
     process = proc_root / str(pid)
     libraries = set()
@@ -59,9 +61,9 @@ def server_build_identity(pid, proc_root=Path("/proc")):
         if name.startswith("/") and ".so" in Path(name).name:
             libraries.add(name)
     return {
-        "executable_sha256": sha256(process / "exe"),
+        "executable_sha256": file_sha256(process / "exe"),
         "shared_libraries": [
-            {"name": Path(name).name, "sha256": sha256(Path(name))}
+            {"name": Path(name).name, "sha256": file_sha256(Path(name))}
             for name in sorted(libraries)
         ],
     }
@@ -708,6 +710,7 @@ def validate_model_assets(models, reference_tokenizer, execute):
             raise ValueError(
                 f"Model {model['name']}: sha256 must identify the weight file"
             )
+        model["sha256"] = model["sha256"].lower()
         if model["quant"].strip().lower() == "unspecified":
             raise ValueError(
                 f"Model {model['name']}: quant must identify the weight format"
@@ -722,6 +725,8 @@ def validate_model_assets(models, reference_tokenizer, execute):
                 raise ValueError(
                     f"Model {model['name']}: missing {key} file: {model[key]}"
                 )
+        if execute and file_sha256(Path(model["path"])) != model["sha256"]:
+            raise ValueError(f"Model {model['name']}: weight SHA256 mismatch")
     if execute:
         try:
             from tokenizers import Tokenizer

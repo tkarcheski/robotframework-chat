@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 import io
 import json
+import hashlib
 
 import pytest
 
@@ -652,7 +653,7 @@ def asset_manifest(tmp_path):
         "name": "model",
         "id": "local/model",
         "path": str(weights),
-        "sha256": "a" * 64,
+        "sha256": hashlib.sha256(weights.read_bytes()).hexdigest(),
         "quant": "Q4_K_M",
         "tokenizer": str(tokenizer),
         "revision": "pinned-local",
@@ -802,3 +803,61 @@ def test_server_identity_hashes_owned_executable_and_mapped_libraries(tmp_path):
     library.write_bytes(b"inference implementation two")
     third = server_build_identity(123, tmp_path)
     assert second["shared_libraries"] != third["shared_libraries"]
+
+
+def test_weight_digest_is_checked_and_canonicalized(tmp_path):
+    pytest.importorskip("tokenizers")
+    from scripts.hardware_local_eval import validate_model_assets
+
+    model = asset_manifest(tmp_path)
+    model["sha256"] = model["sha256"].upper()
+    expected = model["sha256"].lower()
+    validate_model_assets([model], tmp_path / "tokenizer.json", True)
+    assert model["sha256"] == expected
+    (tmp_path / "model.gguf").write_bytes(b"different weights at the same path")
+    with pytest.raises(ValueError, match="weight SHA256 mismatch"):
+        validate_model_assets([model], tmp_path / "tokenizer.json", True)
+
+
+def test_stale_weight_digest_aborts_before_output_or_server(
+    tmp_path, monkeypatch, capsys
+):
+    from scripts import hardware_local_eval as runner
+
+    model = asset_manifest(tmp_path)
+    model["sha256"] = "f" * 64
+    manifest = tmp_path / "models.json"
+    manifest.write_text(json.dumps([model]))
+    output = tmp_path / "output"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            str(manifest),
+            "--server",
+            "/unused/server",
+            "--reference-tokenizer",
+            str(tmp_path / "tokenizer.json"),
+            "--output",
+            str(output),
+            "--execute",
+        ],
+    )
+    monkeypatch.setattr(runner, "capture", lambda command: pytest.fail("Server probe"))
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert "weight SHA256 mismatch" in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_dry_plan_does_not_require_or_hash_weight_files(tmp_path, monkeypatch):
+    from scripts import hardware_local_eval as runner
+
+    model = asset_manifest(tmp_path)
+    (tmp_path / "model.gguf").unlink()
+    monkeypatch.setattr(
+        runner, "file_sha256", lambda path: pytest.fail("Dry-plan hash")
+    )
+    runner.validate_model_assets([model], tmp_path / "tokenizer.json", False)
