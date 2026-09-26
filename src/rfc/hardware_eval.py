@@ -355,6 +355,9 @@ def compare_runs(
             != 1
         ):
             result["reasons"].append("mixed_or_missing_model_tokenizer")
+        for field in ("fixture_sha256", "grader_version", "harness_version"):
+            if len({r.get(field) for r in rows if isinstance(r.get(field), str)}) != 1:
+                result["reasons"].append("mixed_benchmark_revision")
         for row in rows:
             checks = row.get("checks")
             checks_complete = (
@@ -443,7 +446,8 @@ def compare_runs(
             if (
                 row.get("status") != "completed"
                 or row.get("live") is not True
-                or not row.get("model_digest")
+                or not isinstance(row.get("model_digest"), str)
+                or not row.get("model_digest", "").strip()
                 or row.get("token_count_verified") is not True
                 or not runtime_complete
                 or not checks_complete

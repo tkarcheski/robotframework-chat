@@ -303,3 +303,22 @@ def test_browser_row_keeps_question_failures_separate_from_workflow(
     assert result["passed"] is False
     assert result["report_saved"] is False
     assert result["critical_failures"] == 0
+
+
+@pytest.mark.parametrize(
+    "field", ["fixture_sha256", "grader_version", "harness_version"]
+)
+def test_combined_profile_rejects_mixed_benchmark_revisions(field):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [row(trial=0), row(trial=1, **{field: "f" * 64})]
+    required = {("a", 16384, "middle", trial) for trial in [0, 1]}
+    assert (
+        compare_paired(rows, copy.deepcopy(rows), required)["verdict"] == "incomplete"
+    )
+
+
+@pytest.mark.parametrize("identity", [None, "", " \t", 0, 123])
+def test_blank_or_nonstring_model_digest_cannot_pass(identity):
+    old = row(model_digest=identity)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"

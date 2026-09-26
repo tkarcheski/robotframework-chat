@@ -126,13 +126,22 @@ engineering evidence. Do not present that gap as a general reasoning improvement
 Context tests remain useful for verified capacity even when both models answer
 the engineering questions correctly.
 
-## Complete original required profile
+## Historical mixed-revision profile
 
-The independent profile is now complete: **102 token-verified rows per model**
+The historical artifacts cover all **102 required coordinates per model**
 (54 short, 12 browser, 36 repeated 16K context). Qwen3.6 passed 39/102 rows;
-Qwen3.8 passed 63/102. The paired gate is nevertheless **blocked**: the candidate
-has remaining question regressions and critical/schema failures. Aggregate pass
-counts do not establish replacement eligibility. [Full gate result](full-profile-gate.json).
+Qwen3.8 passed 63/102. However, short tasks used one harness revision and the
+browser/context tasks used another. A pairwise-only validator originally
+reported a blocked gate with 24 regression coordinates
+([historical result](historical-mixed-profile-gate.json)).
+
+The strengthened gate requires one harness, fixture and grader revision across
+an entire arm, and correctly classifies this combined profile as **incomplete**
+([current audit](full-profile-gate.json)). The individual paired experiments
+retain their matched provenance, but their concatenation is not valid evidence
+for full-profile eligibility. A fresh original-profile run under one frozen
+revision is planned after the larger-context sweep. Historical responses and
+scores are preserved; no row is relabeled with a newer harness hash.
 
 The repeated context arm used 4096 output tokens: both models retained 100% fact
 accuracy, while mean exact-citation accuracy was 14.58% for Qwen3.6 and 83.33% for

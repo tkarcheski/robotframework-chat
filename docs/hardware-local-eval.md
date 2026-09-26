@@ -205,3 +205,8 @@ different model tokenizers. Browser question-level critical counts remain the
 counts derived from question checks; missing evidence reads or saved reports
 block the workflow gate separately. CPU-only launches explicitly record that
 GPU allocation verification was not performed.
+
+An entire comparison arm must use one fixture, grader and harness revision, as
+well as one model-tokenizer identity. Matching versions only within individual
+case pairs is insufficient when combining suites into a promotion profile.
+Blank or nonstring model digests cannot establish weight identity.
