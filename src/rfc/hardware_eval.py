@@ -337,7 +337,10 @@ def compare_runs(
         if (
             len(
                 {
-                    (r.get("model"), r.get("model_digest"), r.get("adapter_id"))
+                    tuple(
+                        r.get(key) if isinstance(r.get(key), str) else None
+                        for key in ("model", "model_digest", "adapter_id")
+                    )
                     for r in rows
                 }
             )
@@ -440,14 +443,16 @@ def compare_runs(
             )
             runtime = row.get("runtime_manifest")
             runtime_complete = isinstance(runtime, dict) and all(
-                runtime.get(key)
+                isinstance(runtime.get(key), str) and bool(runtime[key].strip())
                 for key in ("engine", "version", "rope", "kv_cache_dtype")
             )
             if (
                 row.get("status") != "completed"
                 or row.get("live") is not True
-                or not isinstance(row.get("model_digest"), str)
-                or not row.get("model_digest", "").strip()
+                or not all(
+                    isinstance(row.get(key), str) and bool(row[key].strip())
+                    for key in ("model", "model_digest", "adapter_id", "weights_format")
+                )
                 or row.get("token_count_verified") is not True
                 or not runtime_complete
                 or not checks_complete
@@ -462,10 +467,7 @@ def compare_runs(
                         for flag in ("passed", "sources_observed", "report_saved")
                     )
                 )
-                or not isinstance(row.get("adapter_id"), str)
-                or not row.get("adapter_id", "").strip()
-                or not row.get("weights_format")
-                or row.get("weights_format") == "unspecified"
+                or row["weights_format"].strip().lower() == "unspecified"
                 or type(row.get("effective_context_tokens")) is not int
                 or row.get("effective_context_tokens", 0) <= 0
                 or any(row.get(k) is None for k in coordinate + held_fixed)

@@ -322,3 +322,25 @@ def test_combined_profile_rejects_mixed_benchmark_revisions(field):
 def test_blank_or_nonstring_model_digest_cannot_pass(identity):
     old = row(model_digest=identity)
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "field", ["model", "model_digest", "adapter_id", "weights_format"]
+)
+@pytest.mark.parametrize("value", [None, "", " \t", True, 7, [1], {"id": "untyped"}])
+def test_model_provenance_fields_require_nonblank_strings(field, value):
+    old = row(**{field: value})
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("field", ["engine", "version", "rope", "kv_cache_dtype"])
+@pytest.mark.parametrize("value", [None, "", " \t", True, 7, [1], {"id": "untyped"}])
+def test_runtime_provenance_fields_require_nonblank_strings(field, value):
+    old = row()
+    old["runtime_manifest"][field] = value
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_unknown_weight_format_marker_cannot_hide_in_whitespace():
+    old = row(weights_format=" Unspecified ")
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
