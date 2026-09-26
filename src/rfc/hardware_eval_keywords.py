@@ -28,7 +28,7 @@ from .hardware_eval import (
     parse_answer,
     score_answer,
 )
-from .llm_client import create_provider
+from .llm_client import create_provider, unwrap_provider
 from .rfc_data import emit_rfc_data
 
 
@@ -231,8 +231,11 @@ class HardwareEvalKeywords:
             self._prepare_client()
             row["live"] = not self.injected
             row["model"] = str(self.client.model)
-            self.client.seed = trial
-            self.client.num_ctx = context or cap or None
+            # Logging/provenance wrappers delegate reads, not attribute writes.
+            # Keep generation wrapped, but configure the actual request client.
+            request_client = unwrap_provider(self.client)
+            request_client.seed = trial
+            request_client.num_ctx = context or cap or None
             reference_count, row["reference_tokenizer"] = token_counter(
                 os.getenv("HW_REFERENCE_TOKENIZER", "")
             )

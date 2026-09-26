@@ -55,6 +55,39 @@ def test_mocked_model_never_claims_live_or_deployment_evidence(tmp_path):
     assert (tmp_path / result["artifact"] / "response.txt").exists()
 
 
+def test_trial_parameters_reach_nested_provider_wrappers(tmp_path, monkeypatch):
+    class ReadThroughProvider:
+        """Match provider wrappers that delegate reads, not writes."""
+
+        def __init__(self, wrapped):
+            self.__wrapped__ = wrapped
+
+        def __getattr__(self, name):
+            return getattr(self.__wrapped__, name)
+
+    benchmark = load_benchmark(FIXTURES)
+    client = MagicMock()
+    client.model = "scripted-test-double"
+    client.seed = None
+    client.num_ctx = None
+    client.generate.return_value = json.dumps(
+        gold_answer(benchmark["cases"]["uno-current-budget"])
+    )
+    client.last_metrics = {}
+    monkeypatch.setenv("HW_MAX_CONTEXT", "32768")
+    wrapped = ReadThroughProvider(ReadThroughProvider(client))
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=wrapped)
+
+    result = lib.evaluate_hardware_case("uno-current-budget", trial=2)
+
+    assert result["passed"]
+    assert client.seed == 2
+    assert client.num_ctx == 32768
+    assert "seed" not in vars(wrapped)
+    assert "num_ctx" not in vars(wrapped)
+    client.generate.assert_called_once()
+
+
 def test_wrong_model_answer_is_completed_failure_not_infrastructure_skip(tmp_path):
     client = MagicMock()
     client.model = "mock"
