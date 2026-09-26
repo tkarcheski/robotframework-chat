@@ -1,8 +1,8 @@
 # PR 714 local evaluation — preliminary results
 
-Measured 2026-09-25 on one RTX 4090 (24 GiB), Ryzen 7 5800X, 125 GiB RAM.
+Measured 2026-09-25–26 on one RTX 4090 (24 GiB), Ryzen 7 5800X, 125 GiB RAM.
 Both models used Hugging Face Unsloth UD-Q4_K_M weights and Unsloth-native
-llama.cpp build 10798, commit d6b1d279f. One slot, full GPU weight offload, f16 KV,
+llama.cpp build 10798, commit d6b1d279f. Initial short-run settings: one slot, full GPU weight offload, f16 KV,
 512/128 batches, eight CPU threads, temperature zero, seeds 0/1/2, reasoning off,
 no draft model/projector, no automatic fit and no context shifting. No Ollama
 inference was used. The two quantized artifacts have different architectures and
@@ -108,7 +108,44 @@ disk-swap use; no system memory settings were changed by this evaluation.
 [The consolidated capacity ladder](context-capacity-ladder.json) includes actual
 token ranges, runtime factors, memory samples, and both failed startup attempts.
 The failed first managed pilot was a runner verification error before inference,
-not a model-quality failure. 524K and 1M inference remain outstanding here.
+not a model-quality failure. The 524K follow-up below is complete; 1M inference
+is running and has no completed answer at this checkpoint.
+
+## 524K with managed memory and YaRN
+
+Both models completed two cases at 524,288 allocated tokens, using Q4 KV,
+process-scoped managed memory, YaRN scale 2, spread evidence and one trial.
+Actual local inputs were 521,905–521,961 tokens; native prompt accounting was
+521,917–521,973 tokens. All four rows were token-verified by the frozen
+`0190d50` instrument. They lack newer completion/build metadata and do not
+satisfy the current full-profile gate.
+
+| Measure | Qwen3.6-35B-A3B | Qwen3.8-27B |
+|---|---:|---:|
+| Fact accuracy | 100% | 100% |
+| Mean exact evidence-set accuracy | 0% | 75% |
+| Full passes | 0 / 2 | 1 / 2 |
+| Pin-mux task time | 1,098.85 s | 2,839.45 s |
+| Gateware task time | 1,036.41 s | 5,078.81 s |
+
+Task times include setup and different output lengths; background activity was
+not isolated. These are descriptive observations, not a dedicated-device speed
+benchmark. [Per-case answers, checks, tokens and provenance](context-524k-managed-summary.json)
+preserve the official scores and a separately labeled prefix diagnostic.
+
+Qwen3.6 correctly rejected simultaneous use of three SYZYGY transceivers and
+M.2 here. Its 262K error did not reproduce on this larger prompt; no monotonic
+context-size effect is established. Gateware was selected for this follow-up
+after observing that earlier error, so this is not a blind holdout.
+
+Every Qwen3.6 citation carried an extra `DOCUMENT` prefix. Stripping it for known
+IDs yields 66.67% on pin-mux and 100% on gateware (83.33% mean) in a post-hoc
+diagnostic: its image-name answer also cites an extra pin-mux document.
+Qwen3.8 included extra `gateware-requirements` citations for its APB/AXI answers,
+leaving its gateware citation score at 50%. Neither difference is a factual
+engineering error, and official scores remain unchanged. Two public tasks do
+not establish general model superiority. Qwen3.8 has begun the 1M probe;
+Qwen3.6's 1M run remains queued.
 
 ## What the citation gap actually measures
 
