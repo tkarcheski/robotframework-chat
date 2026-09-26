@@ -367,6 +367,18 @@ def compare_runs(
             != 1
         ):
             result["reasons"].append("mixed_or_missing_model_tokenizer")
+        if (
+            len(
+                {
+                    r.get("reference_tokenizer")
+                    for r in rows
+                    if r.get("context_tokens")
+                    and isinstance(r.get("reference_tokenizer"), str)
+                }
+            )
+            > 1
+        ):
+            result["reasons"].append("mixed_reference_tokenizer")
         for field in ("fixture_sha256", "grader_version", "harness_version"):
             if len({r.get(field) for r in rows if isinstance(r.get(field), str)}) != 1:
                 result["reasons"].append("mixed_benchmark_revision")

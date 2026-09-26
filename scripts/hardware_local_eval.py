@@ -27,6 +27,7 @@ import urllib.request
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNNER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CONTEXT_NAMES = {
     4096: "4K",
     8192: "8K",
@@ -422,6 +423,7 @@ def run_cell(args, model, context, version):
             "VLLM_BASE_URL": base + "/v1",
             "DEFAULT_MODEL": model["id"],
             "HW_MODEL_DIGEST": model["sha256"],
+            "HW_RUNNER_SHA256": RUNNER_SHA256,
             "HW_ADAPTER_ID": "none",
             "HW_WEIGHTS_FORMAT": model["quant"],
             "HW_MAX_CONTEXT": str(allocated_context(context)),

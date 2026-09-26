@@ -545,3 +545,45 @@ def test_weight_format_cannot_vary_between_coordinates_of_one_arm():
     )
     assert result["verdict"] == "incomplete"
     assert "mixed_model_identity" in result["reasons"]
+
+
+def test_harness_identity_includes_native_runner_and_owned_snapshot(
+    tmp_path, monkeypatch
+):
+    from rfc.hardware_eval_keywords import harness_digest
+
+    root = tmp_path / "src/rfc"
+    root.mkdir(parents=True)
+    (root / "__init__.py").write_text("# package\n")
+    runner = tmp_path / "scripts/hardware_local_eval.py"
+    runner.parent.mkdir()
+    runner.write_text("# original runner\n")
+    monkeypatch.delenv("HW_RUNNER_SHA256", raising=False)
+    original = harness_digest(root)
+    runner.write_text("# changed runner\n")
+    changed = harness_digest(root)
+    assert changed != original
+    monkeypatch.setenv("HW_RUNNER_SHA256", "a" * 64)
+    assert harness_digest(root) != changed
+
+
+@pytest.mark.parametrize(
+    "contexts,verdict",
+    [((16384, 16384), "incomplete"), ((0, 16384), "eligible"), ((0, 0), "eligible")],
+)
+def test_reference_tokenizer_is_uniform_across_long_context_rows(contexts, verdict):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [
+        row(context_tokens=context, trial=trial, reference_tokenizer=identity * 64)
+        for trial, (context, identity) in enumerate(zip(contexts, ("a", "b")))
+    ]
+    result = compare_paired(
+        rows,
+        copy.deepcopy(rows),
+        {("a", context, "middle", trial) for trial, context in enumerate(contexts)},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == verdict
+    if verdict == "incomplete":
+        assert "mixed_reference_tokenizer" in result["reasons"]

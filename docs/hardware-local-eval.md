@@ -258,3 +258,8 @@ remains unverified even when its reported output is below the requested limit.
 Older artifacts keep their original validator revision and do not receive an
 inferred completion-reason flag. Each arm must also retain one weight format
 across its entire profile.
+All nonzero-context rows in an arm also require one reference-tokenizer identity.
+The harness digest includes the repository's native runner, plus the owned
+runner's source hash snapshotted at startup and passed explicitly to its child.
+Changing only server-launch or acceptance code therefore changes the harness
+identity, even when the `rfc` package itself is unchanged.

@@ -186,11 +186,13 @@ def test_owned_launch_overrides_adapter_and_checks_all_gpus(
         lambda command: "" if "ls-files" in command else "test-revision",
     )
     monkeypatch.setenv("HW_ADAPTER_ID", "unrelated-inherited-adapter")
+    monkeypatch.setenv("HW_RUNNER_SHA256", "unrelated-inherited-runner")
     launched = []
 
     def launch(command, **kwargs):
         launched.append(kwargs["env"])
         assert kwargs["env"]["HW_ADAPTER_ID"] == "none"
+        assert kwargs["env"]["HW_RUNNER_SHA256"] == runner.RUNNER_SHA256
         raise RuntimeError("test launch boundary")
 
     monkeypatch.setattr(runner.subprocess, "Popen", launch)

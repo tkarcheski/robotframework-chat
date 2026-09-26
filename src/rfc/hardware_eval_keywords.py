@@ -35,9 +35,14 @@ from .rfc_data import emit_rfc_data
 
 def harness_digest(root: Path) -> str:
     """Identify the full local implementation, including providers and tool execution."""
+    runner = root.parent.parent / "scripts/hardware_local_eval.py"
     return digest(
         {
             "version": __version__,
+            "native_runner": hashlib.sha256(runner.read_bytes()).hexdigest()
+            if runner.is_file()
+            else None,
+            "owned_runner": os.getenv("HW_RUNNER_SHA256", ""),
             "modules": {
                 str(path.relative_to(root)): hashlib.sha256(
                     path.read_bytes()
