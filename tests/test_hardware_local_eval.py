@@ -1,6 +1,8 @@
 """Resource and context invariants of the native hardware runner."""
 
 from types import SimpleNamespace
+import io
+import json
 
 import pytest
 
@@ -57,6 +59,34 @@ def test_json_constraint_is_explicit_and_optional():
     args.constrain_json = True
     cmd = command(args, model, 4096)
     assert cmd[cmd.index("--json-schema") + 1] == '{"type":"object"}'
+
+
+@pytest.mark.parametrize(
+    "content,finish,valid",
+    [
+        ("{}", "stop", True),
+        ("READY", "stop", False),
+        ("[]", "stop", False),
+        ("{}", "length", False),
+    ],
+)
+def test_constraint_probe_retains_failure_evidence(
+    tmp_path, monkeypatch, content, finish, valid
+):
+    from scripts.hardware_local_eval import probe_json_constraint
+
+    response = {"choices": [{"message": {"content": content}, "finish_reason": finish}]}
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda request, timeout: io.StringIO(json.dumps(response)),
+    )
+    artifact = tmp_path / "probe.json"
+    if valid:
+        assert probe_json_constraint("http://127.0.0.1", "model", artifact) == response
+    else:
+        with pytest.raises((RuntimeError, ValueError)):
+            probe_json_constraint("http://127.0.0.1", "model", artifact)
+    assert json.loads(artifact.read_text()) == response
 
 
 def test_cleanup_leaves_already_finished_process_alone():

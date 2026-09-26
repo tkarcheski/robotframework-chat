@@ -136,6 +136,9 @@ The native runner also accepts `--constrain-json`, which passes an explicit
 its held-fixed runtime manifest. It constrains syntax, not answer IDs, numerical
 values, evidence choices, or browser actions. Treat it as a fresh matched
 experiment; do not combine constrained and unconstrained rows in a model pair.
+Before scored tasks, a bounded probe asks for plain text and must still return a
+complete JSON object. Its raw response is archived even when validation fails;
+probe time is recorded separately from model-load and task latency.
 
 The installed build's specialized Qwen template checks for a nonempty schema;
 ordinary OpenAI `json_object` mode supplies an empty schema. Live product/browser

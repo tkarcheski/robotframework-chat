@@ -95,6 +95,38 @@ def api(base, route):
         return json.load(response)
 
 
+def probe_json_constraint(base, model, artifact):
+    """Check the native grammar with a request that otherwise asks for plain text."""
+    request = urllib.request.Request(
+        base + "/v1/chat/completions",
+        data=json.dumps(
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Reply with exactly the plain text READY and nothing else.",
+                    }
+                ],
+                "temperature": 0,
+                "max_tokens": 128,
+                "response_format": {"type": "json_object"},
+            }
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        result = json.load(response)
+    artifact.write_text(json.dumps(result, indent=2) + "\n")
+    content = result["choices"][0]["message"]["content"]
+    if (
+        not isinstance(json.loads(content), dict)
+        or result["choices"][0].get("finish_reason") == "length"
+    ):
+        raise RuntimeError("Native JSON constraint probe did not complete an object")
+    return result
+
+
 def capture(command):
     return subprocess.check_output(
         command, text=True, stderr=subprocess.STDOUT, timeout=15
@@ -333,6 +365,14 @@ def run_cell(args, model, context, version):
             ):
                 raise RuntimeError("Owned server GPU allocation not established")
             manifest["load_seconds"] = time.monotonic() - start
+            if args.constrain_json:
+                probe_start = time.monotonic()
+                manifest["json_constraint_probe"] = probe_json_constraint(
+                    base, model["id"], folder / "json-constraint-probe.json"
+                )
+                manifest["json_constraint_probe_seconds"] = (
+                    time.monotonic() - probe_start
+                )
             manifest["status"] = "running"
             path.write_text(json.dumps(manifest, indent=2))
             for suite in args.suites:
