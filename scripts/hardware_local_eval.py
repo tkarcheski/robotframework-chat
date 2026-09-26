@@ -261,12 +261,12 @@ def command(args, model, context):
     if args.cpu_moe_layers:
         cmd += ["--n-cpu-moe", str(args.cpu_moe_layers)]
     native_context = model["native_context"]
-    if context > native_context:
+    if allocated_context(context) > native_context:
         cmd += [
             "--rope-scaling",
             "yarn",
             "--rope-scale",
-            str(float(math.ceil(context / native_context))),
+            str(float(math.ceil(allocated_context(context) / native_context))),
             "--yarn-orig-ctx",
             str(native_context),
         ]
@@ -303,8 +303,8 @@ def run_cell(args, model, context, version):
         "engine": "Unsloth native llama.cpp",
         "version": version,
         "rope": "native"
-        if context <= model["native_context"]
-        else f"yarn-{math.ceil(context / model['native_context'])}",
+        if allocated_context(context) <= model["native_context"]
+        else f"yarn-{math.ceil(allocated_context(context) / model['native_context'])}",
         "kv_cache_dtype": args.kv,
         "gpu_layers": args.gpu_layers,
         "kv_placement": args.kv_placement,
@@ -561,6 +561,20 @@ def main():
     args.output = args.output.resolve()
     args.reference_tokenizer = args.reference_tokenizer.resolve()
     models = json.loads(args.models.read_text())
+    if not isinstance(models, list) or not models:
+        parser.error("Model manifest must be a nonempty array")
+    names = [m.get("name") if isinstance(m, dict) else None for m in models]
+    if any(
+        not isinstance(name, str)
+        or not name.strip()
+        or name in (".", "..")
+        or "/" in name
+        or "\\" in name
+        for name in names
+    ):
+        parser.error("Model names must be nonempty directory basenames")
+    if len(set(names)) != len(names):
+        parser.error("Model names must be unique")
     if args.output_tokens < 1 or any(
         c <= args.output_tokens + 256 for c in args.contexts
     ):

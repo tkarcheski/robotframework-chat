@@ -33,6 +33,25 @@ from .openai_client import OpenAIClient
 from .rfc_data import emit_rfc_data
 
 
+def harness_digest(root: Path) -> str:
+    """Identify the full local implementation, including providers and tool execution."""
+    return digest(
+        {
+            "version": __version__,
+            "modules": {
+                str(path.relative_to(root)): hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+                for path in sorted(root.rglob("*.py"))
+            },
+        }
+    )
+
+
+# Snapshot once per process so later workspace edits cannot relabel loaded code.
+HARNESS_VERSION = harness_digest(Path(__file__).parent)
+
+
 def token_counter(path: str) -> tuple[Callable[[str], int] | None, str]:
     """Load a pinned local tokenizer.json; never download/execute remote code."""
     if not path:
@@ -119,21 +138,7 @@ class HardwareEvalKeywords:
             "trial": trial,
             "fixture_sha256": self.benchmark["sha256"],
             "grader_version": GRADER_VERSION,
-            "harness_version": digest(
-                {
-                    "version": __version__,
-                    "modules": [
-                        hashlib.sha256(
-                            Path(__file__).with_name(name).read_bytes()
-                        ).hexdigest()
-                        for name in (
-                            "hardware_eval.py",
-                            "hardware_browser.py",
-                            "hardware_eval_keywords.py",
-                        )
-                    ],
-                }
-            ),
+            "harness_version": HARNESS_VERSION,
             "model": str(self.client.model)
             if self.client is not None
             else os.getenv("DEFAULT_MODEL", ""),

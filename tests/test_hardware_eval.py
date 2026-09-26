@@ -203,10 +203,10 @@ def row(case_id="a", **overrides):
         "effective_context_tokens": 16384,
         "position": "middle",
         "trial": 0,
-        "prompt_sha256": "prompt",
-        "fixture_sha256": "fixture",
+        "prompt_sha256": "a" * 64,
+        "fixture_sha256": "b" * 64,
         "grader_version": "v1",
-        "harness_version": "v1",
+        "harness_version": "c" * 64,
         "reference_tokenizer": "abc",
         "sampling": {"temperature": 0.0, "seed": 0, "max_tokens": 2048},
         "runtime_manifest": {
@@ -236,6 +236,7 @@ def row(case_id="a", **overrides):
             f"q{i}": {
                 "correct": i < result["accuracy"] * 4,
                 "citation_correct": i < result["citation_accuracy"] * 4,
+                "critical": i >= 4 - result["critical_failures"],
             }
             for i in range(4)
         }

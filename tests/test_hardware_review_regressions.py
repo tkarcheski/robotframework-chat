@@ -62,8 +62,8 @@ def test_large_wrong_integer_is_a_model_failure():
 
 def test_equal_aggregate_scores_do_not_hide_question_regression():
     checks = {
-        "one": {"correct": True, "citation_correct": True},
-        "two": {"correct": False, "citation_correct": True},
+        "one": {"correct": True, "citation_correct": True, "critical": False},
+        "two": {"correct": False, "citation_correct": True, "critical": False},
     }
     old = row(weights_format="UD-Q4_K_M", checks=checks, accuracy=0.5)
     new = copy.deepcopy(old)
@@ -174,3 +174,53 @@ def test_long_pack_records_server_allocation_not_input_coordinate(
     assert result["context_tokens"] == 16384
     assert result["effective_context_tokens"] == cap
     assert client.num_ctx == cap
+
+
+@pytest.mark.parametrize("field", ["passed", "sources_observed", "report_saved"])
+def test_browser_workflow_regression_blocks_even_with_equal_answers(field):
+    old = row(
+        case_id="task:browser", passed=True, sources_observed=True, report_saved=True
+    )
+    new = copy.deepcopy(old)
+    new[field] = False
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    assert (
+        compare_paired([old], [new], {("task:browser", 16384, "middle", 0)})["verdict"]
+        == "blocked"
+    )
+
+
+def test_critical_count_cannot_contradict_question_checks():
+    old = row()
+    old["checks"]["q3"]["critical"] = True
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("critical", [None, 1, "false"])
+def test_critical_attestation_must_be_boolean(critical):
+    old = row()
+    old["checks"]["q0"]["critical"] = critical
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "field", ["prompt_sha256", "fixture_sha256", "harness_version", "grader_version"]
+)
+@pytest.mark.parametrize("value", ["", " ", None])
+def test_required_provenance_cannot_be_empty(field, value):
+    old = row(**{field: value})
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_harness_identity_includes_transitive_module_names_and_contents(tmp_path):
+    from rfc.hardware_eval_keywords import harness_digest
+
+    module = tmp_path / "openai_client.py"
+    module.write_text("first")
+    initial = harness_digest(tmp_path)
+    module.write_text("second")
+    changed = harness_digest(tmp_path)
+    assert changed != initial
+    module.rename(tmp_path / "thinking.py")
+    assert harness_digest(tmp_path) != changed

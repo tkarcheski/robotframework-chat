@@ -355,7 +355,7 @@ def compare_runs(
                     and isinstance(check, dict)
                     and all(
                         type(check.get(field)) is bool
-                        for field in ("correct", "citation_correct")
+                        for field in ("correct", "citation_correct", "critical")
                     )
                     for question, check in checks.items()
                 )
@@ -394,6 +394,26 @@ def compare_runs(
                     )
                 )
             )
+            critical_matches = (
+                isinstance(checks, dict)
+                and checks_complete
+                and row.get("critical_failures")
+                == sum(
+                    check["critical"]
+                    and not (check["correct"] and check["citation_correct"])
+                    for check in checks.values()
+                )
+            )
+            provenance_complete = (
+                all(
+                    isinstance(row.get(key), str)
+                    and len(row[key]) == 64
+                    and all(c in "0123456789abcdef" for c in row[key])
+                    for key in ("prompt_sha256", "fixture_sha256", "harness_version")
+                )
+                and isinstance(row.get("grader_version"), str)
+                and bool(row["grader_version"].strip())
+            )
             runtime = row.get("runtime_manifest")
             runtime_complete = isinstance(runtime, dict) and all(
                 runtime.get(key)
@@ -408,6 +428,8 @@ def compare_runs(
                 or not checks_complete
                 or not sampling_complete
                 or not scores_match_checks
+                or not critical_matches
+                or not provenance_complete
                 or not isinstance(row.get("adapter_id"), str)
                 or not row.get("adapter_id", "").strip()
                 or not row.get("weights_format")
@@ -466,6 +488,11 @@ def compare_runs(
             or new["accuracy"] < old["accuracy"]
             or new["citation_accuracy"] < old["citation_accuracy"]
             or question_regressed
+            or (old.get("passed") is True and new.get("passed") is not True)
+            or any(
+                old.get(flag) is True and new.get(flag) is not True
+                for flag in ("sources_observed", "report_saved")
+            )
         ):
             regressions.append(list(key))
     result["regressions"] = regressions

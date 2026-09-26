@@ -179,3 +179,12 @@ explicit when comparing arms.
 
 Dry plans include the command, test budget, rounded allocation, output budget,
 JSON-constraint setting and managed-memory setting; they do not launch a server.
+
+The artifact gate validates SHA256 prompt, fixture and harness identities, a
+nonempty grader version, boolean question checks, and critical-failure totals
+recomputed from those checks. Browser workflow regressions (evidence read or
+report saved) block eligibility even if final answer accuracy is unchanged. The
+harness identity snapshots every Python module in the local `rfc` package once
+per process, including transport, parsing and browser execution code. Complete
+paired runs must use one unchanged implementation; do not mix old and new
+harness identities in a comparison.

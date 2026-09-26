@@ -183,7 +183,7 @@ def test_invalid_cli_context_never_touches_server_or_output(tmp_path, monkeypatc
     from scripts import hardware_local_eval as runner
 
     models = tmp_path / "models.json"
-    models.write_text("[]")
+    models.write_text('[{"name":"test"}]')
     output = tmp_path / "results"
     monkeypatch.setattr(
         "sys.argv",
@@ -257,3 +257,53 @@ def test_coverage_comes_from_profile_and_requested_matrix(suite, expected):
         positions="start,middle,end,spread",
     )
     assert len(expected_coordinates(args, suite, 16384)) == expected
+
+
+@pytest.mark.parametrize("context,scale", [(1000000, "2.0"), (2000000, "3.0")])
+def test_rope_covers_padded_allocation(context, scale):
+    cmd = command(
+        settings(),
+        {"path": "/model", "id": "model", "native_context": 1000000},
+        context,
+    )
+    assert cmd[cmd.index("--rope-scale") + 1] == scale
+
+
+@pytest.mark.parametrize(
+    "models",
+    [
+        [],
+        {},
+        [{"name": ""}],
+        [{"name": "../bad"}],
+        [{"name": "same"}, {"name": "same"}],
+    ],
+)
+def test_invalid_models_fail_before_output_or_server(tmp_path, monkeypatch, models):
+    from scripts import hardware_local_eval as runner
+
+    manifest = tmp_path / "models.json"
+    manifest.write_text(json.dumps(models))
+    output = tmp_path / "output"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            str(manifest),
+            "--server",
+            "/missing",
+            "--reference-tokenizer",
+            "/missing",
+            "--output",
+            str(output),
+            "--execute",
+        ],
+    )
+    monkeypatch.setattr(
+        runner, "capture", lambda command: pytest.fail("Server must not be probed")
+    )
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert not output.exists()

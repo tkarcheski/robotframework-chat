@@ -70,6 +70,22 @@ retained 100% fact accuracy at both levels. Full passes were 0/3 for Qwen3.6 and
 The exact-citation distinction persists, but identifier formatting explains much
 of it; three cases do not establish general model superiority. The separate 16K bridge also completed.
 
+## 128K capacity and cache comparison
+
+Both models completed three spread-evidence cases at 131,072 allocated tokens
+with Q4 KV cache and full GPU weights. All six rows have verified input/output
+accounting and 100% factual accuracy. Actual inputs were approximately 128.7K
+tokens. Full passes remain 0/3 for Qwen3.6 and 2/3 for Qwen3.8; strict citation
+formatting remains a major limitation of that distinction.
+[Paired Q4 results](context-128k-q4-summary.json).
+
+The preceding Q8-cache attempt completed all three cases on Qwen3.8, but
+Qwen3.6 ran out of VRAM while allocating a 301.28 MiB compute buffer, before any
+scored inference. That failure is retained separately from the successful Q4
+retry. Both arms used the same cache setting within each experiment; changing
+cache precision is a runtime factor, not a model-quality improvement.
+[Capacity, token counts and sampled memory](context-128k-capacity.json).
+
 ## What the citation gap actually measures
 
 Inspecting the responses exposed an important limitation: Qwen3.6 often cites
@@ -132,8 +148,11 @@ superiority claim. [Per-case status](product-16k-output4k-status.json).
 
 Qwen3.8's other nine failures contain prose outside the requested JSON. Native
 `json_object` mode was requested but did not enforce object-only output in this
-installed Qwen template path. A separate explicit native-grammar experiment is
-planned. The original responses and strict failures remain preserved; extracting
+installed Qwen template path. A separate per-request nonempty JSON-schema pilot verified object-constrained
+generation, but Qwen3.8 still hit the 4096-token cap on the battery case while
+revising inside its explanation. The controller stopped before the second arm;
+this failed pilot is not evidence of improved model quality. Larger-context
+tests retain the original unconstrained request settings. The original responses and strict failures remain preserved; extracting
 a fenced JSON block after seeing a failure is diagnostic only, never gate evidence.
 
 The numeric and exact-citation rubric also has limits: for example, the battery
