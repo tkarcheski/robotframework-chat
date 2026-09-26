@@ -23,6 +23,17 @@ import urllib.request
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTEXT_NAMES = {
+    4096: "4K",
+    8192: "8K",
+    16384: "16K",
+    32768: "32K",
+    65536: "64K",
+    131072: "128K",
+    262144: "262K",
+    524288: "524K",
+    1000000: "1M",
+}
 
 
 def expected_coordinates(args, suite, context):
@@ -31,6 +42,8 @@ def expected_coordinates(args, suite, context):
     if args.trials < 1:
         raise ValueError("At least one trial is required")
     if suite == "context":
+        if context not in CONTEXT_NAMES:
+            raise ValueError(f"Unsupported context-suite level: {context}")
         known = {
             c["id"] for c in yaml.safe_load((root / "cases.yaml").read_text())["cases"]
         }
@@ -335,18 +348,7 @@ def run_cell(args, model, context, version):
                     str(folder / suite),
                 ]
                 if suite == "context":
-                    names = {
-                        4096: "4K",
-                        8192: "8K",
-                        16384: "16K",
-                        32768: "32K",
-                        65536: "64K",
-                        131072: "128K",
-                        262144: "262K",
-                        524288: "524K",
-                        1000000: "1M",
-                    }
-                    run += ["--test", "Hardware Context " + names[context]]
+                    run += ["--test", "Hardware Context " + CONTEXT_NAMES[context]]
                 run += [str(ROOT / "robot/10__tier1/hardware_engineering" / suite_path)]
                 with (folder / f"{suite}-console.log").open("w") as output:
                     runner = subprocess.Popen(

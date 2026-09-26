@@ -103,6 +103,46 @@ def test_mistyped_context_case_is_rejected_before_model_load():
         expected_coordinates(args, "context", 16384)
 
 
+def test_unsupported_context_coordinate_is_rejected_before_model_load():
+    args = SimpleNamespace(trials=1, cases="fire-pinmux-change", positions="spread")
+    with pytest.raises(ValueError, match="Unsupported context-suite level: 12288"):
+        expected_coordinates(args, "context", 12288)
+    assert len(expected_coordinates(args, "short", 12288)) == 18
+
+
+def test_invalid_cli_context_never_touches_server_or_output(tmp_path, monkeypatch):
+    from scripts import hardware_local_eval as runner
+
+    models = tmp_path / "models.json"
+    models.write_text("[]")
+    output = tmp_path / "results"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            str(models),
+            "--server",
+            "/missing/server",
+            "--reference-tokenizer",
+            "/missing/tokenizer",
+            "--contexts",
+            "12288",
+            "--suites",
+            "context",
+            "--output",
+            str(output),
+            "--execute",
+        ],
+    )
+    monkeypatch.setattr(
+        runner, "capture", lambda command: pytest.fail("Server must not be probed")
+    )
+    with pytest.raises(ValueError, match="Unsupported context-suite level"):
+        runner.main()
+    assert not output.exists()
+
+
 @pytest.mark.parametrize(
     "suite, expected",
     [("short", 54), ("product", 12), ("browser", 12), ("context", 36)],
