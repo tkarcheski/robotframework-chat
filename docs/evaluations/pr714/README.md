@@ -183,7 +183,9 @@ explicit managed-memory boolean when disabled, and their per-call usage predates
 the recorded finish reason now required by the shared verifier. They also lack
 the newly recorded serving executable/library hashes, retain the older grader,
 and store browser traces separately instead of in the result rows. Text rows also
-predate parsed-answer archival now required for independent regrading. No missing metadata
+predate parsed-answer archival now required for independent regrading. Calls do not
+embed the raw responses now required for answer/action binding, although the
+original response files remain in the local artifacts. No missing metadata
 is backfilled. Neither
 their concatenation nor those legacy artifacts alone satisfy the current gate.
 A fresh original-profile run under one frozen

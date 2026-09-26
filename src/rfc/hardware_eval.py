@@ -115,6 +115,27 @@ def _distractor(index: int, seed: int) -> str:
     )
 
 
+def _assemble_package(
+    evidence: list[str], task: str, filler: list[str], position: str
+) -> str:
+    """Shared byte-exact assembly for generation and offline prompt validation."""
+    if position == "start":
+        blocks = evidence + filler
+    elif position == "end":
+        blocks = filler + evidence
+    elif position == "middle":
+        split = len(filler) // 2
+        blocks = filler[:split] + evidence + filler[split:]
+    else:
+        blocks = []
+        for i, doc in enumerate(evidence):
+            left = len(filler) * i // len(evidence)
+            right = len(filler) * (i + 1) // len(evidence)
+            blocks.extend(filler[left:right])
+            blocks.append(doc)
+    return "REFERENCE PACKAGE\n" + "\n".join(blocks) + "\nEND PACKAGE\n" + task
+
+
 def build_pack(
     case: dict[str, Any],
     documents: dict[str, Any],
@@ -143,21 +164,7 @@ def build_pack(
     budget = context_tokens - output_reserve - CHAT_RESERVE
 
     def assemble(filler: list[str]) -> str:
-        if position == "start":
-            blocks = evidence + filler
-        elif position == "end":
-            blocks = filler + evidence
-        elif position == "middle":
-            split = len(filler) // 2
-            blocks = filler[:split] + evidence + filler[split:]
-        else:
-            blocks = []
-            for i, doc in enumerate(evidence):
-                left = len(filler) * i // len(evidence)
-                right = len(filler) * (i + 1) // len(evidence)
-                blocks.extend(filler[left:right])
-                blocks.append(doc)
-        return "REFERENCE PACKAGE\n" + "\n".join(blocks) + "\nEND PACKAGE\n" + task
+        return _assemble_package(evidence, task, filler, position)
 
     prompt = assemble([])
     filler: list[str] = []
@@ -201,6 +208,29 @@ def build_pack(
         "distractor_ids": [f"D{i:07d}" for i in range(len(filler))],
         "distractor_kind": "synthetic_unrelated_lab_records",
     }
+
+
+def text_prompt_matches(
+    row: dict[str, Any], case: dict[str, Any], documents: dict[str, Any]
+) -> bool:
+    """Reconstruct short and long prompts without trusting supplied prompt text."""
+    ids, position = row.get("distractor_ids"), row.get("position")
+    if not (
+        isinstance(ids, list)
+        and position in POSITIONS
+        and type(row.get("trial")) is int
+        and row["trial"] >= 0
+        and (row.get("context_tokens") or not ids)
+        and ids == [f"D{i:07d}" for i in range(len(ids))]
+    ):
+        return False
+    prompt = _assemble_package(
+        [document_text(documents[key]) for key in case["documents"]],
+        task_prompt(case),
+        [_distractor(i, row["trial"]) for i in range(len(ids))],
+        position,
+    )
+    return digest(prompt) == row.get("prompt_sha256")
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -544,6 +574,53 @@ def browser_calls_bound(row: dict[str, Any], case: dict[str, Any] | None) -> boo
         return False
 
 
+def emitted_answers_match(row: dict[str, Any]) -> bool:
+    """Bind parsed answers/actions to the raw responses retained by the producer."""
+    calls = row.get("calls")
+    if not isinstance(calls, list) or not calls:
+        return False
+    for call in calls:
+        if not (
+            isinstance(call, dict)
+            and isinstance(call.get("response"), str)
+            and call.get("response_sha256") == digest(call["response"])
+        ):
+            return False
+    if not str(row.get("case_id", "")).endswith(":browser"):
+        if len(calls) != 1:
+            return False
+        try:
+            answer = parse_answer(calls[0]["response"])
+        except ValueError:
+            answer = {}
+        return digest(answer) == digest(row.get("answer"))
+    trace = row.get("browser_trace")
+    if not isinstance(trace, list) or len(calls) != len(trace) + int(
+        row.get("agent_status") == "completed"
+    ):
+        return False
+    for call, step in zip(calls, trace):
+        if not isinstance(step, dict):
+            return False
+        if "response" in step:
+            if call["response"] != step["response"]:
+                return False
+        else:
+            try:
+                action = parse_answer(call["response"])
+            except ValueError:
+                return False
+            if digest(action) != digest(step.get("action")):
+                return False
+    if row.get("agent_status") == "completed":
+        try:
+            final = parse_answer(calls[-1]["response"])
+        except ValueError:
+            return False
+        return digest(final) == digest({"final": row.get("answer")})
+    return row.get("answer") == {}
+
+
 def verified_call_accounting(
     row: dict[str, Any], case: dict[str, Any] | None = None
 ) -> bool:
@@ -558,6 +635,7 @@ def verified_call_accounting(
         and type(output_limit) is int
         and isinstance(calls, list)
         and bool(calls)
+        and emitted_answers_match(row)
         and (browser_calls_bound(row, case) if browser else len(calls) == 1)
         and all(
             isinstance(call, dict)
@@ -896,6 +974,15 @@ def compare_runs(
                 or not checks_complete
                 or not sampling_complete
                 or not verified_call_accounting(row, case)
+                or (
+                    not str(row.get("case_id", "")).endswith(":browser")
+                    and (
+                        case is None
+                        or not text_prompt_matches(
+                            row, case, benchmark.get("documents", {})
+                        )
+                    )
+                )
                 or (
                     str(row.get("case_id", "")).endswith(":browser")
                     and (

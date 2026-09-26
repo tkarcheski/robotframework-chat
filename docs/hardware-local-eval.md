@@ -346,3 +346,17 @@ match the recorded fields. Workflow and safety checks additionally determine
 full pass status. Missing answers or self-declared scores that disagree with the
 answer are incomplete evidence. Parsing failures archive an empty object and
 remain completed model failures when their grading and other provenance agree.
+
+Calls also retain the emitted response and its canonical content hash. The gate
+reparses each response and checks the resulting text answer, browser action or
+browser final answer against the row/trace. An edited parsed object cannot replace
+a malformed or different recorded response. Invalid responses remain measurable
+model failures when their empty parsed answer and grading agree. These bindings
+check consistency of imported artifacts, not the authenticity of supplied files.
+
+Text prompt identity is reconstructed independently: trusted document blocks and
+task text are assembled with the recorded evidence position and the deterministic
+archive records identified by `distractor_ids` and the trial seed. Short tasks must
+have no distractors. The same assembly function generates live packs, so long
+prompts can be checked without accepting arbitrary supplied text or rerunning the
+tokenizer's sizing search. Actual token accounting remains a separate requirement.

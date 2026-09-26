@@ -48,6 +48,7 @@ def synthetic_benchmark(questions=None):
         "cases": {
             case: {
                 "task": "Synthetic fixture task",
+                "documents": ["fixture-doc"],
                 "questions": [{"id": q, "question": q} for q in questions],
                 "expected": {
                     q: {"value": 1, "critical": critical, "evidence": ["fixture-doc"]}
@@ -241,7 +242,7 @@ def test_tiny_budget_never_truncates_evidence(case, benchmark):
         build_pack(case, benchmark["documents"], context_tokens=100, counter=len)
 
 
-def row(case_id="a", **overrides):
+def row(case_id="a", benchmark_fixture=None, **overrides):
     result = {
         "case_id": case_id,
         "context_tokens": 16384,
@@ -318,7 +319,7 @@ def row(case_id="a", **overrides):
             for i in range(4)
         }
     name = case_id.removesuffix(":browser")
-    benchmark = synthetic_benchmark()
+    benchmark = benchmark_fixture or synthetic_benchmark()
     if name not in benchmark["cases"]:
         benchmark = load_benchmark(FIXTURES)
     if name not in benchmark["cases"]:
@@ -404,8 +405,31 @@ def row(case_id="a", **overrides):
                     + int(result["agent_status"] == "completed")
                 )
             ]
-    elif "calls" not in overrides:
-        result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
+    else:
+        result.setdefault("distractor_ids", [])
+        if "prompt_sha256" not in overrides:
+            result["prompt_sha256"] = build_pack(
+                case,
+                benchmark["documents"],
+                position=result["position"]
+                if result["position"] in ("start", "middle", "end", "spread")
+                else "spread",
+            )["prompt_sha256"]
+        if "calls" not in overrides:
+            result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
+    if "calls" not in overrides:
+        for i, call in enumerate(result["calls"]):
+            if case_id.endswith(":browser"):
+                trace = result["browser_trace"]
+                response = json.dumps(
+                    trace[i]["action"]
+                    if i < len(trace)
+                    else {"final": result["answer"]}
+                )
+            else:
+                response = json.dumps(result["answer"])
+            call["response"] = response
+            call["response_sha256"] = digest(response)
     if "sampling" not in overrides:
         result["sampling"]["seed"] = result["trial"]
     if "passed" not in overrides:
@@ -533,3 +557,39 @@ def test_real_tokenizer_builds_one_million_budget_without_truncating_sources(ben
     assert pack["reference_tokens"] + 2048 + 256 <= 1000000
     assert len(pack["evidence_positions"]) == len(case["documents"])
     assert "N1: UNO.D1_TX" in pack["prompt"]
+
+
+@pytest.mark.parametrize("position", ["start", "middle", "end", "spread"])
+@pytest.mark.parametrize("seed", [0, 2])
+def test_generated_long_prompt_reconstructs_from_trusted_recipe(
+    case, benchmark, position, seed
+):
+    from rfc.hardware_eval import text_prompt_matches
+
+    pack = build_pack(
+        case,
+        benchmark["documents"],
+        context_tokens=16384,
+        counter=len,
+        position=position,
+        seed=seed,
+    )
+    assert pack["distractor_ids"]
+    row = {**pack, "trial": seed, "position": position}
+    assert text_prompt_matches(row, case, benchmark["documents"])
+    row["trial"] += 1
+    assert not text_prompt_matches(row, case, benchmark["documents"])
+    row["trial"] = seed
+    row["distractor_ids"].pop()
+    assert not text_prompt_matches(row, case, benchmark["documents"])
+
+
+@pytest.mark.parametrize("ids", [None, {}, ["D0000001"], [1], ["D0000000", "D0000000"]])
+def test_invalid_distractor_recipe_cannot_establish_prompt(ids):
+    from rfc.hardware_eval import text_prompt_matches
+
+    result = row(distractor_ids=ids)
+    benchmark = synthetic_benchmark()
+    assert not text_prompt_matches(
+        result, benchmark["cases"]["a"], benchmark["documents"]
+    )

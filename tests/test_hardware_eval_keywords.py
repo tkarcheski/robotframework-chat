@@ -8,7 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from rfc.exceptions import RFCSkipError
-from rfc.hardware_eval import load_benchmark
+from rfc.hardware_eval import (
+    load_benchmark,
+    digest,
+    emitted_answers_match,
+    text_prompt_matches,
+)
 from rfc.hardware_eval_keywords import HardwareEvalKeywords, verify_token_usage
 from test_hardware_eval import FIXTURES, gold_answer
 
@@ -63,6 +68,12 @@ def test_mocked_model_never_claims_live_or_deployment_evidence(tmp_path):
     result = lib.evaluate_hardware_case("uno-current-budget")
     assert result["passed"]
     assert result["answer"] == json.loads(client.generate.return_value)
+    assert result["calls"][0]["response"] == client.generate.return_value
+    assert result["calls"][0]["response_sha256"] == digest(client.generate.return_value)
+    assert emitted_answers_match(result)
+    assert text_prompt_matches(
+        result, benchmark["cases"]["uno-current-budget"], benchmark["documents"]
+    )
     assert (
         json.loads((tmp_path / "hardware-results.jsonl").read_text())["answer"]
         == result["answer"]
@@ -70,7 +81,12 @@ def test_mocked_model_never_claims_live_or_deployment_evidence(tmp_path):
     assert not result["live"]
     assert not result["token_count_verified"]
     assert (tmp_path / "hardware-results.jsonl").exists()
-    assert (tmp_path / result["artifact"] / "response.txt").exists()
+    assert (tmp_path / result["artifact"] / "response.txt").read_text() == result[
+        "calls"
+    ][0]["response"]
+    assert (
+        tmp_path / result["artifact"] / "call-001-response.txt"
+    ).read_text() == result["calls"][0]["response"]
 
 
 def test_output_budget_is_requested_and_archived(tmp_path, monkeypatch):
@@ -240,3 +256,5 @@ def test_invalid_json_archives_empty_parsed_answer(tmp_path):
     assert archived["schema_valid"] is False
     assert archived["accuracy"] == 0
     assert archived["parse_error"] == "JSONDecodeError"
+    assert emitted_answers_match(archived)
+    assert archived["calls"][0]["response"] == "not JSON"

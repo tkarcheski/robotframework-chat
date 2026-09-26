@@ -332,6 +332,8 @@ class HardwareEvalKeywords:
                 calls.append(
                     {
                         "prompt_sha256": digest(text),
+                        "response": raw,
+                        "response_sha256": digest(raw),
                         "local_input_tokens": local,
                         "server_metrics": metrics,
                         "latency_ms": (time.perf_counter() - call_start) * 1000,

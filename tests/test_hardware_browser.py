@@ -238,7 +238,12 @@ def test_falsey_nonobject_tool_arguments_are_rejected_as_model_actions(
 def test_actual_agent_prompts_reconstruct_from_archived_trace(
     benchmark, browser, tmp_path
 ):
-    from rfc.hardware_eval import browser_calls_bound, browser_task_prompt, digest
+    from rfc.hardware_eval import (
+        browser_calls_bound,
+        browser_task_prompt,
+        digest,
+        emitted_answers_match,
+    )
 
     case = benchmark["cases"]["uno-current-budget"]
     outputs = iter(
@@ -250,12 +255,21 @@ def test_actual_agent_prompts_reconstruct_from_archived_trace(
     calls = []
 
     def generate(prompt):
-        calls.append({"prompt_sha256": digest(prompt)})
-        return json.dumps(next(outputs))
+        raw = json.dumps(next(outputs))
+        calls.append(
+            {
+                "prompt_sha256": digest(prompt),
+                "response": raw,
+                "response_sha256": digest(raw),
+            }
+        )
+        return raw
 
     with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
         result = run_browser_agent(case, box, generate)
     row = {
+        "case_id": "uno-current-budget:browser",
+        "answer": result["answer"],
         "prompt_sha256": digest(browser_task_prompt(case)),
         "calls": calls,
         "browser_trace": result["trace"],
@@ -263,6 +277,7 @@ def test_actual_agent_prompts_reconstruct_from_archived_trace(
         "passed": result["passed"],
     }
     assert browser_calls_bound(json.loads(json.dumps(row, sort_keys=True)), case)
+    assert emitted_answers_match(row)
     # A final-only response has one call and an empty action trace; this
     # establishes prompt accounting, not successful evidence collection.
     row["calls"] = calls[:1]
@@ -324,21 +339,32 @@ def test_live_agent_workflow_matches_offline_trace_replay(
 def test_failed_live_workflows_remain_consistent_evidence(
     benchmark, browser, tmp_path, monkeypatch, ending, expected_status
 ):
-    from rfc.hardware_eval import browser_workflow_matches
+    from rfc.hardware_eval import (
+        browser_workflow_matches,
+        emitted_answers_match,
+        digest,
+    )
 
     case = benchmark["cases"]["uno-current-budget"]
     stream = iter(
         ['{"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}}', ending]
     )
+    calls = []
+
+    def generate(prompt):
+        raw = next(stream)
+        calls.append({"response": raw, "response_sha256": digest(raw)})
+        return raw
+
     with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
         monkeypatch.setattr(box.dispatcher, "_to_markdown", lambda html: "catalog")
-        result = run_browser_agent(
-            case, box, lambda prompt: next(stream), max_actions=2
-        )
+        result = run_browser_agent(case, box, generate, max_actions=2)
     assert result["agent_status"] == expected_status
     assert not result["passed"]
     result["browser_trace"] = result["trace"]
     assert browser_workflow_matches(result, case, benchmark["documents"])
+    result.update(calls=calls, case_id="uno-current-budget:browser")
+    assert emitted_answers_match(result)
 
 
 @pytest.mark.parametrize("complete", [False, True])

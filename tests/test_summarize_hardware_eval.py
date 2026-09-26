@@ -1,5 +1,8 @@
 """Avoid treating repeated deterministic trials as independent comparisons."""
 
+import json
+from rfc.hardware_eval import digest
+
 from copy import deepcopy
 
 import pytest
@@ -34,6 +37,8 @@ def test_repetitions_remain_two_case_clusters():
             check["correct"] = True
         for answer in r["answer"]["answers"]:
             answer["value"] = 1
+        r["calls"][0]["response"] = json.dumps(r["answer"])
+        r["calls"][0]["response_sha256"] = digest(r["calls"][0]["response"])
     result = compare(old, new, synthetic_benchmark())
     assert result["paired_rows"] == 6
     assert result["independent_case_clusters"] == 2
