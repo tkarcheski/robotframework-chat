@@ -19,13 +19,13 @@ repeat the same outcome and are not independent statistical samples.
 | Full passes | 36 / 54 | 36 / 54 |
 | Mean case fact accuracy | 98.15% | 94.44% |
 | Mean exact evidence-set accuracy | 87.50% | 87.96% |
-| Median of per-case mean request latency | 2.50 s | 7.78 s |
+| Median of per-case mean task latency | 2.50 s | 7.78 s |
 | Model load time | 5.02 s | 3.28 s |
 | Sampled peak total GPU memory | 22,483 MiB | 16,985 MiB |
 
 Memory includes the desktop and is sampled once per second; it is not an exact
-model-only peak. Latency includes model output of varying length and is not TTFT
-or a fixed-token decode-speed comparison. Both models were tested on the same
+model-only peak. Task latency includes tokenization/setup and model output of varying length;
+it is not TTFT or a fixed-token decode-speed comparison. Both models were tested on the same
 host serially, Qwen3.8 first, without flushing the OS page cache.
 
 Qwen3.8's fact-score delta was -3.70 percentage points, case-cluster bootstrap
@@ -47,8 +47,8 @@ Three original cases × four evidence positions × one trial, on each model, at 
 | Mean fact accuracy | 100% | 100% |
 | Mean exact evidence-set accuracy | 22.92% | 83.33% |
 
-All 72 rows across the three allocations completed with verified token counts. At 16K, fact accuracy remained 100% on both models. Qwen3.6 citation accuracy fell to 8.33% (1/12 full passes); Qwen3.8 remained at 83.33% (8/12). The difference is **citation
-selection under distractors**, not factual-answer accuracy. The citation delta
+All 72 rows across the three allocations completed with verified token counts. At 16K, fact accuracy remained 100% on both models. Qwen3.6 citation accuracy fell to 8.33% (1/12 full passes); Qwen3.8 remained at 83.33% (8/12). The difference is **exact citation-identifier and evidence-set compliance**,
+not factual-answer accuracy. The citation delta
 is +60.42 points, with a [31.25, 75.00] case-cluster bootstrap interval, but there
 are only **three independent task clusters**. This exploratory result is narrow;
 it does not establish general model superiority or full-profile eligibility.
@@ -67,8 +67,25 @@ GPU weights and f16 KV. All 12 rows completed with verified tokens; both models
 retained 100% fact accuracy at both levels. Full passes were 0/3 for Qwen3.6 and
 2/3 for Qwen3.8 at each level. Exact-citation accuracy was 0% versus 83.33%.
 [32K details](context-32k-summary.json), [64K details](context-64k-summary.json).
-The same narrow citation-selection distinction persists; three cases do not
-establish general model superiority. The separate 16K bridge also completed.
+The exact-citation distinction persists, but identifier formatting explains much
+of it; three cases do not establish general model superiority. The separate 16K bridge also completed.
+
+## What the citation gap actually measures
+
+Inspecting the responses exposed an important limitation: Qwen3.6 often cites
+`DOCUMENT fire-pinmux` rather than the required ID `fire-pinmux`. The strict
+rubric rejects that prefix even when the model names the correct document.
+A **post-hoc diagnostic**, stripping that one prefix only when it reveals a known
+document ID, changes Qwen3.6's mean citation score on the three-case bridge from
+0% to 100% at 16K, 88.89% at 32K, and 77.78% at 64K. Qwen3.8 stays at 83.33%.
+[Diagnostic details](citation-prefix-diagnostic.json).
+
+Those are not replacement gate scores: no official row or rubric was rewritten.
+They show that the large raw citation gap mainly measures identifier serialization
+and exact evidence-set compliance, rather than a large difference in finding
+engineering evidence. Do not present that gap as a general reasoning improvement.
+Context tests remain useful for verified capacity even when both models answer
+the engineering questions correctly.
 
 ## Complete original required profile
 
@@ -83,7 +100,7 @@ accuracy, while mean exact-citation accuracy was 14.58% for Qwen3.6 and 83.33% f
 Qwen3.8. Full passes were 3/36 versus 24/36. The citation delta's case-cluster
 interval is [31.25, 100.00] percentage points across only three task clusters.
 [Repeated-context details](context-16k-three-trial-summary.json). This remains a
-narrow evidence-selection finding. Each paired coordinate has matching settings;
+narrow citation-format/evidence-set finding. Each paired coordinate has matching settings;
 short and browser/context suites use their separately reported output budgets.
 
 ## Model-driven browser tasks at 16K allocation

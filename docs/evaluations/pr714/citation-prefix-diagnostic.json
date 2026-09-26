@@ -1,0 +1,161 @@
+{
+  "note": "Post-hoc diagnostic only: remove exactly one DOCUMENT prefix only when the remainder is a known document ID. Official rows, rubric and gate remain unchanged. This identifies serialization effects, not new primary scores.",
+  "results": [
+    {
+      "model": "qwen36",
+      "context": 16384,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 4,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 7,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 5,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        }
+      ],
+      "original_mean": 0.0,
+      "diagnostic_mean": 1.0
+    },
+    {
+      "model": "qwen38",
+      "context": 16384,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 0,
+          "original_citation_score": 0.5,
+          "diagnostic_citation_score": 0.5
+        }
+      ],
+      "original_mean": 0.8333333333333334,
+      "diagnostic_mean": 0.8333333333333334
+    },
+    {
+      "model": "qwen36",
+      "context": 32768,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 5,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 0.6666666666666666
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 7,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 5,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        }
+      ],
+      "original_mean": 0.0,
+      "diagnostic_mean": 0.8888888888888888
+    },
+    {
+      "model": "qwen38",
+      "context": 32768,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 0,
+          "original_citation_score": 0.5,
+          "diagnostic_citation_score": 0.5
+        }
+      ],
+      "original_mean": 0.8333333333333334,
+      "diagnostic_mean": 0.8333333333333334
+    },
+    {
+      "model": "qwen36",
+      "context": 65536,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 5,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 0.6666666666666666
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 6,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 0.6666666666666666
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 5,
+          "original_citation_score": 0.0,
+          "diagnostic_citation_score": 1.0
+        }
+      ],
+      "original_mean": 0.0,
+      "diagnostic_mean": 0.7777777777777778
+    },
+    {
+      "model": "qwen38",
+      "context": 65536,
+      "cases": [
+        {
+          "case_id": "fire-pinmux-change",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "mixed-voltage-review",
+          "prefixes_removed": 0,
+          "original_citation_score": 1.0,
+          "diagnostic_citation_score": 1.0
+        },
+        {
+          "case_id": "fire-gateware-resources",
+          "prefixes_removed": 0,
+          "original_citation_score": 0.5,
+          "diagnostic_citation_score": 0.5
+        }
+      ],
+      "original_mean": 0.8333333333333334,
+      "diagnostic_mean": 0.8333333333333334
+    }
+  ]
+}
