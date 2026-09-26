@@ -307,3 +307,37 @@ def test_invalid_models_fail_before_output_or_server(tmp_path, monkeypatch, mode
         runner.main()
     assert error.value.code == 2
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "managed,processes,log,expected",
+    [
+        (False, "42, 446", "", False),
+        (False, "42, 17000", "", True),
+        (
+            True,
+            "42, 446",
+            "offloaded 66/66 layers to GPU\nCUDA0 model buffer size = 14674.45 MiB",
+            True,
+        ),
+        (
+            True,
+            "43, 17000",
+            "offloaded 66/66 layers to GPU\nCUDA0 model buffer size = 14674.45 MiB",
+            False,
+        ),
+        (
+            True,
+            "42, 446",
+            "offloaded 0/66 layers to GPU\nCPU model buffer size = 14674.45 MiB",
+            False,
+        ),
+        (True, "42, 446", "", False),
+    ],
+)
+def test_managed_gpu_verification_requires_owned_process_and_native_buffers(
+    managed, processes, log, expected
+):
+    from scripts.hardware_local_eval import gpu_allocation_established
+
+    assert gpu_allocation_established(processes, 42, managed, log) is expected

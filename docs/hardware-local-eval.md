@@ -188,3 +188,12 @@ harness identity snapshots every Python module in the local `rfc` package once
 per process, including transport, parsing and browser execution code. Complete
 paired runs must use one unchanged implementation; do not mix old and new
 harness identities in a comparison.
+
+For managed allocations, the runner requires its own CUDA process plus native
+GPU layer-offload and CUDA model-buffer evidence. It does not require the usual
+1024 MiB per-process VRAM threshold: managed pages can migrate between host and
+GPU, so allocation is not proof of residency. See the [CUDA unified-memory
+placement documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/unified-memory.html).
+Total GPU/RAM telemetry and completed inference remain separate measurements.
+The initial managed pilot stopped at this old residency check before any scored
+request; its failure artifacts are retained.

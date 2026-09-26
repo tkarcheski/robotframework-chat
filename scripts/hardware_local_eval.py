@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -273,6 +274,24 @@ def command(args, model, context):
     return cmd
 
 
+def gpu_allocation_established(processes, pid, managed, server_log):
+    """Managed virtual allocations need offload evidence, not a residency threshold."""
+    owned = [
+        float(line.split(",")[1])
+        for line in processes.splitlines()
+        if line.split(",")[0].strip() == str(pid)
+    ]
+    if not owned or owned[0] <= 0:
+        return False
+    if not managed:
+        return owned[0] > 1024
+    offloads = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", server_log)
+    buffers = re.findall(r"CUDA\d+ model buffer size =\s*([\d.]+) MiB", server_log)
+    return any(int(count) > 0 for count, _ in offloads) and any(
+        float(size) > 1024 for size in buffers
+    )
+
+
 def terminate(process):
     if process and process.poll() is None:
         process.terminate()
@@ -412,12 +431,18 @@ def run_cell(args, model, context, version):
                     "--format=csv,noheader,nounits",
                 ]
             )
-            if args.gpu_layers and not any(
-                line.split(",")[0].strip() == str(server.pid)
-                and float(line.split(",")[1]) > 1024
-                for line in manifest["gpu_processes"].splitlines()
+            if args.gpu_layers and not gpu_allocation_established(
+                manifest["gpu_processes"],
+                server.pid,
+                args.unified_memory,
+                (folder / "server.log").read_text(),
             ):
                 raise RuntimeError("Owned server GPU allocation not established")
+            manifest["gpu_allocation_verification"] = (
+                "owned CUDA process and native GPU offload buffers; managed pages may migrate"
+                if args.unified_memory
+                else "owned CUDA process above 1024 MiB resident allocation"
+            )
             manifest["load_seconds"] = time.monotonic() - start
             if args.constrain_json:
                 probe_start = time.monotonic()
