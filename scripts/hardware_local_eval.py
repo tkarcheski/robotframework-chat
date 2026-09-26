@@ -785,6 +785,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
+    if args.timeout <= 0 or args.cell_timeout <= 0:
+        parser.error("Request and cell timeouts must be positive")
     if args.min_ram_gib < 0 or args.min_free_gpu_mib < 0:
         parser.error("RAM and GPU memory reserve thresholds must be nonnegative")
     if min(args.gpu_layers, args.cpu_ffn_layers, args.cpu_moe_layers) < 0:

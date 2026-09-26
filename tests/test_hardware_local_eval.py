@@ -769,6 +769,42 @@ def test_negative_resource_counts_rejected_before_reading_assets(
     assert not output.exists()
 
 
+@pytest.mark.parametrize("flag", ["--timeout", "--cell-timeout"])
+@pytest.mark.parametrize("value", ["0", "-1"])
+@pytest.mark.parametrize("execute", [False, True])
+def test_nonpositive_timeouts_rejected_before_assets(
+    tmp_path, monkeypatch, capsys, flag, value, execute
+):
+    from scripts import hardware_local_eval as runner
+
+    output = tmp_path / "results"
+    argv = [
+        "runner",
+        "--models",
+        str(tmp_path / "missing-models.json"),
+        "--server",
+        "/missing/server",
+        "--reference-tokenizer",
+        "/missing/tokenizer",
+        "--output",
+        str(output),
+        flag,
+        value,
+    ]
+    if execute:
+        argv.append("--execute")
+    monkeypatch.setattr("sys.argv", argv)
+    monkeypatch.setattr(runner, "capture", lambda *a, **kw: pytest.fail("Server probe"))
+    monkeypatch.setattr(
+        runner, "file_sha256", lambda *a, **kw: pytest.fail("Asset hashing")
+    )
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert "Request and cell timeouts must be positive" in capsys.readouterr().err
+    assert not output.exists()
+
+
 def test_server_identity_hashes_owned_executable_and_mapped_libraries(tmp_path):
     import hashlib
     from scripts.hardware_local_eval import server_build_identity
