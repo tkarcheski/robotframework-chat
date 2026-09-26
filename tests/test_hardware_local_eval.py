@@ -721,3 +721,32 @@ def test_all_model_assets_and_reference_tokenizer_are_checked(tmp_path):
     ref.write_text("not a tokenizer")
     with pytest.raises(ValueError, match="Invalid tokenizer"):
         validate_model_assets([model], ref, True)
+
+
+@pytest.mark.parametrize("flag", ["--min-ram-gib", "--min-free-gpu-mib"])
+def test_negative_reserve_rejected_before_reading_assets(tmp_path, monkeypatch, flag):
+    from scripts import hardware_local_eval as runner
+
+    output = tmp_path / "results"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            "/missing/models.json",
+            "--server",
+            "/missing/server",
+            "--reference-tokenizer",
+            "/missing/tokenizer",
+            "--output",
+            str(output),
+            flag,
+            "-1",
+            "--execute",
+        ],
+    )
+    monkeypatch.setattr(runner, "capture", lambda command: pytest.fail("Server probe"))
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert not output.exists()

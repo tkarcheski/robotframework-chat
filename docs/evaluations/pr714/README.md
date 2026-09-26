@@ -141,7 +141,8 @@ an entire arm, and correctly classifies this combined profile as **incomplete**
 ([current audit](full-profile-gate.json)). The individual paired experiments
 retain their historical scores and recorded provenance. All 102 rows per arm
 also predate the explicit `sampling.json_schema` field, so the latest validator
-cannot verify their constraint mode. No missing metadata is backfilled. Neither
+cannot verify their constraint mode. Their serving manifests also lack the now-required
+explicit managed-memory boolean when disabled. No missing metadata is backfilled. Neither
 their concatenation nor those legacy artifacts alone satisfy the current gate.
 A fresh original-profile run under one frozen
 revision is planned after the larger-context sweep. Historical responses and

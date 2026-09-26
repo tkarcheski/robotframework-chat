@@ -12,7 +12,7 @@ A Robot Framework-based test harness for systematically testing Large Language M
 ## Quick Start
 
 For source-grounded Arduino UNO and BeagleV-Fire comparisons, see the
-[hardware engineering evaluation guide](robot/10__tier1/hardware_engineering/README.md).
+[hardware engineering evaluation guide](https://github.com/tkarcheski/robotframework-chat/blob/claude/hardware-context-evals-37d57/robot/10__tier1/hardware_engineering/README.md).
 It covers design/review questions, opt-in 16K-to-1M context tests, live sandbox
 browser tasks, and a non-deploying regression gate.
 

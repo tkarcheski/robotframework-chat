@@ -17,7 +17,7 @@ import yaml
 
 from .thinking import parse_thinking
 
-GRADER_VERSION = "hardware-v1"
+GRADER_VERSION = "hardware-v2"
 CONTEXT_LEVELS = (4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1000000)
 POSITIONS = ("start", "middle", "end", "spread")
 OUTPUT_RESERVE = 2048
@@ -249,7 +249,12 @@ def score_answer(case: dict[str, Any], answer: Any) -> dict[str, Any]:
     """Grade typed facts/calculations/decisions, not prose or citation semantics."""
     expected = case["expected"]
     items = answer.get("answers") if isinstance(answer, dict) else None
-    valid = isinstance(items, list) and bool(items)
+    valid = (
+        isinstance(answer, dict)
+        and isinstance(answer.get("explanation"), str)
+        and isinstance(items, list)
+        and bool(items)
+    )
     supplied: dict[str, Any] = {}
     if valid and isinstance(items, list):
         for item in items:
@@ -296,6 +301,41 @@ def score_answer(case: dict[str, Any], answer: Any) -> dict[str, Any]:
         ),
         "checks": checks,
     }
+
+
+def complete_runtime(runtime: Any) -> bool:
+    """Require explicit serving settings; two equally incomplete rows cannot qualify."""
+    return (
+        isinstance(runtime, dict)
+        and all(
+            isinstance(runtime.get(key), str) and bool(runtime[key].strip())
+            for key in ("engine", "version", "rope", "kv_cache_dtype", "speculation")
+        )
+        and runtime.get("kv_placement") in ("cpu", "gpu")
+        and all(
+            type(runtime.get(key)) is int and runtime[key] >= minimum
+            for key, minimum in (
+                ("gpu_layers", 0),
+                ("cpu_ffn_layers", 0),
+                ("cpu_moe_layers", 0),
+                ("parallel", 1),
+                ("n_batch", 1),
+                ("n_ubatch", 1),
+                ("threads", 1),
+                ("host_prompt_cache_mib", 0),
+            )
+        )
+        and all(
+            type(runtime.get(key)) is bool
+            for key in (
+                "enable_thinking",
+                "vision",
+                "fit",
+                "context_shift",
+                "cuda_managed_memory",
+            )
+        )
+    )
 
 
 def compare_runs(
@@ -527,10 +567,7 @@ def compare_runs(
                 and runtime.get("output_constraint") == sampling["json_schema"]
             ):
                 result["reasons"].append("unknown_or_inconsistent_json_constraint")
-            runtime_complete = isinstance(runtime, dict) and all(
-                isinstance(runtime.get(key), str) and bool(runtime[key].strip())
-                for key in ("engine", "version", "rope", "kv_cache_dtype")
-            )
+            runtime_complete = complete_runtime(runtime)
             if (
                 row.get("status") != "completed"
                 or row.get("live") is not True

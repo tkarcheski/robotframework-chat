@@ -63,7 +63,7 @@ export HW_ADAPTER_ID=none
 export HW_WEIGHTS_FORMAT=your-actual-quantization-format
 export HW_MAX_CONTEXT=32768
 export HW_MODEL_TOKENIZER=/absolute/path/to/model/tokenizer.json
-export HW_RUNTIME_MANIFEST='{"engine":"vllm","version":"record-actual-version","rope":"native","kv_cache_dtype":"record-actual-dtype"}'
+export HW_RUNTIME_MANIFEST="$(cat /absolute/path/to/verified-runtime.json)"
 
 make robot-hardware
 make robot-hardware-browser
@@ -75,7 +75,13 @@ operator-supplied identity and must be checked against the server/checkpoint;
 this suite does not attest the server's weights cryptographically.
 
 For gate eligibility, `HW_RUNTIME_MANIFEST` must include nonempty `engine`,
-`version`, `rope` and `kv_cache_dtype` fields. The complete manifest must match
+`version`, `rope`, `kv_cache_dtype` and `speculation` fields, plus explicit
+`kv_placement` (`cpu` or `gpu`), nonnegative integer `gpu_layers`,
+`cpu_ffn_layers`, `cpu_moe_layers` and `host_prompt_cache_mib`, positive integer
+`parallel`, `n_batch`, `n_ubatch` and `threads`, and boolean `enable_thinking`,
+`vision`, `fit`, `context_shift` and `cuda_managed_memory`. Record the actual
+settings; do not invent values for an endpoint whose configuration is unknown.
+The native runner creates this manifest automatically. The complete manifest must match
 for each baseline/candidate pair. The effective context limit is archived even
 for short and browser tasks, and must match. A known, identical weight format
 is required too; missing or `unspecified` quantization fails closed.

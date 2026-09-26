@@ -465,11 +465,10 @@ def run_cell(args, model, context, version):
         "fit": False,
         "context_shift": False,
         "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": args.unified_memory,
     }
     if args.constrain_json:
         runtime["output_constraint"] = {"type": "object"}
-    if args.unified_memory:
-        runtime["cuda_managed_memory"] = True
     manifest = {
         "model": model,
         "context": context,
@@ -754,6 +753,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
+    if args.min_ram_gib < 0 or args.min_free_gpu_mib < 0:
+        parser.error("RAM and GPU memory reserve thresholds must be nonnegative")
     if args.unified_memory and not args.gpu_layers:
         parser.error("CUDA managed memory requires nonzero GPU layers")
     if len(set(args.contexts)) != len(args.contexts) or len(set(args.suites)) != len(

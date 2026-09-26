@@ -281,3 +281,14 @@ discovery performs no NVIDIA probes. The analyzer omits latency when hardware
 identity is missing, mixed, or incomplete, or latency values are invalid; changed
 hardware between paired rows rejects the comparison. Matching hardware does not
 control competing load, clocks or thermal state, so timing remains descriptive.
+
+Serving provenance requires explicit placement, offload, batching, thread,
+cache, thinking, vision, fit, context-shift and managed-memory settings in
+addition to engine/version/RoPE/cache precision. Matching partial manifests
+cannot qualify. The runner records managed memory as a boolean even when off.
+Negative RAM or GPU reserve thresholds fail before reading model assets or
+creating output directories.
+
+Grader `hardware-v2` requires the declared top-level explanation string as well
+as the answer list. Its contents remain subject to human review, not a prose
+quality score. Legacy scores retain their original grader identity.

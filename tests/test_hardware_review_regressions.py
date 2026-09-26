@@ -671,3 +671,42 @@ def test_dependency_and_browser_revision_changes_reject_a_source_identical_pair(
         new = row(harness_version=keywords.harness_digest(root))
         assert new["harness_version"] != old["harness_version"]
         assert compare_runs([old], [new])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("explanation", [None, False, 1, [], {}])
+def test_correct_answers_require_string_explanation(explanation):
+    case = load_benchmark(FIXTURES)["cases"]["uno-current-budget"]
+    answer = gold_answer(case)
+    answer["explanation"] = explanation
+    assert score_answer(case, answer)["schema_valid"] is False
+    answer.pop("explanation")
+    assert score_answer(case, answer)["passed"] is False
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "gpu_layers",
+        "kv_placement",
+        "cpu_ffn_layers",
+        "cpu_moe_layers",
+        "parallel",
+        "n_batch",
+        "n_ubatch",
+        "threads",
+        "host_prompt_cache_mib",
+        "enable_thinking",
+        "speculation",
+        "vision",
+        "fit",
+        "context_shift",
+        "cuda_managed_memory",
+    ],
+)
+@pytest.mark.parametrize("bad", [None, "", [], {}])
+def test_matching_incomplete_serving_settings_cannot_qualify(field, bad):
+    old = row()
+    old["runtime_manifest"][field] = bad
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+    del old["runtime_manifest"][field]
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
