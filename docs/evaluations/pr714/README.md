@@ -54,10 +54,50 @@ are only **three independent task clusters**. This exploratory result is narrow;
 it does not establish general model superiority or full-profile eligibility.
 Details: [4K](context-4k-summary.json), [8K](context-8k-summary.json), and [16K](context-16k-summary.json).
 
-The 4K context figure is a total allocation with output/wrapper reserve, not a
-4,096-token input. Exact actual token counts remain in the raw result rows.
-Larger contexts, actual model-driven browser tasks and the new product cases are
-still being evaluated. No 1M inference claim is made in this checkpoint.
+Context figures are total allocations with output/wrapper reserve. The initial
+4K, 8K and 16K runs used respectively 1708–1763, 5792–5847 and 14018–14070
+actual input tokens on both tokenizers. They are not full-length input figures.
+Larger contexts and follow-up product/browser experiments are still being
+evaluated. No 1M inference claim is made in this checkpoint.
+
+## Model-driven browser tasks at 16K allocation
+
+All four tasks ran three trials per model with a 4096-token output budget. All
+24 rows completed with verified token accounting. Qwen3.8 passed 3/12 trials
+(the supply-budget task); Qwen3.6 passed 0/12. Qwen3.6 invented non-allowlisted
+document selectors in three tasks and returned an answer before completing the
+saved-state workflow in the fourth. Qwen3.8's failed tasks ended with malformed
+action JSON. No external upload or host write occurred.
+
+The paired pass-rate delta is +25 percentage points, with a case-cluster bootstrap
+interval of [0, 75] points over only four task clusters. This does **not** establish
+a statistically reliable general improvement. [Per-case results](browser-16k-summary.json).
+
+The successful Qwen3.8 trace includes actual document reads, typing into the
+report editor, saving, and verification of the saved state:
+
+![Qwen3.8 saved the supply-budget report in the local browser sandbox](browser-qwen38-saved.png)
+
+## Product pilot at 16K allocation
+
+The fresh pilot reserved 4096 output tokens and ran all four product cases three
+times per model. Qwen3.8 produced 12/12 token-verified rows and 3/12 strict passes.
+Qwen3.6 produced 6/12 token-verified rows and 0/12 strict passes: battery and
+telemetry responses reached the output limit. The paired gate correctly returns
+**incomplete**, so these counts are not an eligible model comparison or a
+superiority claim. [Per-case status](product-16k-output4k-status.json).
+
+Qwen3.8's other nine failures contain prose outside the requested JSON. Native
+`json_object` mode was requested but did not enforce object-only output in this
+installed Qwen template path. A separate explicit native-grammar experiment is
+planned. The original responses and strict failures remain preserved; extracting
+a fenced JSON block after seeing a failure is diagnostic only, never gate evidence.
+
+The numeric and exact-citation rubric also has limits: for example, the battery
+runtime tolerance is 0.000001 hours, so a rounded 46.2857-hour answer misses the
+rubric despite being practically equivalent. Such failures should not be described
+as wrong release decisions. These public tasks need independently reviewed
+precision and evidence-equivalence rules before broad engineering-quality claims.
 
 ## Test value and follow-up
 

@@ -184,6 +184,40 @@ def test_invalid_cli_context_never_touches_server_or_output(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
+    "duplicate", [["--contexts", "4096", "4096"], ["--suites", "short", "short"]]
+)
+def test_duplicate_cli_matrix_never_touches_server_or_output(
+    tmp_path, monkeypatch, duplicate
+):
+    from scripts import hardware_local_eval as runner
+
+    output = tmp_path / "results"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            "/missing/models",
+            "--server",
+            "/missing/server",
+            "--reference-tokenizer",
+            "/missing/tokenizer",
+            "--output",
+            str(output),
+            "--execute",
+            *duplicate,
+        ],
+    )
+    monkeypatch.setattr(
+        runner, "capture", lambda command: pytest.fail("Server must not be probed")
+    )
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
     "suite, expected",
     [("short", 54), ("product", 12), ("browser", 12), ("context", 36)],
 )

@@ -263,7 +263,6 @@ def run_cell(args, model, context, version):
         "kv_placement": args.kv_placement,
         "cpu_ffn_layers": args.cpu_ffn_layers,
         "cpu_moe_layers": args.cpu_moe_layers,
-        "output_constraint": {"type": "object"} if args.constrain_json else None,
         "parallel": 1,
         "n_batch": 512,
         "n_ubatch": 128,
@@ -275,6 +274,8 @@ def run_cell(args, model, context, version):
         "context_shift": False,
         "host_prompt_cache_mib": 0,
     }
+    if args.constrain_json:
+        runtime["output_constraint"] = {"type": "object"}
     manifest = {
         "model": model,
         "context": context,
@@ -495,6 +496,10 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
+    if len(set(args.contexts)) != len(args.contexts) or len(set(args.suites)) != len(
+        args.suites
+    ):
+        parser.error("Contexts and suites must be unique; use --trials for repetitions")
     args.output = args.output.resolve()
     args.reference_tokenizer = args.reference_tokenizer.resolve()
     models = json.loads(args.models.read_text())
