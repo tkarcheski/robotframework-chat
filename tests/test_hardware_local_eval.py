@@ -52,13 +52,13 @@ def test_context_extension_is_explicit_and_recordable():
     assert cmd[cmd.index("--yarn-orig-ctx") + 1] == "262144"
 
 
-def test_json_constraint_is_explicit_and_optional():
+def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():
     args = settings()
     model = {"path": "/weights/model.gguf", "id": "model", "native_context": 262144}
     assert "--json-schema" not in command(args, model, 4096)
     args.constrain_json = True
     cmd = command(args, model, 4096)
-    assert cmd[cmd.index("--json-schema") + 1] == '{"type":"object"}'
+    assert "--json-schema" not in cmd
 
 
 @pytest.mark.parametrize(
@@ -76,10 +76,16 @@ def test_constraint_probe_retains_failure_evidence(
     from scripts.hardware_local_eval import probe_json_constraint
 
     response = {"choices": [{"message": {"content": content}, "finish_reason": finish}]}
-    monkeypatch.setattr(
-        "urllib.request.urlopen",
-        lambda request, timeout: io.StringIO(json.dumps(response)),
-    )
+
+    def respond(request, timeout):
+        payload = json.loads(request.data)
+        assert payload["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": {"type": "object"}},
+        }
+        return io.StringIO(json.dumps(response))
+
+    monkeypatch.setattr("urllib.request.urlopen", respond)
     artifact = tmp_path / "probe.json"
     if valid:
         assert probe_json_constraint("http://127.0.0.1", "model", artifact) == response

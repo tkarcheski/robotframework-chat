@@ -490,6 +490,30 @@ class TestOpenAIResponseFormat:
         with pytest.raises(ValueError, match="response_format"):
             OpenAIClient(api_key="sk-test", response_format="xml")
 
+    @pytest.mark.parametrize(
+        "response_format,schema",
+        [(None, {"type": "object"}), ("json", {}), ("json", [])],
+    )
+    def test_invalid_schema_configuration_rejected(self, response_format, schema):
+        with pytest.raises(ValueError, match="json_schema"):
+            OpenAIClient(
+                api_key="test", response_format=response_format, json_schema=schema
+            )
+
+    @patch("rfc.openai_client.requests.post")
+    def test_explicit_schema_reaches_compatible_transport(self, mock_post):
+        mock_post.return_value.json.return_value = {
+            "choices": [{"message": {"content": '{"ready":true}'}}]
+        }
+        client = OpenAIClient(
+            api_key="test", response_format="json", json_schema={"type": "object"}
+        )
+        assert client.generate("test") == '{"ready":true}'
+        assert mock_post.call_args.kwargs["json"]["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": {"type": "object"}},
+        }
+
     @patch("rfc.openai_client.logger")
     @patch("rfc.openai_client.requests.post")
     def test_json_response_format_in_payload(self, mock_post, mock_logger):

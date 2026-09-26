@@ -29,6 +29,7 @@ from .hardware_eval import (
     score_answer,
 )
 from .llm_client import create_provider, unwrap_provider
+from .openai_client import OpenAIClient
 from .rfc_data import emit_rfc_data
 
 
@@ -92,6 +93,7 @@ class HardwareEvalKeywords:
         self.client = client
         self.injected = client is not None
         self.output_reserve = int(os.getenv("HW_OUTPUT_TOKENS", str(OUTPUT_RESERVE)))
+        self.json_constraint = os.getenv("HW_JSON_OBJECT_CONSTRAINT") == "1"
         if self.output_reserve < 1:
             raise ValueError("HW_OUTPUT_TOKENS must be positive")
 
@@ -143,6 +145,7 @@ class HardwareEvalKeywords:
                 "temperature": 0.0,
                 "seed": trial,
                 "max_tokens": self.output_reserve,
+                "json_schema": {"type": "object"} if self.json_constraint else None,
             },
             "reference_tokenizer": "",
             "model_tokenizer": "",
@@ -244,6 +247,13 @@ class HardwareEvalKeywords:
             request_client = unwrap_provider(self.client)
             request_client.seed = trial
             request_client.num_ctx = cap or None
+            if self.json_constraint:
+                if not isinstance(request_client, OpenAIClient):
+                    raise RFCSkipError(
+                        "Explicit JSON schema requires a compatible chat transport"
+                    )
+                request_client.response_format = "json"
+                request_client.json_schema = {"type": "object"}
             reference_count, row["reference_tokenizer"] = token_counter(
                 os.getenv("HW_REFERENCE_TOKENIZER", "")
             )

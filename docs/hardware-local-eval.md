@@ -131,8 +131,8 @@ JSON remains a schema failure; we do not repair model output for the gate.
 
 ### Separating JSON formatting from task quality
 
-The native runner also accepts `--constrain-json`, which passes an explicit
-`{"type":"object"}` schema to the native decoder and records that constraint in
+The native runner also accepts `--constrain-json`, which sends an explicit
+`{"type":"object"}` schema in each chat request and records that constraint in
 its held-fixed runtime manifest. It constrains syntax, not answer IDs, numerical
 values, evidence choices, or browser actions. Treat it as a fresh matched
 experiment; do not combine constrained and unconstrained rows in a model pair.
@@ -146,3 +146,10 @@ responses consequently included prose and XML tool-call markers despite that
 request mode. Those remain strict failures in the original runs. An explicit
 native constraint can test whether formatting or engineering decisions dominate
 the observed difference; it does not repair already generated answers.
+
+The first server-wide grammar probe failed before any scored task: the grammar
+could not consume Qwen's chat prefix. The runner therefore uses the compatible
+chat API's nonempty `json_schema` response format, allowing the native template
+parser to account for that prefix. `HW_JSON_OBJECT_CONSTRAINT=1` enables the same
+request-level behavior in the Robot keyword and archives the schema in sampling
+metadata. The transport's ordinary JSON mode remains unchanged by default.

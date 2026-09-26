@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 import yaml
@@ -110,13 +111,29 @@ def probe_json_constraint(base, model, artifact):
                 ],
                 "temperature": 0,
                 "max_tokens": 128,
-                "response_format": {"type": "json_object"},
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "response", "schema": {"type": "object"}},
+                },
             }
         ).encode(),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        result = json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        artifact.write_text(
+            json.dumps(
+                {
+                    "http_status": exc.code,
+                    "body": exc.read(65536).decode("utf-8", errors="replace"),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        raise
     artifact.write_text(json.dumps(result, indent=2) + "\n")
     content = result["choices"][0]["message"]["content"]
     if (
@@ -211,8 +228,6 @@ def command(args, model, context):
         cmd += ["--n-cpu-ffn", str(args.cpu_ffn_layers)]
     if args.cpu_moe_layers:
         cmd += ["--n-cpu-moe", str(args.cpu_moe_layers)]
-    if args.constrain_json:
-        cmd += ["--json-schema", '{"type":"object"}']
     native_context = model["native_context"]
     if context > native_context:
         cmd += [
@@ -306,6 +321,7 @@ def run_cell(args, model, context, version):
             "HW_MAX_CONTEXT": str(context),
             "HW_TRIALS": str(args.trials),
             "HW_OUTPUT_TOKENS": str(args.output_tokens),
+            "HW_JSON_OBJECT_CONSTRAINT": "1" if args.constrain_json else "0",
             "HW_MODEL_TOKENIZER": model["tokenizer"],
             "HW_REFERENCE_TOKENIZER": str(args.reference_tokenizer),
             "HW_RUNTIME_MANIFEST": json.dumps(runtime),

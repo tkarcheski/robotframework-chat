@@ -100,6 +100,21 @@ def test_token_verification_requires_boolean_true(flag):
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
 
 
+def test_explicit_schema_reaches_wrapped_chat_transport(tmp_path, monkeypatch):
+    from rfc.openai_client import OpenAIClient
+
+    monkeypatch.setenv("HW_JSON_OBJECT_CONSTRAINT", "1")
+    client = OpenAIClient(api_key="test", model="test", base_url="http://127.0.0.1")
+    monkeypatch.setattr(client, "generate", lambda prompt: '{"answers":[]}')
+    lib = HardwareEvalKeywords(
+        str(FIXTURES), str(tmp_path), client=_ConsoleFeedProvider(client)
+    )
+    result = lib.evaluate_hardware_case("uno-current-budget")
+    assert client.json_schema == {"type": "object"}
+    assert client.response_format == "json"
+    assert result["sampling"]["json_schema"] == {"type": "object"}
+
+
 def test_partial_question_coverage_cannot_pass():
     old = row()
     new = copy.deepcopy(old)
