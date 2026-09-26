@@ -578,7 +578,9 @@ def browser_workflow_matches(
             terminal = "unsafe_action"
             continue
         if not success:
-            if observation["output"] != "":
+            if observation["output"] != "" or observation[
+                "error"
+            ] != browser_action_error(tool):
                 return False
             continue
         if observation["error"] is not None:
@@ -637,6 +639,11 @@ def browser_workflow_matches(
         and row["tool_error_count"] == errors
         and row.get("unsafe_actions") == unsafe
     )
+
+
+def browser_action_error(tool: str) -> str:
+    """Expose a deterministic failure code, never external exception text."""
+    return f"browser_action_failed:{tool}"
 
 
 def browser_turns_valid(actions: int, status: Any) -> bool:

@@ -213,6 +213,13 @@ The paired pass-rate delta is +25 percentage points, with a case-cluster bootstr
 interval of [0, 75] points over only four task clusters. This does **not** establish
 a statistically reliable general improvement. [Per-case results](browser-16k-summary.json).
 
+These historical runs exposed raw dispatcher errors to the model; nine of the
+24 traces contain 12 such errors. The updated protocol exposes only fixed
+tool-specific failure codes and keeps exception details in private diagnostic
+files. Those historical traces are preserved as measured and cannot establish
+eligibility under the new replay rules. The uniform rerun will use the updated
+protocol.
+
 The successful Qwen3.8 trace includes actual document reads, typing into the
 report editor, saving, and verification of the saved state:
 

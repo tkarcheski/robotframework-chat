@@ -353,7 +353,12 @@ clicks, typing and screenshots have deterministic messages; catalog and report
 reads are reconstructed from the shared HTML renderer and the saved report
 state. Offline comparisons involving those reads require the same `playwright`
 extra's Markdown converter. Missing conversion support makes evidence
-incomplete. Failed actions must have empty output.
+incomplete. Failed actions must have empty output and the exact tool-specific
+`browser_action_failed:<tool>` code. The live sandbox archives the original
+dispatcher exception in `step-NNN-error.txt` beside the step screenshots; raw
+exception text is never included in the model's next prompt. Earlier traces
+containing raw dispatcher errors cannot satisfy this updated protocol and are
+not rewritten to add the new codes.
 Navigation resets report state. The derived read/save flags, observed document
 list, action/error counts and terminal status must agree with the row, and the
 saved JSON must match its final answer. This checks internal artifact consistency;

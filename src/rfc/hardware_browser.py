@@ -18,6 +18,7 @@ from .computer_use_keywords import ComputerUseDispatcher, tool_result_to_dict
 from .hardware_eval import (
     BROWSER_MAX_TURNS,
     browser_action_allowed,
+    browser_action_error,
     browser_page_html,
     browser_task_prompt,
     browser_history_prompt,
@@ -119,6 +120,13 @@ class HardwareSandbox:
             result["output"] = "Screenshot captured by the harness."
         if result["error"]:
             result["error"] = result["error"].replace(self.base_url, "sandbox:")
+        if not result["success"]:
+            # Preserve diagnostics for the evaluator without adding untrusted
+            # exception text to the next model prompt.
+            (self.output / f"step-{self.steps:03d}-error.txt").write_text(
+                str(result["error"]), encoding="utf-8"
+            )
+            result["error"] = browser_action_error(tool)
         self.steps += 1
         return result
 
