@@ -7,6 +7,7 @@ archived for human review, never certified by keyword matching or a model judge.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
 import random
@@ -22,6 +23,7 @@ CONTEXT_LEVELS = (4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 10000
 POSITIONS = ("start", "middle", "end", "spread")
 OUTPUT_RESERVE = 2048
 CHAT_RESERVE = 256
+BROWSER_MAX_TURNS = 20
 
 
 def digest(value: Any) -> str:
@@ -92,6 +94,46 @@ def document_text(doc: dict[str, Any]) -> str:
         f"Kind: {doc['kind']}; Revision: {doc['revision']}\n"
         f"Source: {doc['url']}\nLocation: {doc['location']}\n"
         f"{doc['text']}\n[/DOCUMENT]\n"
+    )
+
+
+def browser_page_html(
+    documents: dict[str, Any], path: str, saved: str = ""
+) -> str | None:
+    """Render only in-memory public evidence; never serve a filesystem."""
+    nav = '<nav><a id="home" href="/">Catalog</a> | <a id="report" href="/report">Report</a></nav>'
+    if path == "/":
+        body = "<h1>Hardware evidence catalog</h1><p>Read documents, then save a JSON report.</p>"
+        body += (
+            "<ul>"
+            + "".join(
+                f'<li><a id="doc-{html.escape(key)}" href="/doc/{html.escape(key)}">'
+                f"{html.escape(doc['title'])}</a> "
+                f"<code>#doc-{html.escape(key)}</code> "
+                f"<code>sandbox:/doc/{html.escape(key)}</code></li>"
+                for key, doc in documents.items()
+            )
+            + "</ul>"
+        )
+    elif path.startswith("/doc/") and path[5:] in documents:
+        body = "<pre>" + html.escape(document_text(documents[path[5:]])) + "</pre>"
+    elif path == "/report":
+        body = (
+            "<h1>Local review report</h1>"
+            '<label for="report-text">JSON report (#report-text)</label>'
+            '<textarea id="report-text" rows="16" cols="90"></textarea>'
+            '<button id="save" onclick="document.getElementById(\'saved-report\').textContent='
+            "document.getElementById('report-text').value\">Save local report (#save)</button>"
+            f'<pre id="saved-report">{html.escape(saved)}</pre>'
+        )
+    else:
+        return None
+    return (
+        '<!doctype html><html lang="en"><meta charset="utf-8">'
+        "<title>Hardware evaluation sandbox</title>"
+        "<style>body{font:16px system-ui;max-width:1000px;margin:40px auto}"
+        "pre{white-space:pre-wrap}textarea{display:block}li{margin:10px 0}</style>"
+        f"<body>{nav}{body}</body></html>"
     )
 
 
@@ -477,7 +519,11 @@ def browser_workflow_matches(
     successful subsequent Save updates its saved text.
     """
     trace, answer = row.get("browser_trace"), row.get("answer")
-    if not isinstance(trace, list) or not isinstance(answer, dict):
+    if (
+        not isinstance(trace, list)
+        or not isinstance(answer, dict)
+        or not browser_turns_valid(len(trace), row.get("agent_status"))
+    ):
         return False
     current = "/"
     opened = False
@@ -522,12 +568,18 @@ def browser_workflow_matches(
         success = observation["success"]
         errors += int(not success)
         if not browser_action_allowed(tool, args, documents):
-            if success or observation["error"] != "action_not_allowlisted":
+            if (
+                success
+                or observation["error"] != "action_not_allowlisted"
+                or observation["output"] != ""
+            ):
                 return False
             unsafe += 1
             terminal = "unsafe_action"
             continue
         if not success:
+            if observation["output"] != "":
+                return False
             continue
         if observation["error"] is not None:
             return False
@@ -554,10 +606,12 @@ def browser_workflow_matches(
             if current != "/report":
                 return False
             typed = args["text"]
-        elif tool == "browser_read_markdown" and current.startswith("/doc/"):
-            doc_id = current[5:]
-            if complete_document_observation(documents[doc_id], observation["output"]):
-                observed.add(doc_id)
+        if not browser_observation_matches(
+            tool, args, observation["output"], documents, current, saved
+        ):
+            return False
+        if tool == "browser_read_markdown" and current.startswith("/doc/"):
+            observed.add(current[5:])
     if terminal is not None and row.get("agent_status") != terminal:
         return False
     if terminal is None and row.get("agent_status") not in {
@@ -585,6 +639,56 @@ def browser_workflow_matches(
     )
 
 
+def browser_turns_valid(actions: int, status: Any) -> bool:
+    """The live protocol permits at most 20 calls, including a final answer."""
+    if not isinstance(status, str):
+        return False
+    if status == "completed":
+        return 0 <= actions < BROWSER_MAX_TURNS
+    if status == "action_budget_exhausted":
+        return actions == BROWSER_MAX_TURNS
+    return (
+        status in {"invalid_action", "unsafe_action"}
+        and 0 < actions <= BROWSER_MAX_TURNS
+    )
+
+
+def browser_observation_matches(
+    tool: str,
+    args: dict[str, Any],
+    output: str,
+    documents: dict[str, Any],
+    current: str,
+    saved: str,
+) -> bool:
+    """Validate the deterministic model-visible output of every successful tool."""
+    if tool == "browser_new_page":
+        expected = f"Opened page: {args['url']}"
+    elif tool == "browser_click":
+        expected = f"Clicked: {args['selector']}"
+    elif tool == "browser_type_text":
+        expected = f"Typed {len(args['text'])} char(s) into: {args['selector']}"
+    elif tool == "browser_screenshot":
+        expected = "Screenshot captured by the harness."
+    elif tool == "browser_read_markdown":
+        if current.startswith("/doc/"):
+            return complete_document_observation(documents[current[5:]], output)
+        from .browser_keywords import BrowserKeywords
+
+        page = browser_page_html(documents, current, saved)
+        if page is None:
+            return False
+        try:
+            expected = BrowserKeywords().convert_html_to_markdown(page)
+        except RuntimeError:
+            # Offline comparison requires the same optional converter as live reads.
+            return False
+        return output.strip() == expected.strip()
+    else:
+        return False
+    return output == expected
+
+
 def browser_calls_bound(row: dict[str, Any], case: dict[str, Any] | None) -> bool:
     """Reconstruct every browser prompt from the trusted task and archived trace."""
     calls, trace = row.get("calls"), row.get("browser_trace")
@@ -598,6 +702,7 @@ def browser_calls_bound(row: dict[str, Any], case: dict[str, Any] | None) -> boo
         and status
         in {"completed", "invalid_action", "unsafe_action", "action_budget_exhausted"}
         and len(calls) == len(trace) + int(status == "completed")
+        and browser_turns_valid(len(trace), status)
         and (status == "completed" or row.get("passed") is not True)
     ):
         return False

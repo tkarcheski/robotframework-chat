@@ -368,6 +368,12 @@ def row(case_id="a", benchmark_fixture=None, **overrides):
         trace = []
 
         def action(tool, arguments, output=""):
+            if tool == "browser_new_page":
+                output = f"Opened page: {arguments['url']}"
+            elif tool == "browser_click":
+                output = f"Clicked: {arguments['selector']}"
+            elif tool == "browser_type_text":
+                output = f"Typed {len(arguments['text'])} char(s) into: {arguments['selector']}"
             trace.append(
                 {
                     "action": {"tool": tool, "arguments": arguments},

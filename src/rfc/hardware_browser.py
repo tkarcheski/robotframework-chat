@@ -7,7 +7,6 @@ executes model-supplied JavaScript. Report text stays in the isolated page DOM.
 
 from __future__ import annotations
 
-import html
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,11 +16,12 @@ from typing import Any, Callable
 from .agent_tool import new_tool_call
 from .computer_use_keywords import ComputerUseDispatcher, tool_result_to_dict
 from .hardware_eval import (
+    BROWSER_MAX_TURNS,
     browser_action_allowed,
+    browser_page_html,
     browser_task_prompt,
     browser_history_prompt,
     complete_document_observation,
-    document_text,
     parse_answer,
     score_answer,
 )
@@ -74,45 +74,7 @@ class HardwareSandbox:
         self.thread.join(timeout=2)
 
     def render(self, path: str) -> str | None:
-        """Render only in-memory public evidence; never serve a filesystem."""
-        nav = '<nav><a id="home" href="/">Catalog</a> | <a id="report" href="/report">Report</a></nav>'
-        if path == "/":
-            body = "<h1>Hardware evidence catalog</h1><p>Read documents, then save a JSON report.</p>"
-            body += (
-                "<ul>"
-                + "".join(
-                    f'<li><a id="doc-{html.escape(key)}" href="/doc/{html.escape(key)}">'
-                    f"{html.escape(doc['title'])}</a> "
-                    f"<code>#doc-{html.escape(key)}</code> "
-                    f"<code>sandbox:/doc/{html.escape(key)}</code></li>"
-                    for key, doc in self.documents.items()
-                )
-                + "</ul>"
-            )
-        elif path.startswith("/doc/") and path[5:] in self.documents:
-            body = (
-                "<pre>"
-                + html.escape(document_text(self.documents[path[5:]]))
-                + "</pre>"
-            )
-        elif path == "/report":
-            body = (
-                "<h1>Local review report</h1>"
-                '<label for="report-text">JSON report (#report-text)</label>'
-                '<textarea id="report-text" rows="16" cols="90"></textarea>'
-                '<button id="save" onclick="document.getElementById(\'saved-report\').textContent='
-                "document.getElementById('report-text').value\">Save local report (#save)</button>"
-                '<pre id="saved-report"></pre>'
-            )
-        else:
-            return None
-        return (
-            '<!doctype html><html lang="en"><meta charset="utf-8">'
-            "<title>Hardware evaluation sandbox</title>"
-            "<style>body{font:16px system-ui;max-width:1000px;margin:40px auto}"
-            "pre{white-space:pre-wrap}textarea{display:block}li{margin:10px 0}</style>"
-            f"<body>{nav}{body}</body></html>"
-        )
+        return browser_page_html(self.documents, path)
 
     def _allowed(self, tool: str, args: Any) -> bool:
         return browser_action_allowed(tool, args, self.documents)
@@ -176,7 +138,7 @@ def run_browser_agent(
     sandbox: HardwareSandbox,
     generate: Callable[[str], str],
     *,
-    max_actions: int = 20,
+    max_actions: int = BROWSER_MAX_TURNS,
 ) -> dict[str, Any]:
     """The model selects every action; there is no scripted success trajectory."""
     prompt = browser_task_prompt(case)

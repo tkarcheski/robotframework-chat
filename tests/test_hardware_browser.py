@@ -101,11 +101,11 @@ def test_document_wrapper_matches_real_markdown_conversion(
     from rfc.computer_use_keywords import _default_markdown_converter
     from rfc.hardware_eval import complete_document_observation
 
-    box = HardwareSandbox(benchmark["documents"], browser, tmp_path)
-    for doc_id, doc in benchmark["documents"].items():
-        output = _default_markdown_converter(box.render("/doc/" + doc_id))
-        assert complete_document_observation(doc, output)
-        assert complete_document_observation(doc, "\n " + output + " \n")
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        for doc_id, doc in benchmark["documents"].items():
+            output = _default_markdown_converter(box.render("/doc/" + doc_id))
+            assert complete_document_observation(doc, output)
+            assert complete_document_observation(doc, "\n " + output + " \n")
 
 
 def test_fixture_injection_is_escaped_html(benchmark, browser, tmp_path):
@@ -201,11 +201,14 @@ def test_real_browser_saves_report_with_scripted_instrument_control(
         {"tool": "browser_click", "arguments": {"selector": "#doc-sensor-loads"}},
         {"tool": "browser_read_markdown", "arguments": {}},
         {"tool": "browser_click", "arguments": {"selector": "#report"}},
+        {"tool": "browser_read_markdown", "arguments": {}},
         {
             "tool": "browser_type_text",
             "arguments": {"selector": "#report-text", "text": json.dumps(answer)},
         },
+        {"tool": "browser_read_markdown", "arguments": {}},
         {"tool": "browser_click", "arguments": {"selector": "#save"}},
+        {"tool": "browser_read_markdown", "arguments": {}},
         {"final": answer},
     ]
     stream = iter(actions)
@@ -217,7 +220,7 @@ def test_real_browser_saves_report_with_scripted_instrument_control(
             assert result["passed"], result
             assert result["sources_observed"]
             assert result["report_saved"]
-            assert result["action_count"] == 10
+            assert result["action_count"] == 13
             from rfc.hardware_eval import browser_workflow_matches
 
             result["browser_trace"] = result["trace"]
@@ -347,7 +350,7 @@ def test_live_agent_workflow_matches_offline_trace_replay(
         ('{"unexpected": true}', "invalid_action"),
         ('{"tool": "execute_shell", "arguments": {}}', "unsafe_action"),
         (
-            '{"tool": "browser_read_markdown", "arguments": {}}',
+            '{"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}}',
             "action_budget_exhausted",
         ),
     ],
@@ -363,7 +366,8 @@ def test_failed_live_workflows_remain_consistent_evidence(
 
     case = benchmark["cases"]["uno-current-budget"]
     stream = iter(
-        ['{"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}}', ending]
+        ['{"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}}'] * 19
+        + [ending]
     )
     calls = []
 
@@ -374,7 +378,7 @@ def test_failed_live_workflows_remain_consistent_evidence(
 
     with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
         monkeypatch.setattr(box.dispatcher, "_to_markdown", lambda html: "catalog")
-        result = run_browser_agent(case, box, generate, max_actions=2)
+        result = run_browser_agent(case, box, generate)
     assert result["agent_status"] == expected_status
     assert not result["passed"]
     result["browser_trace"] = result["trace"]
@@ -405,3 +409,45 @@ def test_live_document_tracker_requires_full_body(
         box.dispatch("browser_new_page", {"url": "sandbox:/doc/uno-spec"})
         assert box.dispatch("browser_read_markdown", {})["success"]
         assert ("uno-spec" in box.observed) is (corruption is None)
+
+
+@pytest.mark.parametrize("final_turn", [20, 21])
+def test_replay_matches_live_twentieth_turn_boundary(
+    benchmark, browser, tmp_path, final_turn
+):
+    from rfc.hardware_eval import browser_workflow_matches
+
+    case = benchmark["cases"]["uno-current-budget"]
+    calls = 0
+
+    def generate(prompt):
+        nonlocal calls
+        calls += 1
+        if calls == final_turn:
+            return '{"final": {}}'
+        return '{"tool":"browser_new_page","arguments":{"url":"sandbox:/"}}'
+
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        result = run_browser_agent(case, box, generate)
+    assert calls == 20
+    assert result["agent_status"] == (
+        "completed" if final_turn == 20 else "action_budget_exhausted"
+    )
+    result["browser_trace"] = result["trace"]
+    assert browser_workflow_matches(result, case, benchmark["documents"])
+    result["browser_trace"].append(copy.deepcopy(result["browser_trace"][-1]))
+    result["action_count"] += 1
+    assert not browser_workflow_matches(result, case, benchmark["documents"])
+    if final_turn == 21:
+        result["browser_trace"] = result["browser_trace"][:19]
+        result["action_count"] = 19
+        assert not browser_workflow_matches(result, case, benchmark["documents"])
+
+
+def test_offline_catalog_read_requires_converter(benchmark, monkeypatch):
+    from rfc.hardware_eval import browser_observation_matches
+
+    monkeypatch.setattr("rfc.browser_keywords.md", None)
+    assert not browser_observation_matches(
+        "browser_read_markdown", {}, "catalog", benchmark["documents"], "/", ""
+    )

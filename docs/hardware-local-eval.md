@@ -337,6 +337,9 @@ for history serialization. The gate reconstructs every call prompt from the
 trusted fixture task and the preceding trace entries, and checks both the task
 digest and each call digest. A completed final answer requires one more call
 than the action trace; other terminal outcomes retain one trace entry per call.
+The live protocol and replay share a 20-call limit. A completed run can contain
+at most 19 actions followed by its final-answer call; budget exhaustion requires
+exactly 20 actions. Invalid and unsafe actions terminate within that budget.
 The gate also replays trace observations through the sandbox allowlist and page
 state: a document is observed only after a successful read on that document
 whose entire output matches the sandbox's fixed markdown page, including its
@@ -345,6 +348,12 @@ Only outer whitespace is normalized. Added instructions, an altered wrapper,
 a document ID alone, or an altered/truncated body cannot establish a read. The
 live tracker uses the same check. Typing replaces the report field, and a
 successful Save records that text.
+Every other successful tool output must also match the sandbox: navigation,
+clicks, typing and screenshots have deterministic messages; catalog and report
+reads are reconstructed from the shared HTML renderer and the saved report
+state. Offline comparisons involving those reads require the same `playwright`
+extra's Markdown converter. Missing conversion support makes evidence
+incomplete. Failed actions must have empty output.
 Navigation resets report state. The derived read/save flags, observed document
 list, action/error counts and terminal status must agree with the row, and the
 saved JSON must match its final answer. This checks internal artifact consistency;
