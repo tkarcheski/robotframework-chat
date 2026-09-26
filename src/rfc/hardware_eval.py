@@ -320,6 +320,7 @@ def compare_runs(
         "harness_version",
         "reference_tokenizer",
         "sampling",
+        "runtime_manifest",
     )
     if not baseline or not candidate or not required_coordinates:
         result["reasons"] = ["empty_run_or_missing_required_profile"]
@@ -339,11 +340,17 @@ def compare_runs(
         ):
             result["reasons"].append("mixed_model_identity")
         for row in rows:
+            runtime = row.get("runtime_manifest")
+            runtime_complete = isinstance(runtime, dict) and all(
+                runtime.get(key)
+                for key in ("engine", "version", "rope", "kv_cache_dtype")
+            )
             if (
                 row.get("status") != "completed"
                 or row.get("live") is not True
                 or not row.get("model_digest")
                 or not row.get("token_count_verified")
+                or not runtime_complete
                 or any(row.get(k) is None for k in coordinate + held_fixed)
                 or any(
                     type(row.get(k)) not in (int, float)

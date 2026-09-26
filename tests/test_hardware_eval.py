@@ -208,6 +208,12 @@ def row(case_id="a", **overrides):
         "harness_version": "v1",
         "reference_tokenizer": "abc",
         "sampling": {"temperature": 0.0, "seed": 0, "max_tokens": 2048},
+        "runtime_manifest": {
+            "engine": "vllm",
+            "version": "fixture-v1",
+            "rope": "native",
+            "kv_cache_dtype": "bf16",
+        },
         "model": "baseline",
         "model_digest": "sha-a",
         "adapter_id": "none",
@@ -264,6 +270,15 @@ def test_regression_blocks_gate(change):
         {"fixture_sha256": "different"},
         {"sampling": {"temperature": 0.7}},
         {"harness_version": "v2"},
+        {
+            "runtime_manifest": {
+                "engine": "different",
+                "version": "v2",
+                "rope": "yarn",
+                "kv_cache_dtype": "fp8",
+            }
+        },
+        {"runtime_manifest": {}},
     ],
 )
 def test_missing_or_noncomparable_evidence_is_incomplete(change):
@@ -275,6 +290,13 @@ def test_duplicate_coordinates_and_mixed_models_rejected():
     baseline = [row("a"), row("b")]
     candidate = [row("a", model="x"), row("b", model="y")]
     assert compare_runs(baseline, candidate)["verdict"] == "incomplete"
+
+
+def test_both_arms_missing_runtime_metadata_do_not_pass():
+    assert (
+        compare_runs([row(runtime_manifest={})], [row(runtime_manifest={})])["verdict"]
+        == "incomplete"
+    )
 
 
 def test_all_gold_answers_pass_and_all_corruptions_fail(benchmark):

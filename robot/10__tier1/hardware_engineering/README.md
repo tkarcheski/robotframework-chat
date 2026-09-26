@@ -74,6 +74,11 @@ serving alias alone is not an immutable model identity. `HW_MODEL_DIGEST` is an
 operator-supplied identity and must be checked against the server/checkpoint;
 this suite does not attest the server's weights cryptographically.
 
+For gate eligibility, `HW_RUNTIME_MANIFEST` must include nonempty `engine`,
+`version`, `rope` and `kv_cache_dtype` fields. The complete manifest must match
+for each baseline/candidate pair. Changing serving configuration is a separate
+experiment, not a passing model-only comparison.
+
 Every task repeats three times with seeds 0, 1, 2 and temperature 0. Some
 providers may not honor seeds identically. For quick exploration, use
 `HW_TRIALS=1`; that does not satisfy the checked-in three-trial gate profile.
