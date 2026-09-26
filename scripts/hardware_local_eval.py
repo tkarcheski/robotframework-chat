@@ -42,6 +42,31 @@ CONTEXT_NAMES = {
 }
 
 
+def server_build_identity(pid, proc_root=Path("/proc")):
+    """Hash the owned executable and its currently mapped shared libraries."""
+
+    def sha256(path):
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+
+    process = proc_root / str(pid)
+    libraries = set()
+    for line in (process / "maps").read_text().splitlines():
+        fields = line.split(maxsplit=5)
+        if len(fields) != 6 or "x" not in fields[1]:
+            continue
+        name = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m[1], 8)), fields[5])
+        if name.startswith("/") and ".so" in Path(name).name:
+            libraries.add(name)
+    return {
+        "executable_sha256": sha256(process / "exe"),
+        "shared_libraries": [
+            {"name": Path(name).name, "sha256": sha256(Path(name))}
+            for name in sorted(libraries)
+        ],
+    }
+
+
 def expected_coordinates(args, suite, context):
     """Derive required coverage independently of whatever Robot manages to write."""
     root = ROOT / "robot/10__tier1/hardware_engineering/fixtures"
@@ -576,6 +601,8 @@ def run_cell(args, model, context, version):
                 else "owned CUDA process above 1024 MiB resident allocation"
             )
             manifest["load_seconds"] = time.monotonic() - start
+            runtime["server_build"] = server_build_identity(server.pid)
+            env["HW_RUNTIME_MANIFEST"] = json.dumps(runtime)
             if args.constrain_json:
                 probe_start = time.monotonic()
                 manifest["json_constraint_probe"] = probe_json_constraint(
@@ -755,6 +782,8 @@ def main():
     args = parser.parse_args()
     if args.min_ram_gib < 0 or args.min_free_gpu_mib < 0:
         parser.error("RAM and GPU memory reserve thresholds must be nonnegative")
+    if min(args.gpu_layers, args.cpu_ffn_layers, args.cpu_moe_layers) < 0:
+        parser.error("GPU and CPU offload layer counts must be nonnegative")
     if args.unified_memory and not args.gpu_layers:
         parser.error("CUDA managed memory requires nonzero GPU layers")
     if len(set(args.contexts)) != len(args.contexts) or len(set(args.suites)) != len(

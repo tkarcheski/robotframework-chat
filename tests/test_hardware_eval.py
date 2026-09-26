@@ -242,6 +242,7 @@ def row(case_id="a", **overrides):
             "json_schema": None,
         },
         "runtime_manifest": {
+            "server_build": {"executable_sha256": "f" * 64, "shared_libraries": []},
             "engine": "vllm",
             "version": "fixture-v1",
             "rope": "native",

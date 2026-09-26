@@ -81,6 +81,8 @@ For gate eligibility, `HW_RUNTIME_MANIFEST` must include nonempty `engine`,
 `parallel`, `n_batch`, `n_ubatch` and `threads`, and boolean `enable_thinking`,
 `vision`, `fit`, `context_shift` and `cuda_managed_memory`. Record the actual
 settings; do not invent values for an endpoint whose configuration is unknown.
+`server_build` records `executable_sha256` and a `shared_libraries` array of
+`name`/`sha256` entries for mapped libraries (empty for a static executable).
 The native runner creates this manifest automatically. The complete manifest must match
 for each baseline/candidate pair. The effective context limit is archived even
 for short and browser tasks, and must match. A known, identical weight format

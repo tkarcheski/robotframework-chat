@@ -143,7 +143,8 @@ retain their historical scores and recorded provenance. All 102 rows per arm
 also predate the explicit `sampling.json_schema` field, so the latest validator
 cannot verify their constraint mode. Their serving manifests also lack the now-required
 explicit managed-memory boolean when disabled, and their per-call usage predates
-the recorded finish reason now required by the shared verifier. No missing metadata
+the recorded finish reason now required by the shared verifier. They also lack
+the newly recorded serving executable/library hashes. No missing metadata
 is backfilled. Neither
 their concatenation nor those legacy artifacts alone satisfy the current gate.
 A fresh original-profile run under one frozen

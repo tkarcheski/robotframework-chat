@@ -359,10 +359,35 @@ def verified_call_accounting(row: dict[str, Any]) -> bool:
     )
 
 
+def complete_server_build(build: Any) -> bool:
+    """Version labels alone do not identify a locally rebuilt serving engine."""
+
+    def sha256(value: Any) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value)
+        )
+
+    return (
+        isinstance(build, dict)
+        and sha256(build.get("executable_sha256"))
+        and isinstance(build.get("shared_libraries"), list)
+        and all(
+            isinstance(library, dict)
+            and isinstance(library.get("name"), str)
+            and bool(library["name"].strip())
+            and sha256(library.get("sha256"))
+            for library in build["shared_libraries"]
+        )
+    )
+
+
 def complete_runtime(runtime: Any) -> bool:
     """Require explicit serving settings; two equally incomplete rows cannot qualify."""
     return (
         isinstance(runtime, dict)
+        and complete_server_build(runtime.get("server_build"))
         and all(
             isinstance(runtime.get(key), str) and bool(runtime[key].strip())
             for key in ("engine", "version", "rope", "kv_cache_dtype", "speculation")

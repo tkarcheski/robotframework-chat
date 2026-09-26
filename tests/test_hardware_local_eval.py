@@ -152,6 +152,11 @@ def test_cpu_only_cell_starts_without_gpu_probes(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.subprocess, "Popen", launch)
     monkeypatch.setattr(
         runner,
+        "server_build_identity",
+        lambda pid: {"executable_sha256": "f" * 64, "shared_libraries": []},
+    )
+    monkeypatch.setattr(
+        runner,
         "api",
         lambda base, route: {
             "/health": {"status": "ok"},
@@ -723,8 +728,19 @@ def test_all_model_assets_and_reference_tokenizer_are_checked(tmp_path):
         validate_model_assets([model], ref, True)
 
 
-@pytest.mark.parametrize("flag", ["--min-ram-gib", "--min-free-gpu-mib"])
-def test_negative_reserve_rejected_before_reading_assets(tmp_path, monkeypatch, flag):
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--min-ram-gib",
+        "--min-free-gpu-mib",
+        "--gpu-layers",
+        "--cpu-ffn-layers",
+        "--cpu-moe-layers",
+    ],
+)
+def test_negative_resource_counts_rejected_before_reading_assets(
+    tmp_path, monkeypatch, flag
+):
     from scripts import hardware_local_eval as runner
 
     output = tmp_path / "results"
@@ -750,3 +766,39 @@ def test_negative_reserve_rejected_before_reading_assets(tmp_path, monkeypatch, 
         runner.main()
     assert error.value.code == 2
     assert not output.exists()
+
+
+def test_server_identity_hashes_owned_executable_and_mapped_libraries(tmp_path):
+    import hashlib
+    from scripts.hardware_local_eval import server_build_identity
+
+    process = tmp_path / "123"
+    process.mkdir()
+    executable = process / "exe"
+    executable.write_bytes(b"server build one, version unchanged")
+    library = tmp_path / "lib inference.so.1"
+    library.write_bytes(b"inference implementation one")
+    encoded = str(library).replace(" ", r"\040")
+    (process / "maps").write_text(
+        f"0000-1000 r-xp 0 00:00 1 {encoded}\n"
+        f"1000-2000 r-xp 0 00:00 1 {encoded}\n"
+        "2000-3000 r--p 0 00:00 2 /missing/model.gguf\n"
+        "3000-4000 r-xp 0 00:00 0 [vdso]\n"
+    )
+    first = server_build_identity(123, tmp_path)
+    assert (
+        first["executable_sha256"]
+        == hashlib.sha256(executable.read_bytes()).hexdigest()
+    )
+    assert first["shared_libraries"] == [
+        {
+            "name": library.name,
+            "sha256": hashlib.sha256(library.read_bytes()).hexdigest(),
+        }
+    ]
+    executable.write_bytes(b"server build two, version unchanged")
+    second = server_build_identity(123, tmp_path)
+    assert first["executable_sha256"] != second["executable_sha256"]
+    library.write_bytes(b"inference implementation two")
+    third = server_build_identity(123, tmp_path)
+    assert second["shared_libraries"] != third["shared_libraries"]

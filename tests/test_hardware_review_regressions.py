@@ -742,3 +742,35 @@ def test_every_browser_call_must_fit_prompt_plus_reserved_output():
 def test_verification_flag_without_call_accounting_cannot_qualify(calls):
     old = row(calls=calls)
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        None,
+        {},
+        {"executable_sha256": "f" * 64},
+        {"executable_sha256": "version-label", "shared_libraries": []},
+        {"executable_sha256": "f" * 64, "shared_libraries": [{}]},
+    ],
+)
+def test_matching_unknown_server_build_cannot_qualify(build):
+    old = row()
+    old["runtime_manifest"]["server_build"] = build
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("changed", ["executable", "library"])
+def test_rebuilt_server_with_unchanged_version_label_cannot_compare(changed):
+    old = row()
+    old["runtime_manifest"]["server_build"]["shared_libraries"] = [
+        {"name": "libllama.so", "sha256": "a" * 64}
+    ]
+    new = copy.deepcopy(old)
+    if changed == "executable":
+        new["runtime_manifest"]["server_build"]["executable_sha256"] = "b" * 64
+    else:
+        new["runtime_manifest"]["server_build"]["shared_libraries"][0]["sha256"] = (
+            "b" * 64
+        )
+    assert compare_runs([old], [new])["verdict"] == "incomplete"

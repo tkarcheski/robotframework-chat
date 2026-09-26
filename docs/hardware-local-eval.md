@@ -299,3 +299,13 @@ the output cap, and server prompt tokens plus the reserved output budget within
 the configured context. An imported `token_count_verified: true` flag alone
 cannot establish this. Browser turns are checked individually; missing call
 usage remains incomplete evidence.
+
+After the owned server is ready, the runner hashes `/proc/<pid>/exe` and its
+currently mapped executable shared-library files. The held-fixed `server_build`
+contains the executable SHA256 and library names/SHA256 values; version text
+alone cannot identify a local rebuild. Unreadable build inputs fail the cell
+before inference. This is a startup snapshot, not attestation of libraries
+loaded later or cryptographic verification of imported artifacts. The live
+server and its build inputs must remain unchanged during a comparison.
+Negative GPU, CPU-FFN and CPU-MoE layer counts fail CLI preflight, matching the
+runtime schema required by the artifact gate.
