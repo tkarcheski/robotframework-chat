@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import shutil
 from pathlib import Path
 import socket
 import subprocess
@@ -539,6 +540,48 @@ def run_cell(args, model, context, version):
         path.write_text(json.dumps(manifest, indent=2))
 
 
+def validate_model_assets(models, reference_tokenizer, execute):
+    """Validate every arm before probing the server or creating output."""
+    for model in models:
+        for key in ("id", "path", "sha256", "quant", "tokenizer", "revision"):
+            if not isinstance(model.get(key), str) or not model[key].strip():
+                raise ValueError(
+                    f"Model {model['name']}: {key} must be a nonblank string"
+                )
+        if re.fullmatch(r"[0-9a-fA-F]{64}", model["sha256"]) is None:
+            raise ValueError(
+                f"Model {model['name']}: sha256 must identify the weight file"
+            )
+        if model["quant"].strip().lower() == "unspecified":
+            raise ValueError(
+                f"Model {model['name']}: quant must identify the weight format"
+            )
+        if type(model.get("native_context")) is not int or model["native_context"] <= 0:
+            raise ValueError(
+                f"Model {model['name']}: native_context must be a positive integer"
+            )
+        for key in ("path", "tokenizer"):
+            model[key] = str(Path(model[key]).resolve())
+            if execute and not Path(model[key]).is_file():
+                raise ValueError(
+                    f"Model {model['name']}: missing {key} file: {model[key]}"
+                )
+    if execute:
+        try:
+            from tokenizers import Tokenizer
+        except ImportError as exc:
+            raise ValueError(
+                "Install the hardware-eval extra before executing"
+            ) from exc
+        for path in {str(reference_tokenizer), *(m["tokenizer"] for m in models)}:
+            if not Path(path).is_file():
+                raise ValueError(f"Missing tokenizer file: {path}")
+            try:
+                Tokenizer.from_file(path)
+            except Exception as exc:
+                raise ValueError(f"Invalid tokenizer file: {path}") from exc
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", type=Path, required=True)
@@ -611,6 +654,12 @@ def main():
     for context in args.contexts:
         for suite in args.suites:
             expected_coordinates(args, suite, context)
+    try:
+        validate_model_assets(models, args.reference_tokenizer, args.execute)
+        if args.execute and shutil.which(args.server) is None:
+            raise ValueError(f"Server executable not found: {args.server}")
+    except ValueError as exc:
+        parser.error(str(exc))
     if not args.execute:
         print(
             json.dumps(

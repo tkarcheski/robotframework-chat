@@ -341,3 +341,106 @@ def test_managed_gpu_verification_requires_owned_process_and_native_buffers(
     from scripts.hardware_local_eval import gpu_allocation_established
 
     assert gpu_allocation_established(processes, 42, managed, log) is expected
+
+
+def asset_manifest(tmp_path):
+    weights = tmp_path / "model.gguf"
+    weights.write_bytes(b"test weights")
+    tokenizer = tmp_path / "tokenizer.json"
+    tokenizer.write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "truncation": None,
+                "padding": None,
+                "added_tokens": [],
+                "normalizer": None,
+                "pre_tokenizer": None,
+                "post_processor": None,
+                "decoder": None,
+                "model": {
+                    "type": "WordLevel",
+                    "vocab": {"unknown": 0},
+                    "unk_token": "unknown",
+                },
+            }
+        )
+    )
+    return {
+        "name": "model",
+        "id": "local/model",
+        "path": str(weights),
+        "sha256": "a" * 64,
+        "quant": "Q4_K_M",
+        "tokenizer": str(tokenizer),
+        "revision": "pinned-local",
+        "native_context": 262144,
+    }
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("id", None),
+        ("path", None),
+        ("sha256", "not-sha256"),
+        ("quant", " "),
+        ("tokenizer", None),
+        ("revision", ""),
+        ("native_context", 0),
+        ("native_context", True),
+        ("native_context", 1.5),
+    ],
+)
+def test_incomplete_model_manifest_fails_before_output_or_server(
+    tmp_path, monkeypatch, field, value
+):
+    from scripts import hardware_local_eval as runner
+
+    model = asset_manifest(tmp_path)
+    model[field] = value
+    manifest = tmp_path / "models.json"
+    manifest.write_text(json.dumps([model]))
+    output = tmp_path / "output"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "runner",
+            "--models",
+            str(manifest),
+            "--server",
+            "/missing",
+            "--reference-tokenizer",
+            str(tmp_path / "tokenizer.json"),
+            "--output",
+            str(output),
+            "--execute",
+        ],
+    )
+    monkeypatch.setattr(
+        runner, "capture", lambda command: pytest.fail("Server must not be probed")
+    )
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert not output.exists()
+
+
+def test_all_model_assets_and_reference_tokenizer_are_checked(tmp_path):
+    pytest.importorskip("tokenizers")
+    from scripts.hardware_local_eval import validate_model_assets
+    import copy
+
+    model = asset_manifest(tmp_path)
+    ref = tmp_path / "tokenizer.json"
+    validate_model_assets([model], ref, True)
+    for field in ["path", "tokenizer"]:
+        invalid = copy.deepcopy(model)
+        invalid[field] = str(tmp_path / "missing")
+        with pytest.raises(ValueError, match="missing"):
+            validate_model_assets([model, invalid], ref, True)
+    with pytest.raises(ValueError, match="Missing tokenizer"):
+        validate_model_assets([model], tmp_path / "missing", True)
+    ref.write_text("not a tokenizer")
+    with pytest.raises(ValueError, match="Invalid tokenizer"):
+        validate_model_assets([model], ref, True)

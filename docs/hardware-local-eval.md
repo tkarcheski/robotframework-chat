@@ -22,7 +22,10 @@ Create a private JSON manifest (keep model files and outputs under `results/`):
 ]
 ```
 
-Add one entry per arm. Verify the SHA256 values before executing; the manifest
+Add one entry per arm. Preflight validates all declared fields, positive native
+context, weight-file presence, and loadable model/reference tokenizer files
+before output creation or server probing. Dry plans validate metadata without
+requiring downloaded files. Verify the SHA256 values before executing; the manifest
 records operator-supplied identities and is not a cryptographic server attestation.
 Pin model/tokenizer revisions and keep the same reference tokenizer across arms.
 The requested context is the **total allocation**, including 2,048 output tokens

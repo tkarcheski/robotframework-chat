@@ -470,6 +470,9 @@ def compare_runs(
                 or row["weights_format"].strip().lower() == "unspecified"
                 or type(row.get("effective_context_tokens")) is not int
                 or row.get("effective_context_tokens", 0) <= 0
+                or type(row.get("context_tokens")) is not int
+                or row.get("context_tokens", -1) < 0
+                or row["effective_context_tokens"] < row["context_tokens"]
                 or any(row.get(k) is None for k in coordinate + held_fixed)
                 or any(
                     type(row.get(k)) not in (int, float) or not 0 <= row[k] <= 1

@@ -344,3 +344,8 @@ def test_runtime_provenance_fields_require_nonblank_strings(field, value):
 def test_unknown_weight_format_marker_cannot_hide_in_whitespace():
     old = row(weights_format=" Unspecified ")
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_context_coordinate_cannot_exceed_declared_allocation():
+    old = row(context_tokens=16384, effective_context_tokens=4096)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
