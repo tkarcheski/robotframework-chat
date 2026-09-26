@@ -975,3 +975,33 @@ def test_uniform_serving_build_allows_context_specific_runtime():
     required = {("a", 16384, "middle", 0), ("b", 32768, "middle", 0)}
     result = compare_paired(rows, copy.deepcopy(rows), required, synthetic_benchmark())
     assert result["verdict"] == "eligible"
+
+
+@pytest.mark.parametrize(
+    "corruption", ["id_only", "changed_body", "missing_closing", "truncated_body"]
+)
+def test_document_observation_requires_complete_trusted_content(corruption):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row("a:browser", accuracy=1, sources_observed=True, report_saved=True)
+    trace = old["browser_trace"]
+    output = trace[1]["observation"]["output"]
+    if corruption == "id_only":
+        output = "[DOCUMENT fixture-doc]"
+    elif corruption == "changed_body":
+        output = output.replace("12 mA", "120 mA")
+    elif corruption == "missing_closing":
+        output = output.replace("[/DOCUMENT]", "")
+    else:
+        output = output.replace("The synthetic resource limit is 12 mA.", "")
+    trace[1]["observation"]["output"] = output
+    prompt = browser_task_prompt(synthetic_benchmark()["cases"]["a"])
+    for index, call in enumerate(old["calls"]):
+        call["prompt_sha256"] = digest(browser_history_prompt(prompt, trace[:index]))
+    result = compare_paired(
+        [old],
+        [copy.deepcopy(old)],
+        {("a:browser", 16384, "middle", 0)},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == "incomplete"

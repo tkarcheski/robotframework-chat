@@ -13,6 +13,7 @@ from rfc.hardware_eval import (
     browser_task_prompt,
     browser_history_prompt,
     digest,
+    document_text,
     build_pack,
     compare_runs as compare_paired,
     load_benchmark,
@@ -33,7 +34,17 @@ def synthetic_benchmark(questions=None):
     )
     return {
         "sha256": "b" * 64,
-        "documents": {"fixture-doc": {}},
+        "documents": {
+            "fixture-doc": {
+                "id": "fixture-doc",
+                "title": "Synthetic source",
+                "kind": "fictional",
+                "revision": "r1",
+                "url": "fixture://document",
+                "location": "all",
+                "text": "The synthetic resource limit is 12 mA.",
+            }
+        },
         "cases": {
             case: {
                 "task": "Synthetic fixture task",
@@ -299,9 +310,10 @@ def row(case_id="a", **overrides):
     result.update(overrides)
     if case_id.endswith(":browser"):
         name = case_id.removesuffix(":browser")
-        case = synthetic_benchmark()["cases"].get(name)
-        if case is None:
-            case = load_benchmark(FIXTURES)["cases"][name]
+        benchmark = synthetic_benchmark()
+        if name not in benchmark["cases"]:
+            benchmark = load_benchmark(FIXTURES)
+        case = benchmark["cases"][name]
         prompt = browser_task_prompt(case)
         if "prompt_sha256" not in overrides:
             result["prompt_sha256"] = digest(prompt)
@@ -323,7 +335,11 @@ def row(case_id="a", **overrides):
         observed = documents if result.get("sources_observed") is True else []
         for doc_id in observed:
             action("browser_new_page", {"url": "sandbox:/doc/" + doc_id})
-            action("browser_read_markdown", {}, "[DOCUMENT " + doc_id + "]")
+            action(
+                "browser_read_markdown",
+                {},
+                document_text(benchmark["documents"][doc_id]),
+            )
         if result.get("report_saved") is True:
             action("browser_new_page", {"url": "sandbox:/report"})
             action(

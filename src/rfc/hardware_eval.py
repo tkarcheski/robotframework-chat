@@ -95,6 +95,11 @@ def document_text(doc: dict[str, Any]) -> str:
     )
 
 
+def complete_document_observation(doc: dict[str, Any], output: str) -> bool:
+    """Require the entire trusted source block within the browser's wrapper."""
+    return document_text(doc).rstrip("\n") in output
+
+
 def _distractor(index: int, seed: int) -> str:
     """Unique synthetic lab archive records, explicitly NOT real measurements."""
     rng = random.Random(seed * 1000003 + index)
@@ -482,7 +487,7 @@ def browser_workflow_matches(
             typed = args["text"]
         elif tool == "browser_read_markdown" and current.startswith("/doc/"):
             doc_id = current[5:]
-            if f"[DOCUMENT {doc_id}]" in observation["output"]:
+            if complete_document_observation(documents[doc_id], observation["output"]):
                 observed.add(doc_id)
     if terminal is not None and row.get("agent_status") != terminal:
         return False
