@@ -257,6 +257,11 @@ fictional project artifacts with deterministic acceptance criteria; they do not
 claim physical board or real supplier validation. Their separate fixture identity
 preserves comparability of the original 18-task benchmark. Their independent
 `fixtures/product/gate_profile.yaml` requires all four cases and three trials.
+To gate product artifacts, set `HW_GATE_FIXTURES` to the absolute path of
+`fixtures/product` before `make hardware-evaluation-gate`. The gate then loads
+that corpus and its default profile together. If `HW_GATE_PROFILE` is also set,
+it must select the intended product profile; a base-hardware fixture root cannot
+validate product question IDs or their fixture hash.
 
 The short PWM lookup and board-identity lookup have `skip:low-value` tags after
 both target models answered them correctly on all three local 4K short trials.
