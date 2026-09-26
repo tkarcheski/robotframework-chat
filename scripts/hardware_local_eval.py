@@ -179,6 +179,8 @@ def command(args, model, context):
         cmd += ["--n-cpu-ffn", str(args.cpu_ffn_layers)]
     if args.cpu_moe_layers:
         cmd += ["--n-cpu-moe", str(args.cpu_moe_layers)]
+    if args.constrain_json:
+        cmd += ["--json-schema", '{"type":"object"}']
     native_context = model["native_context"]
     if context > native_context:
         cmd += [
@@ -229,6 +231,7 @@ def run_cell(args, model, context, version):
         "kv_placement": args.kv_placement,
         "cpu_ffn_layers": args.cpu_ffn_layers,
         "cpu_moe_layers": args.cpu_moe_layers,
+        "output_constraint": {"type": "object"} if args.constrain_json else None,
         "parallel": 1,
         "n_batch": 512,
         "n_ubatch": 128,
@@ -439,6 +442,11 @@ def main():
     parser.add_argument("--kv-placement", choices=["gpu", "cpu"], default="gpu")
     parser.add_argument("--cpu-ffn-layers", type=int, default=0)
     parser.add_argument("--cpu-moe-layers", type=int, default=0)
+    parser.add_argument(
+        "--constrain-json",
+        action="store_true",
+        help="Constrain native decoding to a JSON object; treat as a separate matched experiment",
+    )
     parser.add_argument("--port", type=int, default=8892)
     parser.add_argument("--min-ram-gib", type=int, default=24)
     parser.add_argument("--min-free-gpu-mib", type=int, default=20000)

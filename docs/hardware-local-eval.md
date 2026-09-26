@@ -128,3 +128,18 @@ responses and stopped before its second model arm or browser tests. It is archiv
 under `results/pr714/product-browser-16k/` and is not a paired comparison. A fresh
 product run uses a 4096-token output budget. Leading prose outside the requested
 JSON remains a schema failure; we do not repair model output for the gate.
+
+### Separating JSON formatting from task quality
+
+The native runner also accepts `--constrain-json`, which passes an explicit
+`{"type":"object"}` schema to the native decoder and records that constraint in
+its held-fixed runtime manifest. It constrains syntax, not answer IDs, numerical
+values, evidence choices, or browser actions. Treat it as a fresh matched
+experiment; do not combine constrained and unconstrained rows in a model pair.
+
+The installed build's specialized Qwen template checks for a nonempty schema;
+ordinary OpenAI `json_object` mode supplies an empty schema. Live product/browser
+responses consequently included prose and XML tool-call markers despite that
+request mode. Those remain strict failures in the original runs. An explicit
+native constraint can test whether formatting or engineering decisions dominate
+the observed difference; it does not repair already generated answers.

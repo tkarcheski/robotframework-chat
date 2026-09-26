@@ -21,6 +21,7 @@ def settings():
         kv_placement="gpu",
         cpu_ffn_layers=0,
         cpu_moe_layers=0,
+        constrain_json=False,
     )
 
 
@@ -47,6 +48,15 @@ def test_context_extension_is_explicit_and_recordable():
     assert cmd[cmd.index("--rope-scaling") + 1] == "yarn"
     assert cmd[cmd.index("--rope-scale") + 1] == "2.0"
     assert cmd[cmd.index("--yarn-orig-ctx") + 1] == "262144"
+
+
+def test_json_constraint_is_explicit_and_optional():
+    args = settings()
+    model = {"path": "/weights/model.gguf", "id": "model", "native_context": 262144}
+    assert "--json-schema" not in command(args, model, 4096)
+    args.constrain_json = True
+    cmd = command(args, model, 4096)
+    assert cmd[cmd.index("--json-schema") + 1] == '{"type":"object"}'
 
 
 def test_cleanup_leaves_already_finished_process_alone():
