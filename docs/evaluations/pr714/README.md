@@ -161,6 +161,22 @@ rubric despite being practically equivalent. Such failures should not be describ
 as wrong release decisions. These public tasks need independently reviewed
 precision and evidence-equivalence rules before broad engineering-quality claims.
 
+A response audit separates formatting from arithmetic. In all three sensor
+trials, Qwen3.6's machine-readable fields reported 0.0008056640625 A/LSB, 3.3 A
+full scale, and 0.1008056640625 A error. Its later explanation calculated the
+correct values, but did not repair those fields. Qwen3.8's single fenced object
+reported approximately 0.002014 A/LSB, 8.25 A and 0.122014 A; those meet the
+numeric tolerances, although preceding prose makes the official response invalid.
+Both models returned `release: false`. This is a concrete answer-consistency and
+integration difference, not evidence of different release decisions or general
+model superiority.
+
+The [post-hoc format diagnostic](product-format-diagnostic.json) retains all
+four cases, all three trials, response hashes, and missing extracts from truncated
+outputs. It does not replace the strict scores or make the incomplete product
+comparison eligible. Qwen3.8's extracted battery runtime also illustrates the
+precision limitation above; no numeric value was repaired.
+
 ## Test value and follow-up
 
 The original short PWM and board-identity lookups were full passes for both
