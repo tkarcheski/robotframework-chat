@@ -333,7 +333,65 @@ def verify_token_usage(
     )
 
 
-def verified_call_accounting(row: dict[str, Any]) -> bool:
+def browser_task_prompt(case: dict[str, Any]) -> str:
+    return (
+        task_prompt(case)
+        + "\nThis is a live browser task. Evidence is NOT embedded in this prompt. "
+        "Open sandbox:/ and choose documents from the catalog. "
+        "Use exactly one JSON action per turn: "
+        '{"tool":"browser_new_page","arguments":{"url":"sandbox:/"}} or '
+        '{"tool":"browser_click","arguments":{"selector":"#doc-document-id"}} or '
+        '{"tool":"browser_read_markdown","arguments":{}} or '
+        '{"tool":"browser_type_text","arguments":{"selector":"#report-text","text":"JSON report"}}. '
+        "Use #home to return to the catalog, #report to open the report editor, "
+        "#save to save. Optional browser_screenshot takes empty arguments. "
+        "Read every document needed for your answers. Save the complete answer JSON "
+        "in the report editor, click #save, then return "
+        '{"final":<the identical answer object>}. '
+        "External sites, arbitrary selectors, code execution and other writes are forbidden."
+    )
+
+
+def browser_history_prompt(prompt: str, history: list[dict[str, Any]]) -> str:
+    """Use canonical history encoding so archived JSON preserves prompt identity."""
+    return (
+        prompt
+        + "\nBROWSER HISTORY:\n"
+        + json.dumps(history, sort_keys=True, allow_nan=False)
+    )
+
+
+def browser_calls_bound(row: dict[str, Any], case: dict[str, Any] | None) -> bool:
+    """Reconstruct every browser prompt from the trusted task and archived trace."""
+    calls, trace = row.get("calls"), row.get("browser_trace")
+    status = row.get("agent_status")
+    if not (
+        isinstance(case, dict)
+        and isinstance(calls, list)
+        and isinstance(trace, list)
+        and all(isinstance(step, dict) for step in trace)
+        and isinstance(status, str)
+        and status
+        in {"completed", "invalid_action", "unsafe_action", "action_budget_exhausted"}
+        and len(calls) == len(trace) + int(status == "completed")
+        and (status == "completed" or row.get("passed") is not True)
+    ):
+        return False
+    try:
+        prompt = browser_task_prompt(case)
+        return digest(prompt) == row.get("prompt_sha256") and all(
+            isinstance(call, dict)
+            and call.get("prompt_sha256")
+            == digest(browser_history_prompt(prompt, trace[:index]))
+            for index, call in enumerate(calls)
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def verified_call_accounting(
+    row: dict[str, Any], case: dict[str, Any] | None = None
+) -> bool:
     """Recheck recorded usage instead of trusting an imported verification flag."""
     calls = row.get("calls")
     sampling = row.get("sampling")
@@ -345,7 +403,7 @@ def verified_call_accounting(row: dict[str, Any]) -> bool:
         and type(output_limit) is int
         and isinstance(calls, list)
         and bool(calls)
-        and (browser or len(calls) == 1)
+        and (browser_calls_bound(row, case) if browser else len(calls) == 1)
         and all(
             isinstance(call, dict)
             and isinstance(call.get("prompt_sha256"), str)
@@ -639,8 +697,7 @@ def compare_runs(
                         ),
                     )
                 )
-                and isinstance(row.get("grader_version"), str)
-                and bool(row["grader_version"].strip())
+                and row.get("grader_version") == GRADER_VERSION
             )
             runtime = row.get("runtime_manifest")
             if not (
@@ -666,7 +723,7 @@ def compare_runs(
                 or not runtime_complete
                 or not checks_complete
                 or not sampling_complete
-                or not verified_call_accounting(row)
+                or not verified_call_accounting(row, case)
                 or not scores_match_checks
                 or not critical_matches
                 or not pass_matches

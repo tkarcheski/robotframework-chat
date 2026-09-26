@@ -317,3 +317,13 @@ Text results must contain exactly one recorded call whose prompt SHA256 matches
 the evaluated row's prompt SHA256. Each browser turn retains its own valid
 prompt digest, since the browser history changes between calls. Missing or
 unrelated text-call accounting cannot establish that the evaluated prompt fit.
+
+The gate accepts only its supported `GRADER_VERSION` (`hardware-v2`), since an
+unknown or older grader can assign different meanings to the same score flags.
+Browser rows now embed `browser_trace` as well as retaining `trace.json`. The
+producer and gate share the task/history prompt builders, with sorted JSON keys
+for history serialization. The gate reconstructs every call prompt from the
+trusted fixture task and the preceding trace entries, and checks both the task
+digest and each call digest. A completed final answer requires one more call
+than the action trace; other terminal outcomes retain one trace entry per call.
+Older rows are not backfilled with a new grader or trace.

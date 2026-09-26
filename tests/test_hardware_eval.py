@@ -9,6 +9,10 @@ from pathlib import Path
 import pytest
 
 from rfc.hardware_eval import (
+    GRADER_VERSION,
+    browser_task_prompt,
+    browser_history_prompt,
+    digest,
     build_pack,
     compare_runs as compare_paired,
     load_benchmark,
@@ -31,9 +35,11 @@ def synthetic_benchmark(questions=None):
         "sha256": "b" * 64,
         "cases": {
             case: {
+                "task": "Synthetic fixture task",
+                "questions": [{"id": q, "question": q} for q in questions],
                 "expected": {
                     q: {"critical": critical} for q, critical in questions.items()
-                }
+                },
             }
             for case in ("a", "b", "task")
         },
@@ -231,7 +237,7 @@ def row(case_id="a", **overrides):
         "trial": 0,
         "prompt_sha256": "a" * 64,
         "fixture_sha256": "b" * 64,
-        "grader_version": "v1",
+        "grader_version": GRADER_VERSION,
         "harness_version": "c" * 64,
         "reference_tokenizer": "d" * 64,
         "model_tokenizer": "e" * 64,
@@ -289,7 +295,21 @@ def row(case_id="a", **overrides):
         ],
     }
     result.update(overrides)
-    if "calls" not in overrides:
+    if case_id.endswith(":browser"):
+        name = case_id.removesuffix(":browser")
+        case = synthetic_benchmark()["cases"].get(name)
+        if case is None:
+            case = load_benchmark(FIXTURES)["cases"][name]
+        prompt = browser_task_prompt(case)
+        if "prompt_sha256" not in overrides:
+            result["prompt_sha256"] = digest(prompt)
+        result.setdefault("browser_trace", [])
+        result.setdefault("agent_status", "completed")
+        if "calls" not in overrides:
+            result["calls"][0]["prompt_sha256"] = digest(
+                browser_history_prompt(prompt, [])
+            )
+    elif "calls" not in overrides:
         result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
     if "sampling" not in overrides:
         result["sampling"]["seed"] = result["trial"]

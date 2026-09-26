@@ -181,7 +181,8 @@ also predate the explicit `sampling.json_schema` field, so the latest validator
 cannot verify their constraint mode. Their serving manifests also lack the now-required
 explicit managed-memory boolean when disabled, and their per-call usage predates
 the recorded finish reason now required by the shared verifier. They also lack
-the newly recorded serving executable/library hashes. No missing metadata
+the newly recorded serving executable/library hashes, retain the older grader,
+and store browser traces separately instead of in the result rows. No missing metadata
 is backfilled. Neither
 their concatenation nor those legacy artifacts alone satisfy the current gate.
 A fresh original-profile run under one frozen

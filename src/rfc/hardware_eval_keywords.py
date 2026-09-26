@@ -21,11 +21,12 @@ from robot.libraries.BuiltIn import BuiltIn
 
 from . import __version__
 from .exceptions import RFCSkipError
-from .hardware_browser import HardwareSandbox, browser_task_prompt, run_browser_agent
+from .hardware_browser import HardwareSandbox, run_browser_agent
 from .hardware_eval import (
     GRADER_VERSION,
     OUTPUT_RESERVE,
     build_pack,
+    browser_task_prompt,
     compare_runs,
     digest,
     load_benchmark,
@@ -372,6 +373,7 @@ class HardwareEvalKeywords:
                 ) as box:
                     result = run_browser_agent(case, box, generate)
                     trace = result.pop("trace")
+                    row["browser_trace"] = trace
                     (folder / "trace.json").write_text(
                         json.dumps(trace, indent=2), encoding="utf-8"
                     )

@@ -229,3 +229,38 @@ def test_falsey_nonobject_tool_arguments_are_rejected_as_model_actions(
         assert result["action_count"] == 1
         assert result["passed"] is False
         assert result["trace"][0]["observation"]["error"] == "action_not_allowlisted"
+
+
+def test_actual_agent_prompts_reconstruct_from_archived_trace(
+    benchmark, browser, tmp_path
+):
+    from rfc.hardware_eval import browser_calls_bound, browser_task_prompt, digest
+
+    case = benchmark["cases"]["uno-current-budget"]
+    outputs = iter(
+        [
+            {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
+            {"final": gold_answer(case)},
+        ]
+    )
+    calls = []
+
+    def generate(prompt):
+        calls.append({"prompt_sha256": digest(prompt)})
+        return json.dumps(next(outputs))
+
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        result = run_browser_agent(case, box, generate)
+    row = {
+        "prompt_sha256": digest(browser_task_prompt(case)),
+        "calls": calls,
+        "browser_trace": result["trace"],
+        "agent_status": result["agent_status"],
+        "passed": result["passed"],
+    }
+    assert browser_calls_bound(json.loads(json.dumps(row, sort_keys=True)), case)
+    # A final-only response has one call and an empty action trace; this
+    # establishes prompt accounting, not successful evidence collection.
+    row["calls"] = calls[:1]
+    row["browser_trace"] = []
+    assert browser_calls_bound(row, case)

@@ -6,7 +6,13 @@ from unittest.mock import Mock
 
 import pytest
 
-from rfc.hardware_eval import score_answer
+from rfc.hardware_eval import (
+    GRADER_VERSION,
+    browser_task_prompt,
+    browser_history_prompt,
+    digest,
+    score_answer,
+)
 from rfc.hardware_eval_keywords import HardwareEvalKeywords
 from rfc.llm_client import _ConsoleFeedProvider
 from test_hardware_eval import (
@@ -325,6 +331,7 @@ def test_browser_row_keeps_question_failures_separate_from_workflow(
     )
     lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=Mock(model="test"))
     result = lib.evaluate_hardware_browser_task("uno-current-budget")
+    assert result["browser_trace"] == []
     assert result["passed"] is False
     assert result["report_saved"] is False
     assert result["critical_failures"] == 0
@@ -730,7 +737,19 @@ def test_every_browser_call_must_fit_prompt_plus_reserved_output():
             [old], [copy.deepcopy(old)], required, synthetic_benchmark()
         )["verdict"]
 
+    old["browser_trace"] = [
+        {
+            "action": {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
+            "observation": {"success": True, "output": "catalog", "error": None},
+        }
+    ]
     second = copy.deepcopy(old["calls"][0])
+    second["prompt_sha256"] = digest(
+        browser_history_prompt(
+            browser_task_prompt(synthetic_benchmark()["cases"]["a"]),
+            old["browser_trace"],
+        )
+    )
     second["server_metrics"]["prompt_eval_count"] = 16384 - 2048 + 1
     old["calls"].append(second)
     assert verdict() == "incomplete"
@@ -790,3 +809,65 @@ def test_text_result_requires_exactly_one_bound_call():
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "eligible"
     old["calls"].append(copy.deepcopy(old["calls"][0]))
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("version", ["hardware-v1", "future-grader", None, " "])
+def test_matching_unsupported_grader_versions_are_incomplete(version):
+    old = row(grader_version=version)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+    old["grader_version"] = GRADER_VERSION
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "eligible"
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "missing_trace",
+        "wrong_call",
+        "changed_history",
+        "missing_call",
+        "wrong_task",
+        "bad_status",
+    ],
+)
+def test_browser_accounting_is_bound_to_reconstructed_history(corruption):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row("a:browser", accuracy=1, sources_observed=True, report_saved=True)
+    old["browser_trace"] = [
+        {
+            "action": {"tool": "browser_new_page", "arguments": {"url": "sandbox:/"}},
+            "observation": {"success": True, "output": "catalog", "error": None},
+        }
+    ]
+    second = copy.deepcopy(old["calls"][0])
+    second["prompt_sha256"] = digest(
+        browser_history_prompt(
+            browser_task_prompt(synthetic_benchmark()["cases"]["a"]),
+            old["browser_trace"],
+        )
+    )
+    old["calls"].append(second)
+    # The actual JSONL writer sorts keys; reconstruction must survive that.
+    old = json.loads(json.dumps(old, sort_keys=True))
+    required = {("a:browser", 16384, "middle", 0)}
+
+    def verdict():
+        return compare_paired(
+            [old], [copy.deepcopy(old)], required, synthetic_benchmark()
+        )["verdict"]
+
+    assert verdict() == "eligible"
+    if corruption == "missing_trace":
+        del old["browser_trace"]
+    elif corruption == "wrong_call":
+        old["calls"][1]["prompt_sha256"] = "f" * 64
+    elif corruption == "changed_history":
+        old["browser_trace"][0]["observation"]["output"] = "different document"
+    elif corruption == "missing_call":
+        old["calls"].pop()
+    elif corruption == "wrong_task":
+        old["prompt_sha256"] = "f" * 64
+    else:
+        old["agent_status"] = []
+    assert verdict() == "incomplete"

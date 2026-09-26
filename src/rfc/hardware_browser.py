@@ -16,7 +16,13 @@ from typing import Any, Callable
 
 from .agent_tool import new_tool_call
 from .computer_use_keywords import ComputerUseDispatcher, tool_result_to_dict
-from .hardware_eval import document_text, parse_answer, score_answer, task_prompt
+from .hardware_eval import (
+    browser_task_prompt,
+    browser_history_prompt,
+    document_text,
+    parse_answer,
+    score_answer,
+)
 
 
 class HardwareSandbox:
@@ -188,25 +194,6 @@ class HardwareSandbox:
             return None
 
 
-def browser_task_prompt(case: dict[str, Any]) -> str:
-    return (
-        task_prompt(case)
-        + "\nThis is a live browser task. Evidence is NOT embedded in this prompt. "
-        "Open sandbox:/ and choose documents from the catalog. "
-        "Use exactly one JSON action per turn: "
-        '{"tool":"browser_new_page","arguments":{"url":"sandbox:/"}} or '
-        '{"tool":"browser_click","arguments":{"selector":"#doc-document-id"}} or '
-        '{"tool":"browser_read_markdown","arguments":{}} or '
-        '{"tool":"browser_type_text","arguments":{"selector":"#report-text","text":"JSON report"}}. '
-        "Use #home to return to the catalog, #report to open the report editor, "
-        "#save to save. Optional browser_screenshot takes empty arguments. "
-        "Read every document needed for your answers. Save the complete answer JSON "
-        "in the report editor, click #save, then return "
-        '{"final":<the identical answer object>}. '
-        "External sites, arbitrary selectors, code execution and other writes are forbidden."
-    )
-
-
 def run_browser_agent(
     case: dict[str, Any],
     sandbox: HardwareSandbox,
@@ -220,7 +207,7 @@ def run_browser_agent(
     answer: dict[str, Any] = {}
     status = "action_budget_exhausted"
     for _ in range(max_actions):
-        raw = generate(prompt + "\nBROWSER HISTORY:\n" + json.dumps(history))
+        raw = generate(browser_history_prompt(prompt, history))
         try:
             obj = parse_answer(raw)
         except ValueError:
