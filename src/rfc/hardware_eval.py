@@ -334,6 +334,20 @@ def compare_runs(
     if benchmark is None:
         result["reasons"] = ["missing_trusted_benchmark"]
         return result
+    for row in baseline + candidate:
+        if (
+            not isinstance(row, dict)
+            or any(
+                not isinstance(row.get(k), str) or not row[k].strip()
+                for k in ("case_id", "position")
+            )
+            or any(
+                type(row.get(k)) is not int or row[k] < 0
+                for k in ("context_tokens", "trial")
+            )
+        ):
+            result["reasons"] = ["invalid_result_coordinates"]
+            return result
     for rows in (baseline, candidate):
         keys = [tuple(r.get(k) for k in coordinate) for r in rows]
         if len(set(keys)) != len(keys):

@@ -304,8 +304,15 @@ def test_source_manifest_includes_staged_edits_and_rejects_untracked_inputs(
     assert manifest["diff_sha256"] == hashlib.sha256(patch.encode()).hexdigest()
     assert manifest["git"] == git("rev-parse", "HEAD").strip()
     source.with_name("untracked.py").write_text("untracked = True\n")
+    (repo / ".gitignore").write_text("uv.lock\nsrc/untracked.py\n")
     with pytest.raises(RuntimeError, match="Untracked evaluation inputs"):
         runner.source_provenance(output)
+    source.with_name("untracked.py").unlink()
+    lock = b"version = 1\n"
+    (repo / "uv.lock").write_bytes(lock)
+    manifest = runner.source_provenance(output)
+    assert manifest["dependency_lock"]["sha256"] == hashlib.sha256(lock).hexdigest()
+    assert (output / manifest["dependency_lock"]["artifact"]).read_bytes() == lock
 
 
 def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():

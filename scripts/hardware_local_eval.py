@@ -333,24 +333,43 @@ def terminate(process):
 def source_provenance(folder):
     """Archive staged and unstaged tracked changes; reject untracked run inputs."""
     git = ["git", "-C", str(ROOT)]
-    inputs = ["src", "robot", "scripts", "config", "pyproject.toml", "uv.lock"]
+    inputs = ["src", "robot", "scripts", "config", "pyproject.toml"]
     untracked = capture(
-        git + ["ls-files", "--others", "--exclude-standard", "--", *inputs]
+        git
+        + [
+            "ls-files",
+            "--others",
+            "--exclude=__pycache__/",
+            "--exclude=*.pyc",
+            "--",
+            *inputs,
+        ]
     )
     if untracked:
         raise RuntimeError(
-            "Untracked evaluation inputs must be tracked before running: " + untracked
+            "Untracked evaluation inputs cannot establish source provenance: "
+            + untracked
         )
     patch = capture(git + ["diff", "--binary", "HEAD"])
     if patch:
         patch += "\n"
     (folder / "source.patch").write_text(patch)
+    dependency_lock = None
+    lock_path = ROOT / "uv.lock"
+    if lock_path.is_file():
+        lock_bytes = lock_path.read_bytes()
+        (folder / "dependency-uv.lock").write_bytes(lock_bytes)
+        dependency_lock = {
+            "sha256": hashlib.sha256(lock_bytes).hexdigest(),
+            "artifact": "dependency-uv.lock",
+        }
     return {
         "git": capture(git + ["rev-parse", "HEAD"]),
         "diff_sha256": hashlib.sha256(patch.encode()).hexdigest(),
         "diff_base": "HEAD (staged and unstaged)",
         "diff_artifact": "source.patch",
         "untracked_input_paths_checked": inputs,
+        "dependency_lock": dependency_lock,
     }
 
 

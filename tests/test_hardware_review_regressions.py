@@ -587,3 +587,17 @@ def test_reference_tokenizer_is_uniform_across_long_context_rows(contexts, verdi
     assert result["verdict"] == verdict
     if verdict == "incomplete":
         assert "mixed_reference_tokenizer" in result["reasons"]
+
+
+@pytest.mark.parametrize("field", ["case_id", "position", "context_tokens", "trial"])
+@pytest.mark.parametrize("value", [[], {}, None, True, 1.5, ""])
+def test_malformed_coordinates_write_an_incomplete_gate(tmp_path, field, value):
+    old = row()
+    old[field] = value
+    artifact = tmp_path / "malformed.jsonl"
+    artifact.write_text(json.dumps(old) + "\n")
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=Mock())
+    gate = lib.compare_hardware_runs(str(artifact), str(artifact))
+    assert gate["verdict"] == "incomplete"
+    assert gate["reasons"] == ["invalid_result_coordinates"]
+    assert json.loads((tmp_path / "hardware-gate.json").read_text()) == gate

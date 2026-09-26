@@ -248,9 +248,12 @@ by trusting an inconsistent `passed` field.
 
 Run manifests archive `source.patch`, the binary-capable diff against HEAD,
 including staged and unstaged tracked changes. Its SHA256 and base revision are
-recorded; untracked evaluation inputs under `src`, `robot`, `scripts`, `config`,
-`pyproject.toml` and `uv.lock` cause a refusal before server launch. Private output
-directories are outside that check.
+recorded; untracked evaluation inputs under `src`, `robot`, `scripts`, `config`
+and `pyproject.toml` cause a refusal before server launch, even when Git ignores
+them. Python bytecode caches are excluded. If `uv.lock` exists, it is archived
+separately as `dependency-uv.lock` with its SHA256, including when ignored.
+That records the lockfile input, not proof that installed packages match it.
+Private output directories are outside the source-input check.
 
 Token verification now also requires an explicit normal completion reason
 (`stop`). A provider-declared length stop, filtering stop or missing reason
