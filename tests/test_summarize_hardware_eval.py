@@ -103,3 +103,16 @@ def test_incomplete_comparison_is_rejected():
     new.pop(next(iter(new)))
     with pytest.raises(ValueError, match="coverage"):
         compare(old, new, synthetic_benchmark())
+
+
+def test_long_context_summary_requires_trusted_reference_counter():
+    sample = {("a", 16384, "middle", 0): row(accuracy=1)}
+    with pytest.raises(ValueError, match="Unverified"):
+        compare(sample, deepcopy(sample), synthetic_benchmark())
+    result = compare(
+        sample,
+        deepcopy(sample),
+        synthetic_benchmark(),
+        reference_tokenizer=(len, "d" * 64),
+    )
+    assert result["paired_rows"] == 1

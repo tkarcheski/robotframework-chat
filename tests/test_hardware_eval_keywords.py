@@ -258,3 +258,61 @@ def test_invalid_json_archives_empty_parsed_answer(tmp_path):
     assert archived["parse_error"] == "JSONDecodeError"
     assert emitted_answers_match(archived)
     assert archived["calls"][0]["response"] == "not JSON"
+
+
+@pytest.mark.parametrize("source", ["explicit", "environment", "missing"])
+def test_offline_long_context_gate_loads_trusted_reference_tokenizer(
+    tmp_path, monkeypatch, source
+):
+    from test_hardware_eval import row
+    import yaml
+
+    benchmark = load_benchmark(FIXTURES)
+    case_id = "uno-current-budget"
+    case = benchmark["cases"][case_id]
+    from rfc.hardware_eval import score_answer
+
+    result = row(
+        case_id,
+        fixture_sha256=benchmark["sha256"],
+        **score_answer(case, gold_answer(case)),
+    )
+    artifact = tmp_path / "rows.jsonl"
+    artifact.write_text(json.dumps(result) + "\n")
+    profile = tmp_path / "profile.yaml"
+    profile.write_text(
+        yaml.safe_dump(
+            {
+                "groups": [
+                    {
+                        "mode": "text",
+                        "cases": [case_id],
+                        "contexts": [16384],
+                        "positions": ["middle"],
+                        "trials": [0],
+                    }
+                ]
+            }
+        )
+    )
+    paths = []
+
+    def load(path):
+        paths.append(path)
+        return (len, "d" * 64) if path else (None, "")
+
+    monkeypatch.setattr("rfc.hardware_eval_keywords.token_counter", load)
+    monkeypatch.delenv("HW_REFERENCE_TOKENIZER", raising=False)
+    if source == "environment":
+        monkeypatch.setenv("HW_REFERENCE_TOKENIZER", "pinned-tokenizer.json")
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path))
+    gate = lib.compare_hardware_runs(
+        str(artifact),
+        str(artifact),
+        str(profile),
+        reference_tokenizer_path="pinned-tokenizer.json"
+        if source == "explicit"
+        else "",
+    )
+    assert gate["verdict"] == ("incomplete" if source == "missing" else "eligible")
+    assert paths == ([""] if source == "missing" else ["pinned-tokenizer.json"])

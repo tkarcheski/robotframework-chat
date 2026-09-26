@@ -427,6 +427,7 @@ class HardwareEvalKeywords:
         baseline_path: str,
         candidate_path: str,
         profile_path: str = "",
+        reference_tokenizer_path: str = "",
     ) -> dict[str, Any]:
         rows = [
             [
@@ -452,8 +453,15 @@ class HardwareEvalKeywords:
             for position in group["positions"]
             for trial in group["trials"]
         }
+        counter, identity = token_counter(
+            reference_tokenizer_path or os.getenv("HW_REFERENCE_TOKENIZER", "")
+        )
         result = compare_runs(
-            rows[0], rows[1], required_coordinates=required, benchmark=self.benchmark
+            rows[0],
+            rows[1],
+            required_coordinates=required,
+            benchmark=self.benchmark,
+            reference_tokenizer=(counter, identity) if counter is not None else None,
         )
         result["profile_sha256"] = digest(profile)
         (self._output() / "hardware-gate.json").write_text(

@@ -211,7 +211,10 @@ def build_pack(
 
 
 def text_prompt_matches(
-    row: dict[str, Any], case: dict[str, Any], documents: dict[str, Any]
+    row: dict[str, Any],
+    case: dict[str, Any],
+    documents: dict[str, Any],
+    reference_tokenizer: tuple[Callable[[str], int], str] | None = None,
 ) -> bool:
     """Reconstruct short and long prompts without trusting supplied prompt text."""
     ids, position = row.get("distractor_ids"), row.get("position")
@@ -230,7 +233,34 @@ def text_prompt_matches(
         [_distractor(i, row["trial"]) for i in range(len(ids))],
         position,
     )
-    return digest(prompt) == row.get("prompt_sha256")
+    if digest(prompt) != row.get("prompt_sha256"):
+        return False
+    if row.get("context_tokens"):
+        if reference_tokenizer is None:
+            return False
+        counter, identity = reference_tokenizer
+        if identity != row.get("reference_tokenizer"):
+            return False
+        sampling = row.get("sampling")
+        if (
+            not isinstance(sampling, dict)
+            or type(sampling.get("max_tokens")) is not int
+        ):
+            return False
+        budget = row["context_tokens"] - sampling["max_tokens"] - CHAT_RESERVE
+        count = counter(prompt)
+        next_prompt = _assemble_package(
+            [document_text(documents[key]) for key in case["documents"]],
+            task_prompt(case),
+            [_distractor(i, row["trial"]) for i in range(len(ids) + 1)],
+            position,
+        )
+        return (
+            type(row.get("reference_tokens")) is int
+            and row["reference_tokens"] == count
+            and 0 < count <= budget < counter(next_prompt)
+        )
+    return True
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -721,6 +751,7 @@ def compare_runs(
     candidate: list[dict[str, Any]],
     required_coordinates: set[tuple[Any, ...]] | None = None,
     benchmark: dict[str, Any] | None = None,
+    reference_tokenizer: tuple[Callable[[str], int], str] | None = None,
 ) -> dict[str, Any]:
     """Fail-closed paired regression gate. This never trains or deploys anything.
 
@@ -979,7 +1010,10 @@ def compare_runs(
                     and (
                         case is None
                         or not text_prompt_matches(
-                            row, case, benchmark.get("documents", {})
+                            row,
+                            case,
+                            benchmark.get("documents", {}),
+                            reference_tokenizer,
                         )
                     )
                 )

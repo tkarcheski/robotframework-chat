@@ -101,6 +101,12 @@ python scripts/summarize_hardware_eval.py \
   --output results/paired-short-summary.json
 ```
 
+For comparisons containing long-context text rows, also pass
+`--reference-tokenizer /absolute/path/to/the/pinned/tokenizer.json`. The offline
+Robot gate loads `HW_REFERENCE_TOKENIZER`; the Python keyword also accepts an
+explicit `reference_tokenizer_path`. Its actual file hash must match the archived
+reference-tokenizer identity. Short-only comparisons do not require this file.
+
 The summary separates fact accuracy, exact evidence-set accuracy, full-case
 passes and latency. It rejects unequal coverage, changed paired coordinates and
 incomplete/token-unverified runs. It bootstraps **case IDs**, keeping repetitions
@@ -360,3 +366,11 @@ archive records identified by `distractor_ids` and the trial seed. Short tasks m
 have no distractors. The same assembly function generates live packs, so long
 prompts can be checked without accepting arbitrary supplied text or rerunning the
 tokenizer's sizing search. Actual token accounting remains a separate requirement.
+
+For every long-context text row, comparison retokenizes the reconstructed prompt
+with that trusted reference tokenizer and requires the count to equal the archived
+`reference_tokens`. The count must fit the declared input budget, and adding one
+more complete deterministic archive record must exceed it. This repeats the
+producer's whole-record maximal-sizing check instead of trusting a claimed large
+context or token count. Missing/mismatched tokenizer identity, undersized packs,
+or incorrect recorded counts make the comparison incomplete.

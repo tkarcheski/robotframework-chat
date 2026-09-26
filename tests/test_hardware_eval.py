@@ -15,7 +15,7 @@ from rfc.hardware_eval import (
     digest,
     document_text,
     build_pack,
-    compare_runs as compare_paired,
+    compare_runs as _compare_paired,
     load_benchmark,
     parse_answer,
     score_answer,
@@ -58,6 +58,12 @@ def synthetic_benchmark(questions=None):
             for case in ("a", "b", "task")
         },
     }
+
+
+def compare_paired(*args, **kwargs):
+    # A deterministic test counter; production loads a pinned tokenizer file.
+    kwargs.setdefault("reference_tokenizer", (len, "d" * 64))
+    return _compare_paired(*args, **kwargs)
 
 
 def compare_runs(baseline, candidate, benchmark=None):
@@ -406,15 +412,19 @@ def row(case_id="a", benchmark_fixture=None, **overrides):
                 )
             ]
     else:
-        result.setdefault("distractor_ids", [])
-        if "prompt_sha256" not in overrides:
-            result["prompt_sha256"] = build_pack(
-                case,
-                benchmark["documents"],
-                position=result["position"]
-                if result["position"] in ("start", "middle", "end", "spread")
-                else "spread",
-            )["prompt_sha256"]
+        pack = build_pack(
+            case,
+            benchmark["documents"],
+            context_tokens=result["context_tokens"],
+            counter=len if result["context_tokens"] else None,
+            seed=result["trial"],
+            position=result["position"]
+            if result["position"] in ("start", "middle", "end", "spread")
+            else "spread",
+        )
+        for key in ("prompt_sha256", "distractor_ids", "reference_tokens"):
+            if key not in overrides:
+                result[key] = pack[key]
         if "calls" not in overrides:
             result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
     if "calls" not in overrides:
@@ -575,13 +585,19 @@ def test_generated_long_prompt_reconstructs_from_trusted_recipe(
         seed=seed,
     )
     assert pack["distractor_ids"]
-    row = {**pack, "trial": seed, "position": position}
-    assert text_prompt_matches(row, case, benchmark["documents"])
+    row = {
+        **pack,
+        "trial": seed,
+        "position": position,
+        "reference_tokenizer": "d" * 64,
+        "sampling": {"max_tokens": 2048},
+    }
+    assert text_prompt_matches(row, case, benchmark["documents"], (len, "d" * 64))
     row["trial"] += 1
-    assert not text_prompt_matches(row, case, benchmark["documents"])
+    assert not text_prompt_matches(row, case, benchmark["documents"], (len, "d" * 64))
     row["trial"] = seed
     row["distractor_ids"].pop()
-    assert not text_prompt_matches(row, case, benchmark["documents"])
+    assert not text_prompt_matches(row, case, benchmark["documents"], (len, "d" * 64))
 
 
 @pytest.mark.parametrize("ids", [None, {}, ["D0000001"], [1], ["D0000000", "D0000000"]])

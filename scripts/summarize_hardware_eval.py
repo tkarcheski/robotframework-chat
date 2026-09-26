@@ -90,7 +90,7 @@ def finite_latency(row):
         return False
 
 
-def compare(old, new, benchmark=None):
+def compare(old, new, benchmark=None, reference_tokenizer=None):
     if not old or old.keys() != new.keys():
         raise ValueError("Missing or unequal coverage")
     gate = compare_runs(
@@ -98,6 +98,7 @@ def compare(old, new, benchmark=None):
         list(new.values()),
         set(old),
         benchmark if benchmark is not None else load_benchmark(DEFAULT_FIXTURES),
+        reference_tokenizer=reference_tokenizer,
     )
     if gate["verdict"] == "incomplete":
         raise ValueError(f"Unverified comparison: {gate['reasons']}")
@@ -193,9 +194,16 @@ def main():
     p.add_argument("candidate", type=Path)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
+    p.add_argument("--reference-tokenizer", type=Path)
     args = p.parse_args()
+    from rfc.hardware_eval_keywords import token_counter
+
+    counter, identity = token_counter(str(args.reference_tokenizer or ""))
     result = compare(
-        read(args.baseline), read(args.candidate), load_benchmark(args.fixtures)
+        read(args.baseline),
+        read(args.candidate),
+        load_benchmark(args.fixtures),
+        reference_tokenizer=(counter, identity) if counter is not None else None,
     )
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(
