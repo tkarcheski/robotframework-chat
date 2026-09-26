@@ -231,3 +231,8 @@ cannot establish coverage. The core comparison API requires this benchmark;
 the Robot keyword supplies its loaded fixtures. The descriptive summary CLI
 uses the main fixtures by default; use `--fixtures PATH` for the product corpus
 or an archived fixture revision.
+
+The owned child drops inherited `LLAMA_ARG_*` overrides and `LLAMA_API_KEY`.
+This prevents ambient chat templates, draft models, server modes or unrelated
+authentication from changing the recorded native launch. Library paths and
+CUDA device visibility remain available; the parent environment is unchanged.

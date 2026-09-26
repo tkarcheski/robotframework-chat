@@ -147,9 +147,9 @@ def probe_json_constraint(base, model, artifact):
     return result
 
 
-def capture(command):
+def capture(command, *, env=None):
     return subprocess.check_output(
-        command, text=True, stderr=subprocess.STDOUT, timeout=15
+        command, text=True, stderr=subprocess.STDOUT, timeout=15, env=env
     ).strip()
 
 
@@ -207,9 +207,13 @@ def verify_gpu_headroom(snapshot, minimum_mib):
             )
 
 
-def managed_environment(enabled, inherited):
-    """Scope CUDA managed allocation to the child, with no ambient opt-in."""
-    env = dict(inherited)
+def owned_environment(enabled, inherited):
+    """Use recorded native arguments and explicitly scoped managed allocation."""
+    env = {
+        key: value
+        for key, value in inherited.items()
+        if not key.startswith("LLAMA_ARG_") and key != "LLAMA_API_KEY"
+    }
     key = "GGML_CUDA_ENABLE_UNIFIED_MEMORY"
     if enabled:
         env[key] = "1"
@@ -383,7 +387,7 @@ def run_cell(args, model, context, version):
         manifest["managed_memory_capabilities"] = managed_capabilities()
     path = folder / "manifest.json"
     path.write_text(json.dumps(manifest, indent=2))
-    env = managed_environment(args.unified_memory, os.environ)
+    env = owned_environment(args.unified_memory, os.environ)
     env.update(
         {
             "PYTHONPATH": str(ROOT / "src"),
@@ -708,7 +712,10 @@ def main():
         )
         return
     args.output.mkdir(parents=True, exist_ok=False)
-    version = capture([args.server, "--version"])
+    version = capture(
+        [args.server, "--version"],
+        env=owned_environment(args.unified_memory, os.environ),
+    )
     for context in args.contexts:
         for model in models:
             run_cell(args, model, context, version)

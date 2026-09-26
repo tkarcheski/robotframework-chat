@@ -10,7 +10,7 @@ from scripts.hardware_local_eval import (
     allocated_context,
     command,
     expected_coordinates,
-    managed_environment,
+    owned_environment,
     terminate,
     verify_coverage,
     verify_gpu_headroom,
@@ -235,12 +235,26 @@ def test_decimal_million_budget_has_explicit_native_allocation_padding():
 
 def test_managed_memory_is_explicit_and_never_mutates_parent_environment():
     inherited = {"GGML_CUDA_ENABLE_UNIFIED_MEMORY": "1", "EXAMPLE": "retained"}
-    plain = managed_environment(False, inherited)
-    managed = managed_environment(True, {"EXAMPLE": "retained"})
+    plain = owned_environment(False, inherited)
+    managed = owned_environment(True, {"EXAMPLE": "retained"})
     assert "GGML_CUDA_ENABLE_UNIFIED_MEMORY" not in plain
     assert managed["GGML_CUDA_ENABLE_UNIFIED_MEMORY"] == "1"
     assert plain["EXAMPLE"] == managed["EXAMPLE"] == "retained"
     assert inherited["GGML_CUDA_ENABLE_UNIFIED_MEMORY"] == "1"
+
+
+def test_native_environment_overrides_do_not_enter_owned_experiment():
+    inherited = {
+        "LLAMA_ARG_CHAT_TEMPLATE": "unrecorded-template",
+        "LLAMA_ARG_SPEC_DRAFT_HF_REPO": "unrequested/draft",
+        "LLAMA_ARG_AGENT": "1",
+        "LLAMA_API_KEY": "unrelated-test-key",
+        "LD_LIBRARY_PATH": "/native/libs",
+        "CUDA_VISIBLE_DEVICES": "0",
+    }
+    child = owned_environment(False, inherited)
+    assert child == {"LD_LIBRARY_PATH": "/native/libs", "CUDA_VISIBLE_DEVICES": "0"}
+    assert inherited["LLAMA_ARG_AGENT"] == "1"
 
 
 def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():
