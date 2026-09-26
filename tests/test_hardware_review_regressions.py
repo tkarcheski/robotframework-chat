@@ -349,3 +349,16 @@ def test_unknown_weight_format_marker_cannot_hide_in_whitespace():
 def test_context_coordinate_cannot_exceed_declared_allocation():
     old = row(context_tokens=16384, effective_context_tokens=4096)
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("accuracy", [0.75, 1.0])
+def test_candidate_cannot_reclassify_critical_questions(accuracy):
+    old = row(accuracy=accuracy)
+    old["checks"]["q3"]["critical"] = True
+    old["critical_failures"] = int(accuracy < 1)
+    new = copy.deepcopy(old)
+    new["checks"]["q3"]["critical"] = False
+    new["critical_failures"] = 0
+    result = compare_runs([old], [new])
+    assert result["verdict"] == "incomplete"
+    assert "question_criticality_changed" in result["reasons"]

@@ -269,7 +269,13 @@ def test_gate_eligible_does_not_mean_deployed():
     ],
 )
 def test_regression_blocks_gate(change):
-    assert compare_runs([row()], [row(**change)])["verdict"] == "blocked"
+    baseline = row()
+    candidate = row(**change)
+    if "critical_failures" in change:
+        baseline = row(accuracy=1.0)
+        for question, check in candidate["checks"].items():
+            baseline["checks"][question]["critical"] = check["critical"]
+    assert compare_runs([baseline], [candidate])["verdict"] == "blocked"
 
 
 @pytest.mark.parametrize(

@@ -503,6 +503,17 @@ def compare_runs(
                 and old["checks"].keys() != new["checks"].keys()
             ):
                 result["reasons"].append("question_coverage_mismatch")
+            elif isinstance(old.get("checks"), dict) and isinstance(
+                new.get("checks"), dict
+            ):
+                for question, check in old["checks"].items():
+                    other = new["checks"][question]
+                    if (
+                        isinstance(check, dict)
+                        and isinstance(other, dict)
+                        and check.get("critical") != other.get("critical")
+                    ):
+                        result["reasons"].append("question_criticality_changed")
     if result["reasons"]:
         result["reasons"] = sorted(set(result["reasons"]))
         return result
