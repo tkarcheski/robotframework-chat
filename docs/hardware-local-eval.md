@@ -266,3 +266,6 @@ The harness digest includes the repository's native runner, plus the owned
 runner's source hash snapshotted at startup and passed explicitly to its child.
 Changing only server-launch or acceptance code therefore changes the harness
 identity, even when the `rfc` package itself is unchanged.
+Sampling metadata must explicitly record `json_schema` as null or
+`{"type":"object"}`, consistent with the runtime output constraint. Matching
+missing or malformed constraint metadata in both arms is incomplete evidence.

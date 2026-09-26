@@ -139,8 +139,11 @@ reported a blocked gate with 24 regression coordinates
 The strengthened gate requires one harness, fixture and grader revision across
 an entire arm, and correctly classifies this combined profile as **incomplete**
 ([current audit](full-profile-gate.json)). The individual paired experiments
-retain their matched provenance, but their concatenation is not valid evidence
-for full-profile eligibility. A fresh original-profile run under one frozen
+retain their historical scores and recorded provenance. All 102 rows per arm
+also predate the explicit `sampling.json_schema` field, so the latest validator
+cannot verify their constraint mode. No missing metadata is backfilled. Neither
+their concatenation nor those legacy artifacts alone satisfy the current gate.
+A fresh original-profile run under one frozen
 revision is planned after the larger-context sweep. Historical responses and
 scores are preserved; no row is relabeled with a newer harness hash.
 

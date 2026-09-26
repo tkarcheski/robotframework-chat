@@ -123,7 +123,7 @@ def test_token_verification_requires_boolean_true(flag):
     ],
 )
 def test_sampling_attestation_is_complete_and_matches_trial(sampling):
-    old = row(sampling=sampling)
+    old = row(sampling={"json_schema": None, **sampling})
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
 
 
@@ -601,3 +601,38 @@ def test_malformed_coordinates_write_an_incomplete_gate(tmp_path, field, value):
     assert gate["verdict"] == "incomplete"
     assert gate["reasons"] == ["invalid_result_coordinates"]
     assert json.loads((tmp_path / "hardware-gate.json").read_text()) == gate
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [False, "object", [], {}, {"type": "array"}, {"type": "object", "extra": True}],
+)
+def test_unknown_json_constraint_cannot_pass_even_when_both_arms_match(schema):
+    old = row()
+    old["sampling"]["json_schema"] = schema
+    old["runtime_manifest"]["output_constraint"] = schema
+    gate = compare_runs([old], [copy.deepcopy(old)])
+    assert "unknown_or_inconsistent_json_constraint" in gate["reasons"]
+    assert gate["verdict"] == "incomplete"
+
+
+def test_missing_constraint_state_cannot_claim_unconstrained_decoding():
+    old = row()
+    del old["sampling"]["json_schema"]
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "schema,runtime,verdict",
+    [
+        (None, None, "eligible"),
+        ({"type": "object"}, {"type": "object"}, "eligible"),
+        (None, {"type": "object"}, "incomplete"),
+        ({"type": "object"}, None, "incomplete"),
+    ],
+)
+def test_json_constraint_sampling_and_runtime_must_agree(schema, runtime, verdict):
+    old = row()
+    old["sampling"]["json_schema"] = schema
+    old["runtime_manifest"]["output_constraint"] = runtime
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == verdict

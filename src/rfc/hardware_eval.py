@@ -516,6 +516,17 @@ def compare_runs(
                 and bool(row["grader_version"].strip())
             )
             runtime = row.get("runtime_manifest")
+            if not (
+                isinstance(sampling, dict)
+                and "json_schema" in sampling
+                and (
+                    sampling["json_schema"] is None
+                    or sampling["json_schema"] == {"type": "object"}
+                )
+                and isinstance(runtime, dict)
+                and runtime.get("output_constraint") == sampling["json_schema"]
+            ):
+                result["reasons"].append("unknown_or_inconsistent_json_constraint")
             runtime_complete = isinstance(runtime, dict) and all(
                 isinstance(runtime.get(key), str) and bool(runtime[key].strip())
                 for key in ("engine", "version", "rope", "kv_cache_dtype")

@@ -235,7 +235,12 @@ def row(case_id="a", **overrides):
         "harness_version": "c" * 64,
         "reference_tokenizer": "d" * 64,
         "model_tokenizer": "e" * 64,
-        "sampling": {"temperature": 0.0, "seed": 0, "max_tokens": 2048},
+        "sampling": {
+            "temperature": 0.0,
+            "seed": 0,
+            "max_tokens": 2048,
+            "json_schema": None,
+        },
         "runtime_manifest": {
             "engine": "vllm",
             "version": "fixture-v1",

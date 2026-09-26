@@ -2,9 +2,10 @@
   "verdict": "incomplete",
   "deployment_performed": false,
   "reasons": [
-    "mixed_benchmark_revision"
+    "mixed_benchmark_revision",
+    "unknown_or_inconsistent_json_constraint"
   ],
   "paired_cases": 0,
   "profile_sha256": "8831527702469249e4f701dbeff367e5240561079d854a5c22d329bd66d1c736",
-  "scope": "Historical combined profile: required coordinates covered, but mixed harness revisions make the full-profile comparison incomplete. A uniform-revision rerun is pending."
+  "scope": "Historical combined profile: coordinates covered, but mixed harness revisions and missing explicit JSON-constraint metadata prevent current gate eligibility. A uniform-revision rerun is pending; original scores and metadata are unchanged."
 }
