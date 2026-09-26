@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import csv
 import datetime
 import hashlib
 import json
@@ -190,6 +191,60 @@ def sample(pid=None, *, include_gpu=True):
 def allocated_context(context):
     """Native llama.cpp pads allocations to 256 tokens; never reduce the budget."""
     return ((context + 255) // 256) * 256
+
+
+def hardware_identity(include_gpu):
+    """Record stable local hardware; do not expose raw host/device identifiers."""
+    cpu = next(
+        (
+            line.partition(":")[2].strip()
+            for line in Path("/proc/cpuinfo").read_text().splitlines()
+            if line.partition(":")[0].strip() in ("model name", "Hardware")
+        ),
+        "",
+    )
+    ram = next(
+        int(line.split()[1]) * 1024
+        for line in Path("/proc/meminfo").read_text().splitlines()
+        if line.startswith("MemTotal:")
+    )
+    try:
+        host = Path("/etc/machine-id").read_bytes().strip()
+    except OSError:
+        host = b""
+    devices = []
+    if include_gpu:
+        raw = capture(
+            [
+                "nvidia-smi",
+                "--query-gpu=uuid,name,memory.total,driver_version",
+                "--format=csv,noheader,nounits",
+            ]
+        )
+        for fields in csv.reader(raw.splitlines()):
+            if len(fields) != 4:
+                raise RuntimeError("Cannot establish GPU hardware identity")
+            uuid, name, memory, driver = (field.strip() for field in fields)
+            devices.append(
+                {
+                    "uuid_sha256": hashlib.sha256(uuid.encode()).hexdigest(),
+                    "name": name,
+                    "memory_mib": int(memory),
+                    "driver": driver,
+                }
+            )
+    visibility = os.getenv("CUDA_VISIBLE_DEVICES") if include_gpu else None
+    return {
+        "host_sha256": hashlib.sha256(host).hexdigest() if host else None,
+        "cpu_model": cpu,
+        "logical_cpus": os.cpu_count(),
+        "ram_bytes": ram,
+        "uses_gpu": bool(include_gpu),
+        "gpus": devices,
+        "cuda_visibility_sha256": hashlib.sha256(visibility.encode()).hexdigest()
+        if visibility is not None
+        else None,
+    }
 
 
 def verify_gpu_headroom(snapshot, minimum_mib):
@@ -389,6 +444,7 @@ def run_cell(args, model, context, version):
         verify_gpu_headroom(baseline["gpu"], args.min_free_gpu_mib)
     cmd = command(args, model, context)
     runtime = {
+        "hardware": hardware_identity(bool(args.gpu_layers)),
         "engine": "Unsloth native llama.cpp",
         "version": version,
         "rope": "native"

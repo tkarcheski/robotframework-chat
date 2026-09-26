@@ -269,3 +269,15 @@ identity, even when the `rfc` package itself is unchanged.
 Sampling metadata must explicitly record `json_schema` as null or
 `{"type":"object"}`, consistent with the runtime output constraint. Matching
 missing or malformed constraint metadata in both arms is incomplete evidence.
+
+Harness identity also includes the Python version, installed distribution
+versions, and the available Browser/Playwright lock and browser-revision files.
+Rows retain that dependency snapshot for inspection. A lockfile alone is not
+treated as evidence of the versions actually installed.
+
+Owned runs record CPU model, logical CPUs, RAM capacity, GPU models/memory/driver,
+and hashed host/device identifiers in the held-fixed runtime manifest. CPU-only
+discovery performs no NVIDIA probes. The analyzer omits latency when hardware
+identity is missing, mixed, or incomplete, or latency values are invalid; changed
+hardware between paired rows rejects the comparison. Matching hardware does not
+control competing load, clocks or thermal state, so timing remains descriptive.

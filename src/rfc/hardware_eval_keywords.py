@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import importlib
+from importlib import metadata
+from functools import lru_cache
 import json
 import os
 import time
+import platform
 from pathlib import Path
 from typing import Any, Callable
 
@@ -33,12 +37,46 @@ from .openai_client import OpenAIClient
 from .rfc_data import emit_rfc_data
 
 
+@lru_cache(maxsize=1)
+def dependency_manifest() -> dict[str, Any]:
+    """Snapshot installed distributions and Browser's bundled runtime revisions."""
+    packages = sorted(
+        (str(dist.metadata["Name"]), dist.version)
+        for dist in metadata.distributions()
+        if dist.metadata.get("Name")
+    )
+    assets: dict[str, str | None] = {}
+    try:
+        browser = metadata.distribution("robotframework-browser")
+    except metadata.PackageNotFoundError:
+        pass
+    else:
+        for name in (
+            "Browser/wrapper/package-lock.json",
+            "Browser/wrapper/node_modules/playwright/package.json",
+            "Browser/wrapper/node_modules/playwright-core/package.json",
+            "Browser/wrapper/node_modules/playwright-core/browsers.json",
+        ):
+            path = Path(str(browser.locate_file(name)))
+            assets[name] = (
+                hashlib.sha256(path.read_bytes()).hexdigest()
+                if path.is_file()
+                else None
+            )
+    return {
+        "python": platform.python_version(),
+        "packages": packages,
+        "browser_assets": assets,
+    }
+
+
 def harness_digest(root: Path) -> str:
     """Identify the full local implementation, including providers and tool execution."""
     runner = root.parent.parent / "scripts/hardware_local_eval.py"
     return digest(
         {
             "version": __version__,
+            "dependencies": dependency_manifest(),
             "native_runner": hashlib.sha256(runner.read_bytes()).hexdigest()
             if runner.is_file()
             else None,
@@ -145,6 +183,7 @@ class HardwareEvalKeywords:
             "fixture_sha256": self.benchmark["sha256"],
             "grader_version": GRADER_VERSION,
             "harness_version": HARNESS_VERSION,
+            "dependency_manifest": copy.deepcopy(dependency_manifest()),
             "model": str(self.client.model)
             if self.client is not None
             else os.getenv("DEFAULT_MODEL", ""),

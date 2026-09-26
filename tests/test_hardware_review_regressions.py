@@ -636,3 +636,38 @@ def test_json_constraint_sampling_and_runtime_must_agree(schema, runtime, verdic
     old["sampling"]["json_schema"] = schema
     old["runtime_manifest"]["output_constraint"] = runtime
     assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == verdict
+
+
+def test_dependency_and_browser_revision_changes_reject_a_source_identical_pair(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    import rfc.hardware_eval_keywords as keywords
+
+    distribution = SimpleNamespace(metadata={"Name": "tokenizers"}, version="1.0")
+    monkeypatch.setattr(keywords.metadata, "distributions", lambda: [distribution])
+    monkeypatch.setattr(
+        keywords.metadata,
+        "distribution",
+        lambda name: SimpleNamespace(locate_file=lambda path: tmp_path / path),
+    )
+    browsers = tmp_path / "Browser/wrapper/node_modules/playwright-core/browsers.json"
+    browsers.parent.mkdir(parents=True)
+    browsers.write_text('{"revision": "1"}')
+    snapshot = keywords.dependency_manifest.__wrapped__
+    original = snapshot()
+    distribution.version = "2.0"
+    changed_package = snapshot()
+    distribution.version = "1.0"
+    browsers.write_text('{"revision": "2"}')
+    changed_browser = snapshot()
+    root = tmp_path / "src/rfc"
+    root.mkdir(parents=True)
+    (root / "__init__.py").write_text("# identical source\n")
+    monkeypatch.setattr(keywords, "dependency_manifest", lambda: original)
+    old = row(harness_version=keywords.harness_digest(root))
+    for changed in (changed_package, changed_browser):
+        monkeypatch.setattr(keywords, "dependency_manifest", lambda: changed)
+        new = row(harness_version=keywords.harness_digest(root))
+        assert new["harness_version"] != old["harness_version"]
+        assert compare_runs([old], [new])["verdict"] == "incomplete"

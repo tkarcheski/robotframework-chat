@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import random
 import statistics
@@ -45,6 +46,50 @@ def read(path):
     return by_key
 
 
+def hardware_known(row):
+    hardware = row["runtime_manifest"].get("hardware")
+
+    def sha256(value):
+        return (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value)
+        )
+
+    if not isinstance(hardware, dict) or not (
+        sha256(hardware.get("host_sha256"))
+        and isinstance(hardware.get("cpu_model"), str)
+        and hardware["cpu_model"].strip()
+        and all(
+            type(hardware.get(key)) is int and hardware[key] > 0
+            for key in ("logical_cpus", "ram_bytes")
+        )
+        and type(hardware.get("uses_gpu")) is bool
+        and isinstance(hardware.get("gpus"), list)
+        and bool(hardware["gpus"]) == hardware["uses_gpu"]
+    ):
+        return False
+    return all(
+        isinstance(gpu, dict)
+        and sha256(gpu.get("uuid_sha256"))
+        and all(
+            isinstance(gpu.get(key), str) and gpu[key].strip()
+            for key in ("name", "driver")
+        )
+        and type(gpu.get("memory_mib")) is int
+        and gpu["memory_mib"] > 0
+        for gpu in hardware["gpus"]
+    )
+
+
+def finite_latency(row):
+    value = row.get("latency_ms")
+    try:
+        return type(value) in (int, float) and value >= 0 and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def compare(old, new, benchmark=None):
     if not old or old.keys() != new.keys():
         raise ValueError("Missing or unequal coverage")
@@ -56,6 +101,17 @@ def compare(old, new, benchmark=None):
     )
     if gate["verdict"] == "incomplete":
         raise ValueError(f"Unverified comparison: {gate['reasons']}")
+    all_rows = [*old.values(), *new.values()]
+    latency_available = (
+        all(hardware_known(row) and finite_latency(row) for row in all_rows)
+        and len(
+            {
+                json.dumps(row["runtime_manifest"].get("hardware"), sort_keys=True)
+                for row in all_rows
+            }
+        )
+        == 1
+    )
     cases = {}
     for key, a in old.items():
         b = new[key]
@@ -72,7 +128,12 @@ def compare(old, new, benchmark=None):
     details = []
     for case, pairs in sorted(cases.items()):
         item = {"case_id": case, "paired_rows": len(pairs)}
-        for metric in ("accuracy", "citation_accuracy", "passed", "latency_ms"):
+        for metric in (
+            "accuracy",
+            "citation_accuracy",
+            "passed",
+            *(("latency_ms",) if latency_available else ()),
+        ):
             for arm, i in (("baseline", 0), ("candidate", 1)):
                 item[f"{arm}_{metric}"] = statistics.mean(p[i][metric] for p in pairs)
             item[f"delta_{metric}"] = (
@@ -91,6 +152,12 @@ def compare(old, new, benchmark=None):
         ),
         "cases": details,
         "metrics": {},
+        "latency": {
+            "reported": latency_available,
+            "scope": "matched declared hardware; load and thermal state are not controlled"
+            if latency_available
+            else "omitted: missing/mixed hardware identity or invalid latency",
+        },
     }
     for metric in ("accuracy", "citation_accuracy", "passed"):
         deltas = [d[f"delta_{metric}"] for d in details]

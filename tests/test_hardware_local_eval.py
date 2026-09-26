@@ -54,6 +54,42 @@ def test_cpu_sampling_never_invokes_nvidia_tooling(monkeypatch):
     assert "process_status" in state
 
 
+@pytest.mark.parametrize("include_gpu", [False, True])
+def test_hardware_identity_records_models_and_hashes_private_ids(
+    tmp_path, monkeypatch, include_gpu
+):
+    from scripts import hardware_local_eval as runner
+
+    files = {}
+    for index, (name, content) in enumerate(
+        {
+            "/proc/cpuinfo": "model name : Test CPU\n",
+            "/proc/meminfo": "MemTotal: 100000 kB\n",
+            "/etc/machine-id": "private-host-id\n",
+        }.items()
+    ):
+        path = tmp_path / str(index)
+        path.write_text(content)
+        files[name] = path
+    monkeypatch.setattr(runner, "Path", lambda name: files[name])
+    monkeypatch.setattr(runner.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(
+        runner,
+        "capture",
+        lambda command: "GPU-private-id, Test GPU, 24576, 123.4"
+        if include_gpu
+        else pytest.fail("CPU-only hardware discovery must not probe NVIDIA"),
+    )
+    result = runner.hardware_identity(include_gpu)
+    assert result["cpu_model"] == "Test CPU"
+    assert result["logical_cpus"] == 8
+    assert result["ram_bytes"] == 100000 * 1024
+    assert result["uses_gpu"] is include_gpu
+    assert len(result["gpus"]) == int(include_gpu)
+    assert "private-host-id" not in json.dumps(result)
+    assert "GPU-private-id" not in json.dumps(result)
+
+
 def test_cpu_only_cell_starts_without_gpu_probes(tmp_path, monkeypatch):
     from scripts import hardware_local_eval as runner
 
@@ -187,6 +223,7 @@ def test_owned_launch_overrides_adapter_and_checks_all_gpus(
     )
     monkeypatch.setenv("HW_ADAPTER_ID", "unrelated-inherited-adapter")
     monkeypatch.setenv("HW_RUNNER_SHA256", "unrelated-inherited-runner")
+    monkeypatch.setattr(runner, "hardware_identity", lambda include_gpu: {"test": True})
     launched = []
 
     def launch(command, **kwargs):
