@@ -187,6 +187,22 @@ def allocated_context(context):
     return ((context + 255) // 256) * 256
 
 
+def verify_gpu_headroom(snapshot, minimum_mib):
+    """Conservatively reserve every GPU reported by nvidia-smi."""
+    rows = snapshot.strip().splitlines()
+    if not rows:
+        raise RuntimeError("Cannot establish GPU headroom: no devices reported")
+    for index, row in enumerate(rows):
+        try:
+            free = float(row.split(",")[1])
+        except (IndexError, ValueError) as exc:
+            raise RuntimeError(f"Cannot establish GPU {index} headroom") from exc
+        if not math.isfinite(free) or free < minimum_mib:
+            raise RuntimeError(
+                f"GPU {index} is occupied or unavailable; refusing to unload another workload"
+            )
+
+
 def managed_environment(enabled, inherited):
     """Scope CUDA managed allocation to the child, with no ambient opt-in."""
     env = dict(inherited)
@@ -315,9 +331,7 @@ def run_cell(args, model, context, version):
     baseline = sample()
     if baseline["available_ram"] < args.min_ram_gib * 1024**3:
         raise RuntimeError("Insufficient RAM reserve before launch")
-    free_gpu = float(baseline["gpu"].split(",")[1])
-    if free_gpu < args.min_free_gpu_mib:
-        raise RuntimeError("GPU is occupied; refusing to unload another workload")
+    verify_gpu_headroom(baseline["gpu"], args.min_free_gpu_mib)
     cmd = command(args, model, context)
     runtime = {
         "engine": "Unsloth native llama.cpp",
@@ -374,6 +388,7 @@ def run_cell(args, model, context, version):
             "VLLM_BASE_URL": base + "/v1",
             "DEFAULT_MODEL": model["id"],
             "HW_MODEL_DIGEST": model["sha256"],
+            "HW_ADAPTER_ID": "none",
             "HW_WEIGHTS_FORMAT": model["quant"],
             "HW_MAX_CONTEXT": str(allocated_context(context)),
             "HW_TRIALS": str(args.trials),

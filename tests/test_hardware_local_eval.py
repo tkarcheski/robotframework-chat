@@ -13,6 +13,7 @@ from scripts.hardware_local_eval import (
     managed_environment,
     terminate,
     verify_coverage,
+    verify_gpu_headroom,
 )
 
 
@@ -27,6 +28,84 @@ def settings():
         cpu_moe_layers=0,
         constrain_json=False,
     )
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    ["", "100, 23000, 0\n23000, 100, 90", "0, N/A, 0", "0, nan, 0", "0"],
+)
+def test_gpu_guard_rejects_busy_later_device_or_unknown_headroom(snapshot):
+    with pytest.raises(RuntimeError):
+        verify_gpu_headroom(snapshot, 20000)
+
+
+def test_gpu_guard_accepts_headroom_on_every_reported_device():
+    verify_gpu_headroom("100, 23000, 0\n200, 22000, 0\n", 20000)
+
+
+@pytest.mark.parametrize("busy_second_gpu", [False, True])
+def test_owned_launch_overrides_adapter_and_checks_all_gpus(
+    tmp_path, monkeypatch, busy_second_gpu
+):
+    from scripts import hardware_local_eval as runner
+
+    args = settings()
+    args.output = tmp_path
+    args.min_ram_gib = 1
+    args.min_free_gpu_mib = 20000
+    args.unified_memory = False
+    args.trials = 1
+    args.output_tokens = 2048
+    args.reference_tokenizer = tmp_path / "tokenizer.json"
+    args.cases = "all"
+    args.positions = "spread"
+    args.timeout = 60
+    model = dict(
+        name="base",
+        id="base",
+        path="base.gguf",
+        native_context=262144,
+        sha256="a" * 64,
+        quant="Q4_K_M",
+        tokenizer="tokenizer.json",
+    )
+
+    class FreePort:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def connect_ex(self, address):
+            return 1
+
+    monkeypatch.setattr(runner.socket, "socket", lambda: FreePort())
+    monkeypatch.setattr(
+        runner,
+        "sample",
+        lambda: {
+            "available_ram": 10 * 1024**3,
+            "gpu": "100, 23000, 0\n200, "
+            + ("100" if busy_second_gpu else "22000")
+            + ", 0",
+        },
+    )
+    monkeypatch.setattr(runner, "capture", lambda command: "test-revision")
+    monkeypatch.setenv("HW_ADAPTER_ID", "unrelated-inherited-adapter")
+    launched = []
+
+    def launch(command, **kwargs):
+        launched.append(kwargs["env"])
+        assert kwargs["env"]["HW_ADAPTER_ID"] == "none"
+        raise RuntimeError("test launch boundary")
+
+    monkeypatch.setattr(runner.subprocess, "Popen", launch)
+    with pytest.raises(
+        RuntimeError, match="GPU 1" if busy_second_gpu else "test launch boundary"
+    ):
+        runner.run_cell(args, model, 4096, "test-version")
+    assert len(launched) == (0 if busy_second_gpu else 1)
 
 
 def test_native_command_preserves_requested_context_and_disables_eviction():

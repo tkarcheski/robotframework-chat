@@ -213,3 +213,9 @@ An entire comparison arm must use one fixture, grader and harness revision, as
 well as one model-tokenizer identity. Matching versions only within individual
 case pairs is insufficient when combining suites into a promotion profile.
 Blank or nonstring model digests cannot establish weight identity.
+
+The owned runner launches base GGUF weights directly and explicitly records
+adapter identity `none`, overriding any inherited `HW_ADAPTER_ID`. Its headroom
+guard checks every GPU reported by `nvidia-smi` before launch and rejects missing
+or nonnumeric memory readings. This is conservative: devices hidden from CUDA
+are also checked, so a busy hidden device can prevent a run.
