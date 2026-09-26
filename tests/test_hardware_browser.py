@@ -207,3 +207,25 @@ def test_real_browser_saves_report_with_scripted_instrument_control(
             assert list(tmp_path.glob("*.png"))
     finally:
         browser.close_browser()
+
+
+@pytest.mark.parametrize("tool", ["browser_read_markdown", "browser_screenshot"])
+@pytest.mark.parametrize("arguments", [None, False, 0, "", []])
+def test_falsey_nonobject_tool_arguments_are_rejected_as_model_actions(
+    benchmark, browser, tmp_path, monkeypatch, tool, arguments
+):
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        monkeypatch.setattr(
+            box.dispatcher, "dispatch", lambda call: pytest.fail("Invalid dispatch")
+        )
+        assert box._allowed(tool, {})
+        result = run_browser_agent(
+            benchmark["cases"]["uno-current-budget"],
+            box,
+            lambda prompt: json.dumps({"tool": tool, "arguments": arguments}),
+        )
+        assert result["agent_status"] == "unsafe_action"
+        assert result["unsafe_actions"] == 1
+        assert result["action_count"] == 1
+        assert result["passed"] is False
+        assert result["trace"][0]["observation"]["error"] == "action_not_allowlisted"

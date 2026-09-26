@@ -312,3 +312,8 @@ loaded later or cryptographic verification of imported artifacts. The live
 server and its build inputs must remain unchanged during a comparison.
 Negative GPU, CPU-FFN and CPU-MoE layer counts fail CLI preflight, matching the
 runtime schema required by the artifact gate.
+
+Text results must contain exactly one recorded call whose prompt SHA256 matches
+the evaluated row's prompt SHA256. Each browser turn retains its own valid
+prompt digest, since the browser history changes between calls. Missing or
+unrelated text-call accounting cannot establish that the evaluated prompt fit.

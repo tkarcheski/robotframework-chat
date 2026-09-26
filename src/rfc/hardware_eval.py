@@ -339,13 +339,19 @@ def verified_call_accounting(row: dict[str, Any]) -> bool:
     sampling = row.get("sampling")
     limit = row.get("context_tokens") or row.get("effective_context_tokens")
     output_limit = sampling.get("max_tokens") if isinstance(sampling, dict) else None
+    browser = str(row.get("case_id", "")).endswith(":browser")
     return (
         type(limit) is int
         and type(output_limit) is int
         and isinstance(calls, list)
         and bool(calls)
+        and (browser or len(calls) == 1)
         and all(
             isinstance(call, dict)
+            and isinstance(call.get("prompt_sha256"), str)
+            and len(call["prompt_sha256"]) == 64
+            and all(c in "0123456789abcdef" for c in call["prompt_sha256"])
+            and (browser or call["prompt_sha256"] == row.get("prompt_sha256"))
             and call.get("token_count_verified") is True
             and isinstance(call.get("server_metrics"), dict)
             and verify_token_usage(

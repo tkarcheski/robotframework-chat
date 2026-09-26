@@ -277,6 +277,7 @@ def row(case_id="a", **overrides):
         "token_count_verified": True,
         "calls": [
             {
+                "prompt_sha256": "a" * 64,
                 "local_input_tokens": 100,
                 "server_metrics": {
                     "prompt_eval_count": 112,
@@ -288,6 +289,8 @@ def row(case_id="a", **overrides):
         ],
     }
     result.update(overrides)
+    if "calls" not in overrides:
+        result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
     if "sampling" not in overrides:
         result["sampling"]["seed"] = result["trial"]
     if "checks" not in overrides:

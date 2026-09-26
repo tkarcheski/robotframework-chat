@@ -774,3 +774,19 @@ def test_rebuilt_server_with_unchanged_version_label_cannot_compare(changed):
             "b" * 64
         )
     assert compare_runs([old], [new])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("prompt_digest", [None, "", "not-a-digest", "f" * 64])
+def test_unrelated_or_missing_text_call_prompt_cannot_qualify(prompt_digest):
+    old = row()
+    old["calls"][0]["prompt_sha256"] = prompt_digest
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+    del old["calls"][0]["prompt_sha256"]
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_text_result_requires_exactly_one_bound_call():
+    old = row()
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "eligible"
+    old["calls"].append(copy.deepcopy(old["calls"][0]))
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
