@@ -73,7 +73,14 @@ def test_external_or_arbitrary_actions_blocked_before_dispatch(
         browser.type_text.assert_not_called()
 
 
-def test_model_must_read_document_not_just_open_it(benchmark, browser, tmp_path):
+def test_model_must_read_document_not_just_open_it(
+    benchmark, browser, tmp_path, monkeypatch
+):
+    # This tests observation tracking, not optional HTML conversion. The real
+    # Chromium smoke below exercises markdownify with the playwright extra.
+    monkeypatch.setattr(
+        "rfc.computer_use_keywords._default_markdown_converter", lambda text: text
+    )
     with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
         assert box.dispatch("browser_new_page", {"url": "sandbox:/doc/uno-spec"})[
             "success"
