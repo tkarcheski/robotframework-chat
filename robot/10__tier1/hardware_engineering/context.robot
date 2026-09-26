@@ -15,6 +15,8 @@ ${POSITIONS}      %{HW_POSITIONS=start,middle,end,spread}
 ${CASES}          %{HW_CONTEXT_CASES=all}
 
 *** Test Cases ***          TOTAL CONTEXT
+Hardware Context 4K        4096
+Hardware Context 8K        8192
 Hardware Context 16K       16384
 Hardware Context 32K       32768
 Hardware Context 64K       65536

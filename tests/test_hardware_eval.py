@@ -200,6 +200,7 @@ def row(case_id="a", **overrides):
     result = {
         "case_id": case_id,
         "context_tokens": 16384,
+        "effective_context_tokens": 16384,
         "position": "middle",
         "trial": 0,
         "prompt_sha256": "prompt",
@@ -217,6 +218,7 @@ def row(case_id="a", **overrides):
         "model": "baseline",
         "model_digest": "sha-a",
         "adapter_id": "none",
+        "weights_format": "UD-Q4_K_M",
         "status": "completed",
         "live": True,
         "accuracy": 0.75,

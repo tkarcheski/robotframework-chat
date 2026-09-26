@@ -76,7 +76,10 @@ this suite does not attest the server's weights cryptographically.
 
 For gate eligibility, `HW_RUNTIME_MANIFEST` must include nonempty `engine`,
 `version`, `rope` and `kv_cache_dtype` fields. The complete manifest must match
-for each baseline/candidate pair. Changing serving configuration is a separate
+for each baseline/candidate pair. The effective context limit is archived even
+for short and browser tasks, and must match. A known, identical weight format
+is required too; missing or `unspecified` quantization fails closed.
+Changing serving configuration is a separate
 experiment, not a passing model-only comparison.
 
 Every task repeats three times with seeds 0, 1, 2 and temperature 0. Some
@@ -106,7 +109,7 @@ export HW_CONTEXT_CASES=fire-pinmux-change,mixed-voltage-review,fire-gateware-re
 make robot-hardware-context ARGS='--test "Hardware Context 16K"'
 ```
 
-The available total-context budgets are 16,384; 32,768; 65,536; 131,072;
+The available total-context budgets are 4,096; 8,192; 16,384; 32,768; 65,536; 131,072;
 262,144; 524,288; and 1,000,000 tokens. Each reserves 2,048 output tokens and
 256 tokens for the chat wrapper. Exact reference token counting includes the
 instructions, evidence, questions and distractors. Evidence is never truncated
@@ -210,7 +213,8 @@ Verdicts:
   missing identity/token evidence, changed comparison coordinates or a
   mismatch with the required profile.
 - **`blocked`:** Any invalid candidate answer schema, critical failure/unsafe action or any paired
-  fact/citation-score regression.
+  fact/citation-score regression, including a per-question regression hidden by
+  an improvement to another answer in the same case.
 - **`eligible`:** Complete comparable evidence with no such regression.
   Eligibility is not statistical significance, proof of improvement, release
   approval or automatic deployment.

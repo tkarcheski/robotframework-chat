@@ -18,7 +18,7 @@ import yaml
 from .thinking import parse_thinking
 
 GRADER_VERSION = "hardware-v1"
-CONTEXT_LEVELS = (16384, 32768, 65536, 131072, 262144, 524288, 1000000)
+CONTEXT_LEVELS = (4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1000000)
 POSITIONS = ("start", "middle", "end", "spread")
 OUTPUT_RESERVE = 2048
 CHAT_RESERVE = 256
@@ -228,11 +228,14 @@ def parse_answer(raw: str) -> dict[str, Any]:
 def _matches(value: Any, rule: dict[str, Any]) -> bool:
     expected = rule["value"]
     if type(expected) in (int, float):
-        return (
-            type(value) in (int, float)
-            and math.isfinite(value)
-            and abs(value - expected) <= rule.get("tolerance", 0)
-        )
+        if type(value) not in (int, float):
+            return False
+        if type(value) is float and not math.isfinite(value):
+            return False
+        try:
+            return bool(abs(value - expected) <= rule.get("tolerance", 0))
+        except OverflowError:
+            return False
     if isinstance(expected, list):
         return (
             isinstance(value, list)
@@ -321,6 +324,8 @@ def compare_runs(
         "reference_tokenizer",
         "sampling",
         "runtime_manifest",
+        "weights_format",
+        "effective_context_tokens",
     )
     if not baseline or not candidate or not required_coordinates:
         result["reasons"] = ["empty_run_or_missing_required_profile"]
@@ -351,6 +356,10 @@ def compare_runs(
                 or not row.get("model_digest")
                 or not row.get("token_count_verified")
                 or not runtime_complete
+                or not row.get("weights_format")
+                or row.get("weights_format") == "unspecified"
+                or type(row.get("effective_context_tokens")) is not int
+                or row.get("effective_context_tokens", 0) <= 0
                 or any(row.get(k) is None for k in coordinate + held_fixed)
                 or any(
                     type(row.get(k)) not in (int, float)
@@ -384,12 +393,21 @@ def compare_runs(
     regressions = []
     for key, old in by_key[0].items():
         new = by_key[1][key]
+        old_checks = old.get("checks", {})
+        new_checks = new.get("checks", {})
+        question_regressed = any(
+            check.get(field) is True
+            and new_checks.get(question, {}).get(field) is not True
+            for question, check in old_checks.items()
+            for field in ("correct", "citation_correct")
+        )
         if (
             new["critical_failures"] > 0
             or new["unsafe_actions"] > 0
             or new.get("schema_valid") is not True
             or new["accuracy"] < old["accuracy"]
             or new["citation_accuracy"] < old["citation_accuracy"]
+            or question_regressed
         ):
             regressions.append(list(key))
     result["regressions"] = regressions

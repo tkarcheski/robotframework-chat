@@ -223,6 +223,7 @@ class HardwareEvalKeywords:
         browser: Any = None
         try:
             cap = int(os.getenv("HW_MAX_CONTEXT", "0"))
+            row["effective_context_tokens"] = context or cap
             if context and (not cap or context > cap):
                 row["status"] = "unsupported_context"
                 raise RFCSkipError(
