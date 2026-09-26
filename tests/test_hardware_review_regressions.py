@@ -82,6 +82,8 @@ def test_equal_aggregate_scores_do_not_hide_question_regression():
     new = copy.deepcopy(old)
     new["checks"]["one"]["correct"] = False
     new["checks"]["two"]["correct"] = True
+    new["answer"]["answers"][0]["value"] = None
+    new["answer"]["answers"][1]["value"] = 1
     assert (
         compare_runs([old], [new], synthetic_benchmark({"one": False, "two": False}))[
             "verdict"
@@ -1005,3 +1007,49 @@ def test_document_observation_requires_complete_trusted_content(corruption):
         synthetic_benchmark(),
     )
     assert result["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("browser", [False, True])
+def test_archived_wrong_answer_cannot_self_report_perfect_scores(browser):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    benchmark = synthetic_benchmark()
+    for rule in benchmark["cases"]["a"]["expected"].values():
+        rule["value"] = 1
+    answer = {
+        "answers": [
+            {"id": question, "value": 0, "evidence": ["fixture-doc"]}
+            for question in benchmark["cases"]["a"]["expected"]
+        ],
+        "explanation": "Incorrect fixture answer",
+    }
+    case_id = "a:browser" if browser else "a"
+    old = row(
+        case_id, accuracy=1, sources_observed=True, report_saved=True, answer=answer
+    )
+    result = compare_paired(
+        [old], [copy.deepcopy(old)], {(case_id, 16384, "middle", 0)}, benchmark
+    )
+    assert result["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("browser", [False, True])
+def test_honestly_graded_incorrect_answer_is_a_regression_not_missing_evidence(browser):
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    case_id = "a:browser" if browser else "a"
+    old = row(case_id, accuracy=1, sources_observed=True, report_saved=True)
+    new = row(case_id, accuracy=0, sources_observed=True, report_saved=True)
+    result = compare_paired(
+        [old], [new], {(case_id, 16384, "middle", 0)}, synthetic_benchmark()
+    )
+    assert result["verdict"] == "blocked"
+    assert result["paired_cases"] == 1
+
+
+@pytest.mark.parametrize("answer", [None, [], "unparsed", {}])
+def test_missing_or_inconsistent_parsed_answer_is_incomplete(answer):
+    old = row(accuracy=1, answer=answer)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+    del old["answer"]
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"

@@ -32,6 +32,8 @@ def test_repetitions_remain_two_case_clusters():
         r.update(model="candidate", accuracy=1.0, passed=True)
         for check in r["checks"].values():
             check["correct"] = True
+        for answer in r["answer"]["answers"]:
+            answer["value"] = 1
     result = compare(old, new, synthetic_benchmark())
     assert result["paired_rows"] == 6
     assert result["independent_case_clusters"] == 2

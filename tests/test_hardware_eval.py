@@ -50,7 +50,7 @@ def synthetic_benchmark(questions=None):
                 "task": "Synthetic fixture task",
                 "questions": [{"id": q, "question": q} for q in questions],
                 "expected": {
-                    q: {"critical": critical, "evidence": ["fixture-doc"]}
+                    q: {"value": 1, "critical": critical, "evidence": ["fixture-doc"]}
                     for q, critical in questions.items()
                 },
             }
@@ -308,17 +308,56 @@ def row(case_id="a", **overrides):
         ],
     }
     result.update(overrides)
+    if "checks" not in overrides:
+        result["checks"] = {
+            f"q{i}": {
+                "correct": i < result["accuracy"] * 4,
+                "citation_correct": i < result["citation_accuracy"] * 4,
+                "critical": i >= 4 - result["critical_failures"],
+            }
+            for i in range(4)
+        }
+    name = case_id.removesuffix(":browser")
+    benchmark = synthetic_benchmark()
+    if name not in benchmark["cases"]:
+        benchmark = load_benchmark(FIXTURES)
+    if name not in benchmark["cases"]:
+        benchmark = load_benchmark(FIXTURES / "product")
+    case = benchmark["cases"][name]
+    if "answer" not in overrides:
+        result["answer"] = {
+            "answers": [
+                {
+                    "id": question,
+                    "value": case["expected"].get(question, {"value": 1})["value"]
+                    if check.get("correct")
+                    else None,
+                    "evidence": case["expected"].get(
+                        question, {"evidence": ["fixture-doc"]}
+                    )["evidence"]
+                    if check.get("citation_correct")
+                    else [],
+                }
+                for question, check in (
+                    result["checks"].items()
+                    if isinstance(result["checks"], dict)
+                    else []
+                )
+                if isinstance(check, dict)
+            ],
+            "explanation": "Fixture answer",
+        }
+        if result["schema_valid"] is False:
+            result["answer"] = {}
+            for field, value in score_answer(case, {}).items():
+                if field not in overrides:
+                    result[field] = value
     if case_id.endswith(":browser"):
-        name = case_id.removesuffix(":browser")
-        benchmark = synthetic_benchmark()
-        if name not in benchmark["cases"]:
-            benchmark = load_benchmark(FIXTURES)
-        case = benchmark["cases"][name]
         prompt = browser_task_prompt(case)
         if "prompt_sha256" not in overrides:
             result["prompt_sha256"] = digest(prompt)
         result.setdefault("agent_status", "completed")
-        answer = result.setdefault("answer", {"answers": [], "explanation": "fixture"})
+        answer = result["answer"]
         trace = []
 
         def action(tool, arguments, output=""):
@@ -369,15 +408,6 @@ def row(case_id="a", **overrides):
         result["calls"][0]["prompt_sha256"] = result["prompt_sha256"]
     if "sampling" not in overrides:
         result["sampling"]["seed"] = result["trial"]
-    if "checks" not in overrides:
-        result["checks"] = {
-            f"q{i}": {
-                "correct": i < result["accuracy"] * 4,
-                "citation_correct": i < result["citation_accuracy"] * 4,
-                "critical": i >= 4 - result["critical_failures"],
-            }
-            for i in range(4)
-        }
     if "passed" not in overrides:
         result["passed"] = (
             result["schema_valid"] is True

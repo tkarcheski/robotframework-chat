@@ -356,6 +356,7 @@ class HardwareEvalKeywords:
                 except ValueError as exc:
                     answer = {}
                     row["parse_error"] = type(exc).__name__
+                row["answer"] = answer
                 row.update(score_answer(case, answer))
             else:
                 try:

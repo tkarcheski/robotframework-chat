@@ -62,6 +62,11 @@ def test_mocked_model_never_claims_live_or_deployment_evidence(tmp_path):
     lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=client)
     result = lib.evaluate_hardware_case("uno-current-budget")
     assert result["passed"]
+    assert result["answer"] == json.loads(client.generate.return_value)
+    assert (
+        json.loads((tmp_path / "hardware-results.jsonl").read_text())["answer"]
+        == result["answer"]
+    )
     assert not result["live"]
     assert not result["token_count_verified"]
     assert (tmp_path / "hardware-results.jsonl").exists()
@@ -222,3 +227,16 @@ def test_failed_assertion_surfaces_to_robot(tmp_path):
     lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path))
     with pytest.raises(AssertionError, match="correctness"):
         lib.assert_hardware_case_passed({"case_id": "bad", "passed": False})
+
+
+def test_invalid_json_archives_empty_parsed_answer(tmp_path):
+    client = MagicMock(model="scripted-test-double", last_metrics={})
+    client.generate.return_value = "not JSON"
+    lib = HardwareEvalKeywords(str(FIXTURES), str(tmp_path), client=client)
+    result = lib.evaluate_hardware_case("uno-current-budget")
+    archived = json.loads((tmp_path / "hardware-results.jsonl").read_text())
+    assert result["status"] == "completed"
+    assert archived["answer"] == {}
+    assert archived["schema_valid"] is False
+    assert archived["accuracy"] == 0
+    assert archived["parse_error"] == "JSONDecodeError"

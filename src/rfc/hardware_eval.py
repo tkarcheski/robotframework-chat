@@ -764,6 +764,16 @@ def compare_runs(
                 case_id.removesuffix(":browser") if isinstance(case_id, str) else None
             )
             expected = case["expected"] if case else None
+            answer_grade = (
+                score_answer(case, row["answer"])
+                if case is not None and isinstance(row.get("answer"), dict)
+                else None
+            )
+            answer_grade_matches = answer_grade is not None and all(
+                row.get(field) == value
+                for field, value in answer_grade.items()
+                if field != "passed"  # Combined with workflow/safety below.
+            )
             if (
                 row.get("fixture_sha256") != benchmark["sha256"]
                 or expected is None
@@ -896,6 +906,7 @@ def compare_runs(
                     )
                 )
                 or not scores_match_checks
+                or not answer_grade_matches
                 or not critical_matches
                 or not pass_matches
                 or not provenance_complete

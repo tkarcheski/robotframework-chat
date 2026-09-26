@@ -338,3 +338,11 @@ list, action/error counts and terminal status must agree with the row, and the
 saved JSON must match its final answer. This checks internal artifact consistency;
 it does not authenticate externally supplied browser observations. Older rows
 are not backfilled with a new grader or trace.
+
+Every completed text and browser row archives its parsed `answer`. The gate
+independently runs the supported grader against the trusted fixture and requires
+its schema, question checks, fact/citation means and critical-failure count to
+match the recorded fields. Workflow and safety checks additionally determine
+full pass status. Missing answers or self-declared scores that disagree with the
+answer are incomplete evidence. Parsing failures archive an empty object and
+remain completed model failures when their grading and other provenance agree.
