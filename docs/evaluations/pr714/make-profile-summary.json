@@ -1,0 +1,122 @@
+{
+  "scope": "Complete 102-coordinate comparison collected through Make/Robot at 0182cf7. Short 4K, browser 16K and context 16K, three trials per coordinate. Descriptive public regression evidence, not general superiority or deployment approval.",
+  "source_commit": "0182cf70250757048b0c2ef311cd88500dfb74f9",
+  "aggregation": "Concatenated original Robot JSONL files; grades and gate are the framework outputs without repaired answers.",
+  "baseline": {
+    "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+    "model_digest": "ac0e2c1189e055faa36eff361580e79c5bd6f8e76bffb4ce547f167d53e31a61",
+    "summary": {
+      "rows": 102,
+      "strict_passes": 39,
+      "token_verified": 102,
+      "mean_fact_accuracy": 0.8725490196078431,
+      "mean_exact_citation_accuracy": 0.5147058823529412,
+      "harness_versions": [
+        "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+      ]
+    },
+    "suites": [
+      {
+        "suite": "browser",
+        "result": {
+          "rows": 12,
+          "strict_passes": 0,
+          "token_verified": 12,
+          "mean_fact_accuracy": 0,
+          "mean_exact_citation_accuracy": 0,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      },
+      {
+        "suite": "context16k",
+        "result": {
+          "rows": 36,
+          "strict_passes": 3,
+          "token_verified": 36,
+          "mean_fact_accuracy": 1,
+          "mean_exact_citation_accuracy": 0.14583333333333334,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      },
+      {
+        "suite": "short4k",
+        "result": {
+          "rows": 54,
+          "strict_passes": 36,
+          "token_verified": 54,
+          "mean_fact_accuracy": 0.9814814814814815,
+          "mean_exact_citation_accuracy": 0.8750000000000001,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      }
+    ]
+  },
+  "candidate": {
+    "model": "unsloth/Qwen3.8-27B-GGUF",
+    "model_digest": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+    "summary": {
+      "rows": 102,
+      "strict_passes": 63,
+      "token_verified": 102,
+      "mean_fact_accuracy": 0.8823529411764706,
+      "mean_exact_citation_accuracy": 0.7892156862745098,
+      "harness_versions": [
+        "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+      ]
+    },
+    "suites": [
+      {
+        "suite": "browser",
+        "result": {
+          "rows": 12,
+          "strict_passes": 3,
+          "token_verified": 12,
+          "mean_fact_accuracy": 0.25,
+          "mean_exact_citation_accuracy": 0.25,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      },
+      {
+        "suite": "context16k",
+        "result": {
+          "rows": 36,
+          "strict_passes": 24,
+          "token_verified": 36,
+          "mean_fact_accuracy": 1,
+          "mean_exact_citation_accuracy": 0.8333333333333334,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      },
+      {
+        "suite": "short4k",
+        "result": {
+          "rows": 54,
+          "strict_passes": 36,
+          "token_verified": 54,
+          "mean_fact_accuracy": 0.9444444444444443,
+          "mean_exact_citation_accuracy": 0.8796296296296297,
+          "harness_versions": [
+            "57d452b71125b2480ce4a2346715bd5e2fb00abed74b43867af6ea22859eaa0c"
+          ]
+        }
+      }
+    ]
+  },
+  "gate": {
+    "verdict": "blocked",
+    "paired_cases": 102,
+    "blocking_coordinates": 24,
+    "mean_accuracy_delta": 0.00980392156862745,
+    "report": "make-profile-gate.json"
+  }
+}

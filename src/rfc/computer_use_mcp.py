@@ -194,7 +194,7 @@ def _build_browser() -> Any:  # pragma: no cover - requires playwright + rfbrows
     Only exercised by ``main``; needs the ``playwright`` extra and
     ``rfbrowser init``. Kept out of unit tests (no live browser in CI).
     """
-    from Browser import Browser  # type: ignore[import-not-found]
+    from Browser import Browser  # type: ignore[import-not-found,import-untyped]
 
     browser = Browser()
     browser.new_browser(headless=True)

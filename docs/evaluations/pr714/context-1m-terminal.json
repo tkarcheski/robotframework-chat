@@ -1,0 +1,253 @@
+{
+  "scope": "Terminal historical 1M capacity probe: two public cases, one spread position, one trial. Not a general model-quality or minimum-hardware claim.",
+  "instrument": "Frozen 0190d50; token verification and scores are historical. Missing current completion/build/response-binding metadata means these rows cannot satisfy the current profile gate. Raw files are preserved, not relabeled.",
+  "hardware": "RTX 4090 24 GiB, Ryzen 5800X, 125 GiB usable RAM; sampled memory includes other host activity.",
+  "context_budget": 1000000,
+  "allocated_context": 1000192,
+  "decision": "No expansion beyond 1M: Qwen3.8 timed out without a completed answer; Qwen3.6 took about 100 minutes per answer and failed a critical physical-resource decision.",
+  "models": {
+    "qwen36": {
+      "model": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "weights_sha256": "ac0e2c1189e055faa36eff361580e79c5bd6f8e76bffb4ce547f167d53e31a61",
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-4",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "status": "completed",
+      "error": null,
+      "elapsed_seconds": 12189.242082128068,
+      "load_seconds": 9.656657031038776,
+      "suites": {
+        "context": {
+          "robot_exit": 1,
+          "rows": 2,
+          "passed": 0,
+          "completed": 2,
+          "token_verified": 2
+        }
+      }
+    },
+    "qwen38": {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "weights_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+      "source_commit": "0190d50d4d3c8a4c616f0ade1f98fff178c98772",
+      "runtime": {
+        "engine": "Unsloth native llama.cpp",
+        "version": "version: 0.3.0-dev (build 10798, commit d6b1d279f)\nbuilt with GNU 11.4.0 for Linux x86_64 (Compiled by the Unsloth team)",
+        "rope": "yarn-4",
+        "kv_cache_dtype": "q4_0",
+        "gpu_layers": 999,
+        "kv_placement": "gpu",
+        "cpu_ffn_layers": 0,
+        "cpu_moe_layers": 0,
+        "parallel": 1,
+        "n_batch": 512,
+        "n_ubatch": 128,
+        "threads": 8,
+        "enable_thinking": false,
+        "speculation": "off",
+        "vision": false,
+        "fit": false,
+        "context_shift": false,
+        "host_prompt_cache_mib": 0,
+        "cuda_managed_memory": true
+      },
+      "status": "error",
+      "error": "Cell deadline reached",
+      "elapsed_seconds": 21604.78952785791,
+      "load_seconds": 17.252074372954667,
+      "suites": {}
+    }
+  },
+  "qwen36_results": [
+    {
+      "case_id": "fire-pinmux-change",
+      "status": "completed",
+      "accuracy": 1.0,
+      "citation_accuracy": 0.0,
+      "passed": false,
+      "checks": {
+        "current_function": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        },
+        "current_image": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        },
+        "damage_proven": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": true
+        }
+      },
+      "latency_ms": 5982008.899312001,
+      "token_count_verified": true,
+      "calls": [
+        {
+          "latency_ms": 5953909.832343925,
+          "local_input_tokens": 997691,
+          "prompt_sha256": "d0ac0ef2797db980b32a309f864b35f07949f0a37142c202161b16292ea3bfd2",
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 282,
+            "eval_count": 282,
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 997703,
+            "prompt_tokens": 997703,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 997985
+          },
+          "token_count_verified": true
+        }
+      ],
+      "artifact": "hardware-fire-pinmux-change-text-1000000-spread-0",
+      "answer": {
+        "answers": [
+          {
+            "id": "current_image",
+            "value": "GPIOS",
+            "evidence": [
+              "DOCUMENT gateware-observation",
+              "DOCUMENT fire-pinmux"
+            ]
+          },
+          {
+            "id": "current_function",
+            "value": "MSS GPIO_2[10]",
+            "evidence": [
+              "DOCUMENT gateware-observation",
+              "DOCUMENT fire-pinmux"
+            ]
+          },
+          {
+            "id": "damage_proven",
+            "value": false,
+            "evidence": [
+              "DOCUMENT gateware-observation"
+            ]
+          }
+        ],
+        "explanation": "The assembly notes were superseded by ECN-2, which states the current device has the GPIOS image loaded (Evidence: DOCUMENT gateware-observation). According to the pinmux documentation, in the GPIOS image, P8.13 is configured as MSS GPIO_2[10] (Evidence: DOCUMENT fire-pinmux). The observation of a static logic state is consistent with a GPIO input/output and does not constitute proof of physical damage; the document explicitly states 'no waveform proves damage' (Evidence: DOCUMENT gateware-observation)."
+      }
+    },
+    {
+      "case_id": "fire-gateware-resources",
+      "status": "completed",
+      "accuracy": 0.75,
+      "citation_accuracy": 0.0,
+      "passed": false,
+      "checks": {
+        "bulk_bus": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        },
+        "control_bus": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        },
+        "simultaneous_feasible": {
+          "citation_correct": false,
+          "correct": false,
+          "critical": true
+        },
+        "syzygy_with_m2": {
+          "citation_correct": false,
+          "correct": true,
+          "critical": false
+        }
+      },
+      "latency_ms": 6195618.415221106,
+      "token_count_verified": true,
+      "calls": [
+        {
+          "latency_ms": 6167380.731898826,
+          "local_input_tokens": 997636,
+          "prompt_sha256": "2569666d5be4e41cac014ec559d8757f621348986a14b4dbb91b17d669087591",
+          "server_metrics": {
+            "accepted_prediction_tokens": null,
+            "cached_tokens": 0,
+            "completion_tokens": 431,
+            "eval_count": 431,
+            "model_name": "unsloth/Qwen3.6-35B-A3B-GGUF",
+            "prompt_eval_count": 997648,
+            "prompt_tokens": 997648,
+            "reasoning_tokens": null,
+            "rejected_prediction_tokens": null,
+            "total_tokens": 998079
+          },
+          "token_count_verified": true
+        }
+      ],
+      "artifact": "hardware-fire-gateware-resources-text-1000000-spread-0",
+      "answer": {
+        "answers": [
+          {
+            "id": "simultaneous_feasible",
+            "value": true,
+            "evidence": [
+              "DOCUMENT fire-gateware",
+              "DOCUMENT gateware-requirements"
+            ]
+          },
+          {
+            "id": "syzygy_with_m2",
+            "value": 2,
+            "evidence": [
+              "DOCUMENT fire-gateware"
+            ]
+          },
+          {
+            "id": "control_bus",
+            "value": "APB",
+            "evidence": [
+              "DOCUMENT fire-gateware"
+            ]
+          },
+          {
+            "id": "bulk_bus",
+            "value": "AXI",
+            "evidence": [
+              "DOCUMENT fire-gateware"
+            ]
+          }
+        ],
+        "explanation": "The 'fire-gateware' document states that SYZYGY supports up to three transceivers, but 'only two can be used when M.2 is enabled'. It also explicitly states that to use all three, M.2 gateware must be omitted. However, the 'gateware-requirements' document (Kind: synthetic) explicitly instructs: 'Do not reinterpret simultaneous use as mutually exclusive configurations.' This overrides the hardware limitation described in the gateware architecture doc for the purpose of the requirements specification, implying the design must support the simultaneous configuration (likely via multiplexing or specific FPGA resource allocation not detailed in the summary, but mandated by the requirements doc). Therefore, simultaneous use is feasible per the requirements. For the transceiver count with M.2 enabled, the gateware doc specifies 'only two can be used'. For bus paths, the gateware doc states gateware blocks have an 'APB target interface for control/status registers' and 'Some also use AXI for high-volume transfers to/from DDR'. Thus, APB is the control path and AXI is the bulk data path."
+      }
+    }
+  ],
+  "qwen38_results": {
+    "completed_answers": 0,
+    "scored_cases": 0,
+    "requested_cases": 2,
+    "note": "First case ended in error at the six-hour cell deadline; second case never ran. Absence of a completed answer is not zero factual accuracy."
+  },
+  "source_paths": {
+    "qwen36": "results/pr714/context-million-qwen36-continuation/qwen36-1000000",
+    "qwen38": "results/pr714/context-million-managed/qwen38-1000000"
+  }
+}

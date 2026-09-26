@@ -65,9 +65,12 @@ export HW_MAX_CONTEXT=32768
 export HW_MODEL_TOKENIZER=/absolute/path/to/model/tokenizer.json
 export HW_RUNTIME_MANIFEST="$(cat /absolute/path/to/verified-runtime.json)"
 
-make robot-hardware
-make robot-hardware-browser
+make --environment-overrides robot-hardware
+make --environment-overrides robot-hardware-browser
 ```
+
+`--environment-overrides` keeps these explicit exports above defaults in `.env`.
+The native Make runner handles that precedence for its owned server runs.
 
 For managed local GGUF comparisons, use `make hardware-local-eval ARGS='...'`
 with the native runner's model manifest, tokenizer, context, and server options.
@@ -227,7 +230,7 @@ cat baseline-short/hardware-results.jsonl baseline-browser/hardware-results.json
 cat candidate-short/hardware-results.jsonl candidate-browser/hardware-results.jsonl candidate-16k/hardware-results.jsonl > candidate.jsonl
 export HW_BASELINE_RESULTS=/absolute/path/to/baseline.jsonl
 export HW_CANDIDATE_RESULTS=/absolute/path/to/candidate.jsonl
-make hardware-evaluation-gate
+make hardware-evaluation-gate HW_REFERENCE_TOKENIZER=/absolute/path/to/reference-tokenizer.json
 ```
 
 The checked-in `fixtures/gate_profile.yaml` requires 18 short tasks, four
@@ -265,11 +268,11 @@ tracked separately in [issue #712](https://github.com/tkarcheski/robotframework-
 ## Validate the instrument without a model
 
 ```bash
-uv run pytest tests/test_hardware_eval.py tests/test_hardware_eval_keywords.py tests/test_hardware_browser.py
-uv run robot --dryrun robot/10__tier1/hardware_engineering/
+make code-quality-check
+make robot-dryrun
 
 # Actual Chromium, but a scripted oracle: harness evidence, NOT model evidence.
-HW_BROWSER_SMOKE=1 uv run --extra playwright pytest tests/test_hardware_browser.py
+HW_BROWSER_SMOKE=1 make code-quality-coverage
 ```
 
 Unit-test oracles are deliberately marked non-live and cannot satisfy the

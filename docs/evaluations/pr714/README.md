@@ -1,4 +1,29 @@
-# PR 714 local evaluation — preliminary results
+# PR 714: hardware work on a consumer workstation
+
+**The 1M probe is finished; practical 1M use is not established.** Qwen3.6
+completed two answers in 3 h 23 min, both strict failures, including one wrong
+physical-resource decision. Qwen3.8 reached the six-hour deadline without a
+completed answer. These results justify stopping expansion beyond 1M.
+
+The Make workflow preserves standard Robot reports, actual responses, grades
+and database archives. The complete profile at `0182cf7` produced 102 verified
+trials per model under one execution-source hash. The framework gate is
+**blocked**, with complete evidence and 24 blocking coordinates.
+
+| Current Make profile: strict passes | Qwen3.6 | Qwen3.8 |
+|---|---:|---:|
+| Short tasks, 4K allocation | 36 / 54 | 36 / 54 |
+| Browser tasks, 16K allocation | 0 / 12 | 3 / 12 |
+| Context tasks, 16K allocation | 3 / 36 | 24 / 36 |
+| Total | 39 / 102 | 63 / 102 |
+
+All 72 context rows have correct factual fields. Exact citations account for
+their strict-pass difference. Across the whole profile, mean case fact accuracy
+is 87.25% versus 88.24%; a higher aggregate pass count does not remove failed
+browser workflows, candidate critical failures or individual regressions.
+[Framework gate](make-profile-gate.json) and
+[descriptive counts](make-profile-summary.json) preserve that distinction.
+Historical results below retain their original instrument identities.
 
 Measured 2026-09-25–26 on one RTX 4090 (24 GiB), Ryzen 7 5800X, 125 GiB RAM.
 Both models used Hugging Face Unsloth UD-Q4_K_M weights and Unsloth-native
@@ -58,8 +83,8 @@ Details: [4K](context-4k-summary.json), [8K](context-8k-summary.json), and [16K]
 Context figures are total allocations with output/wrapper reserve. The initial
 4K, 8K and 16K runs used respectively 1708–1763, 5792–5847 and 14018–14070
 actual input tokens on both tokenizers. They are not full-length input figures.
-Larger contexts and follow-up product/browser experiments are still being
-evaluated. No 1M inference claim is made in this checkpoint.
+Larger-context and product/browser results follow below. These first runs are
+historical measurements, not the current-source profile.
 
 ## 32K and 64K exploration
 
@@ -108,8 +133,7 @@ disk-swap use; no system memory settings were changed by this evaluation.
 [The consolidated capacity ladder](context-capacity-ladder.json) includes actual
 token ranges, runtime factors, memory samples, and both failed startup attempts.
 The failed first managed pilot was a runner verification error before inference,
-not a model-quality failure. The 524K follow-up below is complete; 1M inference
-is running and has no completed answer at this checkpoint.
+not a model-quality failure. Both the 524K and 1M probes are now terminal.
 
 ## 524K with managed memory and YaRN
 
@@ -144,8 +168,40 @@ diagnostic: its image-name answer also cites an extra pin-mux document.
 Qwen3.8 included extra `gateware-requirements` citations for its APB/AXI answers,
 leaving its gateware citation score at 50%. Neither difference is a factual
 engineering error, and official scores remain unchanged. Two public tasks do
-not establish general model superiority. Qwen3.8 has begun the 1M probe;
-Qwen3.6's 1M run remains queued.
+not establish general model superiority.
+
+## Terminal 1M probe
+
+Both arms used Q4 KV, CUDA managed memory, YaRN scale 4 and a 1,000,192-token
+native allocation for the 1,000,000-token test budget. Qwen3.6's actual inputs
+were 997,636–997,691 tokens. These are small public tasks embedded in synthetic
+archive records, not a million tokens of authentic product documentation.
+
+| Observed result | Qwen3.6-35B-A3B | Qwen3.8-27B |
+|---|---:|---:|
+| Completed answers | 2 / 2 | 0 / 2 |
+| Strict passes among completed answers | 0 / 2 | Not scored |
+| Mean case fact accuracy | 87.5% | Not scored |
+| Exact citation accuracy | 0% | Not scored |
+| Cell elapsed time | 12,189 s | 21,605 s; deadline reached |
+
+Qwen3.6's pin-mux facts were all correct; its evidence IDs had the extra
+`DOCUMENT` prefix. Its gateware answer incorrectly approved simultaneous use
+of three SYZYGY transceivers with M.2, arguing that a requirement overrode the
+documented resource limit and inventing an unspecified multiplexing solution.
+The other three gateware fields were correct. This is six correct fields out
+of seven, distinct from the 87.5% mean across the two case scores.
+
+Qwen3.8 did not finish its first answer before the six-hour bound; its second
+case did not run. This is a failed capacity/latency attempt under these settings,
+not a measured zero accuracy or proof that every configuration must fail.
+
+[Terminal responses and recorded checks](context-1m-terminal.json) retain the
+frozen `0190d50` instrument identity. The missing newer provenance is not filled
+in after the fact. The [capacity ladder](context-capacity-ladder.json) preserves
+earlier failures and runtime changes. A 24 GiB GPU plus 125 GiB usable RAM is a
+consumer workstation; this experiment does not measure minimum RAM or establish
+equivalent behavior on a laptop. No beyond-1M run is justified by these results.
 
 ## What the citation gap actually measures
 
@@ -188,9 +244,9 @@ embed the raw responses now required for answer/action binding, although the
 original response files remain in the local artifacts. No missing metadata
 is backfilled. Neither
 their concatenation nor those legacy artifacts alone satisfy the current gate.
-A fresh original-profile run under one frozen
-revision is planned after the larger-context sweep. Historical responses and
-scores are preserved; no row is relabeled with a newer harness hash.
+The completed Make profile at the top of this report replaces this historical
+profile for current comparison evidence. Historical responses and scores remain
+preserved; no row is relabeled with a newer harness hash.
 
 The repeated context arm used 4096 output tokens: both models retained 100% fact
 accuracy, while mean exact-citation accuracy was 14.58% for Qwen3.6 and 83.33% for
@@ -217,8 +273,9 @@ These historical runs exposed raw dispatcher errors to the model; nine of the
 24 traces contain 12 such errors. The updated protocol exposes only fixed
 tool-specific failure codes and keeps exception details in private diagnostic
 files. Those historical traces are preserved as measured and cannot establish
-eligibility under the new replay rules. The uniform rerun will use the updated
-protocol.
+eligibility under the new replay rules. The completed Make profile uses the
+updated protocol and passes its provenance/replay checks; the gate remains
+blocked on measured outcomes.
 
 The successful Qwen3.8 trace includes actual document reads, typing into the
 report editor, saving, and verification of the saved state:
@@ -242,8 +299,8 @@ revising inside its explanation. The controller stopped before the second arm;
 this failed pilot is not evidence of improved model quality. Larger-context
 tests retain the original `json_object` request setting, which did not enforce
 object-only output on this installed Qwen path. A review fix makes future
-unconstrained runs omit `response_format` entirely; the pending uniform profile
-will use that corrected request configuration. The frozen larger-context runs and
+unconstrained runs omit `response_format` entirely; the completed Make profile
+used that corrected request configuration. The frozen larger-context runs and
 historical metadata are not relabeled. The original responses and strict failures remain preserved; extracting
 a fenced JSON block after seeing a failure is diagnostic only, never gate evidence.
 
@@ -278,6 +335,73 @@ Safety, abstention, negative and injection controls remain active. Four new
 product tasks combine revision handling, numerical budgets, timing losses and
 qualification constraints. Their answers were computed independently before
 live runs; all successes and failures will be reported.
+
+## Deployment roadmap and model choice
+
+The practical demonstration is an engineering review assistant: assemble source
+evidence, compute a budget, identify a conflicting revision, and draft a saved
+review. The existing browser demo performs real browser actions; the product
+tasks use fictional documents. Neither operates a physical board, parses a
+schematic image, qualifies a supplier, or authorizes a production release.
+
+| Stage | Deliverable through robotframework-chat | Exit condition |
+|---|---|---|
+| Reproducible demo | Make smoke, short tasks, product decisions and saved browser report with raw responses | Completed cases with verified tokens and preserved Robot/database evidence; publish failures too |
+| Engineer-assisted pilot | Selected real project documents, explicit revision IDs, calculator-backed numeric checks, draft report | Engineer-approved expected answers and tolerances, held-out projects, measured latency/memory budget |
+| Controlled workflow | Read-only retrieval, validated structured output, bounded tools, human sign-off | No critical regression on the agreed profile; exercise outages, injection, abstention and tool failures |
+| Model or adapter change | Same Make profile against pinned baseline and candidate | Comparable provenance plus no regression; training data excludes evaluation tasks and traces |
+
+The first stage has demonstrated individual successful workflows; it has not
+met an all-tasks-pass threshold. Later stages are proposed work, not delivered
+features. In particular, the current model suite grades arithmetic after the
+answer; it does not provide the model a deterministic calculator. That is a
+useful next intervention because both models sometimes contradict their own
+correct calculation in the structured answer fields.
+
+Start an assisted pilot with short, relevant source packets and an explicit
+response-time budget. This is a recommendation from the measured failures and
+task times, not a measured retrieval-versus-1M comparison. Keep larger-context
+probes separate until they show useful answers within the project's budget.
+The present 1M result supports neither interactive use nor unattended approval.
+
+No broad model winner is established. Qwen3.6 was faster on the original short
+set; Qwen3.8 showed better exact citation compliance and one successful browser
+workflow. These differences justify a workload-specific choice, not replacing
+one model everywhere. First test harder product decisions and the peer's
+isolated prompt experiment. A smaller Qwen is a sensible future cost/latency
+arm only after the intended RAM/latency budget and acceptance tasks are fixed;
+another download or context sweep alone would not answer a new product question.
+
+The same manifest/Make path accepts other GGUF models supported by the installed
+backend. Other providers can use the framework's normal provider configuration,
+but this gate requires immutable model/build identity and local token evidence.
+Do not label an arbitrary reachable hosted model as a verified comparable arm.
+The pinned [Qwen3.6](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/blob/a483e9e6cbd595906af30beda3187c2663a1118c/README.md)
+and [Qwen3.8](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/4ca720788d1e01f1bff70c033e0d0028fd02e502/README.md)
+cards identify the source artifacts; their advertised capabilities are not
+substitutes for the local measured results.
+
+## Assumptions corrected in this review
+
+- **Log preservation:** the native runner now invokes standard Make targets,
+  uses distinct run IDs, and emits raw answers/metrics/grades to the listeners.
+  Earlier direct-run artifacts remain preserved as historical evidence.
+  The Rebot merger now propagates report-generation errors instead of printing
+  success after a parse failure; failed model tests still produce usable reports.
+- **Context claims:** configured allocation, actual input, completed answers,
+  correctness and latency are reported separately. YaRN and managed memory are
+  explicit experimental factors. A 125 GiB-RAM host is not a laptop benchmark.
+- **Score meaning:** exact ID/set failures, invalid JSON, numerical error and
+  unsafe engineering decisions are distinct findings. No post-hoc repair changes
+  an official result. The overly strict battery precision remains a documented
+  rubric limitation pending independently reviewed replacement criteria.
+- **Evidence integrity:** current gates reconstruct prompts, responses and
+  browser state and require one compatible harness across an arm. Older rows
+  are not backfilled or promoted into the new profile.
+- **Documentation:** the local guide now uses Make, current artifact paths and
+  one description of the workflow. Stale running/queued 1M claims are replaced
+  with terminal evidence. This is a focused PR audit, not certification of every
+  AI-generated module in the repository.
 
 ## Pinned weights and evidence
 

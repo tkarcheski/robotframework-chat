@@ -1,11 +1,29 @@
 # Local hardware model evaluation
 
-`scripts/hardware_local_eval.py` runs the PR hardware Robot suites against one
-owned native llama.cpp process at a time. It uses local Hugging Face GGUF weights;
-it does not start Ollama, change Studio's resident model, download weights, or
-change global memory settings. Coordinate exclusive GPU ownership before running.
+Use **Make → Robot Framework → the standard listeners** for inference and
+comparison. `make hardware-local-eval` manages one native llama.cpp server at a
+time with pinned Hugging Face GGUF weights. Its child runs use the normal
+`robot-hardware*` targets and database archive. Coordinate GPU ownership first.
 
-Create a private JSON manifest (keep model files and outputs under `results/`):
+This uses Unsloth's installed llama.cpp build. It does not run Ollama inference
+or change Studio's resident model. The adapter is named `vllm` because it speaks
+the compatible chat API; the actual engine is recorded separately.
+
+## Prepare once
+
+Use the repository database configuration and install the evaluation extras:
+
+```bash
+uv sync --extra dev --extra superset --extra hardware-eval --extra playwright
+make .env
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/results/browser-cache"
+uv run rfbrowser init chromium
+uv run --env-file .env rfc harness start --tool codex --no-version-probe
+```
+
+Use your agent's harness tool name. An active session links agent/test metrics;
+it does not establish a completed run. Freeze execution source and dependencies
+across comparison arms. Create a private manifest with one entry per model:
 
 ```json
 [
@@ -13,384 +31,139 @@ Create a private JSON manifest (keep model files and outputs under `results/`):
     "name": "baseline",
     "id": "unsloth/Qwen3.6-35B-A3B-GGUF",
     "path": "/absolute/path/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-    "sha256": "verified SHA256 of this file",
+    "sha256": "actual SHA256 of the weight file",
     "revision": "pinned Hugging Face revision",
     "quant": "UD-Q4_K_M",
-    "tokenizer": "/absolute/path/baseline-tokenizer.json",
+    "tokenizer": "/absolute/path/model-tokenizer.json",
     "native_context": 262144
   }
 ]
 ```
 
-Add one entry per arm. Preflight validates all declared fields, positive native
-context, the actual SHA256 of every weight file, and loadable model/reference
-tokenizer files before output creation or server probing. Hashing streams the
-weights without loading each file into RAM. A stale or incorrect declared
-digest aborts execution; accepted digests are normalized to lowercase. Dry
-plans validate metadata without requiring downloaded files or hashing weights.
-This verifies local files at preflight, not remote-server attestation. Keep the
-weight files unchanged for the full run.
-Pin model/tokenizer revisions and keep the same reference tokenizer across arms.
-The requested context is the **total allocation**, including 2,048 output tokens
-and 256 wrapper-reserve tokens. Actual prompt counts are in each result row.
+Execution validates weight hashes and tokenizer files before starting a server.
+Keep weights immutable. Use one pinned reference tokenizer across arms; each
+model also has its own tokenizer for input verification. The installed Unsloth
+binary may need its `build/bin` and NVIDIA runtime directories in
+`LD_LIBRARY_PATH`. Keep private manifests, weights and outputs under `results/`.
 
-Use an isolated project environment with the `hardware-eval` and `playwright`
-extras. Initialize Chromium with `rfbrowser init chromium` before browser tasks.
-Point `PLAYWRIGHT_BROWSERS_PATH` at a project-local directory during installation
-and execution when using a private browser cache.
+## One completed case before a sweep
+
+Omit `--execute` to print a plan without loading a model. Then run one live case
+and inspect its response, grade, Robot report and listener archive:
 
 ```bash
-# First print the exact server commands. Execution requires --execute.
-python scripts/hardware_local_eval.py \
-  --models results/models.json \
-  --server /absolute/path/to/unsloth/llama.cpp/build/bin/llama-server \
-  --reference-tokenizer /absolute/path/reference-tokenizer.json \
-  --contexts 4096 --suites short --trials 3 \
-  --output results/hardware-short-4k
+make hardware-local-eval ARGS='--models results/models.json --server /absolute/path/to/llama-server --reference-tokenizer /absolute/path/reference-tokenizer.json --contexts 4096 --suites context --cases fire-pinmux-change --positions spread --trials 1 --timeout 180 --cell-timeout 600 --output results/hardware-smoke --execute'
 ```
 
-For the installed Unsloth binary, both its `build/bin` directory and the installed
-NVIDIA runtime library directory may need to be in `LD_LIBRARY_PATH`. Prefer the
-binary beside its backend libraries. The runner verifies an allocation belonging
-to its own PID in `nvidia-smi`; a server that silently falls back to CPU does not
-produce a GPU benchmark.
+Each invocation needs a fresh output directory. Wrong answers are preserved
+model failures. Outages, truncated outputs, missing token evidence and partial
+coverage cannot establish model quality. Examine failures before expanding.
 
-The defaults use full weight offload, f16 KV, one slot, 512/128 batches, eight
-threads, reasoning off, no speculative draft model, no vision projector, no host
-prompt cache, no automatic fit and no context shifting. The model's native
-context comes from the manifest. Above that length the command explicitly adds
-YaRN with an integer scale covering the allocation. This is an experimental
-extension setting, **not proof of quality or support at that length**.
+## Comparison profile
 
-Start the context ladder after examining short-task results:
+The main profile requires 102 rows per model: 54 short, 12 browser and 36 context.
+Use the same manifest, source and dependencies for both stages:
 
 ```bash
-python scripts/hardware_local_eval.py \
-  --models results/models.json --server /absolute/path/to/llama-server \
-  --reference-tokenizer /absolute/path/reference-tokenizer.json \
-  --contexts 4096 8192 16384 --suites context --trials 1 \
-  --output results/hardware-context-initial --execute
+make hardware-local-eval ARGS='--models results/models.json --server /absolute/path/to/llama-server --reference-tokenizer /absolute/path/reference-tokenizer.json --contexts 4096 --suites short --trials 3 --output-tokens 2048 --output results/hardware-short --execute'
+
+make hardware-local-eval ARGS='--models results/models.json --server /absolute/path/to/llama-server --reference-tokenizer /absolute/path/reference-tokenizer.json --contexts 16384 --suites browser context --trials 3 --output-tokens 4096 --positions start,middle,end,spread --output results/hardware-browser-context --execute'
 ```
 
-The default context subset has three cases and four evidence positions. Increase
-trials to three for the checked-in 16K gate profile. Browser history needs a
-larger allocation than a short task; test it separately at 16K or above. Continue
-32K → 64K → 128K → 262K → 524K → 1M only after checking capacity, token accounting,
-answers and resource usage at the preceding step. `--kv`, `--gpu-layers`,
-`--kv-placement`, `--cpu-ffn-layers` and `--cpu-moe-layers` expose separate
-cache/weight placement factors; changing them requires matched arms and a fresh
-output. Requested case/position/trial coverage is checked against an independent
-profile before a cell can complete; a nonempty partial result file cannot pass.
+For the separate product corpus use `--suites product` at 16K, three trials and
+a fresh directory. Its four tasks cover battery runtime after a firmware change,
+current-sensor error/thermal margins, UART capacity and qualified parts sourcing.
+These are fictional engineering artifacts, not connected-board measurements or
+real supplier qualification.
 
-Each model/context directory preserves its command, runtime manifest, served
-context properties, GPU allocation, model-load time, Robot artifacts, model
-prompts/responses, server log, and sampled memory telemetry. The server is stopped
-in `finally`; no unrelated process is signalled. Occupied ports, insufficient
-initial GPU headroom, RAM reserve violations, process failure, incomplete rows or
-unverified token accounting stop expansion. These guards are sampled and do not
-provide a hard cgroup memory limit. Inspect the failure before retrying in a new
-output directory. Wrong model answers remain completed failures and do not stop
-collection of the other cases.
+## Preserved evidence and the gate
 
-## Comparing results
+Read `suites.<suite>.robot_output_dir` in the controller manifest; Robot files no
+longer live beneath each controller cell:
 
 ```bash
-python scripts/summarize_hardware_eval.py \
-  results/short/baseline-4096/short/hardware-results.jsonl \
-  results/short/candidate-4096/short/hardware-results.jsonl \
-  --output results/paired-short-summary.json
+jq '.status, .suites' results/hardware-short/baseline-4096/manifest.json
 ```
 
-For comparisons containing long-context text rows, also pass
-`--reference-tokenizer /absolute/path/to/the/pinned/tokenizer.json`. The offline
-Robot gate loads `HW_REFERENCE_TOKENIZER`; the Python keyword also accepts an
-explicit `reference_tokenizer_path`. Its actual file hash must match the archived
-reference-tokenizer identity. Short-only comparisons do not require this file.
+Robot outputs use `results/<version>/<model>/<suite>/<host>/<run-id>/`. Each
+suite receives a unique `RUN_ID`; `SESSION_ID` links the active harness session.
+For repeated direct Make calls in one active session, supply a fresh `RUN_ID`
+yourself; the native runner does this automatically for each child suite.
+Outputs include XML/HTML reports, `hardware-results.jsonl`, prompts/responses,
+and browser screenshots/traces. Standard listener fields contain actual answers,
+metrics and grades. Verify the database listener's archive confirmation rather
+than treating local files as proof of database preservation.
 
-The summary separates fact accuracy, exact evidence-set accuracy, full-case
-passes and latency. It rejects unequal coverage, changed paired coordinates and
-incomplete/token-unverified runs. It bootstraps **case IDs**, keeping repetitions
-and positions together, because repeated greedy trials are not independent
-samples. Its practical-improvement indicator requires at least ten percentage
-points and a positive lower bound in the case-cluster bootstrap interval. This
-small public regression set cannot establish general model superiority; the
-summary does not replace the independent full-profile gate.
+The manifest records `make_exit`. A nonzero inner Make result can represent
+scored model failures; controller completion is not an all-tests-pass claim.
+Running snapshots are not completed cases. Cooperative interruption preserves
+terminal evidence; abrupt kills may leave only partial files. Keep failures,
+timeouts and interrupted runs.
 
-A case that every model passes is a ceiling-effect candidate. Keep safety,
-negative and infrastructure controls unless there is evidence they no longer
-serve that purpose. Mark `skip:low-value` only after examining multiple model
-arms and context conditions, and state the evidence/replacement. Do not retune
-answers, discard failures, or select tasks to force a preferred model to win.
+Concatenate the three actual Robot files per arm, then run the public gate.
+Replace these example paths with the manifest's `robot_output_dir` values:
 
-### Input allocation and output budget
+```bash
+cat baseline-short/hardware-results.jsonl baseline-browser/hardware-results.jsonl baseline-context/hardware-results.jsonl > results/baseline.jsonl
+cat candidate-short/hardware-results.jsonl candidate-browser/hardware-results.jsonl candidate-context/hardware-results.jsonl > results/candidate.jsonl
+make hardware-evaluation-gate \
+  RUN_ID=baseline-vs-candidate-v1 \
+  HW_BASELINE_RESULTS="$PWD/results/baseline.jsonl" \
+  HW_CANDIDATE_RESULTS="$PWD/results/candidate.jsonl" \
+  HW_REFERENCE_TOKENIZER=/absolute/path/reference-tokenizer.json
+```
 
-`HW_MAX_CONTEXT` is the declared server allocation and is archived as
-`effective_context_tokens`. A smaller context sweep coordinate sizes its input
-package; it does not resize an OpenAI-compatible server. The runner verifies the
-native server allocation before each cell. Transports supporting per-request
-context receive that same declared allocation.
+For products also set
+`HW_GATE_FIXTURES="$PWD/robot/10__tier1/hardware_engineering/fixtures/product"`.
+That profile requires four cases and three trials per arm. Do not mix exploratory
+lengths, product rows or changed harness revisions into the main profile.
 
-`--output-tokens` (default 2048) sets `HW_OUTPUT_TOKENS`, the request limit and
-reserved output space; it is recorded in each row's held-fixed sampling metadata.
-Use a fresh paired run when changing this limit. An output hitting the limit
-remains unverified and stops expansion, even if its partial text looks correct.
+The gate checks independent coverage, trusted fixtures, reparsed responses,
+recomputed grades, prompt reconstruction, token usage and runtime/model identity.
+It retokenizes long text with the pinned reference tokenizer and replays browser
+read/save evidence. Matching self-declared pass flags are insufficient. Artifact
+consistency is not cryptographic attestation of a remote server. See
+[gate meanings and scoring limits](../robot/10__tier1/hardware_engineering/README.md#evaluation-gate-not-deployment).
 
-The first 16K product pilot reached the 2048-token output limit on six Qwen3.8
-responses and stopped before its second model arm or browser tests. It is archived
-under `results/pr714/product-browser-16k/` and is not a paired comparison. A fresh
-product run uses a 4096-token output budget. Leading prose outside the requested
-JSON remains a schema failure; we do not repair model output for the gate.
+## Context and memory experiments
 
-### Separating JSON formatting from task quality
+`--contexts` is total allocation including the output reserve and a 256-token
+wrapper reserve. Native allocation rounds upward to 256-token blocks: a
+1,000,000-token test allocates 1,000,192 tokens. Report actual input counts too.
+The pack places a small engineering task among deterministic archive distractors;
+it is not a million tokens of authentic product documentation.
 
-The native runner also accepts `--constrain-json`, which sends an explicit
-`{"type":"object"}` schema in each chat request and records that constraint in
-its held-fixed runtime manifest. It constrains syntax, not answer IDs, numerical
-values, evidence choices, or browser actions. Treat it as a fresh matched
-experiment; do not combine constrained and unconstrained rows in a model pair.
-Before scored tasks, a bounded probe asks for plain text and must still return a
-complete JSON object. Its raw response is archived even when validation fails;
-probe time is recorded separately from model-load and task latency.
+Defaults: full GPU weight offload, f16 KV, one slot, 512/128 batches, eight CPU
+threads, thinking off, no speculative/vision model, host prompt cache, automatic
+fit or context shifting. Above native context the runner adds integer-scale
+YaRN. This is experimental extension, not proof of answer quality.
 
-Historical runs requested ordinary OpenAI `json_object` mode even when the
-metadata recorded no explicit schema. The installed build's specialized Qwen
-template checks for a nonempty schema, while `json_object` supplies an empty one.
-Historical live product/browser responses included prose and XML tool-call markers
-despite that request mode. Those remain strict failures in the original runs. An explicit
-native constraint can test whether formatting or engineering decisions dominate
-the observed difference; it does not repair already generated answers.
+`--kv`, `--gpu-layers`, `--kv-placement`, `--cpu-ffn-layers`, `--cpu-moe-layers`
+and `--unified-memory` change runtime factors. Use matched arms and a smaller
+bridge when changing them. Process-scoped CUDA managed memory may move pages
+between VRAM and RAM; full offload does not establish full VRAM residency.
+CPU-only mode disables GPU placement and cannot combine with managed memory.
+Sampled reserve checks are not hard memory limits. Failures stop the owned
+processes and preserve telemetry/logs; system memory settings are unchanged.
 
-The first server-wide grammar probe failed before any scored task: the grammar
-could not consume Qwen's chat prefix. The runner therefore uses the compatible
-chat API's nonempty `json_schema` response format, allowing the native template
-parser to account for that prefix. `HW_JSON_OBJECT_CONSTRAINT=1` enables the same
-request-level behavior in the Robot keyword and archives the schema in sampling
-metadata. Without that option, hardware evaluation requests omit `response_format`
-and clear any inherited JSON schema on the underlying client. The requested
-decoding mode therefore agrees with the recorded null/object constraint.
+An output cap or non-normal completion remains unverified. `--constrain-json`
+is a separately recorded object-schema experiment: it constrains syntax, not
+arithmetic or evidence. Otherwise requests omit `response_format`. Do not repair
+answers after generation and present them as original passes.
 
-Native allocations are explicitly rounded **up** to 256-token blocks, matching
-this llama.cpp build. The context-suite coordinate still sizes the input pack.
-For example, the 1,000,000-token budget requests a 1,000,192-token server
-allocation, verifies that exact served value, and records it as effective context.
-No context reduction or eviction is enabled.
+## Interpretation and other models
 
-### CUDA managed allocation for larger capacity probes
+Report facts, exact citation sets, strict passes and latency separately. Repeated
+greedy trials are not independent samples. Three public context cases cannot
+establish general model superiority. Citation serialization failures can coexist
+with correct facts. Total task latency is not TTFT; sampled machine GPU memory
+is not a model-only peak.
 
-`--unified-memory` explicitly sets `GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` only in the
-owned child process. The runner checks CUDA managed-memory and concurrent-access
-capabilities, records them with the runtime factor, and keeps its available-RAM
-reserve checks active. Without this flag it removes an inherited opt-in from the
-child, so an ambient setting cannot silently change the experiment. No system VM,
-swap, service, or other process configuration is changed.
-
-The installed native backend uses `cudaMallocManaged` on this path; the local
-RTX 4090 reports both required capabilities. This permits a separate capacity
-experiment where CUDA can migrate pages between device and system memory.
-It does not establish usable latency, correct long-context answers, or completed
-inference. Run a matched smaller-context bridge before interpreting a larger
-managed-memory result. Keep quantization, allocation mode, and CPU placement
-explicit when comparing arms.
-
-Dry plans include the command, test budget, rounded allocation, output budget,
-JSON-constraint setting and managed-memory setting; they do not launch a server.
-
-The artifact gate validates SHA256 prompt, fixture and harness identities, a
-nonempty grader version, boolean question checks, and critical-failure totals
-recomputed from those checks. Browser workflow regressions (evidence read or
-report saved) block eligibility even if final answer accuracy is unchanged. The
-harness identity snapshots every Python module in the local `rfc` package once
-per process, including transport, parsing and browser execution code. Complete
-paired runs must use one unchanged implementation; do not mix old and new
-harness identities in a comparison.
-
-For managed allocations, the runner requires its own CUDA process plus native
-GPU layer-offload and CUDA model-buffer evidence. It does not require the usual
-1024 MiB per-process VRAM threshold: managed pages can migrate between host and
-GPU, so allocation is not proof of residency. See the [CUDA unified-memory
-placement documentation](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/unified-memory.html).
-Total GPU/RAM telemetry and completed inference remain separate measurements.
-The initial managed pilot stopped at this old residency check before any scored
-request; its failure artifacts are retained.
-
-Each token-verified row must identify its model tokenizer by SHA256; the identity
-must remain constant within a model arm. Long-context rows also require the
-reference-tokenizer hash used to size the input. Different model arms may use
-different model tokenizers. Browser question-level critical counts remain the
-counts derived from question checks; missing evidence reads or saved reports
-block the workflow gate separately. CPU-only launches explicitly record that
-GPU allocation verification was not performed.
-
-An entire comparison arm must use one fixture, grader and harness revision, as
-well as one model-tokenizer identity. Matching versions only within individual
-case pairs is insufficient when combining suites into a promotion profile.
-Blank or nonstring model digests cannot establish weight identity.
-
-The owned runner launches base GGUF weights directly and explicitly records
-adapter identity `none`, overriding any inherited `HW_ADAPTER_ID`. Its headroom
-guard checks every GPU reported by `nvidia-smi` before launch and rejects missing
-or nonnumeric memory readings. This is conservative: devices hidden from CUDA
-are also checked, so a busy hidden device can prevent a run.
-CPU-only runs (`--gpu-layers 0`) skip GPU probes and headroom checks, force
-`--device none` and CPU KV placement, and retain RAM/process telemetry. GPU
-telemetry is recorded as null. Combining CPU-only mode with CUDA managed
-allocation is rejected before launch.
-
-Gate validation loads the trusted benchmark separately from result artifacts.
-Every row must match its fixture hash and its case's exact question IDs and
-critical flags, including browser cases. Matching omissions in both model arms
-cannot establish coverage. The core comparison API requires this benchmark;
-the Robot keyword supplies its loaded fixtures. The descriptive summary CLI
-uses the main fixtures by default; use `--fixtures PATH` for the product corpus
-or an archived fixture revision.
-
-The owned child drops inherited `LLAMA_ARG_*` overrides and `LLAMA_API_KEY`.
-This prevents ambient chat templates, draft models, server modes or unrelated
-authentication from changing the recorded native launch. Library paths and
-CUDA device visibility remain available; the parent environment is unchanged.
-
-The offline Robot gate accepts `HW_GATE_FIXTURES` alongside `HW_GATE_PROFILE`.
-For product results, set the fixture root to
-`robot/10__tier1/hardware_engineering/fixtures/product`; its `gate_profile.yaml`
-is then the default profile. Both paths can be set explicitly for archived runs.
-The gate also validates full-pass flags against schema validity, all question
-and citation checks, unsafe actions, and (for browser rows) evidence reads and
-report saves. A mutually consistent comparison cannot inflate full-pass rates
-by trusting an inconsistent `passed` field.
-
-Run manifests archive `source.patch`, the binary-capable diff against HEAD,
-including staged and unstaged tracked changes. Its SHA256 and base revision are
-recorded; untracked evaluation inputs under `src`, `robot`, `scripts`, `config`
-and `pyproject.toml` cause a refusal before server launch, even when Git ignores
-them. Python bytecode caches are excluded. If `uv.lock` exists, it is archived
-separately as `dependency-uv.lock` with its SHA256, including when ignored.
-That records the lockfile input, not proof that installed packages match it.
-Private output directories are outside the source-input check.
-
-Token verification now also requires an explicit normal completion reason
-(`stop`). A provider-declared length stop, filtering stop or missing reason
-remains unverified even when its reported output is below the requested limit.
-Older artifacts keep their original validator revision and do not receive an
-inferred completion-reason flag. Each arm must also retain one weight format
-across its entire profile.
-All nonzero-context rows in an arm also require one reference-tokenizer identity.
-The harness digest includes the repository's native runner, plus the owned
-runner's source hash snapshotted at startup and passed explicitly to its child.
-Changing only server-launch or acceptance code therefore changes the harness
-identity, even when the `rfc` package itself is unchanged.
-Sampling metadata must explicitly record `json_schema` as null or
-`{"type":"object"}`, consistent with the runtime output constraint. Matching
-missing or malformed constraint metadata in both arms is incomplete evidence.
-
-Harness identity also includes the Python version, installed distribution
-versions, and the available Browser/Playwright lock and browser-revision files.
-Rows retain that dependency snapshot for inspection. A lockfile alone is not
-treated as evidence of the versions actually installed.
-
-Owned runs record CPU model, logical CPUs, RAM capacity, GPU models/memory/driver,
-and hashed host/device identifiers in the held-fixed runtime manifest. CPU-only
-discovery performs no NVIDIA probes. The analyzer omits latency when hardware
-identity is missing, mixed, or incomplete, or latency values are invalid; changed
-hardware between paired rows rejects the comparison. Matching hardware does not
-control competing load, clocks or thermal state, so timing remains descriptive.
-
-Serving provenance requires explicit placement, offload, batching, thread,
-cache, thinking, vision, fit, context-shift and managed-memory settings in
-addition to engine/version/RoPE/cache precision. Matching partial manifests
-cannot qualify. The runner records managed memory as a boolean even when off.
-Negative RAM or GPU reserve thresholds fail before reading model assets or
-creating output directories.
-
-Grader `hardware-v2` requires the declared top-level explanation string as well
-as the answer list. Its contents remain subject to human review, not a prose
-quality score. Legacy scores retain their original grader identity.
-
-The comparison rechecks every recorded call with the same token-usage verifier
-used during inference: positive local/server input usage, a normal stop below
-the output cap, and server prompt tokens plus the reserved output budget within
-the configured context. An imported `token_count_verified: true` flag alone
-cannot establish this. Browser turns are checked individually; missing call
-usage remains incomplete evidence.
-
-After the owned server is ready, the runner hashes `/proc/<pid>/exe` and its
-currently mapped executable shared-library files. The held-fixed `server_build`
-contains the executable SHA256 and library names/SHA256 values; version text
-alone cannot identify a local rebuild. Unreadable build inputs fail the cell
-before inference. This is a startup snapshot, not attestation of libraries
-loaded later or cryptographic verification of imported artifacts. The live
-server and its build inputs must remain unchanged during a comparison. Each arm
-must use one serving build across the full profile, including separate short and
-context runs; context-dependent runtime settings can still vary by coordinate.
-Negative GPU, CPU-FFN and CPU-MoE layer counts fail CLI preflight, matching the
-runtime schema required by the artifact gate.
-
-Text results must contain exactly one recorded call whose prompt SHA256 matches
-the evaluated row's prompt SHA256. Each browser turn retains its own valid
-prompt digest, since the browser history changes between calls. Missing or
-unrelated text-call accounting cannot establish that the evaluated prompt fit.
-
-The gate accepts only its supported `GRADER_VERSION` (`hardware-v2`), since an
-unknown or older grader can assign different meanings to the same score flags.
-Browser rows now embed `browser_trace` as well as retaining `trace.json`. The
-producer and gate share the task/history prompt builders, with sorted JSON keys
-for history serialization. The gate reconstructs every call prompt from the
-trusted fixture task and the preceding trace entries, and checks both the task
-digest and each call digest. A completed final answer requires one more call
-than the action trace; other terminal outcomes retain one trace entry per call.
-The live protocol and replay share a 20-call limit. A completed run can contain
-at most 19 actions followed by its final-answer call; budget exhaustion requires
-exactly 20 actions. Invalid and unsafe actions terminate within that budget.
-The gate also replays trace observations through the sandbox allowlist and page
-state: a document is observed only after a successful read on that document
-whose entire output matches the sandbox's fixed markdown page, including its
-navigation wrapper and trusted source block (metadata, body and closing marker).
-Only outer whitespace is normalized. Added instructions, an altered wrapper,
-a document ID alone, or an altered/truncated body cannot establish a read. The
-live tracker uses the same check. Typing replaces the report field, and a
-successful Save records that text.
-Every other successful tool output must also match the sandbox: navigation,
-clicks, typing and screenshots have deterministic messages; catalog and report
-reads are reconstructed from the shared HTML renderer and the saved report
-state. Offline comparisons involving those reads require the same `playwright`
-extra's Markdown converter. Missing conversion support makes evidence
-incomplete. Failed actions must have empty output and the exact tool-specific
-`browser_action_failed:<tool>` code. The live sandbox archives the original
-dispatcher exception in `step-NNN-error.txt` beside the step screenshots; raw
-exception text is never included in the model's next prompt. Earlier traces
-containing raw dispatcher errors cannot satisfy this updated protocol and are
-not rewritten to add the new codes.
-Navigation resets report state. The derived read/save flags, observed document
-list, action/error counts and terminal status must agree with the row, and the
-saved JSON must match its final answer. This checks internal artifact consistency;
-it does not authenticate externally supplied browser observations. Older rows
-are not backfilled with a new grader or trace.
-
-Every completed text and browser row archives its parsed `answer`. The gate
-independently runs the supported grader against the trusted fixture and requires
-its schema, question checks, fact/citation means and critical-failure count to
-match the recorded fields. Workflow and safety checks additionally determine
-full pass status. Missing answers or self-declared scores that disagree with the
-answer are incomplete evidence. Parsing failures archive an empty object and
-remain completed model failures when their grading and other provenance agree.
-
-Calls also retain the emitted response and its canonical content hash. The gate
-reparses each response and checks the resulting text answer, browser action or
-browser final answer against the row/trace. An edited parsed object cannot replace
-a malformed or different recorded response. Invalid responses remain measurable
-model failures when their empty parsed answer and grading agree. These bindings
-check consistency of imported artifacts, not the authenticity of supplied files.
-
-Text prompt identity is reconstructed independently: trusted document blocks and
-task text are assembled with the recorded evidence position and the deterministic
-archive records identified by `distractor_ids` and the trial seed. Short tasks must
-have no distractors. The same assembly function generates live packs, so long
-prompts can be checked without accepting arbitrary supplied text or rerunning the
-tokenizer's sizing search. Actual token accounting remains a separate requirement.
-
-For every long-context text row, comparison retokenizes the reconstructed prompt
-with that trusted reference tokenizer and requires the count to equal the archived
-`reference_tokens`. The count must fit the declared input budget, and adding one
-more complete deterministic archive record must exceed it. This repeats the
-producer's whole-record maximal-sizing check instead of trusting a claimed large
-context or token count. Missing/mismatched tokenizer identity, undersized packs,
-or incorrect recorded counts make the comparison incomplete.
+The [PR714 evidence and deployment roadmap](evaluations/pr714/README.md)
+cover a 24 GiB RTX 4090 workstation with 125 GiB usable RAM, not a typical laptop
+or a measured minimum-RAM requirement. Other models can use the same manifest
+when the installed native backend supports them; verify compatibility and fit.
+For other supported API providers use the
+[normal Robot provider workflow](../robot/10__tier1/hardware_engineering/README.md#run-the-short-tasks).
+Endpoint reachability alone does not supply the immutable identity, local token
+counts and serving provenance required by this comparison gate.
