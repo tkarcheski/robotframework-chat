@@ -152,10 +152,11 @@ Before scored tasks, a bounded probe asks for plain text and must still return a
 complete JSON object. Its raw response is archived even when validation fails;
 probe time is recorded separately from model-load and task latency.
 
-The installed build's specialized Qwen template checks for a nonempty schema;
-ordinary OpenAI `json_object` mode supplies an empty schema. Live product/browser
-responses consequently included prose and XML tool-call markers despite that
-request mode. Those remain strict failures in the original runs. An explicit
+Historical runs requested ordinary OpenAI `json_object` mode even when the
+metadata recorded no explicit schema. The installed build's specialized Qwen
+template checks for a nonempty schema, while `json_object` supplies an empty one.
+Historical live product/browser responses included prose and XML tool-call markers
+despite that request mode. Those remain strict failures in the original runs. An explicit
 native constraint can test whether formatting or engineering decisions dominate
 the observed difference; it does not repair already generated answers.
 
@@ -164,7 +165,9 @@ could not consume Qwen's chat prefix. The runner therefore uses the compatible
 chat API's nonempty `json_schema` response format, allowing the native template
 parser to account for that prefix. `HW_JSON_OBJECT_CONSTRAINT=1` enables the same
 request-level behavior in the Robot keyword and archives the schema in sampling
-metadata. The transport's ordinary JSON mode remains unchanged by default.
+metadata. Without that option, hardware evaluation requests omit `response_format`
+and clear any inherited JSON schema on the underlying client. The requested
+decoding mode therefore agrees with the recorded null/object constraint.
 
 Native allocations are explicitly rounded **up** to 256-token blocks, matching
 this llama.cpp build. The context-suite coordinate still sizes the input pack.

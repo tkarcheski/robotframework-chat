@@ -209,7 +209,7 @@ class HardwareEvalKeywords:
                 temperature=0.0,
                 max_tokens=self.output_reserve,
                 max_retries=0,
-                response_format="json",
+                response_format="json" if self.json_constraint else None,
             )
 
     @keyword("Get Hardware Case Ids")
@@ -279,6 +279,10 @@ class HardwareEvalKeywords:
                     )
                 request_client.response_format = "json"
                 request_client.json_schema = {"type": "object"}
+            else:
+                request_client.response_format = None
+                if isinstance(request_client, OpenAIClient):
+                    request_client.json_schema = None
             reference_count, row["reference_tokenizer"] = token_counter(
                 os.getenv("HW_REFERENCE_TOKENIZER", "")
             )

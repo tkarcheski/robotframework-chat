@@ -233,7 +233,11 @@ installed Qwen template path. A separate per-request nonempty JSON-schema pilot 
 generation, but Qwen3.8 still hit the 4096-token cap on the battery case while
 revising inside its explanation. The controller stopped before the second arm;
 this failed pilot is not evidence of improved model quality. Larger-context
-tests retain the original unconstrained request settings. The original responses and strict failures remain preserved; extracting
+tests retain the original `json_object` request setting, which did not enforce
+object-only output on this installed Qwen path. A review fix makes future
+unconstrained runs omit `response_format` entirely; the pending uniform profile
+will use that corrected request configuration. The frozen larger-context runs and
+historical metadata are not relabeled. The original responses and strict failures remain preserved; extracting
 a fenced JSON block after seeing a failure is diagnostic only, never gate evidence.
 
 The numeric and exact-citation rubric also has limits: for example, the battery

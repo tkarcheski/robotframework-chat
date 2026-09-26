@@ -316,3 +316,64 @@ def test_offline_long_context_gate_loads_trusted_reference_tokenizer(
     )
     assert gate["verdict"] == ("incomplete" if source == "missing" else "eligible")
     assert paths == ([""] if source == "missing" else ["pinned-tokenizer.json"])
+
+
+@pytest.mark.parametrize("constrained", [False, True])
+@pytest.mark.parametrize("wrapped", [False, True])
+@pytest.mark.parametrize("injected", [False, True])
+def test_json_constraint_metadata_matches_actual_request_payload(
+    tmp_path, monkeypatch, constrained, wrapped, injected
+):
+    from rfc.openai_client import OpenAIClient
+    from rfc.llm_client import _ConsoleFeedProvider
+
+    monkeypatch.setenv("HW_EVAL_LIVE", "1")
+    monkeypatch.setenv("RFC_RUN_MODE", "measure")
+    monkeypatch.setenv("ANSWER_CACHE_ENABLED", "0")
+    monkeypatch.setenv("HW_JSON_OBJECT_CONSTRAINT", "1" if constrained else "0")
+    client = OpenAIClient(
+        api_key="fixture",
+        model="fixture",
+        base_url="http://127.0.0.1",
+        response_format="json",
+        json_schema={"type": "string"},
+    )
+    factory = MagicMock(
+        return_value=_ConsoleFeedProvider(client) if wrapped else client
+    )
+    monkeypatch.setattr("rfc.hardware_eval_keywords.create_provider", factory)
+    case = load_benchmark(FIXTURES)["cases"]["uno-current-budget"]
+    response = MagicMock()
+    response.json.return_value = {
+        "choices": [
+            {
+                "message": {"content": json.dumps(gold_answer(case))},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 100},
+    }
+    post = MagicMock(return_value=response)
+    monkeypatch.setattr("rfc.openai_client.requests.post", post)
+    lib = HardwareEvalKeywords(
+        str(FIXTURES), str(tmp_path), client=factory.return_value if injected else None
+    )
+    row = lib.evaluate_hardware_case("uno-current-budget")
+    if injected:
+        factory.assert_not_called()
+    else:
+        assert factory.call_args.kwargs["response_format"] == (
+            "json" if constrained else None
+        )
+    payload = post.call_args.kwargs["json"]
+    if constrained:
+        assert payload["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": {"type": "object"}},
+        }
+    else:
+        assert "response_format" not in payload
+        assert client.json_schema is None
+    assert row["sampling"]["json_schema"] == (
+        {"type": "object"} if constrained else None
+    )
