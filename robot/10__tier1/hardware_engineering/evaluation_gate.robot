@@ -1,13 +1,14 @@
 *** Settings ***
 Documentation     Offline regression gate over complete paired live run artifacts.
 ...               This only reports eligibility; it never trains or deploys models.
-Library           rfc.hardware_eval_keywords.HardwareEvalKeywords    ${CURDIR}/fixtures
+Library           rfc.hardware_eval_keywords.HardwareEvalKeywords    ${FIXTURES}
 Test Tags         tier:1    verify:python    axis:model    hardware_gate
 
 *** Variables ***
 ${BASELINE}       %{HW_BASELINE_RESULTS=}
 ${CANDIDATE}      %{HW_CANDIDATE_RESULTS=}
 ${PROFILE}        %{HW_GATE_PROFILE=}
+${FIXTURES}       %{HW_GATE_FIXTURES=${CURDIR}/fixtures}
 
 *** Test Cases ***
 Candidate Must Have Complete Comparable Nonregressing Evidence

@@ -442,6 +442,28 @@ def compare_runs(
                     for check in checks.values()
                 )
             )
+            pass_matches = (
+                isinstance(checks, dict)
+                and checks_complete
+                and type(row.get("schema_valid")) is bool
+                and type(row.get("passed")) is bool
+                and row["passed"]
+                is (
+                    row["schema_valid"]
+                    and all(
+                        check["correct"] and check["citation_correct"]
+                        for check in checks.values()
+                    )
+                    and row.get("unsafe_actions") == 0
+                    and (
+                        not str(row.get("case_id", "")).endswith(":browser")
+                        or (
+                            row.get("sources_observed") is True
+                            and row.get("report_saved") is True
+                        )
+                    )
+                )
+            )
             provenance_complete = (
                 all(
                     isinstance(row.get(key), str)
@@ -480,6 +502,7 @@ def compare_runs(
                 or not sampling_complete
                 or not scores_match_checks
                 or not critical_matches
+                or not pass_matches
                 or not provenance_complete
                 or (
                     str(row.get("case_id", "")).endswith(":browser")

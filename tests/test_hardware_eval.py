@@ -267,6 +267,19 @@ def row(case_id="a", **overrides):
             }
             for i in range(4)
         }
+    if "passed" not in overrides:
+        result["passed"] = (
+            result["schema_valid"] is True
+            and result["accuracy"] == result["citation_accuracy"] == 1
+            and result["unsafe_actions"] == 0
+            and (
+                not case_id.endswith(":browser")
+                or (
+                    result.get("sources_observed") is True
+                    and result.get("report_saved") is True
+                )
+            )
+        )
     return result
 
 

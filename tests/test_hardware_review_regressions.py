@@ -188,13 +188,18 @@ def test_long_pack_records_server_allocation_not_input_coordinate(
     assert client.num_ctx == cap
 
 
-@pytest.mark.parametrize("field", ["passed", "sources_observed", "report_saved"])
+@pytest.mark.parametrize("field", ["sources_observed", "report_saved"])
 def test_browser_workflow_regression_blocks_even_with_equal_answers(field):
     old = row(
-        case_id="task:browser", passed=True, sources_observed=True, report_saved=True
+        case_id="task:browser",
+        accuracy=1.0,
+        passed=True,
+        sources_observed=True,
+        report_saved=True,
     )
     new = copy.deepcopy(old)
     new[field] = False
+    new["passed"] = False
     from rfc.hardware_eval import compare_runs as compare_paired
 
     assert (
@@ -449,3 +454,80 @@ def test_core_gate_requires_benchmark_independent_of_artifacts():
 
     result = compare_paired([row()], [row()], {("a", 16384, "middle", 0)})
     assert result["reasons"] == ["missing_trusted_benchmark"]
+
+
+@pytest.mark.parametrize(
+    "accuracy,passed", [(0.75, True), (1.0, False), (1.0, 1), (1.0, None)]
+)
+def test_full_pass_attestation_must_match_question_checks(accuracy, passed):
+    old = row(accuracy=accuracy, passed=passed)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+@pytest.mark.parametrize("schema", [None, 0, 1, "true"])
+def test_schema_attestation_requires_boolean(schema):
+    old = row(schema_valid=schema)
+    assert compare_runs([old], [copy.deepcopy(old)])["verdict"] == "incomplete"
+
+
+def test_browser_full_pass_cannot_ignore_failed_workflow():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    old = row(
+        case_id="a:browser",
+        accuracy=1.0,
+        passed=True,
+        sources_observed=True,
+        report_saved=False,
+    )
+    result = compare_paired(
+        [old],
+        [copy.deepcopy(old)],
+        {("a:browser", 16384, "middle", 0)},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == "incomplete"
+
+
+def test_robot_product_gate_uses_configured_fixture_root(tmp_path, monkeypatch):
+    import io
+    import yaml
+    from robot import run
+
+    fixtures = FIXTURES / "product"
+    benchmark = load_benchmark(fixtures)
+    profile = yaml.safe_load((fixtures / "gate_profile.yaml").read_text())
+    rows = [
+        row(
+            case_id=case_id,
+            context_tokens=context,
+            position=position,
+            trial=trial,
+            fixture_sha256=benchmark["sha256"],
+            **score_answer(
+                benchmark["cases"][case_id], gold_answer(benchmark["cases"][case_id])
+            ),
+        )
+        for group in profile["groups"]
+        for case_id in group["cases"]
+        for context in group["contexts"]
+        for position in group["positions"]
+        for trial in group["trials"]
+    ]
+    artifact = tmp_path / "synthetic-product.jsonl"
+    artifact.write_text("".join(json.dumps(item) + "\n" for item in rows))
+    monkeypatch.setenv("HW_BASELINE_RESULTS", str(artifact))
+    monkeypatch.setenv("HW_CANDIDATE_RESULTS", str(artifact))
+    monkeypatch.setenv("HW_GATE_PROFILE", str(fixtures / "gate_profile.yaml"))
+    monkeypatch.setenv("HW_GATE_FIXTURES", str(fixtures))
+    stream = io.StringIO()
+    result = run(
+        str(FIXTURES.parent / "evaluation_gate.robot"),
+        outputdir=str(tmp_path / "gate"),
+        stdout=stream,
+        stderr=stream,
+    )
+    assert result == 0, stream.getvalue()
+    gate = json.loads((tmp_path / "gate/hardware-gate.json").read_text())
+    assert gate["verdict"] == "eligible"
+    assert gate["paired_cases"] == 12

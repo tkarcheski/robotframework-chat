@@ -236,3 +236,12 @@ The owned child drops inherited `LLAMA_ARG_*` overrides and `LLAMA_API_KEY`.
 This prevents ambient chat templates, draft models, server modes or unrelated
 authentication from changing the recorded native launch. Library paths and
 CUDA device visibility remain available; the parent environment is unchanged.
+
+The offline Robot gate accepts `HW_GATE_FIXTURES` alongside `HW_GATE_PROFILE`.
+For product results, set the fixture root to
+`robot/10__tier1/hardware_engineering/fixtures/product`; its `gate_profile.yaml`
+is then the default profile. Both paths can be set explicitly for archived runs.
+The gate also validates full-pass flags against schema validity, all question
+and citation checks, unsafe actions, and (for browser rows) evidence reads and
+report saves. A mutually consistent comparison cannot inflate full-pass rates
+by trusting an inconsistent `passed` field.
