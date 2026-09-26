@@ -213,8 +213,10 @@ def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
     usage = data.get("usage", {})
     prompt_details = usage.get("prompt_tokens_details") or {}
     completion_details = usage.get("completion_tokens_details") or {}
+    choices = data.get("choices") or []
     return {
         "model_name": model,
+        "finish_reason": choices[0].get("finish_reason") if choices else None,
         "prompt_tokens": usage.get("prompt_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
         "total_tokens": usage.get("total_tokens"),

@@ -329,6 +329,30 @@ def terminate(process):
             process.wait(timeout=5)
 
 
+def source_provenance(folder):
+    """Archive staged and unstaged tracked changes; reject untracked run inputs."""
+    git = ["git", "-C", str(ROOT)]
+    inputs = ["src", "robot", "scripts", "config", "pyproject.toml", "uv.lock"]
+    untracked = capture(
+        git + ["ls-files", "--others", "--exclude-standard", "--", *inputs]
+    )
+    if untracked:
+        raise RuntimeError(
+            "Untracked evaluation inputs must be tracked before running: " + untracked
+        )
+    patch = capture(git + ["diff", "--binary", "HEAD"])
+    if patch:
+        patch += "\n"
+    (folder / "source.patch").write_text(patch)
+    return {
+        "git": capture(git + ["rev-parse", "HEAD"]),
+        "diff_sha256": hashlib.sha256(patch.encode()).hexdigest(),
+        "diff_base": "HEAD (staged and unstaged)",
+        "diff_artifact": "source.patch",
+        "untracked_input_paths_checked": inputs,
+    }
+
+
 def run_cell(args, model, context, version):
     folder = args.output / f"{model['name']}-{context}"
     folder.mkdir(parents=True, exist_ok=False)
@@ -377,8 +401,7 @@ def run_cell(args, model, context, version):
         "command": cmd,
         "runtime": runtime,
         "baseline": baseline,
-        "git": capture(["git", "rev-parse", "HEAD"]),
-        "diff_sha256": hashlib.sha256(capture(["git", "diff"]).encode()).hexdigest(),
+        **source_provenance(folder),
         "started": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "status": "starting",
         "suites": {},

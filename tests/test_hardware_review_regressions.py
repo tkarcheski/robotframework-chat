@@ -531,3 +531,17 @@ def test_robot_product_gate_uses_configured_fixture_root(tmp_path, monkeypatch):
     gate = json.loads((tmp_path / "gate/hardware-gate.json").read_text())
     assert gate["verdict"] == "eligible"
     assert gate["paired_cases"] == 12
+
+
+def test_weight_format_cannot_vary_between_coordinates_of_one_arm():
+    from rfc.hardware_eval import compare_runs as compare_paired
+
+    rows = [row(trial=0), row(trial=1, weights_format="Q8_0")]
+    result = compare_paired(
+        rows,
+        copy.deepcopy(rows),
+        {("a", 16384, "middle", trial) for trial in [0, 1]},
+        synthetic_benchmark(),
+    )
+    assert result["verdict"] == "incomplete"
+    assert "mixed_model_identity" in result["reasons"]

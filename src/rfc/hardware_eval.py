@@ -343,7 +343,12 @@ def compare_runs(
                 {
                     tuple(
                         r.get(key) if isinstance(r.get(key), str) else None
-                        for key in ("model", "model_digest", "adapter_id")
+                        for key in (
+                            "model",
+                            "model_digest",
+                            "adapter_id",
+                            "weights_format",
+                        )
                     )
                     for r in rows
                 }

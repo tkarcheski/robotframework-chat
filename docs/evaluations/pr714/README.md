@@ -49,7 +49,8 @@ Three original cases × four evidence positions × one trial, on each model, at 
 
 All 72 rows across the three allocations completed with verified token counts. At 16K, fact accuracy remained 100% on both models. Qwen3.6 citation accuracy fell to 8.33% (1/12 full passes); Qwen3.8 remained at 83.33% (8/12). The difference is **exact citation-identifier and evidence-set compliance**,
 not factual-answer accuracy. The citation delta
-is +60.42 points, with a [31.25, 75.00] case-cluster bootstrap interval, but there
+at 16K is +75.00 points, with a [50.00, 100.00] case-cluster bootstrap interval.
+At 4K/8K it is +60.42 points, with a [31.25, 75.00] interval. There
 are only **three independent task clusters**. This exploratory result is narrow;
 it does not establish general model superiority or full-profile eligibility.
 Details: [4K](context-4k-summary.json), [8K](context-8k-summary.json), and [16K](context-16k-summary.json).

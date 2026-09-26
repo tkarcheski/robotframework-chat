@@ -250,7 +250,9 @@ def run_browser_agent(
     grade = score_answer(case, answer)
     required = set().union(*(r["evidence"] for r in case["expected"].values()))
     observed = required <= sandbox.observed
-    saved = bool(answer) and sandbox.saved_report() == answer
+    saved = bool(answer) and json.dumps(
+        sandbox.saved_report(), sort_keys=True
+    ) == json.dumps(answer, sort_keys=True)
     return {
         **grade,
         "passed": grade["passed"] and observed and saved and not sandbox.unsafe_actions,

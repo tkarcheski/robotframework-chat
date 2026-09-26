@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+import copy
 import json
 import os
 import importlib
@@ -117,6 +118,29 @@ def test_browser_final_answer_without_actions_cannot_pass(benchmark, browser, tm
         assert not result["passed"]
         assert not result["sources_observed"]
         assert not result["report_saved"]
+
+
+@pytest.mark.parametrize("replace_boolean", [False, True])
+def test_saved_report_preserves_json_value_types(
+    benchmark, browser, tmp_path, monkeypatch, replace_boolean
+):
+    case = benchmark["cases"]["uno-current-budget"]
+    answer = gold_answer(case)
+    saved = copy.deepcopy(answer)
+    if replace_boolean:
+        item = next(item for item in saved["answers"] if type(item["value"]) is bool)
+        item["value"] = int(item["value"])
+    with HardwareSandbox(benchmark["documents"], browser, tmp_path) as box:
+        box.observed = set().union(
+            *(rule["evidence"] for rule in case["expected"].values())
+        )
+        monkeypatch.setattr(box, "saved_report", lambda: saved)
+        result = run_browser_agent(
+            case, box, lambda prompt: json.dumps({"final": answer})
+        )
+    assert result["accuracy"] == 1.0
+    assert result["report_saved"] is not replace_boolean
+    assert result["passed"] is not replace_boolean
 
 
 def test_budget_exhaustion_is_not_completion(benchmark, browser, tmp_path):

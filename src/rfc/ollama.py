@@ -117,6 +117,7 @@ def _extract_metrics(data: Dict[str, Any], model: str) -> Dict[str, Any]:
 
     return {
         "model_name": model,
+        "finish_reason": data.get("done_reason"),
         "total_duration_ns": data.get("total_duration"),
         "load_duration_ns": data.get("load_duration"),
         "prompt_eval_count": prompt_eval_count,

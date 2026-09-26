@@ -50,10 +50,10 @@ test_suites:
     timeout_seconds: 345600
     privacy: public
 
-  - name: "hardware-evaluation-gate"
-    path: "robot/10__tier1/hardware_engineering/evaluation_gate.robot"
-    description: "Paired live-run evaluation; set both HW_*_RESULTS paths"
-    timeout_seconds: 60
+  - name: "hardware-product"
+    path: "robot/10__tier1/hardware_engineering/product.robot"
+    description: "Product release decisions; requires HW_EVAL_LIVE=1"
+    timeout_seconds: 108000
     privacy: public
 
   - name: "math"

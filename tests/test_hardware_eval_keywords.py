@@ -15,16 +15,29 @@ from test_hardware_eval import FIXTURES, gold_answer
 
 def test_tokens_must_be_measured_and_not_silently_truncated():
     assert verify_token_usage(
-        100, {"prompt_eval_count": 110, "eval_count": 10}, 256, 32
+        100,
+        {"prompt_eval_count": 110, "eval_count": 10, "finish_reason": "stop"},
+        256,
+        32,
     )
     assert not verify_token_usage(100, {}, 256, 32)
-    assert not verify_token_usage(None, {"prompt_eval_count": 110}, 256, 32)
-    assert not verify_token_usage(100, {"prompt_eval_count": 80}, 256, 32)
     assert not verify_token_usage(
-        100, {"prompt_eval_count": 240, "eval_count": 20}, 256, 32
+        None, {"prompt_eval_count": 110, "finish_reason": "stop"}, 256, 32
     )
     assert not verify_token_usage(
-        100, {"prompt_eval_count": 110, "eval_count": 32}, 256, 32
+        100, {"prompt_eval_count": 80, "finish_reason": "stop"}, 256, 32
+    )
+    assert not verify_token_usage(
+        100,
+        {"prompt_eval_count": 240, "eval_count": 20, "finish_reason": "stop"},
+        256,
+        32,
+    )
+    assert not verify_token_usage(
+        100,
+        {"prompt_eval_count": 110, "eval_count": 32, "finish_reason": "stop"},
+        256,
+        32,
     )
 
 
@@ -75,6 +88,23 @@ def test_nonpositive_output_budget_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setenv("HW_OUTPUT_TOKENS", "0")
     with pytest.raises(ValueError, match="positive"):
         HardwareEvalKeywords(str(FIXTURES), str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "reason", ["stop", None, "length", "content_filter", "tool_calls", "unknown"]
+)
+def test_only_normal_completion_can_attest_token_usage(reason):
+    from rfc.openai_client import _extract_metrics
+
+    metrics = _extract_metrics(
+        {
+            "choices": [{"finish_reason": reason}],
+            "usage": {"prompt_tokens": 110, "completion_tokens": 10},
+        },
+        "local-model",
+    )
+    assert metrics["finish_reason"] == reason
+    assert verify_token_usage(100, metrics, 256, 32) is (reason == "stop")
 
 
 def test_trial_parameters_reach_nested_provider_wrappers(tmp_path, monkeypatch):

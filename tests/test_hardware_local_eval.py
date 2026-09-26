@@ -104,7 +104,7 @@ def test_cpu_only_cell_starts_without_gpu_probes(tmp_path, monkeypatch):
 
     def capture(command):
         assert command[0] == "git", "CPU launch must not probe NVIDIA tooling"
-        return "test-revision"
+        return "" if "ls-files" in command else "test-revision"
 
     def launch(command, **kwargs):
         assert command[command.index("--device") + 1] == "none"
@@ -180,7 +180,11 @@ def test_owned_launch_overrides_adapter_and_checks_all_gpus(
             + ", 0",
         },
     )
-    monkeypatch.setattr(runner, "capture", lambda command: "test-revision")
+    monkeypatch.setattr(
+        runner,
+        "capture",
+        lambda command: "" if "ls-files" in command else "test-revision",
+    )
     monkeypatch.setenv("HW_ADAPTER_ID", "unrelated-inherited-adapter")
     launched = []
 
@@ -255,6 +259,51 @@ def test_native_environment_overrides_do_not_enter_owned_experiment():
     child = owned_environment(False, inherited)
     assert child == {"LD_LIBRARY_PATH": "/native/libs", "CUDA_VISIBLE_DEVICES": "0"}
     assert inherited["LLAMA_ARG_AGENT"] == "1"
+
+
+def test_source_manifest_includes_staged_edits_and_rejects_untracked_inputs(
+    tmp_path, monkeypatch
+):
+    import hashlib
+    import subprocess
+    from scripts import hardware_local_eval as runner
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(repo), *args], text=True, stderr=subprocess.STDOUT
+        )
+
+    git("init")
+    source = repo / "src/evaluation.py"
+    source.parent.mkdir()
+    source.write_text("value = 1\n")
+    git("add", "src/evaluation.py")
+    git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "fixture",
+    )
+    source.write_text("value = 2\n")
+    git("add", "src/evaluation.py")
+    assert git("diff") == ""
+    monkeypatch.setattr(runner, "ROOT", repo)
+    output = tmp_path / "output"
+    output.mkdir()
+    manifest = runner.source_provenance(output)
+    patch = (output / "source.patch").read_text()
+    assert "+value = 2" in patch
+    assert manifest["diff_sha256"] == hashlib.sha256(patch.encode()).hexdigest()
+    assert manifest["git"] == git("rev-parse", "HEAD").strip()
+    source.with_name("untracked.py").write_text("untracked = True\n")
+    with pytest.raises(RuntimeError, match="Untracked evaluation inputs"):
+        runner.source_provenance(output)
 
 
 def test_json_constraint_does_not_apply_prefix_incompatible_server_grammar():

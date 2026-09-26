@@ -245,3 +245,16 @@ The gate also validates full-pass flags against schema validity, all question
 and citation checks, unsafe actions, and (for browser rows) evidence reads and
 report saves. A mutually consistent comparison cannot inflate full-pass rates
 by trusting an inconsistent `passed` field.
+
+Run manifests archive `source.patch`, the binary-capable diff against HEAD,
+including staged and unstaged tracked changes. Its SHA256 and base revision are
+recorded; untracked evaluation inputs under `src`, `robot`, `scripts`, `config`,
+`pyproject.toml` and `uv.lock` cause a refusal before server launch. Private output
+directories are outside that check.
+
+Token verification now also requires an explicit normal completion reason
+(`stop`). A provider-declared length stop, filtering stop or missing reason
+remains unverified even when its reported output is below the requested limit.
+Older artifacts keep their original validator revision and do not receive an
+inferred completion-reason flag. Each arm must also retain one weight format
+across its entire profile.

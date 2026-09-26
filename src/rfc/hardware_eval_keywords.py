@@ -85,6 +85,7 @@ def verify_token_usage(
     output = metrics.get("eval_count")
     return bool(
         type(local_tokens) is int
+        and metrics.get("finish_reason") == "stop"
         and local_tokens > 0
         and type(prompt) is int
         and prompt >= local_tokens
