@@ -338,6 +338,7 @@ See [ai/agents.md](https://github.com/tkarcheski/robotframework-chat/blob/main/a
 | [docs/TEST_DATABASE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/TEST_DATABASE.md) | Database schema and usage |
 | [docs/SUPERSET_SETUP.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_SETUP.md) | Superset visualization stack setup |
 | [docs/SUPERSET_EXPORT_GUIDE.md](https://github.com/tkarcheski/robotframework-chat/blob/main/docs/SUPERSET_EXPORT_GUIDE.md) | Superset dashboard export, import, and backup |
+| [docs/CLUSTER_SETUP.md](docs/CLUSTER_SETUP.md) | Private LAN cluster setup for SSH, Ollama, Unsloth, Superset, and PostgreSQL |
 | [Ollama Configuration](#ollama-configuration) | Multi-model loading, VRAM sizing, and multi-node setup |
 | [CHANGELOG.md](https://github.com/tkarcheski/robotframework-chat/blob/main/CHANGELOG.md) | Release history since v1.4.3, thematic per minor line |
 
